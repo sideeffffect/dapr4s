@@ -7,9 +7,9 @@
 // Note: -language:experimental.safe is NOT applied globally because non-safe-mode
 // files (DaprRuntime, JsonCodec, internal/*) need to use @scala.caps.assumeSafe.
 // Safe mode is enabled per-file via: import language.experimental.safe
-//> using dep "io.dapr:dapr-sdk:1.13.3"
+//> using dep "io.dapr:dapr-sdk:1.17.2"
 //> using dep "com.lihaoyi::upickle:3.3.1"
-//> using dep "org.scalameta::munit:1.0.3"
-//> using dep "com.dimafeng::testcontainers-scala-munit:0.41.4"
-//> using dep "io.dapr:testcontainers-dapr:0.13.3"
-//> using dep "org.testcontainers:testcontainers:1.20.4"
+//> using dep "org.scalameta::munit:1.3.0"
+//> using dep "com.dimafeng::testcontainers-scala-munit:0.44.1"
+//> using dep "io.dapr:testcontainers-dapr:1.17.2"
+//> using dep "org.testcontainers:testcontainers:2.0.5"
