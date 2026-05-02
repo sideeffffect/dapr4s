@@ -105,6 +105,7 @@ classDiagram
         +transaction(ops: Seq[StateOp]) Unit
         +queryState[T](query: StateQuery) List[StateEntry[T]]
     }
+    note for StateCapability "getBulk and saveBulk use DAPR batch APIs (getBulkState / saveBulkState) — single sidecar call each"
     class PubSubCapability {
         <<trait>>
         +publish[T](topic: Topic, data: T) Unit
@@ -312,6 +313,45 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `HttpMethod` | enum | — | HTTP verb used by an incoming service invocation |
 
 Smart constructors live in companion objects and validate non-empty constraints at construction time (non-empty types). Extension methods provide `.value` unwrapping.
+
+---
+
+## Value Types
+
+Structured data without identity, compared by value. Defined in `Models.scala`. These correspond to the `value` and `entity` declarations in the spec's Value Types and Entities sections.
+
+| Type | Scala form | Purpose |
+|---|---|---|
+| `StateEntry[T]` | `case class` | Result of a state fetch; holds `value: Option[T]` and `etag: Option[ETag]` |
+| `ConfigItem` | `case class` | Single configuration item: key, value, version, metadata |
+| `ConfigUpdate` | `case class` | Config update notification from sidecar: `storeName: ConfigStoreName`, `items: Map[ConfigKey, ConfigItem]` |
+| `BulkPublishEntry[T]` | `case class` | Entry in a bulk publish request: `entryId: BulkEntryId`, `event: T` |
+| `BulkPublishResult` | `case class` | Result of a bulk publish: `failedEntries: List[BulkEntryId]` |
+| `UnlockStatus` | `enum` | Result of a distributed lock unlock: `Success`, `LockNotFound`, `InternalError` |
+| `SubscriptionResult` | `enum` | What a pub/sub handler returns to sidecar: `Success`, `Retry`, `Drop` |
+| `CloudEvent[T]` | `case class` | Incoming CloudEvent from sidecar: envelope fields + `data: T` |
+| `InvocationRequest[T]` | `case class` | Incoming service invocation: `methodName`, `httpMethod: HttpMethod`, `data: T` |
+| `HttpMethod` | `enum` | HTTP verb: `Get`, `Post`, `Put`, `Patch`, `Delete`, `Head`, `Options` |
+| `StateOp` | `sealed abstract class` | Base of the state transaction ADT (see below) |
+| `WorkflowSnapshot` | `case class` | Snapshot of a workflow instance's current state |
+| `WorkflowStatus` | `enum` | Workflow instance lifecycle status |
+
+### StateOp — sealed ADT (entity + variants in spec)
+
+The spec models `StateOp` as an `entity StateOp` (base) with two variants:
+- `variant UpsertOp : StateOp` — carries `key`, optional `etag`, and `encoded_value` (pre-encoded JSON string)
+- `variant DeleteOp : StateOp` — carries `key` and optional `etag`
+
+In Scala this is represented as:
+
+```scala
+sealed abstract class StateOp          // entity StateOp
+object StateOp:
+  final case class UpsertOp(key: StateKey, encodedValue: String, etag: Option[ETag]) extends StateOp
+  final case class DeleteOp(key: StateKey, etag: Option[ETag] = None)                extends StateOp
+```
+
+`UpsertOp.encodedValue` is structurally always present (non-nullable by construction). Use the companion `UpsertOp.apply[T]` smart constructor to encode a typed value immediately; this avoids type erasure issues when the operation is dispatched in `StateCapability.transaction`.
 
 ---
 

@@ -57,9 +57,24 @@ private[safe] final class StateCapabilityImpl(
 
   def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]] throws DaprStateException =
     checkOpen()
+    if keys.isEmpty then return Map.empty
     try
-      keys.map { key =>
-        key -> getWithETag[T](key)
+      val javaKeys: java.util.List[String] = keys.map(_.value).asJava
+      val results: java.util.List[DaprState[String]] | Null =
+        scope.client.getBulkState(storeName.value, javaKeys, classOf[String]).awaitResult()
+      if results == null then return keys.map(k => k -> StateEntry[T](None, None)).toMap
+      results.asScala.map { state =>
+        val key   = StateKey(state.getKey.nn)
+        val raw: String | Null  = state.getValue
+        val etag: String | Null = state.getEtag
+        val entry: StateEntry[T] =
+          if raw == null || raw.isEmpty then
+            StateEntry(None, Option(etag.asInstanceOf[String]).map(ETag(_)))
+          else
+            val decoded = JsonCodec.decodeOrThrow[T](raw) match
+              case v => Some(v)
+            StateEntry(decoded, Option(etag.asInstanceOf[String]).map(ETag(_)))
+        key -> entry
       }.toMap
     catch
       case e: DaprStateException => throw e
@@ -80,10 +95,13 @@ private[safe] final class StateCapabilityImpl(
 
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit throws DaprStateException =
     checkOpen()
+    if entries.isEmpty then return
     try
-      entries.foreach { case (key, value) =>
-        save[T](key, value)
-      }
+      val states: java.util.List[DaprState[?]] = entries.map { case (key, value) =>
+        val json = summon[JsonCodec[T]].encode(value)
+        new DaprState[String](key.value, json, null, null)
+      }.asJava
+      scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)

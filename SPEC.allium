@@ -31,6 +31,16 @@ external entity JavaDaprClient {
     -- Managed entirely inside @assumeSafe boundaries; opaque to user code
 }
 
+external entity DaprWorkflow {
+    -- Workflow implementation class; part of the Dapr workflow orchestration subsystem.
+    -- Specification deferred to a separate workflow spec.
+}
+
+external entity DaprActivity {
+    -- Activity implementation class; part of the Dapr workflow orchestration subsystem.
+    -- Specification deferred to a separate workflow spec.
+}
+
 ------------------------------------------------------------
 -- Value Types
 ------------------------------------------------------------
@@ -39,7 +49,7 @@ external entity JavaDaprClient {
 value StoreName        { value: String }   -- DAPR state store / lock store component name
 value PubSubName       { value: String }   -- DAPR pub/sub component name
 value Topic            { value: String }   -- Pub/sub topic (non-empty)
-value AppId            { value: String }   -- Target application ID for service invocation
+value AppId            { value: String }   -- Target application ID for service invocation (non-empty)
 value SecretStoreName  { value: String }   -- DAPR secrets store component name
 value ConfigStoreName  { value: String }   -- DAPR configuration store component name
 value BindingName      { value: String }   -- DAPR output binding component name
@@ -71,10 +81,23 @@ value ConfigItem {
     metadata: Map<String, String>
 }
 
+value ConfigUpdate {
+    -- Configuration update notification delivered by the sidecar via a subscribe callback.
+    -- Matches final case class ConfigUpdate(storeName: ConfigStoreName, items: Map[ConfigKey, ConfigItem]).
+    store_name: ConfigStoreName
+    items: Map<ConfigKey, ConfigItem>
+}
+
 value StateEntry<T> {
     value: T?
     etag: ETag?
     -- etag is present iff value is present
+}
+
+value StateKeyValue {
+    -- Key-value pair used in bulk state save operations.
+    key: StateKey
+    value: Any
 }
 
 value BulkPublishEntry<T> {
@@ -114,18 +137,12 @@ value CloudEvent<T> {
     data: T
 }
 
-variant StateOp {
-    -- Sealed ADT matching the code's sealed trait StateOp.
-    -- UpsertOp always carries encoded_value (structurally non-nullable).
-    UpsertOp {
-        key: StateKey
-        encoded_value: String   -- pre-encoded JSON value; always present
-        etag: ETag?
-    }
-    DeleteOp {
-        key: StateKey
-        etag: ETag?
-    }
+value InvocationRequest<T> {
+    -- Incoming service invocation request delivered by the sidecar to an InvocationRoute handler.
+    -- Matches final case class InvocationRequest[T](methodName: MethodName, httpMethod: HttpMethod, data: T).
+    method_name: MethodName
+    http_method: HttpMethod
+    data: T
 }
 
 ------------------------------------------------------------
@@ -145,6 +162,11 @@ contract JsonCodec {
         -- For any value v where encode and decode are defined:
         -- decode(encode(v)) = Right(v)
 
+    @invariant JsonCodecRoundtrip
+        -- For any value v of type T with a given JsonCodec[T]:
+        -- JsonCodec.decode(JsonCodec.encode(v)) = Right(v).
+        -- Equivalent to Roundtrip stated in terms of the public API pair.
+
     @invariant EncodeTotal
         -- encode never throws; it always returns a String.
 
@@ -157,7 +179,11 @@ contract JsonCodec {
 -- Enumerations
 ------------------------------------------------------------
 
--- (none at module level; StateOp variants are declared in Value Types above)
+enum HttpMethod {
+    -- Standard HTTP methods for service invocation requests.
+    -- Matches enum HttpMethod { Get, Post, Put, Patch, Delete, Head, Options }.
+    get | post | put | patch | delete | head | options
+}
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -253,8 +279,26 @@ entity DistributedLockCapability {
     status: open | closed
 }
 
-entity DecodeResult {
-    -- Represents Either[JsonDecodeException, T] from JsonCodec.decode
+-- Sealed ADT matching the code's sealed abstract class StateOp.
+-- UpsertOp always carries encoded_value (structurally non-nullable).
+entity StateOp {
+    kind: UpsertOp | DeleteOp
+    key: StateKey
+    etag: ETag?
+}
+
+variant UpsertOp : StateOp {
+    encoded_value: String   -- pre-encoded JSON value; always present
+}
+
+variant DeleteOp : StateOp {
+    -- No additional fields beyond those inherited from StateOp
+}
+
+value DecodeResult {
+    -- Conceptual representation of Either[JsonDecodeException, T] from JsonCodec.decode.
+    -- Modelled as a value (not an entity) because it has no identity or lifecycle;
+    -- it is an immutable result returned from decode / decode_or_throw.
     outcome: success | failure
     value: Any?                   -- present when outcome = success
     error: JsonDecodeException?   -- present when outcome = failure
@@ -286,7 +330,7 @@ rule DaprRuntimeCompletes {
 
     ensures:
         DaprScope.status = closed
-        DaprRuntime.client = absent
+        DaprRuntime.client = null
         DaprRuntime.status = idle
         JavaDaprClientClosed()
         -- All capabilities derived from this scope become closed
@@ -300,7 +344,7 @@ rule DaprRuntimeFailsSafely {
 
     ensures:
         DaprScope.status = closed
-        DaprRuntime.client = absent
+        DaprRuntime.client = null
         DaprRuntime.status = idle
         JavaDaprClientClosed()
         -- Exception propagates to caller after cleanup.
@@ -404,7 +448,7 @@ rule LockCapabilityAcquired {
 -- ---- Capability Closure (cascade from scope) ----
 
 rule CapabilitiesClosedWithScope {
-    when: scope: DaprScope.status = closed
+    when: scope: DaprScope.status transitions_to closed
 
     ensures:
         for cap in StateCapability where cap.scope = scope:
@@ -790,52 +834,25 @@ invariant ScopeContainment {
 
 invariant ClientLifetime {
     -- The JavaDaprClient exists iff DaprRuntime is active.
-    DaprRuntime.status = active <-> DaprRuntime.client != absent
+    (DaprRuntime.status = active implies DaprRuntime.client != null)
+    and
+    (DaprRuntime.client != null implies DaprRuntime.status = active)
 }
 
 invariant ScopeLifetime {
     -- DaprScope is open iff DaprRuntime is active.
-    DaprRuntime.status = active <-> DaprScope.status = open
+    (DaprRuntime.status = active implies DaprScope.status = open)
+    and
+    (DaprScope.status = open implies DaprRuntime.status = active)
 }
 
-invariant ClosedCapabilityRejection {
-    -- Operations on closed capabilities are rejected.
-    -- Any operation requested on a capability with status = closed
-    -- results in IllegalStateException, not a DAPR call.
-    -- This is enforced at runtime by impl classes annotated @scala.caps.assumeSafe.
-    -- The @scala.caps.assumeSafe annotation (from scala.caps package) is applied to
-    -- non-safe-mode classes/objects so safe-mode user code can invoke them.
-}
-
-invariant TransactionAtomicity {
-    -- A state transaction either fully succeeds or fully fails.
-    -- No partial application is observable.
-}
-
-invariant ETagOptimisticConcurrency {
-    -- saveWithETag and deleteWithETag succeed only when the provided ETag
-    -- matches the current server-side ETag for that key.
-    -- On mismatch, ETagMismatchException is thrown and no mutation occurs.
-}
-
-invariant PublishAtLeastOnce {
-    -- PubSubPublish completing successfully means DAPR has accepted the message.
-    -- Delivery to subscribers is at-least-once (DAPR guarantee, not this library's).
-}
-
-invariant JsonCodecRoundtrip {
-    -- For any value v of type T with given JsonCodec[T]:
-    -- JsonCodec.decode(JsonCodec.encode(v)) = Right(v)
-}
-
-invariant NonEmptyIdentifiers {
-    -- Opaque identifier types with non-empty constraints (enforced by constructor):
-    -- StoreName, PubSubName, Topic, MethodName, BindingName, SecretStoreName,
-    -- ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
-    -- ActorType, WorkflowName — all reject the empty string at construction time.
-    -- StateKey, AppId, ETag, SecretKey, ConfigKey, BulkEntryId, WorkflowInstanceId,
-    -- ActorId — accept any string including empty (no constraint).
-}
+-- Non-empty identifier constraints (not machine-expressible as a state invariant;
+-- enforced by constructors at runtime):
+--   Non-empty: StoreName, PubSubName, Topic, AppId, MethodName, BindingName, SecretStoreName,
+--              ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
+--              WorkflowName, ActorType — all reject the empty string at construction time.
+--   Accept any string (including empty): StateKey, ETag, SecretKey, ConfigKey,
+--              BulkEntryId, WorkflowInstanceId, ActorId.
 
 ------------------------------------------------------------
 -- Actor Declarations
@@ -899,7 +916,7 @@ surface DaprScopeSurface {
     exposes:
         state:   (store_name: StoreName)        -> StateCapability
         pubsub:  (pubsub_name: PubSubName)      -> PubSubCapability
-        invoker: ()                             -> ServiceInvocationCapability
+        invoker:                                -> ServiceInvocationCapability
         secrets: (store_name: SecretStoreName)  -> SecretsCapability
         config:  (store_name: ConfigStoreName)  -> ConfigurationCapability
         binding: (binding_name: BindingName)    -> BindingsCapability
@@ -907,10 +924,21 @@ surface DaprScopeSurface {
         -- All returned capabilities carry the DaprScope lifetime (CC: ^{scope}).
         -- Calling these methods after the scope is closed results in capabilities
         -- that reject all operations (ClosedCapabilityRejection invariant).
+        --
+        -- Intentionally omitted from this surface (pending separate specs):
+        --   actor(actorType, actorId): ActorCapability  — Dapr actor framework
+        --   workflow: WorkflowCapability                — Dapr workflow orchestration
 
     @guarantee CapabilityLifetime
         -- Every capability returned by DaprScope factory methods is open iff the
         -- scope is open (ScopeContainment invariant).
+
+    @guarantee ClosedCapabilityRejection
+        -- Operations on closed capabilities are rejected.
+        -- Any operation requested on a capability with status = closed results in
+        -- IllegalStateException, not a DAPR call.
+        -- Enforced at runtime by impl classes annotated @scala.caps.assumeSafe
+        -- (from the scala.caps package), which permits safe-mode user code to call them.
 }
 
 surface StateCapabilitySurface {
@@ -928,7 +956,7 @@ surface StateCapabilitySurface {
         -- Batch fetch; missing keys return StateEntry with value = absent
         save: (key: StateKey, value: Any) -> Unit
         save_with_etag: (key: StateKey, value: Any, etag: ETag) -> Unit
-        save_bulk: (entries: List<Pair<StateKey, Any>>) -> Unit
+        save_bulk: (entries: List<StateKeyValue>) -> Unit
         delete: (key: StateKey) -> Unit
         delete_with_etag: (key: StateKey, etag: ETag) -> Unit
         transaction: (ops: List<StateOp>) -> Unit
@@ -936,7 +964,12 @@ surface StateCapabilitySurface {
         -- Query using DAPR state store query API (store must support queries)
 
     @guarantee AtomicTransaction
-        -- transaction applies all operations or none.
+        -- transaction applies all operations or none (TransactionAtomicity).
+
+    @guarantee ETagOptimisticConcurrency
+        -- save_with_etag and delete_with_etag succeed only when the provided ETag
+        -- matches the current server-side ETag for that key.
+        -- On mismatch, ETagMismatchException is thrown and no mutation occurs.
 }
 
 surface PubSubCapabilitySurface {
@@ -950,6 +983,10 @@ surface PubSubCapabilitySurface {
         publish_with_metadata: (topic: Topic, data: Any, metadata: Map<String, String>) -> Unit
         bulk_publish: (topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
         -- Publishes multiple entries in a single call; returns list of failed entry IDs
+
+    @guarantee PublishAtLeastOnce
+        -- publish completing successfully means DAPR has accepted the message.
+        -- Delivery to subscribers is at-least-once (DAPR sidecar guarantee).
 }
 
 surface ServiceInvocationSurface {
@@ -1019,8 +1056,9 @@ surface BindingsSurface {
         demands JsonCodec
 
     exposes:
-        invoke: (operation: BindingOperation, data: Any) -> Any?
-        -- Returns Option[Resp]; None if binding has no response
+        invoke: (operation: BindingOperation, data: T) -> T?
+        -- Returns Option[Resp]; None if binding has no response.
+        -- T requires JsonCodec; actual request and response types are caller-determined.
         invoke_one_way: (operation: BindingOperation, data: Any) -> Unit
         -- Fire-and-forget binding invocation; no response expected
 }
