@@ -1,6 +1,6 @@
 # Wiki Log
 
-## [2026-05-02] ingest | Dapr Java SDK — Virtual Threads
+## [2026-05-02] ingest | Dapr Java SDK — Virtual Threads (extended: injection point survey)
 - Updated: Dapr Java SDK
 
 ## [2026-05-01] ingest | Effect Systems Overview

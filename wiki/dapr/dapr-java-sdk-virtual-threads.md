@@ -72,6 +72,30 @@ Setting `Schedulers.setFactory()` or creating a `Schedulers.fromExecutorService(
 
 `AbstractDaprClient` and `DaprClientImpl` are package-private. There is no `DaprClientBlocking`. Issue #964 ("Remove Reactor, use CompletableFuture") has been open since November 2023 with community interest but no implementation milestone.
 
+## Injection points — full survey
+
+None of these preserve the high-level typed API without reflection:
+
+| Hook | Accessible? | Notes |
+|---|---|---|
+| `DaprClientBuilder.withChannel(ManagedChannel)` | No — doesn't exist | Builder has no channel injection |
+| `DaprClientBuilder.withExecutorService(...)` | No — doesn't exist | No executor hook at all |
+| `AbstractDaprClient` subclassing | No — package-private constructor | Cannot extend from outside `io.dapr.client` |
+| `DaprClientImpl` direct construction | Reflection only | Package-private ctors; `GrpcChannelFacade` also package-private |
+| `NetworkUtils.buildGrpcManagedChannel(props, interceptors...)` | Yes (public) | Can add `ClientInterceptor` varargs; no way to set executor |
+| `DaprHttpBuilder` | Public constructor | Can construct it, but `DaprHttp` itself is package-private; cannot inject custom `HttpClient` |
+| `DaprClientProxy` / decorator | Doesn't exist | No proxy or wrapper pattern in the SDK |
+
+**The only path that keeps the typed API and injects a custom executor is reflection:** reflectively construct `GrpcChannelFacade` from a `ManagedChannel` built with `.executor(Executors.newVirtualThreadPerTaskExecutor())`, then reflectively call the package-private `DaprClientImpl` constructor. The test suite (`DaprClientGrpcTest`, in the same package) does exactly this — so the shape of the constructor is stable — but it is entirely unsupported and will break on any SDK refactor.
+
+### Effect of a custom channel executor
+
+Setting the gRPC channel executor to a VT pool makes `StreamObserver` callbacks (`.onNext`, `.onComplete`, `.onError`) run on virtual threads. Since `DaprClientImpl` has no `subscribeOn()` or `publishOn()`, the `MonoSink.success(value)` call fires from the gRPC executor thread — so a VT executor here moves the Mono completion onto a VT. However, `.block()` still blocks whichever thread *calls* `.block()`. The channel executor change only affects the delivery side, not the waiting side.
+
+### `.publishOn(vtScheduler)` — does not help
+
+`.publishOn(scheduler)` moves downstream operators to the scheduler but does NOT move the `.block()` wait. The thread calling `.block()` is always the one that parks, regardless of `.publishOn()`. Correct VT use requires calling `.block()` (or `.awaitResult()`) from a VT-dispatched thread, not pipeline transformation.
+
 ## Recommendation for scala-safe-dapr
 
 The current `MonoOps.awaitResult()` approach (`.toFuture().get()` from a VT) is the correct and practical choice:
