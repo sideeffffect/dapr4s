@@ -30,6 +30,7 @@ graph TB
         SEC["SecretsCapability^{scope}"]
         CC["ConfigurationCapability^{scope}"]
         BC["BindingsCapability^{scope}"]
+        LC["DistributedLockCapability^{scope}"]
     end
 
     subgraph "Internal Layer (@assumeSafe boundaries)"
@@ -43,8 +44,8 @@ graph TB
     end
 
     UC -->|"summon[DaprScope].state(...)"| DS
-    DS --> SC & PC & IC & SEC & CC & BC
-    SC & PC & IC & SEC & CC & BC -->|"implemented by"| IMPL
+    DS --> SC & PC & IC & SEC & CC & BC & LC
+    SC & PC & IC & SEC & CC & BC & LC -->|"implemented by"| IMPL
     IMPL -->|"DaprClient.*().block()"| DC
     DC -->|"HTTP/gRPC"| SID
 
@@ -75,24 +76,30 @@ classDiagram
         <<trait>>
         +state(storeName: StoreName) StateCapability^{this}
         +pubsub(pubsubName: PubSubName) PubSubCapability^{this}
-        +invoker() ServiceInvocationCapability^{this}
+        +invoker ServiceInvocationCapability^{this}
         +secrets(storeName: SecretStoreName) SecretsCapability^{this}
         +config(storeName: ConfigStoreName) ConfigurationCapability^{this}
         +binding(name: BindingName) BindingsCapability^{this}
+        +lock(storeName: StoreName) DistributedLockCapability^{this}
     }
     class StateCapability {
         <<trait>>
         +get[T](key: String) Option[T]
         +getWithETag[T](key: String) StateEntry[T]
+        +getBulk[T](keys: Seq[String]) Map[String,StateEntry[T]]
         +save[T](key: String, value: T) Unit
+        +saveBulk[T](entries: Seq[(String,T)]) Unit
         +saveWithETag[T](key, value, etag: ETag) Unit
         +delete(key: String) Unit
+        +deleteWithETag(key: String, etag: ETag) Unit
         +transaction(ops: Seq[StateOp]) Unit
+        +queryState[T](query: StateQuery) List[StateEntry[T]]
     }
     class PubSubCapability {
         <<trait>>
         +publish[T](topic: Topic, data: T) Unit
         +publishWithMetadata[T](topic, data, meta) Unit
+        +bulkPublish[T](topic, entries: Seq[BulkPublishEntry[T]]) BulkPublishResult
     }
     class ServiceInvocationCapability {
         <<trait>>
@@ -106,11 +113,17 @@ classDiagram
     }
     class ConfigurationCapability {
         <<trait>>
-        +get(keys: String*) Map[String,ConfigItem]
+        +get(keys: Seq[String]) Map[String,ConfigItem]
     }
     class BindingsCapability {
         <<trait>>
         +invoke[Req,Resp](operation, data) Option[Resp]
+        +invokeOneWay[Req](operation, data) Unit
+    }
+    class DistributedLockCapability {
+        <<trait>>
+        +tryLock(resourceId, lockOwner, expirySeconds) Boolean
+        +unlock(resourceId, lockOwner) UnlockStatus
     }
 
     DaprCapability <|-- StateCapability
@@ -119,6 +132,7 @@ classDiagram
     DaprCapability <|-- SecretsCapability
     DaprCapability <|-- ConfigurationCapability
     DaprCapability <|-- BindingsCapability
+    DaprCapability <|-- DistributedLockCapability
 ```
 
 > Note: `scala.caps.Capability` is **sealed** in nightly Scala 3 and cannot be extended in user code. In the new CC model, any class/trait can serve as a capability through `^` capture annotations. `DaprScope` and `DaprCapability` do not extend `scala.caps.Capability` — they are tracked via `^{scope}` return type annotations on `DaprScope`'s factory methods.
@@ -151,11 +165,12 @@ User types must provide a `JsonCodec[T]` given instance. The library ships defau
 ```scala
 trait JsonCodec[T]:
   def encode(value: T): String
-  def decode(json: String): Either[String, T]
+  def decode(json: String | Null): Either[JsonDecodeException, T]
 
 object JsonCodec:
   given JsonCodec[String] = ...
   given JsonCodec[Int]    = ...
+  def decodeOrThrow[T: JsonCodec](json: String | Null): T throws JsonDecodeException
   given [T: upickle.default.ReadWriter]: JsonCodec[T] = ...
 ```
 
@@ -222,7 +237,21 @@ stateDiagram-v2
 
 ## Error Handling
 
-All DAPR errors are surfaced as `DaprException` (from the Java SDK, re-exported as a Scala type alias). The library does not catch exceptions internally — callers use `Try` or `Either` adapters if they want explicit error handling. In safe mode, exceptions are explicitly permitted (see [Safe Mode](wiki/scala-capture-checking/safe-mode.md)).
+All DAPR errors are surfaced as typed subtypes of `DaprException`:
+
+| Exception | Thrown by |
+|---|---|
+| `DaprStateException` | `StateCapability` operations |
+| `DaprPubSubException` | `PubSubCapability` operations |
+| `DaprServiceInvocationException` | `ServiceInvocationCapability` operations |
+| `DaprSecretsException` | `SecretsCapability` operations |
+| `DaprConfigurationException` | `ConfigurationCapability` operations |
+| `DaprBindingsException` | `BindingsCapability` operations |
+| `DaprLockException` | `DistributedLockCapability` operations |
+| `ETagMismatchException` | `saveWithETag`, `deleteWithETag` (subtype of `DaprStateException`) |
+| `JsonDecodeException` | `JsonCodec.decodeOrThrow` (subtype of `DaprException`) |
+
+The library does not catch exceptions internally — callers use `Try` or `Either` adapters if they want explicit error handling. Under `import language.experimental.saferExceptions`, all `throws` clauses are checked by the compiler.
 
 ---
 
@@ -244,17 +273,20 @@ scala-safe-dapr/
 │       ├── InvokerCapabilityImpl.scala
 │       ├── SecretsCapabilityImpl.scala
 │       ├── ConfigCapabilityImpl.scala
-│       └── BindingsCapabilityImpl.scala
+│       ├── BindingsCapabilityImpl.scala
+│       └── LockCapabilityImpl.scala
 └── test/
     ├── unit/
     │   ├── ModelsTest.scala
     │   ├── JsonCodecTest.scala
-    │   └── StateCapabilityTest.scala  # mock-based unit tests
+    │   ├── CCTest.scala              # capture checking / CanThrow invariants
+    │   ├── MockDaprScope.scala       # in-memory mock for unit tests
+    │   └── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
     └── integration/
-        ├── StateIntegrationTest.scala     # TestContainers
-        ├── PubSubIntegrationTest.scala    # TestContainers
-        ├── InvokerIntegrationTest.scala   # TestContainers
-        └── SecretsIntegrationTest.scala   # TestContainers
+        ├── StateIntegrationTest.scala     # TestContainers (not yet implemented)
+        ├── PubSubIntegrationTest.scala    # TestContainers (not yet implemented)
+        ├── InvokerIntegrationTest.scala   # TestContainers (not yet implemented)
+        └── SecretsIntegrationTest.scala   # TestContainers (not yet implemented)
 ```
 
 ---

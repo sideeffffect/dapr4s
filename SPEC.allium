@@ -4,7 +4,8 @@
 -- Scope: Safe Scala capability library wrapping DAPR building blocks
 -- Includes: DaprRuntime lifecycle, StateCapability, PubSubCapability,
 --           ServiceInvocationCapability, SecretsCapability,
---           ConfigurationCapability, BindingsCapability, JsonCodec
+--           ConfigurationCapability, BindingsCapability,
+--           DistributedLockCapability, JsonCodec
 -- Excludes:
 --   - DAPR actor framework (separate concern)
 --   - DAPR workflow orchestration (separate concern)
@@ -172,11 +173,17 @@ entity BindingsCapability {
     status: open | closed
 }
 
+entity DistributedLockCapability {
+    scope: DaprScope
+    store_name: StoreName
+    status: open | closed
+}
+
 entity DecodeResult {
-    -- Represents Either[String, T] from JsonCodec.decode
+    -- Represents Either[JsonDecodeException, T] from JsonCodec.decode
     outcome: success | failure
-    value: Any?          -- present when outcome = success
-    error: String?       -- present when outcome = failure
+    value: Any?                   -- present when outcome = success
+    error: JsonDecodeException?   -- present when outcome = failure
 }
 
 ------------------------------------------------------------
@@ -305,6 +312,19 @@ rule BindingCapabilityAcquired {
         )
 }
 
+rule LockCapabilityAcquired {
+    when: DaprScopeLockRequested(scope, store_name)
+
+    requires: scope.status = open
+
+    ensures:
+        DistributedLockCapability.created(
+            scope: scope,
+            store_name: store_name,
+            status: open
+        )
+}
+
 -- ---- Capability Closure (cascade from scope) ----
 
 rule CapabilitiesClosedWithScope {
@@ -322,6 +342,8 @@ rule CapabilitiesClosedWithScope {
         for cap in ConfigurationCapability where cap.scope = scope:
             cap.status = closed
         for cap in BindingsCapability where cap.scope = scope:
+            cap.status = closed
+        for cap in DistributedLockCapability where cap.scope = scope:
             cap.status = closed
 }
 
@@ -459,6 +481,38 @@ rule ConfigGet {
         ConfigGetCompleted(items: Map<String, ConfigItem>)
 }
 
+-- ---- Distributed Lock ----
+
+rule LockTryLock {
+    when: LockTryLockRequested(cap, resourceId, lockOwner, expirySeconds)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprLockAvailable(cap.store_name, resourceId):
+            LockAcquired(resourceId: resourceId, owner: lockOwner)
+            -- Returns true
+        else:
+            -- Returns false; no exception
+}
+
+rule LockUnlock {
+    when: LockUnlockRequested(cap, resourceId, lockOwner)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprLockExists(cap.store_name, resourceId):
+            if DaprLockOwner(cap.store_name, resourceId) = lockOwner:
+                LockReleased(resourceId: resourceId)
+                -- Returns UnlockStatus.Success
+            else:
+                -- Returns UnlockStatus.InternalError (wrong owner)
+        else:
+            -- Returns UnlockStatus.LockNotFound
+
+}
+
 -- ---- Output Bindings ----
 
 rule BindingInvoke {
@@ -491,7 +545,8 @@ rule JsonDecode {
             JsonDecodeCompleted(value: codec.decode(json).value)
         else:
             JsonDecodeCompleted(error: codec.decode(json).error)
-        -- Never throws; errors expressed as Left(String)
+        -- Never throws; errors expressed as Left(JsonDecodeException)
+        -- decode(null) returns Left(JsonDecodeException("null input"))
 }
 
 ------------------------------------------------------------
@@ -514,6 +569,8 @@ invariant ScopeContainment {
     for cap in ConfigurationCapability where cap.status = open:
         cap.scope.status = open
     for cap in BindingsCapability where cap.status = open:
+        cap.scope.status = open
+    for cap in DistributedLockCapability where cap.status = open:
         cap.scope.status = open
 }
 
@@ -609,11 +666,16 @@ surface StateCapabilitySurface {
         -- Returns Option[T]; None if key not found
         get_with_etag: (key: String) -> StateEntry
         -- Returns StateEntry with value and current ETag
+        get_bulk: (keys: List<String>) -> Map<String, StateEntry>
+        -- Batch fetch; missing keys return StateEntry with value = absent
         save: (key: String, value: Any) -> Unit
         save_with_etag: (key: String, value: Any, etag: ETag) -> Unit
+        save_bulk: (entries: List<Pair<String, Any>>) -> Unit
         delete: (key: String) -> Unit
         delete_with_etag: (key: String, etag: ETag) -> Unit
         transaction: (ops: List<StateOperation>) -> Unit
+        query_state: (query: StateQuery) -> List<StateEntry>
+        -- Query using DAPR state store query API (store must support queries)
 
     @guarantee AtomicTransaction
         -- transaction applies all operations or none.
@@ -628,6 +690,8 @@ surface PubSubCapabilitySurface {
     exposes:
         publish: (topic: Topic, data: Any) -> Unit
         publish_with_metadata: (topic: Topic, data: Any, metadata: Map<String, String>) -> Unit
+        bulk_publish: (topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
+        -- Publishes multiple entries in a single call; returns list of failed entry IDs
 }
 
 surface ServiceInvocationSurface {
@@ -663,7 +727,20 @@ surface BindingsSurface {
         demands JsonCodec
 
     exposes:
-        invoke: (operation: BindingOperation, data: Any) -> Any
+        invoke: (operation: String, data: Any) -> Any?
+        -- Returns Option[Resp]; None if binding has no response
+        invoke_one_way: (operation: String, data: Any) -> Unit
+        -- Fire-and-forget binding invocation; no response expected
+}
+
+surface DistributedLockSurface {
+    facing user: UserCode
+
+    exposes:
+        try_lock: (resourceId: String, lockOwner: String, expirySeconds: Int) -> Boolean
+        -- Attempts to acquire lock; returns true if acquired, false if already held
+        unlock: (resourceId: String, lockOwner: String) -> UnlockStatus
+        -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
 }
 
 ------------------------------------------------------------
@@ -674,15 +751,10 @@ open question "Should DaprRuntime support a custom DaprClient (e.g. for testing 
 -- Current design always creates a fresh client via DaprClientBuilder.
 -- An override for tests would allow passing a mock client.
 
-open question "Should StateCapability expose a query API (DAPR state query)?"
--- DAPR supports JSON query syntax for state stores that support it.
--- Not all state store components support queries.
--- Deferred to v2.
+-- RESOLVED: StateCapability exposes queryState via DAPR state query API.
+-- Note: not all state store components support queries.
 
-open question "Should PubSubCapability support bulk publish?"
--- DAPR Java SDK has publishEvents (bulk). Exposed or not?
--- Deferred to v2.
+-- RESOLVED: PubSubCapability supports bulkPublish via BulkPublishEntry / BulkPublishResult.
 
-open question "Should there be a typed ETagMismatchException or reuse DaprException?"
--- Current design throws ETagMismatchException as a distinct subtype.
--- This allows callers to specifically catch concurrency conflicts.
+-- RESOLVED: ETagMismatchException is a distinct subtype of DaprStateException,
+-- allowing callers to specifically catch concurrency conflicts.
