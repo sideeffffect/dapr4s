@@ -214,11 +214,7 @@ private class MockServiceInvocationCapability(scope: MockDaprScope) extends Serv
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def invoke[Req: JsonCodec, Resp: JsonCodec](
-      appId: AppId,
-      method: String,
-      data: Req
-  ): Resp throws DaprServiceInvocationException =
+  def invoke[Req: JsonCodec](appId: AppId, method: String, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
     checkOpen()
     throw UnsupportedOperationException(
       "MockServiceInvocationCapability does not support invoke — use integration tests"
@@ -271,10 +267,7 @@ private class MockBindingsCapability(val bindingName: BindingName, scope: MockDa
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def invoke[Req: JsonCodec, Resp: JsonCodec](
-      operation: String,
-      data: Req
-  ): Option[Resp] throws DaprBindingsException =
+  def invoke[Req: JsonCodec](operation: String, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
     checkOpen()
     None // mock: no binding response
 

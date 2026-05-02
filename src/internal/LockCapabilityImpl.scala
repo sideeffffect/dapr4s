@@ -17,7 +17,7 @@ private[safe] final class LockCapabilityImpl(
   def tryLock(resourceId: String, lockOwner: String, expirySeconds: Int): Boolean throws DaprLockException =
     checkOpen()
     try
-      val previewClient = scope.daprClient.asInstanceOf[io.dapr.client.DaprPreviewClient]
+      val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val request = new LockRequest(storeName.value, resourceId, lockOwner, expirySeconds)
       val result: java.lang.Boolean | Null =
         previewClient.tryLock(request).block()
@@ -33,7 +33,7 @@ private[safe] final class LockCapabilityImpl(
   def unlock(resourceId: String, lockOwner: String): UnlockStatus throws DaprLockException =
     checkOpen()
     try
-      val previewClient = scope.daprClient.asInstanceOf[io.dapr.client.DaprPreviewClient]
+      val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val request = new UnlockRequest(storeName.value, resourceId, lockOwner)
       val status: UnlockResponseStatus | Null =
         previewClient.unlock(request).block()

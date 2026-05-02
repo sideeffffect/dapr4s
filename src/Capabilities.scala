@@ -85,12 +85,11 @@ trait PubSubCapability extends DaprCapability:
 @scala.caps.assumeSafe
 trait ServiceInvocationCapability extends DaprCapability:
 
-  /** Invoke a remote method with a request body (HTTP POST). */
-  def invoke[Req: JsonCodec, Resp: JsonCodec](
-      appId: AppId,
-      method: String,
-      data: Req
-  ): Resp throws DaprServiceInvocationException
+  /** Invoke a remote method with a request body (HTTP POST).
+    * `Req` is inferred from `data`; `Resp` is specified at the call site:
+    * {{{invoker.invoke(appId, "method", requestData)[ResponseType]}}}
+    */
+  def invoke[Req: JsonCodec](appId: AppId, method: String, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException
 
   /** Invoke a remote method with no request body (HTTP GET). */
   def invokeGet[Resp: JsonCodec](appId: AppId, method: String): Resp throws DaprServiceInvocationException
@@ -125,11 +124,11 @@ trait ConfigurationCapability extends DaprCapability:
 trait BindingsCapability extends DaprCapability:
   val bindingName: BindingName
 
-  /** Invoke a binding operation that may return a response. */
-  def invoke[Req: JsonCodec, Resp: JsonCodec](
-      operation: String,
-      data: Req
-  ): Option[Resp] throws DaprBindingsException
+  /** Invoke a binding operation that may return a response.
+    * `Req` is inferred from `data`; `Resp` is specified at the call site:
+    * {{{binding.invoke("operation", requestData)[ResponseType]}}}
+    */
+  def invoke[Req: JsonCodec](operation: String, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException
 
   /** Fire-and-forget binding invocation (no response expected). */
   def invokeOneWay[Req: JsonCodec](operation: String, data: Req): Unit throws DaprBindingsException

@@ -15,7 +15,7 @@ import unsafeExceptions.canThrowAny
   * [[DaprScope]] (implemented by this class) through the trait interface.
   */
 @scala.caps.assumeSafe
-private[safe] final class DaprScopeImpl(private val client: DaprClient) extends DaprScope:
+private[safe] final class DaprScopeImpl(tracked private[internal] val client: DaprClient) extends DaprScope:
 
   @volatile private var _closed = false
 
@@ -54,8 +54,6 @@ private[safe] final class DaprScopeImpl(private val client: DaprClient) extends 
       _closed = true
       client.close()
 
-  /** Package-private accessor for capability impls to use the underlying client. */
-  private[internal] def daprClient: DaprClient = client
 
 @scala.caps.assumeSafe
 private[safe] object DaprScopeImpl:

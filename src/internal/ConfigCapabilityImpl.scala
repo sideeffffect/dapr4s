@@ -22,7 +22,7 @@ private[safe] final class ConfigCapabilityImpl(
       val javaKeys: java.util.List[String] = keys.asJava
       val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
       val result: java.util.Map[String, JConfigItem] | Null =
-        scope.daprClient.getConfiguration(storeName.value, javaKeys, emptyMeta).block()
+        scope.client.getConfiguration(storeName.value, javaKeys, emptyMeta).block()
       if result == null then return Map.empty
       result.asScala.map { case (k, item) =>
         val v: String | Null       = item.getValue

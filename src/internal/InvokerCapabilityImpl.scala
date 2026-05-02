@@ -13,15 +13,11 @@ private[safe] final class InvokerCapabilityImpl(
     if scope.isClosed then
       throw IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def invoke[Req: JsonCodec, Resp: JsonCodec](
-      appId: AppId,
-      method: String,
-      data: Req
-  ): Resp throws DaprServiceInvocationException =
+  def invoke[Req: JsonCodec](appId: AppId, method: String, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
     checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
-      val rawResp: String | Null = scope.daprClient
+      val rawResp: String | Null = scope.client
         .invokeMethod(
           appId.value,
           method,
@@ -41,7 +37,7 @@ private[safe] final class InvokerCapabilityImpl(
   def invokeGet[Resp: JsonCodec](appId: AppId, method: String): Resp throws DaprServiceInvocationException =
     checkOpen()
     try
-      val rawResp: String | Null = scope.daprClient
+      val rawResp: String | Null = scope.client
         .invokeMethod(
           appId.value,
           method,
