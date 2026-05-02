@@ -39,6 +39,12 @@ trait DaprScope:
   /** Obtain a [[DistributedLockCapability]] for the named lock store. */
   def lock(storeName: StoreName): DistributedLockCapability^{this}
 
+  /** Obtain an [[ActorCapability]] for invoking methods on a specific actor instance. */
+  def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this}
+
+  /** Obtain the [[WorkflowCapability]] for managing workflow instances. */
+  def workflow: WorkflowCapability^{this}
+
   /** Close the underlying DAPR client. Called by [[DaprRuntime.run]].
     *
     * Library-internal: user code should not call this directly.

@@ -154,3 +154,69 @@ trait DistributedLockCapability extends DaprCapability:
 
   /** Release a previously acquired lock. */
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus throws DaprLockException
+
+// ---------------------------------------------------------------------------
+
+/** Capability for invoking methods on a specific Dapr virtual actor instance. */
+@scala.caps.assumeSafe
+trait ActorCapability extends DaprCapability:
+  val actorType: ActorType
+  val actorId: ActorId
+
+  /** Invoke an actor method with a request body.
+    *
+    * {{{
+    *   val resp = actor.invoke(MethodName("GetBalance"), req)[BalanceResponse]
+    * }}}
+    */
+  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprActorException
+
+  /** Invoke an actor method with no request body. */
+  def invokeGet[Resp: JsonCodec](method: MethodName): Resp throws DaprActorException
+
+  /** Invoke an actor method that returns no value. */
+  def invokeVoid(method: MethodName): Unit throws DaprActorException
+
+// ---------------------------------------------------------------------------
+
+/** Capability for managing Dapr workflow instances (client-side). */
+@scala.caps.assumeSafe
+trait WorkflowCapability extends DaprCapability:
+
+  /** Start a new workflow instance. Returns the generated instance ID. */
+  def start(name: WorkflowName): WorkflowInstanceId throws DaprWorkflowException
+
+  /** Start a new workflow instance with a typed input payload. Returns the generated instance ID. */
+  def start[I: JsonCodec](name: WorkflowName, input: I): WorkflowInstanceId throws DaprWorkflowException
+
+  /** Start a new workflow instance with a specific instance ID (no input). */
+  def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId throws DaprWorkflowException
+
+  /** Start a new workflow instance with a specific instance ID and typed input. */
+  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId throws DaprWorkflowException
+
+  /** Fetch the current status snapshot of a workflow instance.
+    * Returns `None` if the instance does not exist.
+    */
+  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] throws DaprWorkflowException
+
+  /** Suspend a running workflow instance (can be resumed later). */
+  def suspend(instanceId: WorkflowInstanceId): Unit throws DaprWorkflowException
+
+  /** Resume a previously suspended workflow instance. */
+  def resume(instanceId: WorkflowInstanceId): Unit throws DaprWorkflowException
+
+  /** Terminate a workflow instance immediately. */
+  def terminate(instanceId: WorkflowInstanceId): Unit throws DaprWorkflowException
+
+  /** Send an external event to a waiting workflow instance. */
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit throws DaprWorkflowException
+
+  /** Block until the workflow instance completes (or the timeout expires).
+    * Returns the final snapshot, or `None` if the instance was not found.
+    * Throws `DaprWorkflowException` on timeout.
+    */
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] throws DaprWorkflowException
+
+  /** Purge the workflow instance state from the state store. Returns `true` if purged. */
+  def purge(instanceId: WorkflowInstanceId): Boolean throws DaprWorkflowException

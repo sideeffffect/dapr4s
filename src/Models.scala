@@ -120,6 +120,30 @@ object Route:
     s
   extension (r: Route) def value: String = r
 
+opaque type ActorType = String
+object ActorType:
+  def apply(s: String): ActorType =
+    require(s.nonEmpty, "ActorType must not be empty")
+    s
+  extension (t: ActorType) def value: String = t
+
+opaque type ActorId = String
+object ActorId:
+  def apply(s: String): ActorId = s
+  extension (id: ActorId) def value: String = id
+
+opaque type WorkflowName = String
+object WorkflowName:
+  def apply(s: String): WorkflowName =
+    require(s.nonEmpty, "WorkflowName must not be empty")
+    s
+  extension (n: WorkflowName) def value: String = n
+
+opaque type WorkflowInstanceId = String
+object WorkflowInstanceId:
+  def apply(s: String): WorkflowInstanceId = s
+  extension (id: WorkflowInstanceId) def value: String = id
+
 /** Standard HTTP methods for service invocation requests. */
 enum HttpMethod:
   case Get, Post, Put, Patch, Delete, Head, Options
@@ -225,4 +249,30 @@ final case class InvocationRequest[T](
   methodName: MethodName,
   httpMethod: HttpMethod,
   data: T
+)
+
+// ---------------------------------------------------------------------------
+// Workflow
+// ---------------------------------------------------------------------------
+
+/** Runtime status of a Dapr workflow instance. */
+enum WorkflowStatus:
+  case Running
+  case Completed
+  case ContinuedAsNew
+  case Failed
+  case Canceled
+  case Terminated
+  case Pending
+  case Suspended
+
+/** A snapshot of a workflow instance's current state. */
+final case class WorkflowSnapshot(
+  name: WorkflowName,
+  instanceId: WorkflowInstanceId,
+  status: WorkflowStatus,
+  createdAt: java.time.Instant,
+  lastUpdatedAt: java.time.Instant,
+  serializedInput: Option[String],
+  serializedOutput: Option[String]
 )

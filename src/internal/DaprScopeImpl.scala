@@ -2,6 +2,8 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import io.dapr.client.{DaprClient, DaprClientBuilder}
+import io.dapr.actors.client.ActorClient as JavaActorClient
+import io.dapr.workflows.client.DaprWorkflowClient
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 
@@ -18,6 +20,10 @@ import unsafeExceptions.canThrowAny
 private[safe] final class DaprScopeImpl(tracked private[internal] val client: DaprClient) extends DaprScope:
 
   @volatile private var _closed = false
+
+  // Lazily created — only when actor() / workflow is first called.
+  @volatile private var _actorClient: JavaActorClient | Null = null
+  @volatile private var _workflowClient: DaprWorkflowClient | Null = null
 
   def isClosed: Boolean = _closed
 
@@ -49,10 +55,32 @@ private[safe] final class DaprScopeImpl(tracked private[internal] val client: Da
     if _closed then throw IllegalStateException("DaprScope is closed")
     new LockCapabilityImpl(this, storeName)
 
+  def actor(actorType: ActorType, actorId: ActorId): ActorCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    val ac = synchronized {
+      if _actorClient == null then _actorClient = new JavaActorClient()
+      _actorClient.nn
+    }
+    ActorCapabilityImpl.build(actorType, actorId, ac)
+
+  def workflow: WorkflowCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    val wc = synchronized {
+      if _workflowClient == null then _workflowClient = new DaprWorkflowClient()
+      _workflowClient.nn
+    }
+    new WorkflowCapabilityImpl(wc)
+
   def close(): Unit =
     if !_closed then
       _closed = true
       client.close()
+      val ac = _actorClient
+      if ac != null then ac.close()
+      val wc = _workflowClient
+      if wc != null then
+        try wc.close()
+        catch case _: InterruptedException => Thread.currentThread().interrupt()
 
 
 @scala.caps.assumeSafe

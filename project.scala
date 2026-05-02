@@ -11,6 +11,8 @@
 // files (DaprRuntime, JsonCodec, internal/*) need to use @scala.caps.assumeSafe.
 // Safe mode is enabled per-file via: import language.experimental.safe
 //> using dep "io.dapr:dapr-sdk:1.17.2"
+//> using dep "io.dapr:dapr-sdk-actors:1.17.2"
+//> using dep "io.dapr:dapr-sdk-workflows:1.17.2"
 //> using dep "com.lihaoyi::upickle:3.3.1"
 //> using dep "org.scalameta::munit:1.3.0"
 //> using dep "com.dimafeng::testcontainers-scala-munit:0.44.1"

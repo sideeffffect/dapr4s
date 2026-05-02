@@ -372,3 +372,109 @@ class StateCapabilityTest extends FunSuite:
       try secrets.get(SecretKey("k"))
       catch case e: IllegalStateException => exOpt = e
       assert(exOpt != null)
+
+  // -------------------------------------------------------------------------
+  // Actor capability (mock)
+  // -------------------------------------------------------------------------
+
+  test("actor capability can be created from scope"):
+    withScope:
+      val scope = summon[DaprScope]
+      val actor = scope.actor(ActorType("OrderActor"), ActorId("order-1"))
+      assertEquals(actor.actorType.value, "OrderActor")
+      assertEquals(actor.actorId.value, "order-1")
+
+  test("mock actor invoke throws UnsupportedOperationException"):
+    withScope:
+      val scope = summon[DaprScope]
+      val actor = scope.actor(ActorType("TestActor"), ActorId("id-1"))
+      intercept[UnsupportedOperationException]:
+        actor.invokeVoid(MethodName("doSomething"))
+
+  test("actor factory throws IllegalStateException after scope close"):
+    val scope = MockDaprScope()
+    scope.close()
+    intercept[IllegalStateException]:
+      scope.actor(ActorType("A"), ActorId("1"))
+
+  // -------------------------------------------------------------------------
+  // Workflow capability (mock)
+  // -------------------------------------------------------------------------
+
+  test("workflow.start returns a non-empty instance ID"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val id    = wf.start(WorkflowName("MyWorkflow"))
+      assert(id.value.nonEmpty)
+
+  test("workflow.startWithId uses the provided ID"):
+    withScope:
+      val scope    = summon[DaprScope]
+      val wf       = scope.workflow
+      val expected = WorkflowInstanceId("my-fixed-id")
+      val id       = wf.startWithId(WorkflowName("MyWorkflow"), expected)
+      assertEquals(id, expected)
+
+  test("workflow.getStatus returns Running for newly started instance"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val id    = wf.start(WorkflowName("MyWorkflow"))
+      val snap  = wf.getStatus(id)
+      assert(snap.isDefined)
+      assertEquals(snap.get.status, WorkflowStatus.Running)
+
+  test("workflow.getStatus returns None for unknown instance"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val snap  = wf.getStatus(WorkflowInstanceId("no-such-instance"))
+      assert(snap.isEmpty)
+
+  test("workflow.suspend transitions instance to Suspended"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val id    = wf.start(WorkflowName("MyWorkflow"))
+      wf.suspend(id)
+      assertEquals(wf.getStatus(id).get.status, WorkflowStatus.Suspended)
+
+  test("workflow.resume transitions instance to Running"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val id    = wf.start(WorkflowName("MyWorkflow"))
+      wf.suspend(id)
+      wf.resume(id)
+      assertEquals(wf.getStatus(id).get.status, WorkflowStatus.Running)
+
+  test("workflow.terminate transitions instance to Terminated"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val id    = wf.start(WorkflowName("MyWorkflow"))
+      wf.terminate(id)
+      assertEquals(wf.getStatus(id).get.status, WorkflowStatus.Terminated)
+
+  test("workflow.purge removes instance and returns true"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val id    = wf.start(WorkflowName("MyWorkflow"))
+      val purged = wf.purge(id)
+      assert(purged)
+      assert(wf.getStatus(id).isEmpty)
+
+  test("workflow.purge returns false for unknown instance"):
+    withScope:
+      val scope = summon[DaprScope]
+      val wf    = scope.workflow
+      val purged = wf.purge(WorkflowInstanceId("ghost-id"))
+      assert(!purged)
+
+  test("workflow factory throws IllegalStateException after scope close"):
+    val scope = MockDaprScope()
+    scope.close()
+    intercept[IllegalStateException]:
+      scope.workflow

@@ -53,3 +53,21 @@ trait AppHandlers:
   def onInvoke[Req: JsonCodec](methodName: MethodName)[Resp: JsonCodec](
     handler: Req => Resp
   ): Unit
+
+  /** Register a workflow orchestration implementation with the Dapr workflow runtime.
+    *
+    * The workflow is identified by its canonical class name, which clients must
+    * pass to [[WorkflowCapability.start]].
+    *
+    * @example {{{
+    *   handlers.registerWorkflow(new OrderWorkflow())
+    *   // start via: workflow.start(WorkflowName(classOf[OrderWorkflow].getCanonicalName.nn))
+    * }}}
+    */
+  def registerWorkflow(workflow: DaprWorkflow): Unit
+
+  /** Register an activity implementation with the Dapr workflow runtime.
+    *
+    * Activities are called from orchestrations via `ctx.callActivity(classOf[MyActivity], ...)`.
+    */
+  def registerActivity(activity: DaprActivity): Unit

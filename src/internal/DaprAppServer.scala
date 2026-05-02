@@ -2,6 +2,7 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
+import io.dapr.workflows.runtime.WorkflowRuntimeBuilder
 import java.net.InetSocketAddress
 import java.util.concurrent.{CopyOnWriteArrayList, Executors}
 import java.util.{ArrayList, HashMap as JHashMap}
@@ -36,6 +37,13 @@ private[safe] final class DaprAppServer extends AppHandlers:
   private val pubSubRoutes : JHashMap[String, AnyRef] = JHashMap()
   private val bindingRoutes: JHashMap[String, AnyRef] = JHashMap()
   private val invokeRoutes : JHashMap[String, AnyRef] = JHashMap()
+
+  // Workflow runtime builder — created on first registerWorkflow/registerActivity call.
+  @volatile private var _workflowBuilder: WorkflowRuntimeBuilder | Null = null
+
+  private def workflowBuilder: WorkflowRuntimeBuilder =
+    if _workflowBuilder == null then _workflowBuilder = new WorkflowRuntimeBuilder()
+    _workflowBuilder.nn
 
   // -------------------------------------------------------------------------
   // AppHandlers implementation
@@ -82,6 +90,12 @@ private[safe] final class DaprAppServer extends AppHandlers:
             s"Cannot decode invocation request for '${methodName.value}': ${e.getMessage}", e
           )
     invokeRoutes.put(path, fn.asInstanceOf[AnyRef])
+
+  def registerWorkflow(workflow: DaprWorkflow): Unit =
+    workflowBuilder.registerWorkflow(workflow)
+
+  def registerActivity(activity: DaprActivity): Unit =
+    workflowBuilder.registerActivity(activity)
 
   // -------------------------------------------------------------------------
   // Server lifecycle
@@ -163,10 +177,19 @@ private[safe] final class DaprAppServer extends AppHandlers:
 
     server.start()
 
+    // Start the workflow runtime (non-blocking) if any workflows/activities were registered.
+    val wb = _workflowBuilder
+    val workflowRuntime = if wb != null then
+      val runtime = wb.build()
+      runtime.start(false)
+      runtime
+    else null
+
     // Register a JVM shutdown hook so the server drains in-flight requests
     // on SIGTERM/SIGINT before the JVM exits.
     Runtime.getRuntime.addShutdownHook(Thread.ofVirtual().unstarted(() =>
       server.stop(/*seconds grace=*/ 2)
+      if workflowRuntime != null then workflowRuntime.close()
     ))
 
     // Block the calling thread until it is interrupted (e.g. by a test or

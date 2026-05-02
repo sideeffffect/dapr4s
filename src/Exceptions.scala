@@ -61,6 +61,16 @@ class DaprBindingsException(message: String, cause: Exception | Null = null)
 class DaprLockException(message: String, cause: Exception | Null = null)
     extends DaprException(message, cause)
 
+// Actors
+@scala.caps.assumeSafe
+class DaprActorException(message: String, cause: Exception | Null = null)
+    extends DaprException(message, cause)
+
+// Workflows
+@scala.caps.assumeSafe
+class DaprWorkflowException(message: String, cause: Exception | Null = null)
+    extends DaprException(message, cause)
+
 // Subscriber HTTP server
 @scala.caps.assumeSafe
 class DaprAppServerException(message: String, cause: Exception | Null = null)

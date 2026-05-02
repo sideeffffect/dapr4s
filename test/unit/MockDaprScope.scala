@@ -74,6 +74,14 @@ final class MockDaprScope extends DaprScope:
     checkOpen()
     new MockDistributedLockCapability(storeName, this)
 
+  def actor(actorType: ActorType, actorId: ActorId): ActorCapability =
+    checkOpen()
+    new MockActorCapability(actorType, actorId, this)
+
+  def workflow: WorkflowCapability =
+    checkOpen()
+    new MockWorkflowCapability(this)
+
   def close(): Unit =
     _closed = true
 
@@ -306,3 +314,97 @@ private class MockDistributedLockCapability(
       case Some(_) =>
         locks.remove(resourceId.value)
         UnlockStatus.Success
+
+// ---------------------------------------------------------------------------
+
+private class MockActorCapability(
+    val actorType: ActorType,
+    val actorId: ActorId,
+    scope: MockDaprScope
+) extends ActorCapability:
+
+  private def checkOpen(): Unit =
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+
+  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprActorException =
+    checkOpen()
+    throw UnsupportedOperationException(
+      "MockActorCapability does not support invoke — use integration tests"
+    )
+
+  def invokeGet[Resp: JsonCodec](method: MethodName): Resp throws DaprActorException =
+    checkOpen()
+    throw UnsupportedOperationException(
+      "MockActorCapability does not support invokeGet — use integration tests"
+    )
+
+  def invokeVoid(method: MethodName): Unit throws DaprActorException =
+    checkOpen()
+    throw UnsupportedOperationException(
+      "MockActorCapability does not support invokeVoid — use integration tests"
+    )
+
+// ---------------------------------------------------------------------------
+
+private class MockWorkflowCapability(scope: MockDaprScope) extends WorkflowCapability:
+
+  private val instances: mutable.Map[String, WorkflowSnapshot] = mutable.Map.empty
+
+  private def checkOpen(): Unit =
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+
+  private def genId(): String = java.util.UUID.randomUUID().toString
+
+  def start(name: WorkflowName): WorkflowInstanceId throws DaprWorkflowException =
+    checkOpen()
+    val id = WorkflowInstanceId(genId())
+    instances(id.value) = mockSnapshot(name, id)
+    id
+
+  def start[I: JsonCodec](name: WorkflowName, input: I): WorkflowInstanceId throws DaprWorkflowException =
+    start(name)
+
+  def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId throws DaprWorkflowException =
+    checkOpen()
+    instances(instanceId.value) = mockSnapshot(name, instanceId)
+    instanceId
+
+  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId throws DaprWorkflowException =
+    startWithId(name, instanceId)
+
+  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] throws DaprWorkflowException =
+    checkOpen()
+    instances.get(instanceId.value)
+
+  def suspend(instanceId: WorkflowInstanceId): Unit throws DaprWorkflowException =
+    checkOpen()
+    updateStatus(instanceId, WorkflowStatus.Suspended)
+
+  def resume(instanceId: WorkflowInstanceId): Unit throws DaprWorkflowException =
+    checkOpen()
+    updateStatus(instanceId, WorkflowStatus.Running)
+
+  def terminate(instanceId: WorkflowInstanceId): Unit throws DaprWorkflowException =
+    checkOpen()
+    updateStatus(instanceId, WorkflowStatus.Terminated)
+
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit throws DaprWorkflowException =
+    checkOpen()
+    () // mock: no-op
+
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] throws DaprWorkflowException =
+    checkOpen()
+    instances.get(instanceId.value)
+
+  def purge(instanceId: WorkflowInstanceId): Boolean throws DaprWorkflowException =
+    checkOpen()
+    instances.remove(instanceId.value).isDefined
+
+  private def mockSnapshot(name: WorkflowName, id: WorkflowInstanceId): WorkflowSnapshot =
+    val now = java.time.Instant.now()
+    WorkflowSnapshot(name, id, WorkflowStatus.Running, now, now, None, None)
+
+  private def updateStatus(instanceId: WorkflowInstanceId, status: WorkflowStatus): Unit =
+    instances.get(instanceId.value).foreach { snap =>
+      instances(instanceId.value) = snap.copy(status = status, lastUpdatedAt = java.time.Instant.now())
+    }

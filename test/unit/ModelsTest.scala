@@ -197,3 +197,67 @@ class ModelsTest extends FunSuite:
   test("ETag accepts empty string (valid for operations that ignore ETag)"):
     val e = ETag("")
     assertEquals(e.value, "")
+
+  // -------------------------------------------------------------------------
+  // Actor and Workflow opaque types
+  // -------------------------------------------------------------------------
+
+  test("ActorType round-trips"):
+    val t = ActorType("OrderActor")
+    assertEquals(t.value, "OrderActor")
+
+  test("ActorType rejects empty string"):
+    intercept[IllegalArgumentException] { ActorType("") }
+
+  test("ActorId round-trips (can be empty)"):
+    val id = ActorId("actor-123")
+    assertEquals(id.value, "actor-123")
+
+  test("ActorId accepts empty string"):
+    val id = ActorId("")
+    assertEquals(id.value, "")
+
+  test("WorkflowName round-trips"):
+    val n = WorkflowName("OrderWorkflow")
+    assertEquals(n.value, "OrderWorkflow")
+
+  test("WorkflowName rejects empty string"):
+    intercept[IllegalArgumentException] { WorkflowName("") }
+
+  test("WorkflowInstanceId round-trips"):
+    val id = WorkflowInstanceId("abc-123")
+    assertEquals(id.value, "abc-123")
+
+  // -------------------------------------------------------------------------
+  // WorkflowStatus and WorkflowSnapshot
+  // -------------------------------------------------------------------------
+
+  test("WorkflowStatus enum values are distinct"):
+    val all = List(
+      WorkflowStatus.Running,
+      WorkflowStatus.Completed,
+      WorkflowStatus.ContinuedAsNew,
+      WorkflowStatus.Failed,
+      WorkflowStatus.Canceled,
+      WorkflowStatus.Terminated,
+      WorkflowStatus.Pending,
+      WorkflowStatus.Suspended
+    )
+    assertEquals(all.distinct.size, 8)
+
+  test("WorkflowSnapshot holds all fields"):
+    val now = java.time.Instant.now()
+    val snap = WorkflowSnapshot(
+      name            = WorkflowName("MyWorkflow"),
+      instanceId      = WorkflowInstanceId("inst-1"),
+      status          = WorkflowStatus.Running,
+      createdAt       = now,
+      lastUpdatedAt   = now,
+      serializedInput  = Some("{\"x\":1}"),
+      serializedOutput = None
+    )
+    assertEquals(snap.name.value, "MyWorkflow")
+    assertEquals(snap.instanceId.value, "inst-1")
+    assertEquals(snap.status, WorkflowStatus.Running)
+    assertEquals(snap.serializedInput, Some("{\"x\":1}"))
+    assertEquals(snap.serializedOutput, None)
