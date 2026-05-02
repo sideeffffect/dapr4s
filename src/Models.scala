@@ -84,7 +84,7 @@ final case class ConfigItem(
 // State transaction operations
 // ---------------------------------------------------------------------------
 
-sealed trait StateOp
+sealed abstract class StateOp
 
 object StateOp:
   /** Upsert a key with a pre-encoded JSON value and an optional ETag.

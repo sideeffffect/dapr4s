@@ -74,7 +74,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
         val state = summon[DaprScope].state(StoreName("kvstore"))
         val key   = uniqueKey()
         state.save(key, "v1")
-        val etag  = state.getWithETag[String](key).etag.get
+        val etag  = state.getWithETag[String](key).etag.getOrElse(fail("expected etag after save"))
         state.saveWithETag(key, "v2", etag)
         assertEquals(state.get[String](key), Some("v2"))
     }

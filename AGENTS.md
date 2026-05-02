@@ -83,6 +83,25 @@ as style references.
 - **Clause interleaving**: `invoke` methods use `def invoke[Req: JsonCodec](...)[Resp: JsonCodec]`
   so `Req` is inferred from the data argument and `Resp` is specified at the call site.
 
+### Scala type-safety and coding best practices
+
+The wiki's `scala-type-safety/` section is the primary reference for Scala coding conventions in this project. Consult it before writing new code and after finding a style issue. Key articles:
+
+- **`wiki/scala-type-safety/scala-best-practices-nrinaudo.md`** — comprehensive rule set: sealed types must have `final` subtypes, case classes must be `final`, avoid unsafe partial ops (`head`/`get`/`reduce` on possibly-empty collections → use `headOption`/`getOrElse`/`reduceOption`), avoid `null` (use `Option`), prefer `sealed abstract class` over `sealed trait` for ADT root types, add explicit types to all public members, always use `override`.
+
+- **`wiki/scala-type-safety/primitive-obsession-opaque-types.md`** — use opaque types for every domain string/int value (e.g. `StoreName`, `PubSubName`). Zero-cost at runtime. Smart constructors validate at the boundary; downstream code trusts the type. Prefer opaque types over `case class` wrappers (no boxing) or `AnyVal` (allocates in generic contexts).
+
+- **`wiki/scala-type-safety/parse-dont-validate.md`** — encode validation results in the type; don't validate-and-discard. Parse at system boundaries; downstream code uses well-typed values.
+
+- **`wiki/scala-type-safety/adts-illegal-states.md`** — data ADTs with nullable-field anti-pattern, `final case object`, using Scala 3 `enum` instead of `scala.Enumeration`, declaring constructors in companion objects.
+
+Specific rules currently active in this codebase:
+- All case classes and case objects are `final`.
+- All subtypes of sealed types are `final`.
+- `UnlockStatus` and `SubscriptionResult` are `enum` (not `case class` with int codes).
+- `StateOp` root is `sealed abstract class` (not `sealed trait`) — proper ADT root.
+- Do not call `.head`, `.tail`, `.last`, `.get` on collections or `Option`/`Try`/`Either` without a prior length/presence check; use `headOption`, `getOrElse`, `getOrElse(fail(...))` in tests.
+
 ### Java interop boundary
 Everything in `src/internal/` is marked `@scala.caps.assumeSafe`. This is the only place Java
 SDK types may appear. Nothing from the Java SDK (`Mono`, `DaprClient`, `GrpcChannel`, proto
@@ -93,8 +112,8 @@ classes, etc.) may appear in `src/` files outside `internal/` or in any test fil
 
 ## Testing
 
-- **Unit tests** (no Docker required): `scala-cli test . --test-only "*unit*"`. Currently 110
-  tests across `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`.
+- **Unit tests** (no Docker required): `scala-cli test . --test-only "*unit*"`. Currently 119
+  tests across `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`.
 - **Integration tests** (require Docker): use `testcontainers-scala-munit` with the
   `TestContainersForAll` pattern. `startContainers()` creates but does not start the container —
   the framework calls `start()` in `beforeAll()`. Tests use `withContainers { c => }`. The

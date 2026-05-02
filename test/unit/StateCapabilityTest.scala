@@ -101,7 +101,7 @@ class StateCapabilityTest extends FunSuite:
       val state = summon[DaprScope].state(StoreName("test-store"))
       state.save("k", "v1")
       val entry = state.getWithETag[String]("k")
-      val etag  = entry.etag.get
+      val etag  = entry.etag.getOrElse(fail("expected etag after save"))
       state.saveWithETag("k", "v2", etag)
       assertEquals(state.get[String]("k"), Some("v2"))
 
@@ -155,7 +155,7 @@ class StateCapabilityTest extends FunSuite:
     withScope:
       val state = summon[DaprScope].state(StoreName("test-store"))
       state.save("k", "v")
-      val etag = state.getWithETag[String]("k").etag.get
+      val etag = state.getWithETag[String]("k").etag.getOrElse(fail("expected etag after save"))
       state.deleteWithETag("k", etag)
       assertEquals(state.get[String]("k"), None)
 
@@ -196,9 +196,10 @@ class StateCapabilityTest extends FunSuite:
       pubsub.publish(Topic("orders"), "order-payload")
       val events = scope.publishedEvents
       assertEquals(events.length, 1)
-      assertEquals(events.head._1, "my-pubsub")
-      assertEquals(events.head._2, "orders")
-      assertEquals(events.head._4, Map.empty[String, String])
+      val (psName, topicName, _, meta) = events(0)
+      assertEquals(psName, "my-pubsub")
+      assertEquals(topicName, "orders")
+      assertEquals(meta, Map.empty[String, String])
 
   test("publishWithMetadata records event with metadata in mock scope"):
     runSafe:
@@ -207,7 +208,8 @@ class StateCapabilityTest extends FunSuite:
       pubsub.publishWithMetadata(Topic("orders"), "payload", Map("k" -> "v"))
       val events = scope.publishedEvents
       assertEquals(events.length, 1)
-      assertEquals(events.head._4, Map("k" -> "v"))
+      val (_, _, _, meta) = events(0)
+      assertEquals(meta, Map("k" -> "v"))
 
   test("bulkPublish records all entries in mock scope"):
     runSafe:

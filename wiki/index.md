@@ -72,6 +72,7 @@ Type-driven design patterns for correct, self-documenting Scala code: ADTs, opaq
 | [Parse, Don't Validate](scala-type-safety/parse-dont-validate.md) | Alexis King's principle: encode validation results in types rather than discarding them; stratify programs into a parsing phase and an execution phase | 2026-05-02 |
 | [Primitive Obsession and Opaque Types](scala-type-safety/primitive-obsession-opaque-types.md) | Using raw String/Int for domain values; opaque types as zero-cost wrappers; smart constructors; vs. case classes and value classes | 2026-05-02 |
 | [ADTs and Making Illegal States Unrepresentable](scala-type-safety/adts-illegal-states.md) | Sealed hierarchies, final subtypes, case-class discipline, enum vs. Enumeration; nrinaudo best-practice rules for exhaustive ADTs | 2026-05-02 |
+| [Scala Best Practices (nrinaudo)](scala-type-safety/scala-best-practices-nrinaudo.md) | Complete reference: numeric pitfalls, sealed/final rules, unsafe partial ops (head/get/reduce), referential transparency, ADT conventions, binary compat | 2026-05-02 |
 
 ## dapr
 

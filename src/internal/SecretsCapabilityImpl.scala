@@ -27,8 +27,9 @@ private[safe] final class SecretsCapabilityImpl(
       scalaMap.get(key) match
         case Some(v) => v
         case None =>
-          if scalaMap.size == 1 then scalaMap.values.head
-          else throw DaprSecretsException(s"Secret key '$key' not found in store '${storeName.value}'")
+          scalaMap.valuesIterator.nextOption() match
+            case Some(v) if scalaMap.sizeIs == 1 => v
+            case _ => throw DaprSecretsException(s"Secret key '$key' not found in store '${storeName.value}'")
     catch
       case e: DaprSecretsException => throw e
       case e: io.dapr.exceptions.DaprException =>
