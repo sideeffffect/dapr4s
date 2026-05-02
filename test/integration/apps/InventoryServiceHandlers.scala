@@ -1,0 +1,100 @@
+package dapr.safe.test.integration.apps
+
+import dapr.safe.*
+import language.experimental.saferExceptions
+import unsafeExceptions.canThrowAny
+
+/** Business logic for the Inventory microservice.
+  *
+  * Each handler method declares its capability requirements explicitly via
+  * `using` parameters.  See [[OrderServiceHandlers]] for a full explanation of
+  * the capability-as-effect-system pattern and the escape hatch justifications.
+  *
+  * Subscribes to [[OrderEvent]] messages on the `orders` pub/sub topic and
+  * decrements the corresponding item's stock count in the state store.  The
+  * decrement is protected by a distributed lock to prevent concurrent
+  * over-decrements when multiple events for the same item arrive simultaneously.
+  *
+  * Exposes two invocation methods:
+  *   - `get-stock`  : retrieve current stock level for an item
+  *   - `seed-stock` : set the initial stock level for an item (test helper)
+  *
+  * Configured against Dapr component names:
+  *   - state store      : `statestore`
+  *   - pub/sub          : `pubsub`
+  *   - topic            : `orders`
+  *   - distributed lock : `lockstore`
+  */
+object InventoryServiceHandlers:
+
+  val StateName     = StoreName("statestore")
+  val PubSubComp    = PubSubName("pubsub")
+  val OrdersTopic   = Topic("orders")
+  val LockStoreName = StoreName("lockstore")
+
+  /** Default stock level when no seed has been set. */
+  val DefaultStock = 100
+
+  // ---------------------------------------------------------------------------
+  // Handler methods — explicit capability requirements via `using`
+  // ---------------------------------------------------------------------------
+
+  /** Handle an incoming order event: decrement stock for the ordered item.
+    *
+    * Acquires a distributed lock on the item name before reading and writing
+    * the stock level, preventing concurrent handlers from racing on the same
+    * key.  If the lock cannot be acquired the event is retried.
+    */
+  def handleOrderEvent(event: CloudEvent[OrderEvent])(
+    using state: StateCapability,
+    lock: DistributedLockCapability
+  ): SubscriptionResult throws Exception =
+    val item  = event.data.item
+    val qty   = event.data.quantity
+    val key   = StateKey(s"stock-$item")
+    val owner = LockOwner(s"inv-${event.id}")
+
+    if lock.tryLock(LockResourceId(item), owner, 10) then
+      try
+        val current = state.get[Int](key).getOrElse(DefaultStock)
+        val updated = math.max(0, current - qty)
+        state.save(key, updated)
+      finally
+        lock.unlock(LockResourceId(item), owner)
+      SubscriptionResult.Success
+    else
+      SubscriptionResult.Retry
+
+  /** Return current stock level for the given item name. */
+  def getStock(item: String)(using state: StateCapability): StockLevel throws Exception =
+    val available = state.get[Int](StateKey(s"stock-$item")).getOrElse(DefaultStock)
+    StockLevel(item, available)
+
+  /** Seed the stock level for an item (test helper and k8s init). */
+  def seedStock(stock: StockLevel)(using state: StateCapability): StockLevel throws Exception =
+    state.save(StateKey(s"stock-${stock.item}"), stock.available)
+    stock
+
+  // ---------------------------------------------------------------------------
+  // Handler registration
+  // ---------------------------------------------------------------------------
+
+  def configure()(using scope: DaprScope, handlers: AppHandlers): Unit =
+    given StateCapability           = scope.state(StateName)
+    given DistributedLockCapability = scope.lock(LockStoreName)
+
+    handlers.subscribe[OrderEvent](PubSubComp, OrdersTopic) { event =>
+      // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see OrderServiceHandlers scaladoc.
+      try handleOrderEvent(event)
+      catch case e: Exception => throw e
+    }
+
+    handlers.onInvoke[String](MethodName("get-stock"))[StockLevel] { item =>
+      try getStock(item)
+      catch case e: Exception => throw e
+    }
+
+    handlers.onInvoke[StockLevel](MethodName("seed-stock"))[StockLevel] { stock =>
+      try seedStock(stock)
+      catch case e: Exception => throw e
+    }

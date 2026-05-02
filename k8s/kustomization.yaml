@@ -1,0 +1,14 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  # Dapr components
+  - components/statestore.yaml
+  - components/pubsub.yaml
+  - components/lockstore.yaml
+  - components/subscription-orders.yaml
+  # Services
+  - order-service/deployment.yaml
+  - order-service/service.yaml
+  - inventory-service/deployment.yaml
+  - inventory-service/service.yaml

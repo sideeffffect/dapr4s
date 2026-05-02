@@ -1,5 +1,13 @@
 # Wiki Log
 
+## [2026-05-02] ingest | k3d v5.x Changes and Dapr Dev-Mode Redis Hostname
+- Updated: kubernetes/local-kubernetes-stacks.md (k3d v5.8.3 version, v5.x breaking changes, dev-mode Redis hostname)
+- Updated: kubernetes/dapr-on-kubernetes.md (corrected Redis hostname dapr-dev-redis-master, added lock.redis component example)
+
+## [2026-05-02] ingest | Local Kubernetes Stacks; Dapr on Kubernetes
+- Created: kubernetes/local-kubernetes-stacks.md
+- Created: kubernetes/dapr-on-kubernetes.md
+
 ## [2026-05-02] ingest | Scala Best Practices (nrinaudo) — complete reference
 
 ## [2026-05-02] ingest | Parse, Don't Validate; Primitive Obsession and Opaque Types; ADTs and Making Illegal States Unrepresentable

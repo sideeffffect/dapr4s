@@ -10,8 +10,23 @@ import language.experimental.saferExceptions
   * the [[DaprScope]].  Handlers are registered during the setup body; the
   * HTTP server starts after the body returns.
   *
-  * Handler lambdas may capture the `DaprScope` from the enclosing `serve`
-  * body to make outbound DAPR calls (e.g. save state on receiving a message).
+  * === Capability capture in handlers ===
+  *
+  * Handler lambdas commonly capture `DaprScope` capabilities (state, pub/sub,
+  * etc.) from the enclosing `serve` or `configure` scope.  This is supported
+  * without any `asInstanceOf` cast — in Scala 3.9 CC, function types with the
+  * `pureFunctions` flag accept capturing lambdas as long as the CanThrow
+  * capability is contained per lambda.  The required pattern is a `try/catch`
+  * around each handler body:
+  *
+  * {{{
+  *   handlers.onInvoke[OrderRequest](MethodName("place-order"))[OrderResponse] { req =>
+  *     try placeOrder(req)           // placeOrder declares throws Exception
+  *     catch case e: Exception => throw e  // absorbs CanThrow at this lambda boundary
+  *   }
+  * }}}
+  *
+  * See AGENTS.md (CC sibling lambda pattern) for the full explanation.
   */
 @scala.caps.assumeSafe
 trait AppHandlers:

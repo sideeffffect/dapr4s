@@ -1,0 +1,32 @@
+package dapr.safe.test.integration.apps
+
+import dapr.safe.*
+import language.experimental.saferExceptions
+import unsafeExceptions.canThrowAny
+
+/** Standalone entry point for the Order microservice.
+  *
+  * Starts an HTTP server on port 8080 (configurable via APP_PORT env var) that
+  * receives Dapr sidecar traffic: service invocation and (optionally) pub/sub
+  * subscriptions.
+  *
+  * Run locally (requires Dapr sidecar on localhost:3500/50001):
+  * {{{
+  *   dapr run --app-id order-service --app-port 8080 -- \
+  *     scala-cli run . --main-class "dapr.safe.test.integration.apps.orderServiceMain"
+  * }}}
+  *
+  * Build a fat jar for Docker:
+  * {{{
+  *   scala-cli --power package . --assembly -o order-service.jar \
+  *     --main-class "dapr.safe.test.integration.apps.orderServiceMain"
+  * }}}
+  */
+@main def orderServiceMain(): Unit =
+  val port = sys.env.getOrElse("APP_PORT", "8080").toInt
+  println(s"[order-service] starting on port $port")
+  DaprRuntime.serve(appPort = port):
+    val scope    = summon[DaprScope]
+    val handlers = summon[AppHandlers]
+    OrderServiceHandlers.configure()(using scope, handlers)
+    println("[order-service] handlers registered, serving...")

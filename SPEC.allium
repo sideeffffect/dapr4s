@@ -897,10 +897,19 @@ surface AppHandlersSurface {
         subscribe_route: (pubsub_name: PubSubName, topic: Topic, route: String, handler: CloudEvent -> SubscriptionResult) -> Unit
         on_binding: (binding_name: BindingName, handler: Any -> Unit) -> Unit
         on_invoke: (method_name: String, handler: Any -> Any) -> Unit
+        -- Handler lambdas may capture capabilities from the enclosing DaprScope.
+        -- The recommended pattern is: business logic in explicit methods with
+        -- (using cap: Capability) parameters; thin lambdas wrap each call in
+        -- try/catch for CC CanThrow isolation (see DESIGN.md — Handler Pattern).
 
     @guarantee SubscriptionDiscovery
         -- GET /dapr/subscribe returns all registered pub/sub subscriptions
         -- before any request is handled
+
+    @guarantee CapabilityLifetime
+        -- Capabilities captured by handler lambdas are bound at configure time
+        -- and share the DaprScope lifetime.  Invocations after scope closure
+        -- result in IllegalStateException (ClosedCapabilityRejection invariant).
 }
 
 surface ServeSurface {

@@ -196,6 +196,73 @@ Pub/sub routes (default `/<topic>`), input binding paths (`/<bindingName>`), and
 
 ---
 
+## Handler Implementation Pattern (Capability-as-Effect-System)
+
+Handler objects follow a two-layer structure that maximises capability tracking while containing the CC escape hatches in a single place.
+
+### Layer 1 — Business logic methods
+
+Pure handler methods declared with explicit `using` capability parameters and a `throws Exception` clause.  The compiler tracks which effects each method may perform:
+
+```scala
+def placeOrder(req: OrderRequest)(using state: StateCapability, pubsub: PubSubCapability): OrderResponse throws Exception =
+  val orderId = java.util.UUID.randomUUID().toString
+  state.save(StateKey(orderId), req)
+  pubsub.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
+  OrderResponse(orderId, "accepted")
+```
+
+These methods carry no `@assumeSafe`; they are pure capability-tracked code that the compiler can reason about.
+
+### Layer 2 — `configure` method with capability injection and thin lambdas
+
+The `configure` method injects capabilities as `given`s once per call, then registers thin wrapper lambdas via `AppHandlers`:
+
+```scala
+def configure()(using scope: DaprScope, handlers: AppHandlers): Unit =
+  given StateCapability  = scope.state(StateName)
+  given PubSubCapability = scope.pubsub(PubSubComp)
+
+  handlers.onInvoke[OrderRequest](MethodName("place-order"))[OrderResponse] { req =>
+    try placeOrder(req)
+    catch case e: Exception => throw e   // CC CanThrow isolation
+  }
+```
+
+**Why `try/catch` in each lambda**: In Scala 3.9 CC with `pureFunctions`, each lambda that calls a `throws`-annotated method creates a fresh anonymous `CanThrow` capability.  Sibling lambdas in the same method body cannot share these capabilities.  The `try/catch` absorbs the `CanThrow` at each lambda's boundary, so the next sibling lambda starts with a fresh context.  Without this, the second and later lambdas fail to compile with _"capability `any` cannot flow into capture set {any²}"_.  See AGENTS.md for the canonical explanation.
+
+**Capability injection lifetime**: Capabilities are bound once per `configure` call and shared across all handler invocations for the lifetime of the `DaprScope`.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
+
+### Diagram
+
+```mermaid
+graph LR
+    subgraph "Handler object (no @assumeSafe)"
+        BL["Business logic def methods\nusing cap1: StateCapability\nusing cap2: PubSubCapability\nthrows Exception"]
+        CFG["configure()\nusing scope: DaprScope\nusing handlers: AppHandlers"]
+        CFG -->|"given StateCapability = scope.state(...)\ngiven PubSubCapability = scope.pubsub(...)"| BL
+    end
+
+    subgraph "Library internals (@assumeSafe)"
+        AH["AppHandlers\n(DaprAppServer / TestAppHandlers)\nstores lambdas as AnyRef"]
+    end
+
+    CFG -->|"onInvoke { req => try BL(req) catch ... }"| AH
+```
+
+### Testing with `TestAppHandlers`
+
+Integration tests use `TestAppHandlers` (which is `@assumeSafe` internally) in place of a real `DaprAppServer`.  After calling `configure`, tests invoke handlers directly without an HTTP round-trip:
+
+```scala
+val testHandlers = TestAppHandlers()
+DaprRuntime.runWithEndpoints(http, grpc):
+  OrderServiceHandlers.configure()
+  val resp = testHandlers.call[OrderRequest]("place-order", OrderRequest("widget", 2))[OrderResponse]
+```
+
+---
+
 ## Opaque Domain Types
 
 All domain identifiers are opaque to prevent accidental misuse (e.g., passing a `PubSubName` where a `StoreName` is expected).
@@ -329,7 +396,7 @@ scala-safe-dapr/
 │   │                                 # SubscriptionResult, CloudEvent, InvocationRequest [safe mode]
 │   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe]
 │   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes) [safe mode]
-│   ├── AppHandlers.scala             # AppHandlers trait for inbound registration [safe mode]
+│   ├── AppHandlers.scala             # AppHandlers trait for inbound registration [@assumeSafe]
 │   ├── DaprScope.scala               # DaprScope trait with ^{this} return types [safe mode]
 │   ├── DaprRuntime.scala             # DaprRuntime.run + serve entry points [@assumeSafe]
 │   └── internal/
@@ -352,11 +419,21 @@ scala-safe-dapr/
     │   ├── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
     │   └── SubscriberTest.scala      # DaprAppServer dispatch logic (no Docker required)
     └── integration/
+        ├── TestAppHandlers.scala          # In-memory AppHandlers for tests (@assumeSafe, AnyRef storage)
         ├── DaprTestContainer.scala        # Testcontainers bridge
         ├── StateIntegrationTest.scala
         ├── PubSubIntegrationTest.scala
         ├── InvokerIntegrationTest.scala
+        ├── OrderServiceIntegrationTest.scala
+        ├── InventoryServiceIntegrationTest.scala
+        ├── EndToEndIntegrationTest.scala
         └── SecretsIntegrationTest.scala
+        └── apps/
+            ├── Shared.scala               # Shared domain models (OrderRequest, OrderEvent, etc.)
+            ├── OrderServiceHandlers.scala  # Business logic: no @assumeSafe, explicit using capabilities
+            ├── InventoryServiceHandlers.scala
+            ├── OrderServiceApp.scala       # Main entry point (serve)
+            └── InventoryServiceApp.scala
 ```
 
 ---

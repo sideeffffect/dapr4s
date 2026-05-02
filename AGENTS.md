@@ -42,6 +42,32 @@ Both must stay in sync with the code at all times.
 
 ## Code style and correctness rules
 
+### Escape hatches from the type system must be documented
+
+Every use of a CC escape hatch or type-system workaround must be accompanied by a thorough
+comment explaining:
+
+1. **WHAT** the escape hatch is (`asInstanceOf`, `@scala.caps.assumeSafe`, `try/catch`-rethrow
+   for CanThrow isolation, `AnyRef` storage to erase capture sets, etc.)
+2. **WHY** it is necessary — the specific compiler or CC constraint that forces the workaround
+3. **WHY IT IS SAFE** — the invariant or contract that ensures the runtime behaviour is correct
+   even though the type system cannot verify it
+4. **WHERE TO LOOK** for the canonical example or further explanation
+
+Examples of mandatory documentation:
+- `@scala.caps.assumeSafe` on a class: explain why the class must be trusted and what safety
+  invariant it maintains internally.
+- `fn.asInstanceOf[AnyRef]` storing a capturing lambda: explain that the lambda is later cast
+  back to its runtime type under `@assumeSafe` and the cast is safe because the lambda type is
+  preserved erased in a typed HashMap key-value contract.
+- `try { ... } catch case e: Exception => throw e` in a lambda: explain the CC sibling-lambda
+  CanThrow isolation requirement (see AGENTS.md / CC section below).
+- `handler.asInstanceOf[Req => Resp]` (if ever necessary): explain why CC cannot track the
+  capture and why the underlying semantics guarantee type safety.
+
+No escape hatch should ever be left "obvious" or undocumented. If you find one without a comment,
+add the comment before moving on.
+
 ### Never catch fatal exceptions
 Use `scala.util.control.NonFatal` everywhere a broad catch is needed. Fatal exceptions
 (`OutOfMemoryError`, `StackOverflowError`, `ThreadDeath`, `LinkageError`, `ControlThrowable`)
@@ -73,6 +99,35 @@ workaround for a specific library bug, or behavior that would surprise a reader.
 warrants a comment, make it thorough — explain the reasoning fully, not just the action. See the
 `InterruptedException` handling in `MonoOps` and the `NonFatal` trade-off note in `DaprRuntime`
 as style references.
+
+### CC sibling-lambda CanThrow pattern
+
+In Scala 3.9 CC, each lambda that calls a `throws`-annotated method creates a fresh anonymous
+`CanThrow` capability tagged to that specific lambda. Sibling lambdas (defined in the same method
+body) cannot share these capabilities — a fundamental CC constraint that prevents CanThrow from
+"leaking" across unrelated closures.
+
+**Symptom**: compiler error "capability `any` cannot flow into capture set {any²}" when two or
+more lambdas in the same method each call a throwing method.
+
+**Required pattern** for every handler lambda that calls throwing methods:
+```scala
+handlers.onInvoke[Req](MethodName("my-method"))[Resp] { req =>
+  try myHandlerMethod(req)          // declares throws Exception
+  catch case e: Exception => throw e  // re-throw WITHOUT swallowing
+}
+```
+
+The `try/catch` absorbs each lambda's CanThrow requirement at that lambda's boundary, so the
+next sibling lambda starts with a fresh context.
+
+**Why `throw e` instead of a meaningful handler**: the lambda is a thin dispatcher that
+intentionally lets exceptions propagate to the calling runtime (DaprAppServer or TestAppHandlers),
+which has its own error handling.  Swallowing exceptions here would hide Dapr client errors.
+
+**Why `import unsafeExceptions.canThrowAny` is also needed**: in Scala 3.9, rethrowing inside a
+catch clause (`throw e`) still requires a `CanThrow[Exception]` in scope.  The top-level import
+provides this for the whole file.
 
 ### Experimental Scala features — exploit them, don't just enable them
 - **`pureFunctions`**: `DaprRuntime.run`'s body type is `(DaprScope, CanThrow[Exception]) ?=> T`

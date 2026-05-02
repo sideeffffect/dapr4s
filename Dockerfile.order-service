@@ -1,0 +1,9 @@
+FROM azul/zulu-openjdk-alpine:25-jre
+
+WORKDIR /app
+COPY order-service.jar app.jar
+
+# Default port; override via APP_PORT env var or Kubernetes Deployment env
+EXPOSE 8080
+
+ENTRYPOINT ["java", "-jar", "app.jar"]

@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: inventory-service
+  namespace: default
+  labels:
+    app: inventory-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: inventory-service
+  template:
+    metadata:
+      labels:
+        app: inventory-service
+      annotations:
+        dapr.io/enabled:   "true"
+        dapr.io/app-id:    "inventory-service"
+        dapr.io/app-port:  "8081"
+        dapr.io/log-level: "info"
+    spec:
+      containers:
+        - name: inventory-service
+          image: inventory-service:dev
+          imagePullPolicy: Never     # loaded via k3d image import
+          ports:
+            - containerPort: 8081
+          env:
+            - name: APP_PORT
+              value: "8081"
+          readinessProbe:
+            httpGet:
+              path: /dapr/subscribe
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 5

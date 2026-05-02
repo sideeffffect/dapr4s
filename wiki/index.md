@@ -95,3 +95,12 @@ Dapr (Distributed Application Runtime) — portable, event-driven runtime for bu
 | [Dapr Actors Deep Dive](dapr/dapr-actors-deep-dive.md) | Virtual actor lifecycle, turn-based concurrency, reentrancy, reminders vs timers, placement service, state persistence, AI agent use cases | 2026-05-01 |
 | [Dapr Pluggable Components](dapr/dapr-pluggable-components.md) | Custom state stores, pub/sub, and bindings via gRPC/UDS; multi-interface components; independent release cycle | 2026-05-01 |
 | [Dapr Java SDK — Virtual Threads](dapr/dapr-java-sdk-virtual-threads.md) | SDK internals (gRPC/Netty transport, newGrpcStub() bypass, ThreadlessExecutor, Mono.block() vs toFuture().get() VT safety) | 2026-05-02 |
+
+## kubernetes
+
+Local Kubernetes distributions for development, CI, and integration testing — comparison of k3d, kind, k0s, k3s, Minikube, MicroK8s; Dapr deployment and component configuration on Kubernetes.
+
+| Article | Summary | Updated |
+|---------|---------|---------|
+| [Local Kubernetes Stacks](kubernetes/local-kubernetes-stacks.md) | k3d (v5.8.3), kind, k3s, k0s, Minikube, MicroK8s — comparison, k3d v5.x breaking changes, dev-mode Redis hostname, Dapr integration testing recipe | 2026-05-02 |
+| [Dapr on Kubernetes](kubernetes/dapr-on-kubernetes.md) | Dapr control plane, sidecar injection, component/subscription CRDs with correct `dapr-dev-redis-master` hostname, distributed lock component, complete k3d+Dapr setup | 2026-05-02 |
