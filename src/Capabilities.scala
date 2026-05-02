@@ -117,6 +117,15 @@ trait ConfigurationCapability extends DaprCapability:
   /** Retrieve one or more configuration items by key. */
   def get(keys: Seq[String]): Map[String, ConfigItem] throws DaprConfigurationException
 
+  /** Subscribe to live configuration changes for the given keys.
+    *
+    * `onChange` is called on a background thread whenever the sidecar delivers
+    * an update.  Returns an `AutoCloseable` that stops the subscription when
+    * closed.  The subscription is also stopped when the enclosing [[DaprScope]]
+    * is closed.
+    */
+  def subscribe(keys: Seq[String])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException
+
 // ---------------------------------------------------------------------------
 
 /** Capability for invoking DAPR output bindings. */

@@ -33,10 +33,16 @@ graph TB
         LC["DistributedLockCapability^scope"]
     end
 
+    subgraph "Public API — subscriber side"
+        AH["AppHandlers\n(subscribe / onBinding / onInvoke)"]
+    end
+
     subgraph "Internal Layer (@assumeSafe boundaries)"
         DR["DaprRuntime.run { ... }"]
+        DS2["DaprRuntime.serve(port) { ... }"]
         IMPL["*CapabilityImpl\n(non-safe-mode,\n@assumeSafe methods)"]
         DC["DaprClient\n(Java SDK)"]
+        SRV["DaprAppServer\n(OpenJDK HttpServer)"]
     end
 
     subgraph "DAPR Sidecar"
@@ -46,10 +52,14 @@ graph TB
     UC -->|"summon[DaprScope].state(...)"| DS
     DS --> SC & PC & IC & SEC & CC & BC & LC
     SC & PC & IC & SEC & CC & BC & LC -->|"implemented by"| IMPL
-    IMPL -->|"DaprClient.*().block()"| DC
+    IMPL -->|"DaprClient.*().toFuture().get()"| DC
     DC -->|"HTTP/gRPC"| SID
 
     DR -->|"provides DaprScope ?=>"| UC
+    DS2 -->|"provides DaprScope + AppHandlers ?=>"| UC
+    DS2 --> SRV
+    SRV -->|"GET /dapr/subscribe\nPOST /<route>"| SID
+    AH -->|"implemented by"| SRV
 ```
 
 ### Layer 1 — Public API (safe-mode-compatible)
@@ -114,6 +124,14 @@ classDiagram
     class ConfigurationCapability {
         <<trait>>
         +get(keys: Seq[String]) Map[String,ConfigItem]
+        +subscribe(keys)(onChange) AutoCloseable
+    }
+    class AppHandlers {
+        <<trait>>
+        +subscribe[T](pubsubName, topic)(handler) Unit
+        +subscribe[T](pubsubName, topic, route)(handler) Unit
+        +onBinding[T](bindingName)(handler) Unit
+        +onInvoke[Req,Resp](methodName)(handler) Unit
     }
     class BindingsCapability {
         <<trait>>
@@ -134,6 +152,45 @@ classDiagram
     DaprCapability <|-- BindingsCapability
     DaprCapability <|-- DistributedLockCapability
 ```
+
+---
+
+## Subscriber Server (`DaprRuntime.serve`)
+
+Apps that need to receive Dapr events (pub/sub messages, input binding triggers, service invocations) use `DaprRuntime.serve` instead of `run`.  It starts an HTTP server on the given port and blocks until interrupted.
+
+```mermaid
+sequenceDiagram
+    participant App
+    participant DaprRuntime
+    participant DaprAppServer
+    participant Sidecar
+
+    App->>DaprRuntime: serve(port=8080) { ... }
+    DaprRuntime->>DaprAppServer: new DaprAppServer()
+    Note over DaprRuntime: body registers handlers
+    App->>DaprAppServer: subscribe(pubsub, topic) { handler }
+    App->>DaprAppServer: onBinding(binding) { handler }
+    App->>DaprAppServer: onInvoke("method") { handler }
+    DaprRuntime->>DaprAppServer: startAndBlock(8080)
+    DaprAppServer-->>Sidecar: (server ready on :8080)
+    Sidecar->>DaprAppServer: GET /dapr/subscribe
+    DaprAppServer-->>Sidecar: JSON subscription list
+    Sidecar->>DaprAppServer: POST /topic-route (CloudEvent)
+    DaprAppServer->>App: handler(CloudEvent[T])
+    App-->>DaprAppServer: SubscriptionResult.Success
+    DaprAppServer-->>Sidecar: {"status":"SUCCESS"}
+```
+
+The server runs each request on its own virtual thread (via `Executors.newVirtualThreadPerTaskExecutor()`).  Handler lambdas may capture the `DaprScope` from the `serve` body to make outbound calls (e.g., saving received messages to state).
+
+### CloudEvent envelope parsing
+
+The Dapr sidecar wraps pub/sub messages in CloudEvents.  `DaprAppServer` extracts the `data` field and decodes it with the registered `JsonCodec[T]`.  If decoding fails, the result is `SubscriptionResult.Drop` (silently discards — avoids poison-pill retry loops).  If the handler itself throws, the result is `SubscriptionResult.Retry`.
+
+### Route collision
+
+Pub/sub routes (default `/<topic>`), input binding paths (`/<bindingName>`), and service invocation paths (`/<methodName>`) all use the same flat namespace.  Users should choose distinct names.  Registration is first-writer-wins.
 
 > Note: `scala.caps.Capability` is **sealed** in nightly Scala 3 and cannot be extended in user code. In the new CC model, any class/trait can serve as a capability through `^` capture annotations. `DaprScope` and `DaprCapability` do not extend `scala.caps.Capability` — they are tracked via `^{scope}` return type annotations on `DaprScope`'s factory methods.
 
@@ -256,6 +313,7 @@ All DAPR errors are surfaced as typed subtypes of `DaprException`:
 | `StateTransactionException` | failed state transactions (subtype of `DaprStateException`) |
 | `DaprConnectionException` | connectivity failures reaching the DAPR sidecar |
 | `JsonDecodeException` | `JsonCodec.decodeOrThrow` (subtype of `DaprException`) |
+| `DaprAppServerException` | `DaprRuntime.serve` HTTP server failures |
 
 The library does not catch exceptions internally — callers use `Try` or `Either` adapters if they want explicit error handling. Under `import language.experimental.saferExceptions`, all `throws` clauses are checked by the compiler.
 
@@ -267,13 +325,17 @@ The library does not catch exceptions internally — callers use `Try` or `Eithe
 scala-safe-dapr/
 ├── project.scala                     # Scala CLI directives (deps, compiler options; nightly Scala)
 ├── src/
-│   ├── Models.scala                  # Opaque types, ETag, StateEntry, ConfigItem, StateOp [safe mode]
-│   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe, non-safe-mode]
+│   ├── Models.scala                  # Opaque types, ETag, StateEntry, ConfigItem, StateOp,
+│   │                                 # SubscriptionResult, CloudEvent, InvocationRequest [safe mode]
+│   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe]
 │   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes) [safe mode]
+│   ├── AppHandlers.scala             # AppHandlers trait for inbound registration [safe mode]
 │   ├── DaprScope.scala               # DaprScope trait with ^{this} return types [safe mode]
-│   ├── DaprRuntime.scala             # DaprRuntime.run entry point [@assumeSafe, non-safe-mode]
+│   ├── DaprRuntime.scala             # DaprRuntime.run + serve entry points [@assumeSafe]
 │   └── internal/
 │       ├── DaprScopeImpl.scala       # DaprScope implementation
+│       ├── MonoOps.scala             # Reactor Mono → blocking bridge (.toFuture().get())
+│       ├── DaprAppServer.scala       # HTTP server (OpenJDK jdk.httpserver) for subscriber side
 │       ├── StateCapabilityImpl.scala
 │       ├── PubSubCapabilityImpl.scala
 │       ├── InvokerCapabilityImpl.scala
@@ -287,12 +349,14 @@ scala-safe-dapr/
     │   ├── JsonCodecTest.scala
     │   ├── CCTest.scala              # capture checking / CanThrow invariants
     │   ├── MockDaprScope.scala       # in-memory mock for unit tests
-    │   └── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
+    │   ├── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
+    │   └── SubscriberTest.scala      # DaprAppServer dispatch logic (no Docker required)
     └── integration/
-        ├── StateIntegrationTest.scala     # TestContainers (not yet implemented)
-        ├── PubSubIntegrationTest.scala    # TestContainers (not yet implemented)
-        ├── InvokerIntegrationTest.scala   # TestContainers (not yet implemented)
-        └── SecretsIntegrationTest.scala   # TestContainers (not yet implemented)
+        ├── DaprTestContainer.scala        # Testcontainers bridge
+        ├── StateIntegrationTest.scala
+        ├── PubSubIntegrationTest.scala
+        ├── InvokerIntegrationTest.scala
+        └── SecretsIntegrationTest.scala
 ```
 
 ---
@@ -303,7 +367,7 @@ scala-safe-dapr/
 |---|---|---|
 | Capability root | `DaprScope` provides factory methods | Single entry point; child capabilities capture scope, preventing escape |
 | JSON library | upickle | Pure Scala, Scala CLI friendly, automatic derivation |
-| Async model | Blocking (`.block()` on `Mono`/`Flux`) | Direct-style compatible; avoids bringing in effect library dependency |
+| Async model | Blocking (`.toFuture().get()` on `Mono`) | Direct-style compatible; avoids bringing in effect library dependency; CAS-based VT-safe bridging |
 | Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |
 | Java SDK visibility | Zero — all Java types in `internal/` | Users see only Scala types; easier to swap SDK in future |
 | Scope safety | Capture checking: capabilities `^{scope}` | Compiler enforces no DAPR resource outlives its `DaprRuntime.run` block (via `import language.experimental.captureChecking`, no `-Ycc` needed) |
@@ -315,5 +379,3 @@ scala-safe-dapr/
 - Reactive/async API (Mono/Flux exposed to users) — use blocking for simplicity.
 - Actor framework (DaprActor interface) — complex enough to warrant separate treatment.
 - Workflow orchestration — complex; requires special determinism constraints.
-- Subscription handling (inbound pub/sub) — requires HTTP server integration.
-- Configuration subscription / streaming — `ConfigUpdate` is defined in `Models.scala` as a stub but no subscription surface is exposed; inbound streaming requires HTTP server integration.

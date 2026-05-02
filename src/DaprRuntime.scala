@@ -63,6 +63,49 @@ object DaprRuntime:
           if p != null then p.addSuppressed(t)
           else throw t
 
+  /** Start an HTTP server on `appPort`, register inbound handlers, then block
+    * until the JVM shuts down or the calling thread is interrupted.
+    *
+    * The Dapr sidecar discovers pub/sub subscriptions via `GET /dapr/subscribe`
+    * and delivers messages / binding events / invocations via `POST /<route>`.
+    * All request handling runs on virtual threads.
+    *
+    * == Usage ==
+    * {{{
+    *   DaprRuntime.serve(appPort = 8080):
+    *     val scope    = summon[DaprScope]
+    *     val handlers = summon[AppHandlers]
+    *
+    *     handlers.subscribe(PubSubName("pubsub"), Topic("orders")) { event =>
+    *       scope.state(StoreName("statestore")).save(event.data.id, event.data)
+    *       SubscriptionResult.Success
+    *     }
+    *
+    *     handlers.onInvoke[OrderRequest]("checkout")[OrderResponse] { req =>
+    *       // handle direct invocation from another Dapr app
+    *       OrderResponse(req.id, "processed")
+    *     }
+    * }}}
+    *
+    * == Sidecar startup order ==
+    * Start the app (this method) before (or at the same time as) the Dapr
+    * sidecar. The sidecar calls `GET /dapr/subscribe` after connecting to
+    * the app port. With Testcontainers, use `DaprContainer.withAppPort` and
+    * `withAppChannelAddress` to point the sidecar at the running server.
+    *
+    * @param appPort the HTTP port on which the app listens (default 8080)
+    * @param body a pure context function that receives a `DaprScope` (for
+    *             outbound calls) and an `AppHandlers` (for inbound registration)
+    */
+  def serve(appPort: Int = 8080)(body: (DaprScope, AppHandlers, CanThrow[Exception]) ?=> Unit): Unit =
+    val server = new internal.DaprAppServer()
+    run {
+      val scope = summon[DaprScope]
+      val ct    = summon[CanThrow[Exception]]
+      body(using scope, server, ct)
+      server.startAndBlock(appPort)
+    }
+
   /** Run `body` with a [[DaprScope]] pointing to a specific sidecar endpoint.
     *
     * Useful in tests (e.g. Testcontainers) where the sidecar runs on a

@@ -2,15 +2,14 @@
 -- SPEC.allium — scala-safe-dapr behavioural specification
 --
 -- Scope: Safe Scala capability library wrapping DAPR building blocks
--- Includes: DaprRuntime lifecycle, StateCapability, PubSubCapability,
+-- Includes: DaprRuntime lifecycle (run + serve), StateCapability, PubSubCapability,
 --           ServiceInvocationCapability, SecretsCapability,
---           ConfigurationCapability, BindingsCapability,
---           DistributedLockCapability, JsonCodec
+--           ConfigurationCapability (get + subscribe), BindingsCapability,
+--           DistributedLockCapability, AppHandlers (inbound pub/sub, bindings,
+--           service invocation), JsonCodec
 -- Excludes:
 --   - DAPR actor framework (separate concern)
 --   - DAPR workflow orchestration (separate concern)
---   - Inbound pub/sub subscription handling (requires HTTP server)
---   - Configuration subscription / streaming (ConfigUpdate stub exists in code, feature excluded v1)
 --   - DAPR sidecar itself (external system)
 --   - Authentication and mTLS (managed by DAPR sidecar)
 -- Dependencies: DAPR sidecar must be running and reachable
@@ -103,6 +102,25 @@ value UnlockStatus {
     -- internal_error: lock exists but is held by a different owner
 }
 
+value SubscriptionResult {
+    -- What a pub/sub subscription handler returns to the sidecar.
+    outcome: success | retry | drop
+    -- success: ACK — do not redeliver
+    -- retry:   NAK — redeliver after the configured retry interval
+    -- drop:    silently discard — do not redeliver, no error
+}
+
+value CloudEvent<T> {
+    id: String
+    source: String
+    spec_version: String
+    type: String
+    topic: String
+    pub_sub_name: String
+    data_content_type: String
+    data: T
+}
+
 variant StateOp {
     -- Sealed ADT matching the code's sealed trait StateOp.
     -- UpsertOp always carries encoded_value (structurally non-nullable).
@@ -162,8 +180,18 @@ entity DaprRuntime {
 entity DaprScope {
     runtime: DaprRuntime
     status: open | closed
-    -- A DaprScope is created by DaprRuntime.run and closed when the block exits.
+    -- A DaprScope is created by DaprRuntime.run (or serve) and closed when the block exits.
     -- Capabilities derived from a scope share its lifetime.
+}
+
+entity AppHandlers {
+    -- Inbound handler registry for DaprRuntime.serve.
+    -- Handlers are registered during the serve body (setup phase) before the
+    -- HTTP server starts accepting requests.
+    scope: DaprScope
+    status: setup | serving
+    -- setup: registration phase (before startAndBlock)
+    -- serving: HTTP server is accepting requests
 }
 
 entity StateCapability {
@@ -508,6 +536,103 @@ rule ConfigGet {
         ConfigGetCompleted(items: Map<String, ConfigItem>)
 }
 
+rule ConfigSubscribe {
+    when: ConfigSubscribeRequested(cap, keys, on_change)
+    -- on_change is a callback invoked on every config update from the sidecar
+
+    requires: cap.status = open
+
+    ensures:
+        ConfigSubscriptionCreated(
+            cap: cap,
+            keys: keys,
+            subscription: AutoCloseable
+        )
+        -- subscription.close() stops the streaming subscription
+        -- on_change is called on a background thread for each update
+        -- If the scope is closed, the subscription is implicitly stopped
+}
+
+-- ---- Inbound Registration (AppHandlers) ----
+
+rule PubSubHandlerRegistered {
+    when: PubSubHandlerRegisterRequested(handlers, pubsub_name, topic, route, handler)
+
+    requires: handlers.status = setup
+
+    ensures:
+        PubSubSubscription.created(
+            pubsub_name: pubsub_name,
+            topic: topic,
+            route: route
+        )
+        -- GET /dapr/subscribe will include this subscription
+        -- POST <route> will dispatch to handler
+}
+
+rule BindingHandlerRegistered {
+    when: BindingHandlerRegisterRequested(handlers, binding_name, handler)
+
+    requires: handlers.status = setup
+
+    ensures:
+        BindingHandler.registered(path: "/" + binding_name)
+        -- POST /<binding_name> will dispatch to handler
+
+}
+
+rule InvocationHandlerRegistered {
+    when: InvocationHandlerRegisterRequested(handlers, method_name, handler)
+
+    requires: handlers.status = setup
+
+    ensures:
+        InvocationHandler.registered(path: "/" + method_name)
+        -- POST /<method_name> will dispatch to handler
+
+}
+
+-- ---- Inbound Dispatch (during serving) ----
+
+rule PubSubMessageDelivered {
+    when: SidecarDeliversPubSubMessage(route, cloud_event_json)
+    -- Sidecar POSTs to <route> with a CloudEvent JSON body
+
+    ensures:
+        let cloud_event = ParseCloudEvent(cloud_event_json)
+        if cloud_event.data decode fails:
+            -- Returns {"status":"DROP"} to sidecar; message silently discarded
+            SubscriptionResult.drop
+        else:
+            let result = handler(cloud_event)
+            -- Returns {"status":"SUCCESS"}, {"status":"RETRY"}, or {"status":"DROP"}
+            result
+        if handler throws:
+            SubscriptionResult.retry
+}
+
+rule BindingEventDelivered {
+    when: SidecarDeliversBindingEvent(binding_name, payload)
+
+    ensures:
+        if handler(payload) succeeds:
+            HTTP 200 returned to sidecar
+        if handler throws:
+            HTTP 500 returned to sidecar
+
+}
+
+rule ServiceInvocationReceived {
+    when: SidecarDeliversInvocation(method_name, request_body)
+
+    ensures:
+        if handler(request) succeeds:
+            HTTP 200 with response JSON returned
+        if handler throws:
+            HTTP 500 returned to sidecar
+
+}
+
 -- ---- Distributed Lock ----
 
 rule LockTryLock {
@@ -677,6 +802,11 @@ surface DaprRuntimeSurface {
         -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
         -- user code can call it without violating safe-mode constraints.
 
+        serve: (app_port: Int, body: (DaprScope, AppHandlers) ?=> Unit) -> Unit
+        -- Starts an HTTP server on app_port, runs body to register handlers,
+        -- blocks until the JVM shuts down or the calling thread is interrupted.
+        -- DaprClient lifecycle matches the server's lifetime.
+
         run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: DaprScope ?=> Any) -> Any
         -- Like run but overrides the DAPR sidecar HTTP and gRPC endpoints.
         -- Intended for integration tests where the sidecar runs on a
@@ -685,7 +815,7 @@ surface DaprRuntimeSurface {
         -- whether the body completes normally or throws.
 
     @guarantee ResourceCleanup
-        -- DaprRuntime.run (and run_with_endpoints) always closes the DaprClient
+        -- DaprRuntime.run, serve, and run_with_endpoints always close the DaprClient
         -- on exit, whether the body completes normally or throws.
 }
 
@@ -752,6 +882,35 @@ surface ConfigurationSurface {
 
     exposes:
         get: (keys: List<String>) -> Map<String, ConfigItem>
+        subscribe: (keys: List<String>, on_change: ConfigUpdate -> Unit) -> AutoCloseable
+        -- Streams config changes from sidecar; close the AutoCloseable to stop
+}
+
+surface AppHandlersSurface {
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        subscribe: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Unit
+        subscribe_route: (pubsub_name: PubSubName, topic: Topic, route: String, handler: CloudEvent -> SubscriptionResult) -> Unit
+        on_binding: (binding_name: BindingName, handler: Any -> Unit) -> Unit
+        on_invoke: (method_name: String, handler: Any -> Any) -> Unit
+
+    @guarantee SubscriptionDiscovery
+        -- GET /dapr/subscribe returns all registered pub/sub subscriptions
+        -- before any request is handled
+}
+
+surface ServeSurface {
+    facing user: UserCode
+
+    exposes:
+        serve: (app_port: Int, body: (DaprScope, AppHandlers) ?=> Unit) -> Unit
+        -- Starts HTTP server, runs body to register handlers, then blocks.
+        -- DaprScope lifetime matches the server's lifetime.
+        -- Returns when the calling thread is interrupted (JVM shutdown).
 }
 
 surface BindingsSurface {

@@ -260,6 +260,10 @@ private class MockConfigurationCapability(
     checkOpen()
     keys.flatMap(k => store.get(k).map(k -> _)).toMap
 
+  def subscribe(keys: Seq[String])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException =
+    checkOpen()
+    () => () // mock: no-op subscription
+
 // ---------------------------------------------------------------------------
 
 private class MockBindingsCapability(val bindingName: BindingName, scope: MockDaprScope) extends BindingsCapability:

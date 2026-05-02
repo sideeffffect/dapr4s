@@ -131,3 +131,41 @@ case class BulkPublishResult(failedEntries: List[String])
 
 /** Represents a configuration update notification. */
 case class ConfigUpdate(storeName: String, items: Map[String, ConfigItem])
+
+// ---------------------------------------------------------------------------
+// Pub/Sub subscription (incoming messages)
+// ---------------------------------------------------------------------------
+
+/** What a subscription handler should do with the received message. */
+enum SubscriptionResult:
+  /** ACK — do not redeliver. */
+  case Success
+  /** NAK — redeliver after the configured retry interval. */
+  case Retry
+  /** Silently discard — do not redeliver, do not report an error. */
+  case Drop
+
+/** An incoming pub/sub CloudEvent delivered by the Dapr sidecar. */
+case class CloudEvent[T](
+  id: String,
+  source: String,
+  specVersion: String,
+  `type`: String,
+  topic: String,
+  pubSubName: String,
+  dataContentType: String,
+  data: T
+)
+
+// ---------------------------------------------------------------------------
+// Service invocation (as a target)
+// ---------------------------------------------------------------------------
+
+/** An incoming service invocation request. `httpMethod` is the HTTP verb
+  * (GET, POST, PUT, DELETE, etc.) used by the calling app.
+  */
+case class InvocationRequest[T](
+  methodName: String,
+  httpMethod: String,
+  data: T
+)
