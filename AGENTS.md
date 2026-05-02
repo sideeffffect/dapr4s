@@ -149,9 +149,8 @@ When a question about library internals, JVM behaviour, or SDK design comes up:
 ## Cellar — JVM API lookup
 
 Use the `cellar` skill to look up exact type signatures, members, and Javadoc for any JVM
-dependency by Maven coordinate. Prefer it over cloning repos or manually probing class files —
-it is faster and returns LLM-ready output. Use it proactively before writing Java interop code
-and whenever asserting anything about the Dapr SDK's public API surface.
+library on Maven Central — Java, Scala, or otherwise. Prefer it over cloning repos or manually
+probing class files whenever you need to verify an API.
 
 ---
 
