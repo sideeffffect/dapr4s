@@ -19,7 +19,25 @@ object DaprRuntime:
     * If both `body` and `scope.close()` throw, the close exception is
     * added as a suppressed exception on the primary throwable.
     *
-    * @param body a function that receives a `DaprScope` as a context parameter
+    * == Virtual threads ==
+    *
+    * For best throughput, call `run` from a virtual thread (JDK 21+).
+    * Each I/O call inside the body bridges to the calling thread via
+    * `CompletableFuture.get()`, which parks the virtual thread and frees its
+    * carrier platform thread for other work during the wait.  On a platform
+    * thread the same calls block normally — correctness is unaffected, only
+    * throughput differs.
+    *
+    * {{{
+    *   // Plain Scala / Java main():
+    *   Thread.ofVirtual().start(() => DaprRuntime.run { ... }).join()
+    *
+    *   // Spring Boot 3.2+:  spring.threads.virtual.enabled=true
+    *   // Quarkus:            @RunOnVirtualThread on the endpoint method
+    *   // Helidon 4:          virtual threads by default — no annotation needed
+    * }}}
+    *
+    * @param body a pure context function that receives a `DaprScope`
     * @return the value returned by `body`
     */
   def run[T](body: (DaprScope, CanThrow[Exception]) ?=> T): T =
@@ -47,9 +65,7 @@ object DaprRuntime:
     * System properties are reset to their original values after the block
     * completes (whether normally or exceptionally).
     *
-    * Note: `.run` can be called from a virtual thread (JDK 25+). The
-    * blocking `.block()` calls in capability implementations park the virtual
-    * thread rather than blocking an OS thread, so throughput is maintained.
+    * See [[run]] for virtual-thread usage guidance.
     */
   def runWithEndpoints[T](httpEndpoint: String, grpcEndpoint: String)(body: (DaprScope, CanThrow[Exception]) ?=> T): T =
     val prevHttp  = Option(System.getProperty("dapr.http.endpoint"))

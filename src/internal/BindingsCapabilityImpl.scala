@@ -2,6 +2,7 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import language.experimental.saferExceptions
+import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class BindingsCapabilityImpl(
@@ -19,7 +20,7 @@ private[safe] final class BindingsCapabilityImpl(
       val reqJson = summon[JsonCodec[Req]].encode(data)
       val rawResp: String | Null = scope.client
         .invokeBinding(bindingName.value, operation, reqJson, classOf[String])
-        .block()
+        .awaitResult()
       if rawResp == null || rawResp.isEmpty then None
       else
         val decoded = JsonCodec.decodeOrThrow[Resp](rawResp) match
@@ -35,7 +36,7 @@ private[safe] final class BindingsCapabilityImpl(
     checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
-      scope.client.invokeBinding(bindingName.value, operation, reqJson).block(): Unit
+      scope.client.invokeBinding(bindingName.value, operation, reqJson).awaitResult(): Unit
     catch
       case e: DaprBindingsException => throw e
       case e: DaprException => throw DaprBindingsException(e.getMessage, e)

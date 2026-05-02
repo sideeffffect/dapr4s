@@ -4,6 +4,7 @@ import dapr.safe.*
 import language.experimental.saferExceptions
 
 import scala.jdk.CollectionConverters.*
+import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class SecretsCapabilityImpl(
@@ -19,7 +20,7 @@ private[safe] final class SecretsCapabilityImpl(
     checkOpen()
     try
       val result: java.util.Map[String, String] | Null =
-        scope.client.getSecret(storeName.value, key).block()
+        scope.client.getSecret(storeName.value, key).awaitResult()
       if result == null || result.isEmpty then
         throw DaprSecretsException(s"Secret '$key' not found in store '${storeName.value}'")
       val scalaMap = result.asScala
@@ -37,7 +38,7 @@ private[safe] final class SecretsCapabilityImpl(
     checkOpen()
     try
       val result: java.util.Map[String, java.util.Map[String, String]] | Null =
-        scope.client.getBulkSecret(storeName.value).block()
+        scope.client.getBulkSecret(storeName.value).awaitResult()
       if result == null then return Map.empty
       result.asScala.flatMap { case (secretKey, subMap) =>
         if subMap == null then Map.empty

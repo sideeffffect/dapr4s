@@ -6,6 +6,7 @@ import io.dapr.client.domain.TransactionalStateOperation.OperationType
 import language.experimental.saferExceptions
 
 import scala.jdk.CollectionConverters.*
+import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class StateCapabilityImpl(
@@ -21,7 +22,7 @@ private[safe] final class StateCapabilityImpl(
     checkOpen()
     try
       val state: DaprState[String] | Null =
-        scope.client.getState(storeName.value, key, classOf[String]).block()
+        scope.client.getState(storeName.value, key, classOf[String]).awaitResult()
       if state == null then return None
       val raw: String | Null = state.getValue
       if raw == null || raw.isEmpty then None
@@ -38,7 +39,7 @@ private[safe] final class StateCapabilityImpl(
     checkOpen()
     try
       val state: DaprState[String] | Null =
-        scope.client.getState(storeName.value, key, classOf[String]).block()
+        scope.client.getState(storeName.value, key, classOf[String]).awaitResult()
       if state == null then return StateEntry(None, None)
       val raw: String | Null  = state.getValue
       val etag: String | Null = state.getEtag
@@ -70,7 +71,7 @@ private[safe] final class StateCapabilityImpl(
     checkOpen()
     try
       val json = summon[JsonCodec[T]].encode(value)
-      scope.client.saveState(storeName.value, key, json).block(): Unit
+      scope.client.saveState(storeName.value, key, json).awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
@@ -96,7 +97,7 @@ private[safe] final class StateCapabilityImpl(
       val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
       scope.client
         .saveState(storeName.value, key, etag.value, json, opts)
-        .block(): Unit
+        .awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
@@ -107,7 +108,7 @@ private[safe] final class StateCapabilityImpl(
   def delete(key: String): Unit throws DaprStateException =
     checkOpen()
     try
-      scope.client.deleteState(storeName.value, key).block(): Unit
+      scope.client.deleteState(storeName.value, key).awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
@@ -118,7 +119,7 @@ private[safe] final class StateCapabilityImpl(
     checkOpen()
     try
       val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
-      scope.client.deleteState(storeName.value, key, etag.value, opts).block(): Unit
+      scope.client.deleteState(storeName.value, key, etag.value, opts).awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
@@ -133,7 +134,7 @@ private[safe] final class StateCapabilityImpl(
         ops.map(toJavaOp).asJava
       scope.client
         .executeStateTransaction(storeName.value, javaOps)
-        .block(): Unit
+        .awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
@@ -145,7 +146,7 @@ private[safe] final class StateCapabilityImpl(
     try
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val result: io.dapr.client.domain.QueryStateResponse[String] | Null =
-        previewClient.queryState(storeName.value, query.value, classOf[String]).block()
+        previewClient.queryState(storeName.value, query.value, classOf[String]).awaitResult()
       if result == null then return List.empty
       val items = result.getResults
       if items == null then return List.empty

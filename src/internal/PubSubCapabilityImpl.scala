@@ -4,6 +4,7 @@ import dapr.safe.*
 import language.experimental.saferExceptions
 
 import scala.jdk.CollectionConverters.*
+import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class PubSubCapabilityImpl(
@@ -19,7 +20,7 @@ private[safe] final class PubSubCapabilityImpl(
     checkOpen()
     try
       val json = summon[JsonCodec[T]].encode(data)
-      scope.client.publishEvent(pubsubName.value, topic.value, json).block(): Unit
+      scope.client.publishEvent(pubsubName.value, topic.value, json).awaitResult(): Unit
     catch
       case e: DaprPubSubException => throw e
       case e: io.dapr.exceptions.DaprException =>
@@ -36,7 +37,7 @@ private[safe] final class PubSubCapabilityImpl(
       val javaMeta: java.util.Map[String, String] = metadata.asJava
       scope.client
         .publishEvent(pubsubName.value, topic.value, json, javaMeta)
-        .block(): Unit
+        .awaitResult(): Unit
     catch
       case e: DaprPubSubException => throw e
       case e: io.dapr.exceptions.DaprException =>
@@ -55,7 +56,7 @@ private[safe] final class PubSubCapabilityImpl(
           )
         }.asJava
       val response =
-        scope.client.publishEvents(pubsubName.value, topic.value, "application/json", javaEntries).block()
+        scope.client.publishEvents(pubsubName.value, topic.value, "application/json", javaEntries).awaitResult()
       if response == null then return BulkPublishResult(List.empty)
       val failedItems = response.getFailedEntries
       if failedItems == null then BulkPublishResult(List.empty)

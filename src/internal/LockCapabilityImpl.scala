@@ -3,6 +3,7 @@ package dapr.safe.internal
 import dapr.safe.*
 import io.dapr.client.domain.{LockRequest, UnlockRequest, UnlockResponseStatus}
 import language.experimental.saferExceptions
+import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class LockCapabilityImpl(
@@ -20,7 +21,7 @@ private[safe] final class LockCapabilityImpl(
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val request = new LockRequest(storeName.value, resourceId, lockOwner, expirySeconds)
       val result: java.lang.Boolean | Null =
-        previewClient.tryLock(request).block()
+        previewClient.tryLock(request).awaitResult()
       if result == null then false
       else result.booleanValue()
     catch
@@ -36,7 +37,7 @@ private[safe] final class LockCapabilityImpl(
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val request = new UnlockRequest(storeName.value, resourceId, lockOwner)
       val status: UnlockResponseStatus | Null =
-        previewClient.unlock(request).block()
+        previewClient.unlock(request).awaitResult()
       if status == null then UnlockStatus.InternalError
       else
         status match

@@ -3,6 +3,7 @@ package dapr.safe.internal
 import dapr.safe.*
 import io.dapr.client.domain.HttpExtension
 import language.experimental.saferExceptions
+import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class InvokerCapabilityImpl(
@@ -25,7 +26,7 @@ private[safe] final class InvokerCapabilityImpl(
           HttpExtension.POST,
           classOf[String]
         )
-        .block()
+        .awaitResult()
       JsonCodec.decodeOrThrow[Resp](rawResp) match
         case v => v
     catch
@@ -45,7 +46,7 @@ private[safe] final class InvokerCapabilityImpl(
           HttpExtension.GET,
           classOf[String]
         )
-        .block()
+        .awaitResult()
       JsonCodec.decodeOrThrow[Resp](rawResp) match
         case v => v
     catch

@@ -5,6 +5,7 @@ import io.dapr.client.domain.{ConfigurationItem as JConfigItem}
 import language.experimental.saferExceptions
 
 import scala.jdk.CollectionConverters.*
+import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class ConfigCapabilityImpl(
@@ -22,7 +23,7 @@ private[safe] final class ConfigCapabilityImpl(
       val javaKeys: java.util.List[String] = keys.asJava
       val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
       val result: java.util.Map[String, JConfigItem] | Null =
-        scope.client.getConfiguration(storeName.value, javaKeys, emptyMeta).block()
+        scope.client.getConfiguration(storeName.value, javaKeys, emptyMeta).awaitResult()
       if result == null then return Map.empty
       result.asScala.map { case (k, item) =>
         val v: String | Null       = item.getValue
