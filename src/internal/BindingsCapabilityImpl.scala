@@ -14,12 +14,12 @@ private[safe] final class BindingsCapabilityImpl(
     if scope.isClosed then
       throw IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def invoke[Req: JsonCodec](operation: String, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
+  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
     checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
       val rawResp: String | Null = scope.client
-        .invokeBinding(bindingName.value, operation, reqJson, classOf[String])
+        .invokeBinding(bindingName.value, operation.value, reqJson, classOf[String])
         .awaitResult()
       if rawResp == null || rawResp.isEmpty then None
       else
@@ -32,11 +32,11 @@ private[safe] final class BindingsCapabilityImpl(
       case e: io.dapr.exceptions.DaprException =>
         throw DaprBindingsException(e.getMessage.nn, e)
 
-  def invokeOneWay[Req: JsonCodec](operation: String, data: Req): Unit throws DaprBindingsException =
+  def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req): Unit throws DaprBindingsException =
     checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
-      scope.client.invokeBinding(bindingName.value, operation, reqJson).awaitResult(): Unit
+      scope.client.invokeBinding(bindingName.value, operation.value, reqJson).awaitResult(): Unit
     catch
       case e: DaprBindingsException => throw e
       case e: DaprException => throw DaprBindingsException(e.getMessage, e)

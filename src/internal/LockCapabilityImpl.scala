@@ -15,11 +15,11 @@ private[safe] final class LockCapabilityImpl(
     if scope.isClosed then
       throw IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def tryLock(resourceId: String, lockOwner: String, expirySeconds: Int): Boolean throws DaprLockException =
+  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int): Boolean throws DaprLockException =
     checkOpen()
     try
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
-      val request = new LockRequest(storeName.value, resourceId, lockOwner, expirySeconds)
+      val request = new LockRequest(storeName.value, resourceId.value, lockOwner.value, expirySeconds)
       val result: java.lang.Boolean | Null =
         previewClient.tryLock(request).awaitResult()
       if result == null then false
@@ -31,11 +31,11 @@ private[safe] final class LockCapabilityImpl(
       case e: ClassCastException =>
         throw DaprLockException("Distributed lock requires DaprPreviewClient (not available)", e)
 
-  def unlock(resourceId: String, lockOwner: String): UnlockStatus throws DaprLockException =
+  def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus throws DaprLockException =
     checkOpen()
     try
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
-      val request = new UnlockRequest(storeName.value, resourceId, lockOwner)
+      val request = new UnlockRequest(storeName.value, resourceId.value, lockOwner.value)
       val status: UnlockResponseStatus | Null =
         previewClient.unlock(request).awaitResult()
       if status == null then UnlockStatus.InternalError

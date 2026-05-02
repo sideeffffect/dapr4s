@@ -50,7 +50,7 @@ private[safe] final class PubSubCapabilityImpl(
         entries.map { entry =>
           val json = summon[JsonCodec[T]].encode(entry.event)
           new io.dapr.client.domain.BulkPublishEntry[String](
-            entry.entryId,
+            entry.entryId.value,
             json,
             "application/json"
           )
@@ -64,7 +64,7 @@ private[safe] final class PubSubCapabilityImpl(
         val failedIds = failedItems.asScala.map { item =>
           val e = item.getEntry
           if e == null then "" else e.getEntryId.nn
-        }.filter(_.nonEmpty).toList
+        }.filter(_.nonEmpty).map(BulkEntryId(_)).toList
         BulkPublishResult(failedIds)
     catch
       case e: DaprPubSubException => throw e

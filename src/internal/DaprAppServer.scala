@@ -44,12 +44,12 @@ private[safe] final class DaprAppServer extends AppHandlers:
   def subscribe[T: JsonCodec](pubsubName: PubSubName, topic: Topic)(
     handler: CloudEvent[T] => SubscriptionResult
   ): Unit =
-    subscribe(pubsubName, topic, "/" + topic.value)(handler)
+    subscribe(pubsubName, topic, Route("/" + topic.value))(handler)
 
-  def subscribe[T: JsonCodec](pubsubName: PubSubName, topic: Topic, route: String)(
+  def subscribe[T: JsonCodec](pubsubName: PubSubName, topic: Topic, route: Route)(
     handler: CloudEvent[T] => SubscriptionResult
   ): Unit =
-    val path  = if route.startsWith("/") then route else "/" + route
+    val path  = if route.value.startsWith("/") then route.value else "/" + route.value
     val codec = summon[JsonCodec[T]]
     pubSubEntries.add(Array(pubsubName.value, topic.value, path))
     val fn: String => SubscriptionResult = bodyJson =>
@@ -68,18 +68,18 @@ private[safe] final class DaprAppServer extends AppHandlers:
           )
     bindingRoutes.put(path, fn.asInstanceOf[AnyRef])
 
-  def onInvoke[Req: JsonCodec](methodName: String)[Resp: JsonCodec](
+  def onInvoke[Req: JsonCodec](methodName: MethodName)[Resp: JsonCodec](
     handler: Req => Resp
   ): Unit =
     val reqCodec  = summon[JsonCodec[Req]]
     val respCodec = summon[JsonCodec[Resp]]
-    val path = "/" + methodName
+    val path = "/" + methodName.value
     val fn: String => String = bodyJson =>
       reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
         case Right(req) => respCodec.encode(handler(req))
         case Left(e)    =>
           throw DaprAppServerException(
-            s"Cannot decode invocation request for '$methodName': ${e.getMessage}", e
+            s"Cannot decode invocation request for '${methodName.value}': ${e.getMessage}", e
           )
     invokeRoutes.put(path, fn.asInstanceOf[AnyRef])
 
@@ -216,8 +216,8 @@ private[safe] final class DaprAppServer extends AppHandlers:
               source          = env.get("source").map(_.str).getOrElse(""),
               specVersion     = env.get("specversion").map(_.str).getOrElse("1.0"),
               eventType       = env.get("type").map(_.str).getOrElse(""),
-              topic           = env.get("topic").map(_.str).getOrElse(defaultTopic),
-              pubSubName      = env.get("pubsubname").map(_.str).getOrElse(defaultPubsubName),
+              topic           = Topic(env.get("topic").map(_.str).getOrElse(defaultTopic)),
+              pubSubName      = PubSubName(env.get("pubsubname").map(_.str).getOrElse(defaultPubsubName)),
               dataContentType = env.get("datacontenttype").map(_.str).getOrElse("application/json"),
               data            = v
             )

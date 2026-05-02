@@ -65,6 +65,65 @@ object StateQuery:
   def apply(query: String): StateQuery = query
   extension (s: StateQuery) def value: String = s
 
+opaque type StateKey = String
+object StateKey:
+  def apply(s: String): StateKey = s
+  extension (k: StateKey) def value: String = k
+
+opaque type MethodName = String
+object MethodName:
+  def apply(s: String): MethodName =
+    require(s.nonEmpty, "MethodName must not be empty")
+    s
+  extension (n: MethodName) def value: String = n
+
+opaque type BindingOperation = String
+object BindingOperation:
+  def apply(s: String): BindingOperation =
+    require(s.nonEmpty, "BindingOperation must not be empty")
+    s
+  extension (n: BindingOperation) def value: String = n
+
+opaque type SecretKey = String
+object SecretKey:
+  def apply(s: String): SecretKey = s
+  extension (k: SecretKey) def value: String = k
+
+opaque type ConfigKey = String
+object ConfigKey:
+  def apply(s: String): ConfigKey = s
+  extension (k: ConfigKey) def value: String = k
+
+opaque type LockResourceId = String
+object LockResourceId:
+  def apply(s: String): LockResourceId =
+    require(s.nonEmpty, "LockResourceId must not be empty")
+    s
+  extension (id: LockResourceId) def value: String = id
+
+opaque type LockOwner = String
+object LockOwner:
+  def apply(s: String): LockOwner =
+    require(s.nonEmpty, "LockOwner must not be empty")
+    s
+  extension (o: LockOwner) def value: String = o
+
+opaque type BulkEntryId = String
+object BulkEntryId:
+  def apply(s: String): BulkEntryId = s
+  extension (id: BulkEntryId) def value: String = id
+
+opaque type Route = String
+object Route:
+  def apply(s: String): Route =
+    require(s.nonEmpty, "Route must not be empty")
+    s
+  extension (r: Route) def value: String = r
+
+/** Standard HTTP methods for service invocation requests. */
+enum HttpMethod:
+  case Get, Post, Put, Patch, Delete, Head, Options
+
 // ---------------------------------------------------------------------------
 // Value types
 // ---------------------------------------------------------------------------
@@ -74,7 +133,7 @@ final case class StateEntry[T](value: Option[T], etag: Option[ETag])
 
 /** A single item returned by the configuration API. */
 final case class ConfigItem(
-    key: String,
+    key: ConfigKey,
     value: String,
     version: String,
     metadata: Map[String, String] = Map.empty
@@ -93,15 +152,15 @@ object StateOp:
     * when the operation is processed in [[StateCapability.transaction]].
     * Use the companion `apply[T]` smart constructor to encode a typed value.
     */
-  final case class UpsertOp(key: String, encodedValue: String, etag: Option[ETag]) extends StateOp
+  final case class UpsertOp(key: StateKey, encodedValue: String, etag: Option[ETag]) extends StateOp
 
   object UpsertOp:
     /** Smart constructor that encodes `value` immediately using its [[JsonCodec]]. */
-    def apply[T: JsonCodec](key: String, value: T, etag: Option[ETag] = None): UpsertOp =
+    def apply[T: JsonCodec](key: StateKey, value: T, etag: Option[ETag] = None): UpsertOp =
       new UpsertOp(key, summon[JsonCodec[T]].encode(value), etag)
 
   /** Delete a key with an optional ETag for optimistic concurrency. */
-  final case class DeleteOp(key: String, etag: Option[ETag] = None) extends StateOp
+  final case class DeleteOp(key: StateKey, etag: Option[ETag] = None) extends StateOp
 
 // ---------------------------------------------------------------------------
 // Distributed Lock
@@ -118,17 +177,17 @@ enum UnlockStatus:
 // ---------------------------------------------------------------------------
 
 /** An entry in a bulk publish request. */
-final case class BulkPublishEntry[T](entryId: String, event: T)
+final case class BulkPublishEntry[T](entryId: BulkEntryId, event: T)
 
 /** Result of a bulk publish — contains IDs of any failed entries. */
-final case class BulkPublishResult(failedEntries: List[String])
+final case class BulkPublishResult(failedEntries: List[BulkEntryId])
 
 // ---------------------------------------------------------------------------
 // Configuration subscription
 // ---------------------------------------------------------------------------
 
 /** Represents a configuration update notification. */
-final case class ConfigUpdate(storeName: String, items: Map[String, ConfigItem])
+final case class ConfigUpdate(storeName: ConfigStoreName, items: Map[ConfigKey, ConfigItem])
 
 // ---------------------------------------------------------------------------
 // Pub/Sub subscription (incoming messages)
@@ -149,8 +208,8 @@ final case class CloudEvent[T](
   source: String,
   specVersion: String,
   eventType: String,
-  topic: String,
-  pubSubName: String,
+  topic: Topic,
+  pubSubName: PubSubName,
   dataContentType: String,
   data: T
 )
@@ -163,7 +222,7 @@ final case class CloudEvent[T](
   * (GET, POST, PUT, DELETE, etc.) used by the calling app.
   */
 final case class InvocationRequest[T](
-  methodName: String,
-  httpMethod: String,
+  methodName: MethodName,
+  httpMethod: HttpMethod,
   data: T
 )

@@ -16,26 +16,26 @@ private[safe] final class SecretsCapabilityImpl(
     if scope.isClosed then
       throw IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def get(key: String): String throws DaprSecretsException =
+  def get(key: SecretKey): String throws DaprSecretsException =
     checkOpen()
     try
       val result: java.util.Map[String, String] | Null =
-        scope.client.getSecret(storeName.value, key).awaitResult()
+        scope.client.getSecret(storeName.value, key.value).awaitResult()
       if result == null || result.isEmpty then
-        throw DaprSecretsException(s"Secret '$key' not found in store '${storeName.value}'")
+        throw DaprSecretsException(s"Secret '${key.value}' not found in store '${storeName.value}'")
       val scalaMap = result.asScala
-      scalaMap.get(key) match
+      scalaMap.get(key.value) match
         case Some(v) => v
         case None =>
           scalaMap.valuesIterator.nextOption() match
             case Some(v) if scalaMap.sizeIs == 1 => v
-            case _ => throw DaprSecretsException(s"Secret key '$key' not found in store '${storeName.value}'")
+            case _ => throw DaprSecretsException(s"Secret key '${key.value}' not found in store '${storeName.value}'")
     catch
       case e: DaprSecretsException => throw e
       case e: io.dapr.exceptions.DaprException =>
         throw DaprSecretsException(e.getMessage.nn, e)
 
-  def getBulk(): Map[String, String] throws DaprSecretsException =
+  def getBulk(): Map[SecretKey, String] throws DaprSecretsException =
     checkOpen()
     try
       val result: java.util.Map[String, java.util.Map[String, String]] | Null =
@@ -44,7 +44,7 @@ private[safe] final class SecretsCapabilityImpl(
       result.asScala.flatMap { case (secretKey, subMap) =>
         if subMap == null then Map.empty
         else subMap.asScala.map { case (subKey, v) =>
-          s"$secretKey/$subKey" -> v
+          SecretKey(s"$secretKey/$subKey") -> v
         }.toMap
       }.toMap
     catch

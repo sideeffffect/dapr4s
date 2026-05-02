@@ -90,59 +90,59 @@ private class MockStateCapability(
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def get[T: JsonCodec](key: String): Option[T] throws DaprStateException =
+  def get[T: JsonCodec](key: StateKey): Option[T] throws DaprStateException =
     checkOpen()
-    store.get(key).flatMap { case (json, _) =>
+    store.get(key.value).flatMap { case (json, _) =>
       summon[JsonCodec[T]].decode(json).toOption
     }
 
-  def getWithETag[T: JsonCodec](key: String): StateEntry[T] throws DaprStateException =
+  def getWithETag[T: JsonCodec](key: StateKey): StateEntry[T] throws DaprStateException =
     checkOpen()
-    store.get(key) match
+    store.get(key.value) match
       case None =>
         StateEntry(None, None)
       case Some((json, etag)) =>
         val v = summon[JsonCodec[T]].decode(json).toOption
         StateEntry(v, Some(ETag(etag)))
 
-  def getBulk[T: JsonCodec](keys: Seq[String]): Map[String, StateEntry[T]] throws DaprStateException =
+  def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]] throws DaprStateException =
     checkOpen()
     keys.map(key => key -> getWithETag[T](key)).toMap
 
-  def save[T: JsonCodec](key: String, value: T): Unit throws DaprStateException =
+  def save[T: JsonCodec](key: StateKey, value: T): Unit throws DaprStateException =
     checkOpen()
     val json = summon[JsonCodec[T]].encode(value)
     etagCounter += 1
-    store(key) = (json, etagCounter.toString)
+    store(key.value) = (json, etagCounter.toString)
 
-  def saveBulk[T: JsonCodec](entries: Seq[(String, T)]): Unit throws DaprStateException =
+  def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit throws DaprStateException =
     checkOpen()
     entries.foreach { case (key, value) => save[T](key, value) }
 
-  def saveWithETag[T: JsonCodec](key: String, value: T, etag: ETag): Unit throws DaprStateException =
+  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Unit throws DaprStateException =
     checkOpen()
     if etag.value.nonEmpty then
-      store.get(key) match
+      store.get(key.value) match
         case None => throw ETagMismatchException(key, etag)
         case Some((_, currentEtag)) if currentEtag != etag.value =>
           throw ETagMismatchException(key, etag)
         case _ => // proceed
     val json = summon[JsonCodec[T]].encode(value)
     etagCounter += 1
-    store(key) = (json, etagCounter.toString)
+    store(key.value) = (json, etagCounter.toString)
 
-  def delete(key: String): Unit throws DaprStateException =
+  def delete(key: StateKey): Unit throws DaprStateException =
     checkOpen()
-    store.remove(key)
+    store.remove(key.value)
     ()
 
-  def deleteWithETag(key: String, etag: ETag): Unit throws DaprStateException =
+  def deleteWithETag(key: StateKey, etag: ETag): Unit throws DaprStateException =
     checkOpen()
-    store.get(key) match
+    store.get(key.value) match
       case Some((_, currentEtag)) if currentEtag != etag.value =>
         throw ETagMismatchException(key, etag)
       case _ =>
-        store.remove(key)
+        store.remove(key.value)
         ()
 
   def transaction(ops: Seq[StateOp]): Unit throws DaprStateException =
@@ -150,11 +150,11 @@ private class MockStateCapability(
     // Validate all first, then apply atomically (simple mock — in-memory)
     ops.foreach:
       case StateOp.DeleteOp(key, Some(etag)) =>
-        store.get(key).foreach { case (_, currentEtag) =>
+        store.get(key.value).foreach { case (_, currentEtag) =>
           if currentEtag != etag.value then throw ETagMismatchException(key, etag)
         }
       case StateOp.UpsertOp(key, _, Some(etag)) =>
-        store.get(key).foreach { case (_, currentEtag) =>
+        store.get(key.value).foreach { case (_, currentEtag) =>
           if currentEtag != etag.value then throw ETagMismatchException(key, etag)
         }
       case _ => ()
@@ -162,9 +162,9 @@ private class MockStateCapability(
     ops.foreach:
       case StateOp.UpsertOp(key, encodedValue, _) =>
         etagCounter += 1
-        store(key) = (encodedValue, etagCounter.toString)
+        store(key.value) = (encodedValue, etagCounter.toString)
       case StateOp.DeleteOp(key, _) =>
-        store.remove(key)
+        store.remove(key.value)
 
   def queryState[T: JsonCodec](query: StateQuery): List[StateEntry[T]] throws DaprStateException =
     checkOpen()
@@ -214,13 +214,13 @@ private class MockServiceInvocationCapability(scope: MockDaprScope) extends Serv
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def invoke[Req: JsonCodec](appId: AppId, method: String, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
+  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
     checkOpen()
     throw UnsupportedOperationException(
       "MockServiceInvocationCapability does not support invoke — use integration tests"
     )
 
-  def invokeGet[Resp: JsonCodec](appId: AppId, method: String): Resp throws DaprServiceInvocationException =
+  def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName): Resp throws DaprServiceInvocationException =
     checkOpen()
     throw UnsupportedOperationException(
       "MockServiceInvocationCapability does not support invokeGet — use integration tests"
@@ -237,13 +237,13 @@ private class MockSecretsCapability(
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def get(key: String): String throws DaprSecretsException =
+  def get(key: SecretKey): String throws DaprSecretsException =
     checkOpen()
-    store.getOrElse(key, throw DaprSecretsException(s"Secret '$key' not found"))
+    store.getOrElse(key.value, throw DaprSecretsException(s"Secret '${key.value}' not found"))
 
-  def getBulk(): Map[String, String] throws DaprSecretsException =
+  def getBulk(): Map[SecretKey, String] throws DaprSecretsException =
     checkOpen()
-    store.toMap
+    store.map { case (k, v) => SecretKey(k) -> v }.toMap
 
 // ---------------------------------------------------------------------------
 
@@ -256,11 +256,11 @@ private class MockConfigurationCapability(
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def get(keys: Seq[String]): Map[String, ConfigItem] throws DaprConfigurationException =
+  def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] throws DaprConfigurationException =
     checkOpen()
-    keys.flatMap(k => store.get(k).map(k -> _)).toMap
+    keys.flatMap(k => store.get(k.value).map(ConfigKey(k.value) -> _)).toMap
 
-  def subscribe(keys: Seq[String])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException =
+  def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException =
     checkOpen()
     () => () // mock: no-op subscription
 
@@ -271,11 +271,11 @@ private class MockBindingsCapability(val bindingName: BindingName, scope: MockDa
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def invoke[Req: JsonCodec](operation: String, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
+  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
     checkOpen()
     None // mock: no binding response
 
-  def invokeOneWay[Req: JsonCodec](operation: String, data: Req): Unit throws DaprBindingsException =
+  def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req): Unit throws DaprBindingsException =
     checkOpen()
     () // mock: fire-and-forget, do nothing
 
@@ -291,18 +291,18 @@ private class MockDistributedLockCapability(
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def tryLock(resourceId: String, lockOwner: String, expirySeconds: Int): Boolean throws DaprLockException =
+  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int): Boolean throws DaprLockException =
     checkOpen()
-    if locks.contains(resourceId) then false
+    if locks.contains(resourceId.value) then false
     else
-      locks(resourceId) = lockOwner
+      locks(resourceId.value) = lockOwner.value
       true
 
-  def unlock(resourceId: String, lockOwner: String): UnlockStatus throws DaprLockException =
+  def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus throws DaprLockException =
     checkOpen()
-    locks.get(resourceId) match
-      case None                              => UnlockStatus.LockNotFound
-      case Some(owner) if owner != lockOwner => UnlockStatus.InternalError
+    locks.get(resourceId.value) match
+      case None                                        => UnlockStatus.LockNotFound
+      case Some(owner) if owner != lockOwner.value     => UnlockStatus.InternalError
       case Some(_) =>
-        locks.remove(resourceId)
+        locks.remove(resourceId.value)
         UnlockStatus.Success

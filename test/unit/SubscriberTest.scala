@@ -35,15 +35,15 @@ class SubscriberTest extends FunSuite:
       source          = "test",
       specVersion     = "1.0",
       eventType       = "com.example.event",
-      topic           = "orders",
-      pubSubName      = "pubsub",
+      topic           = Topic("orders"),
+      pubSubName      = PubSubName("pubsub"),
       dataContentType = "application/json",
       data            = "hello"
     )
     assertEquals(event.id, "abc")
     assertEquals(event.source, "test")
-    assertEquals(event.topic, "orders")
-    assertEquals(event.pubSubName, "pubsub")
+    assertEquals(event.topic, Topic("orders"))
+    assertEquals(event.pubSubName, PubSubName("pubsub"))
     assertEquals(event.data, "hello")
 
   // -------------------------------------------------------------------------
@@ -144,7 +144,7 @@ class SubscriberTest extends FunSuite:
 
   test("unit: DaprAppServer onInvoke dispatches invocation and returns response"):
     val server = new dapr.safe.internal.DaprAppServer()
-    server.onInvoke[String]("echo")[String] { req => "echo:" + req }
+    server.onInvoke[String](MethodName("echo"))[String] { req => "echo:" + req }
 
     val port   = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))

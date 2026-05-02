@@ -71,11 +71,11 @@ class ModelsTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("ConfigItem default metadata is empty"):
-    val item = ConfigItem("key", "value", "1")
+    val item = ConfigItem(ConfigKey("key"), "value", "1")
     assertEquals(item.metadata, Map.empty)
 
   test("ConfigItem with metadata"):
-    val item = ConfigItem("key", "value", "2", Map("a" -> "b"))
+    val item = ConfigItem(ConfigKey("key"), "value", "2", Map("a" -> "b"))
     assertEquals(item.metadata("a"), "b")
 
   // -------------------------------------------------------------------------
@@ -83,18 +83,18 @@ class ModelsTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("UpsertOp stores key and pre-encoded value"):
-    val op = StateOp.UpsertOp[String]("k", "v")
-    assertEquals(op.key, "k")
+    val op = StateOp.UpsertOp[String](StateKey("k"), "v")
+    assertEquals(op.key, StateKey("k"))
     assert(op.encodedValue.nonEmpty)
     assertEquals(op.etag, None)
 
   test("UpsertOp with etag"):
-    val op = StateOp.UpsertOp[String]("k", "v", Some(ETag("e1")))
+    val op = StateOp.UpsertOp[String](StateKey("k"), "v", Some(ETag("e1")))
     assertEquals(op.etag, Some(ETag("e1")))
 
   test("DeleteOp stores key"):
-    val op = StateOp.DeleteOp("k")
-    assertEquals(op.key, "k")
+    val op = StateOp.DeleteOp(StateKey("k"))
+    assertEquals(op.key, StateKey("k"))
     assertEquals(op.etag, None)
 
   // -------------------------------------------------------------------------
@@ -107,8 +107,8 @@ class ModelsTest extends FunSuite:
     assert(UnlockStatus.Success != UnlockStatus.InternalError)
 
   test("BulkPublishEntry holds entryId and event"):
-    val entry = BulkPublishEntry("id-1", "event-data")
-    assertEquals(entry.entryId, "id-1")
+    val entry = BulkPublishEntry(BulkEntryId("id-1"), "event-data")
+    assertEquals(entry.entryId, BulkEntryId("id-1"))
     assertEquals(entry.event, "event-data")
 
   test("BulkPublishResult with no failures"):
@@ -116,8 +116,8 @@ class ModelsTest extends FunSuite:
     assert(result.failedEntries.isEmpty)
 
   test("BulkPublishResult with failed entries"):
-    val result = BulkPublishResult(List("id-2", "id-3"))
-    assertEquals(result.failedEntries, List("id-2", "id-3"))
+    val result = BulkPublishResult(List(BulkEntryId("id-2"), BulkEntryId("id-3")))
+    assertEquals(result.failedEntries, List(BulkEntryId("id-2"), BulkEntryId("id-3")))
 
   // -------------------------------------------------------------------------
   // Exception hierarchy
@@ -137,7 +137,7 @@ class ModelsTest extends FunSuite:
     assert(ex.getCause == null)
 
   test("ETagMismatchException message contains key and etag"):
-    val ex = ETagMismatchException("my-key", ETag("abc"))
+    val ex = ETagMismatchException(StateKey("my-key"), ETag("abc"))
     assert(ex.getMessage.contains("my-key"))
     assert(ex.getMessage.contains("abc"))
     assert(ex.isInstanceOf[DaprException])

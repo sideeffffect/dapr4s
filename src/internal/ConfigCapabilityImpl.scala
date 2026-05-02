@@ -17,10 +17,10 @@ private[safe] final class ConfigCapabilityImpl(
     if scope.isClosed then
       throw IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def get(keys: Seq[String]): Map[String, ConfigItem] throws DaprConfigurationException =
+  def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] throws DaprConfigurationException =
     checkOpen()
     try
-      val javaKeys: java.util.List[String] = keys.asJava
+      val javaKeys: java.util.List[String] = keys.map(_.value).asJava
       val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
       val result: java.util.Map[String, JConfigItem] | Null =
         scope.client.getConfiguration(storeName.value, javaKeys, emptyMeta).awaitResult()
@@ -29,8 +29,8 @@ private[safe] final class ConfigCapabilityImpl(
         val v: String | Null       = item.getValue
         val ver: String | Null     = item.getVersion
         val meta: java.util.Map[String, String] | Null = item.getMetadata
-        k -> ConfigItem(
-          key      = k,
+        ConfigKey(k) -> ConfigItem(
+          key      = ConfigKey(k),
           value    = if v == null then "" else v,
           version  = if ver == null then "" else ver,
           metadata = if meta == null then Map.empty else meta.asScala.toMap
@@ -41,10 +41,10 @@ private[safe] final class ConfigCapabilityImpl(
       case e: io.dapr.exceptions.DaprException =>
         throw DaprConfigurationException(e.getMessage.nn, e)
 
-  def subscribe(keys: Seq[String])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException =
+  def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException =
     checkOpen()
     try
-      val javaKeys: java.util.List[String] = keys.asJava
+      val javaKeys: java.util.List[String] = keys.map(_.value).asJava
       val storeNameStr = storeName.value
       val flux = scope.client.subscribeConfiguration(storeNameStr, javaKeys, java.util.Collections.emptyMap())
       val sub = flux.subscribe { (response: SubscribeConfigurationResponse | Null) =>
@@ -55,14 +55,14 @@ private[safe] final class ConfigCapabilityImpl(
               val v: String | Null   = item.getValue
               val ver: String | Null = item.getVersion
               val meta: java.util.Map[String, String] | Null = item.getMetadata
-              k -> ConfigItem(
-                key      = k,
+              ConfigKey(k) -> ConfigItem(
+                key      = ConfigKey(k),
                 value    = if v == null then "" else v,
                 version  = if ver == null then "" else ver,
                 metadata = if meta == null then Map.empty else meta.asScala.toMap
               )
             }.toMap
-            try onChange(ConfigUpdate(storeNameStr, items))
+            try onChange(ConfigUpdate(ConfigStoreName(storeNameStr), items))
             catch case _: Exception => ()
       }
       () => sub.dispose()

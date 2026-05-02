@@ -18,11 +18,11 @@ private[safe] final class StateCapabilityImpl(
     if scope.isClosed then
       throw IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def get[T: JsonCodec](key: String): Option[T] throws DaprStateException =
+  def get[T: JsonCodec](key: StateKey): Option[T] throws DaprStateException =
     checkOpen()
     try
       val state: DaprState[String] | Null =
-        scope.client.getState(storeName.value, key, classOf[String]).awaitResult()
+        scope.client.getState(storeName.value, key.value, classOf[String]).awaitResult()
       if state == null then return None
       val raw: String | Null = state.getValue
       if raw == null || raw.isEmpty then None
@@ -35,11 +35,11 @@ private[safe] final class StateCapabilityImpl(
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
-  def getWithETag[T: JsonCodec](key: String): StateEntry[T] throws DaprStateException =
+  def getWithETag[T: JsonCodec](key: StateKey): StateEntry[T] throws DaprStateException =
     checkOpen()
     try
       val state: DaprState[String] | Null =
-        scope.client.getState(storeName.value, key, classOf[String]).awaitResult()
+        scope.client.getState(storeName.value, key.value, classOf[String]).awaitResult()
       if state == null then return StateEntry(None, None)
       val raw: String | Null  = state.getValue
       val etag: String | Null = state.getEtag
@@ -55,7 +55,7 @@ private[safe] final class StateCapabilityImpl(
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
-  def getBulk[T: JsonCodec](keys: Seq[String]): Map[String, StateEntry[T]] throws DaprStateException =
+  def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]] throws DaprStateException =
     checkOpen()
     try
       keys.map { key =>
@@ -67,18 +67,18 @@ private[safe] final class StateCapabilityImpl(
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
-  def save[T: JsonCodec](key: String, value: T): Unit throws DaprStateException =
+  def save[T: JsonCodec](key: StateKey, value: T): Unit throws DaprStateException =
     checkOpen()
     try
       val json = summon[JsonCodec[T]].encode(value)
-      scope.client.saveState(storeName.value, key, json).awaitResult(): Unit
+      scope.client.saveState(storeName.value, key.value, json).awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
-  def saveBulk[T: JsonCodec](entries: Seq[(String, T)]): Unit throws DaprStateException =
+  def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit throws DaprStateException =
     checkOpen()
     try
       entries.foreach { case (key, value) =>
@@ -90,13 +90,13 @@ private[safe] final class StateCapabilityImpl(
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
-  def saveWithETag[T: JsonCodec](key: String, value: T, etag: ETag): Unit throws DaprStateException =
+  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Unit throws DaprStateException =
     checkOpen()
     try
       val json = summon[JsonCodec[T]].encode(value)
       val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
       scope.client
-        .saveState(storeName.value, key, etag.value, json, opts)
+        .saveState(storeName.value, key.value, etag.value, json, opts)
         .awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
@@ -105,21 +105,21 @@ private[safe] final class StateCapabilityImpl(
         if isETagConflict(e) then throw ETagMismatchException(key, etag)
         else throw DaprStateException(e.getMessage.nn, e)
 
-  def delete(key: String): Unit throws DaprStateException =
+  def delete(key: StateKey): Unit throws DaprStateException =
     checkOpen()
     try
-      scope.client.deleteState(storeName.value, key).awaitResult(): Unit
+      scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
-  def deleteWithETag(key: String, etag: ETag): Unit throws DaprStateException =
+  def deleteWithETag(key: StateKey, etag: ETag): Unit throws DaprStateException =
     checkOpen()
     try
       val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
-      scope.client.deleteState(storeName.value, key, etag.value, opts).awaitResult(): Unit
+      scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(): Unit
     catch
       case e: DaprStateException => throw e
       case e: DaprException => throw DaprStateException(e.getMessage, e)
@@ -176,14 +176,14 @@ private[safe] final class StateCapabilityImpl(
     op match
       case StateOp.UpsertOp(key, encodedValue, etag) =>
         val daprState = etag match
-          case Some(e) => new DaprState[String](key, encodedValue, e.value, null)
-          case None    => new DaprState[String](key, encodedValue, null, null)
+          case Some(e) => new DaprState[String](key.value, encodedValue, e.value, null)
+          case None    => new DaprState[String](key.value, encodedValue, null, null)
         new TransactionalStateOperation[String](OperationType.UPSERT, daprState)
 
       case StateOp.DeleteOp(key, etag) =>
         val daprState = etag match
-          case Some(e) => new DaprState[String](key, null, e.value, null)
-          case None    => new DaprState[String](key, null, null, null)
+          case Some(e) => new DaprState[String](key.value, null, e.value, null)
+          case None    => new DaprState[String](key.value, null, null, null)
         new TransactionalStateOperation[String](OperationType.DELETE, daprState)
 
   private def isETagConflict(e: io.dapr.exceptions.DaprException): Boolean =

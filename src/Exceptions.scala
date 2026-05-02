@@ -24,8 +24,8 @@ class DaprStateException(message: String, cause: Exception | Null = null)
     extends DaprException(message, cause)
 
 @scala.caps.assumeSafe
-class ETagMismatchException(key: String, etag: ETag)
-    extends DaprStateException(s"ETag mismatch for key '$key' (provided: ${etag.value})")
+class ETagMismatchException(key: StateKey, etag: ETag)
+    extends DaprStateException(s"ETag mismatch for key '${key.value}' (provided: ${etag.value})")
 
 @scala.caps.assumeSafe
 class StateTransactionException(message: String, cause: Exception | Null = null)

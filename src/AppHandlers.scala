@@ -27,7 +27,7 @@ trait AppHandlers:
   ): Unit
 
   /** Subscribe to `topic` on `pubsubName` with an explicit HTTP route path. */
-  def subscribe[T: JsonCodec](pubsubName: PubSubName, topic: Topic, route: String)(
+  def subscribe[T: JsonCodec](pubsubName: PubSubName, topic: Topic, route: Route)(
     handler: CloudEvent[T] => SubscriptionResult
   ): Unit
 
@@ -50,6 +50,6 @@ trait AppHandlers:
     * `Req` is inferred from the handler argument; `Resp` is specified at the
     * call site.
     */
-  def onInvoke[Req: JsonCodec](methodName: String)[Resp: JsonCodec](
+  def onInvoke[Req: JsonCodec](methodName: MethodName)[Resp: JsonCodec](
     handler: Req => Resp
   ): Unit

@@ -34,7 +34,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
         .withComponent(component)
     )
 
-  private def uniqueKey(): String = s"k-${System.nanoTime()}"
+  private def uniqueKey(): StateKey = StateKey(s"k-${System.nanoTime()}")
 
   // -------------------------------------------------------------------------
   // Tests — each receives the running container via withContainers
@@ -53,7 +53,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprScope].state(StoreName("kvstore"))
-        val v     = state.get[String]("definitely-does-not-exist-" + System.nanoTime())
+        val v     = state.get[String](StateKey("definitely-does-not-exist-" + System.nanoTime()))
         assertEquals(v, None)
     }
 

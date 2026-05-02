@@ -61,8 +61,8 @@ class CCTest extends FunSuite:
     // Verify the runtime contract: scope is provided, used, and released.
     runSafe:
       val mock = MockDaprScope()
-      mock.state(StoreName("s")).save("k", "v")
-      assertEquals(mock.state(StoreName("s")).get[String]("k"), Some("v"))
+      mock.state(StoreName("s")).save(StateKey("k"), "v")
+      assertEquals(mock.state(StoreName("s")).get[String](StateKey("k")), Some("v"))
       mock.close()
       assert(mock.isClosed)
 
@@ -76,7 +76,7 @@ class CCTest extends FunSuite:
       val invoker = scope.invoker
       // Req (String) is inferred from "request-data"; Resp specified as trailing [String]
       intercept[UnsupportedOperationException]:
-        invoker.invoke(AppId("app"), "method", "request-data")[String]
+        invoker.invoke(AppId("app"), MethodName("method"), "request-data")[String]
       scope.close()
 
   test("clauseInterleaving: binding invoke syntax — Req inferred, Resp specified after args"):
@@ -84,6 +84,6 @@ class CCTest extends FunSuite:
       val scope = MockDaprScope()
       val binding = scope.binding(BindingName("my-binding"))
       // Req (String) inferred from "payload"; Resp specified as trailing [String]
-      val result: Option[String] = binding.invoke("operation", "payload")[String]
+      val result: Option[String] = binding.invoke(BindingOperation("operation"), "payload")[String]
       assertEquals(result, None)
       scope.close()
