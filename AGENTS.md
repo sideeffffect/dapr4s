@@ -148,28 +148,10 @@ When a question about library internals, JVM behaviour, or SDK design comes up:
 
 ## Cellar — JVM API lookup
 
-Use the `cellar` CLI to look up exact type signatures, members, and docs for any JVM dependency.
-Never hallucinate API signatures — use `cellar` first.
-
-```sh
-# Any Maven artifact (group:artifact:version; 'latest' auto-resolves):
-cellar get-external io.dapr:dapr-sdk:1.17.2 io.dapr.client.DaprClient
-cellar list-external io.dapr:dapr-sdk:1.17.2 io.dapr.client
-cellar search-external io.dapr:dapr-sdk:1.17.2 BlockingStub
-cellar get-source io.dapr:dapr-sdk:1.17.2 io.dapr.client.DaprClientImpl
-cellar deps io.dapr:dapr-sdk:1.17.2
-
-# Project classpath (scala-cli project — omit --module):
-cellar get io.dapr.client.DaprClient
-cellar list io.dapr.client
-cellar search DaprScope
-```
-
-Workflow: if you don't know the package, `search-external`; if you know the package but not the
-type, `list-external`; if you know the type, `get-external`; if you need the source, `get-source`.
-
-Use `cellar` proactively before writing any Java interop code and before asserting anything about
-the Dapr SDK's public API surface.
+Use the `cellar` skill to look up exact type signatures, members, and Javadoc for any JVM
+dependency by Maven coordinate. Prefer it over cloning repos or manually probing class files —
+it is faster and returns LLM-ready output. Use it proactively before writing Java interop code
+and whenever asserting anything about the Dapr SDK's public API surface.
 
 ---
 
