@@ -304,7 +304,8 @@ private class MockDistributedLockCapability(
   def unlock(resourceId: String, lockOwner: String): UnlockStatus throws DaprLockException =
     checkOpen()
     locks.get(resourceId) match
-      case None    => UnlockStatus.LockNotFound
+      case None                              => UnlockStatus.LockNotFound
+      case Some(owner) if owner != lockOwner => UnlockStatus.InternalError
       case Some(_) =>
         locks.remove(resourceId)
         UnlockStatus.Success

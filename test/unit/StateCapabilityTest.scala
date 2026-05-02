@@ -310,6 +310,14 @@ class StateCapabilityTest extends FunSuite:
       val status = lock.unlock("no-such-resource", "owner-1")
       assertEquals(status, UnlockStatus.LockNotFound)
 
+  test("lock unlock with wrong owner returns InternalError"):
+    runSafe:
+      val scope = MockDaprScope()
+      val lock = scope.lock(StoreName("lock-store"))
+      lock.tryLock("resource-1", "owner-1", 30)
+      val status = lock.unlock("resource-1", "owner-2")
+      assertEquals(status, UnlockStatus.InternalError)
+
   // -------------------------------------------------------------------------
   // DaprScope via withScope helper
   // -------------------------------------------------------------------------
