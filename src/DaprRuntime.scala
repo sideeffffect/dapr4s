@@ -2,6 +2,7 @@ package dapr.safe
 
 import language.experimental.captureChecking
 import language.experimental.saferExceptions
+import scala.util.control.NonFatal
 
 /** Entry-point singleton that manages the [[DaprScope]] lifecycle.
   *
@@ -16,8 +17,13 @@ object DaprRuntime:
   /** Acquire a `DaprClient`, run `body` with a `DaprScope` in context, then
     * release the client whether `body` completes normally or throws.
     *
-    * If both `body` and `scope.close()` throw, the close exception is
-    * added as a suppressed exception on the primary throwable.
+    * If both `body` and `scope.close()` throw non-fatal exceptions, the
+    * close exception is added as a suppressed exception on the body's
+    * throwable.  Fatal exceptions (`OutOfMemoryError`, `StackOverflowError`,
+    * etc.) are never caught — they propagate immediately.  In the pathological
+    * case where the body throws a fatal error and `close()` also throws, the
+    * close exception will propagate instead of the fatal one; this is an
+    * acceptable trade-off because the JVM is already in an unrecoverable state.
     *
     * == Virtual threads ==
     *
@@ -46,13 +52,13 @@ object DaprRuntime:
     var primary: Throwable | Null = null
     try body(using scope, canThrow)
     catch
-      case t: Throwable =>
+      case NonFatal(t) =>
         primary = t
         throw t
     finally
       try scope.close()
       catch
-        case t: Throwable =>
+        case NonFatal(t) =>
           val p = primary
           if p != null then p.addSuppressed(t)
           else throw t

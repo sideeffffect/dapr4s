@@ -56,8 +56,9 @@ private[internal] object MonoOps:
       *
       * [[java.util.concurrent.ExecutionException]] is unwrapped so callers see
       * the original cause (typically [[io.dapr.exceptions.DaprException]]).
-      * On [[java.lang.InterruptedException]] the thread interrupt flag is
-      * restored before re-throwing.
+      *
+      * [[java.lang.InterruptedException]] is caught explicitly — see the inline
+      * comment in the implementation for the full argument.
       */
     def awaitResult(): T | Null =
       given CanThrow[Exception] = unsafeExceptions.canThrowAny
@@ -66,6 +67,33 @@ private[internal] object MonoOps:
         case e: java.util.concurrent.ExecutionException =>
           val cause = e.getCause
           throw (if cause != null then cause else e)
+
+        // WHY WE CATCH InterruptedException HERE
+        //
+        // Scala's NonFatal extractor classifies InterruptedException as fatal
+        // because an unhandled interrupt should normally terminate the thread.
+        // We are explicitly handling it, which is different from suppressing it.
+        //
+        // The Java cooperative-cancellation contract requires that any code which
+        // catches InterruptedException must either:
+        //   (a) re-interrupt the thread and rethrow, OR
+        //   (b) set a "cancelled" flag and return early.
+        //
+        // CompletableFuture.get() clears the interrupt flag when it throws
+        // InterruptedException. If we did NOT catch it here, that cleared flag
+        // would propagate silently past every outer catch block, losing the
+        // cancellation signal entirely. Outer handlers would then see a raw
+        // InterruptedException with no interrupt flag set — the thread would
+        // appear un-interrupted to any subsequent isInterrupted() check.
+        //
+        // By catching it here we restore the flag immediately (before any other
+        // code runs), then rethrow the original exception unchanged. The caller
+        // receives the InterruptedException with the flag correctly set and can
+        // propagate or handle the cancellation as appropriate.
+        //
+        // We do NOT wrap it in a DaprException: doing so would strip the
+        // interrupt semantics and make cooperative cancellation impossible to
+        // detect higher up the call stack.
         case e: java.lang.InterruptedException =>
-          Thread.currentThread().interrupt()
+          Thread.currentThread().interrupt() // restore flag before any other code runs
           throw e
