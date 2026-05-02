@@ -1,5 +1,8 @@
 package dapr.safe
 
+import language.experimental.safe
+import language.experimental.saferExceptions
+
 // ---------------------------------------------------------------------------
 // Opaque domain types — prevent accidental misuse (e.g. StoreName vs PubSubName)
 // ---------------------------------------------------------------------------
@@ -58,6 +61,11 @@ object ETag:
   def apply(s: String): ETag = s
   extension (n: ETag) def value: String = n
 
+opaque type StateQuery = String
+object StateQuery:
+  def apply(query: String): StateQuery = query
+  extension (s: StateQuery) def value: String = s
+
 // ---------------------------------------------------------------------------
 // Value types
 // ---------------------------------------------------------------------------
@@ -97,14 +105,30 @@ object StateOp:
   case class DeleteOp(key: String, etag: Option[ETag] = None) extends StateOp
 
 // ---------------------------------------------------------------------------
-// Exceptions
+// Distributed Lock
 // ---------------------------------------------------------------------------
 
-class DaprException(message: String, cause: Throwable = null)
-    extends RuntimeException(message, cause)
+/** Result status of an unlock operation. 0=success, 1=lock not found, 2=internal error */
+case class UnlockStatus(code: Int)
 
-class ETagMismatchException(key: String, etag: ETag)
-    extends DaprException(
-      s"ETag mismatch for key '$key': expected etag '${etag.value}'",
-      null
-    )
+object UnlockStatus:
+  val Success: UnlockStatus      = UnlockStatus(0)
+  val LockNotFound: UnlockStatus = UnlockStatus(1)
+  val InternalError: UnlockStatus = UnlockStatus(2)
+
+// ---------------------------------------------------------------------------
+// Bulk Pub/Sub
+// ---------------------------------------------------------------------------
+
+/** An entry in a bulk publish request. */
+case class BulkPublishEntry[T](entryId: String, event: T)
+
+/** Result of a bulk publish — contains IDs of any failed entries. */
+case class BulkPublishResult(failedEntries: List[String])
+
+// ---------------------------------------------------------------------------
+// Configuration subscription
+// ---------------------------------------------------------------------------
+
+/** Represents a configuration update notification. */
+case class ConfigUpdate(storeName: String, items: Map[String, ConfigItem])

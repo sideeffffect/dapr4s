@@ -2,7 +2,10 @@ package dapr.safe.test.unit
 
 import dapr.safe.*
 import munit.FunSuite
+import language.experimental.saferExceptions
+import unsafeExceptions.canThrowAny
 
+@scala.caps.assumeSafe
 class JsonCodecTest extends FunSuite:
 
   // -------------------------------------------------------------------------
@@ -39,12 +42,18 @@ class JsonCodecTest extends FunSuite:
     assertEquals(codec.decode(codec.encode(3.14)), Right(3.14))
 
   // -------------------------------------------------------------------------
-  // Decode errors
+  // Decode errors — now return Left(JsonDecodeException)
   // -------------------------------------------------------------------------
 
   test("JsonCodec[Int] decode returns Left on non-integer JSON"):
     val codec = summon[JsonCodec[Int]]
     assert(codec.decode("\"not a number\"").isLeft)
+
+  test("JsonCodec[Int] decode returns Left containing JsonDecodeException"):
+    val codec = summon[JsonCodec[Int]]
+    codec.decode("\"not a number\"") match
+      case Left(e) => assert(e.isInstanceOf[JsonDecodeException])
+      case Right(_) => fail("Expected Left")
 
   test("JsonCodec[Int] decode returns Left on empty string"):
     val codec = summon[JsonCodec[Int]]
@@ -77,19 +86,33 @@ class JsonCodecTest extends FunSuite:
     val v = JsonCodec.decodeOrThrow[Int]("99")
     assertEquals(v, 99)
 
-  test("decodeOrThrow throws DaprException on failure"):
+  test("decodeOrThrow throws JsonDecodeException on failure"):
+    intercept[JsonDecodeException]:
+      JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
+
+  test("decodeOrThrow throws DaprException (subtype) on failure"):
     intercept[DaprException]:
       JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
 
   // -------------------------------------------------------------------------
-  // Null input guard
+  // Null input guard — now returns Left(JsonDecodeException("null input"))
   // -------------------------------------------------------------------------
 
-  test("JsonCodec[String] decode(null) returns Left"):
-    assertEquals(summon[JsonCodec[String]].decode(null), Left("null input"))
+  test("JsonCodec[String] decode(null) returns Left with JsonDecodeException"):
+    val result = summon[JsonCodec[String]].decode(null)
+    assert(result.isLeft)
+    result match
+      case Left(e) =>
+        assert(e.isInstanceOf[JsonDecodeException])
+        assertEquals(e.getMessage, "null input")
+      case Right(_) => fail("Expected Left")
 
-  test("JsonCodec[Int] decode(null) returns Left"):
-    assertEquals(summon[JsonCodec[Int]].decode(null), Left("null input"))
+  test("JsonCodec[Int] decode(null) returns Left with JsonDecodeException"):
+    val result = summon[JsonCodec[Int]].decode(null)
+    assert(result.isLeft)
+    result match
+      case Left(e) => assertEquals(e.getMessage, "null input")
+      case Right(_) => fail("Expected Left")
 
   // -------------------------------------------------------------------------
   // Option instances
@@ -134,5 +157,9 @@ class JsonCodecTest extends FunSuite:
     val codec = summon[JsonCodec[List[Int]]]
     assert(codec.decode("42").isLeft)
 
-  test("JsonCodec[List[Int]] decode(null) returns Left"):
-    assertEquals(summon[JsonCodec[List[Int]]].decode(null), Left("null input"))
+  test("JsonCodec[List[Int]] decode(null) returns Left with JsonDecodeException"):
+    val result = summon[JsonCodec[List[Int]]].decode(null)
+    assert(result.isLeft)
+    result match
+      case Left(e) => assertEquals(e.getMessage, "null input")
+      case Right(_) => fail("Expected Left")

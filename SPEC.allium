@@ -531,6 +531,9 @@ invariant ClosedCapabilityRejection {
     -- Operations on closed capabilities are rejected.
     -- Any operation requested on a capability with status = closed
     -- results in IllegalStateException, not a DAPR call.
+    -- This is enforced at runtime by impl classes annotated @scala.caps.assumeSafe.
+    -- The @scala.caps.assumeSafe annotation (from scala.caps package) is applied to
+    -- non-safe-mode classes/objects so safe-mode user code can invoke them.
 }
 
 invariant TransactionAtomicity {
@@ -565,9 +568,12 @@ actor UserCode {
 }
 
 actor LibraryAuthor {
-    -- Non-safe-mode Scala code in internal/ package.
-    -- Responsible for @assumeSafe correctness.
+    -- Non-safe-mode Scala code in internal/ package and DaprRuntime/JsonCodec.
+    -- Responsible for @scala.caps.assumeSafe correctness.
+    -- Annotates classes and objects with @scala.caps.assumeSafe (from scala.caps package)
+    -- to permit safe-mode user code to call them through the public trait interfaces.
     -- Has access to JavaDaprClient.
+    -- Cannot add @scala.caps.assumeSafe from within safe-mode files.
 }
 
 ------------------------------------------------------------
@@ -584,6 +590,8 @@ surface DaprRuntimeSurface {
         run: (body: DaprScope ?=> Any) -> Any
         -- Acquires a DaprClient, provides DaprScope to body, releases on exit.
         -- Propagates exceptions after releasing resources.
+        -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
+        -- user code can call it without violating safe-mode constraints.
 
     @guarantee ResourceCleanup
         -- DaprRuntime.run always closes the DaprClient on exit, whether

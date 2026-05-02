@@ -4,7 +4,9 @@
 
 A Scala 3 library that exposes every DAPR building block as a **tracked capability**. User code compiles under `import language.experimental.safe` and `import language.experimental.captureChecking`. The DAPR Java SDK is completely hidden — users see only Scala types.
 
-Each DAPR effect (state access, pub/sub, service calls, secrets, configuration, bindings) is represented as a `scala.caps.Capability` subtype. The Scala 3 compiler statically verifies:
+**Requires**: Scala `3.9.0-RC1-bin-20260501-0c8c581-NIGHTLY` (or later nightly). The `import language.experimental.safe` and `import language.experimental.captureChecking` features are fully supported in nightly builds — no `-Ycc` flag is needed.
+
+Each DAPR effect (state access, pub/sub, service calls, secrets, configuration, bindings) is tracked as a captured capability via `^` annotations. The Scala 3 compiler statically verifies:
 
 - Which DAPR effects a computation may perform.
 - That DAPR resources cannot escape their managed scope.
@@ -55,7 +57,9 @@ Capability traits, opaque domain types, and the `DaprRuntime.run` entry point. T
 
 ### Layer 2 — Internal implementations (`@assumeSafe`)
 
-Non-safe-mode Scala that wraps `DaprClient` Java SDK calls. Each method is marked `@assumeSafe` so safe-mode user code may call it through the capability interfaces. Library authors are responsible for the safety contract; user code cannot add new `@assumeSafe` annotations.
+Non-safe-mode Scala that wraps `DaprClient` Java SDK calls. Each class/object is marked `@scala.caps.assumeSafe` (from the `scala.caps` package) so safe-mode user code may call them through the capability trait interfaces. Library authors are responsible for the safety contract; user code cannot add new `@scala.caps.assumeSafe` annotations (the annotation is itself restricted to non-safe-mode code).
+
+Note: safe mode is enabled **per-file** via `import language.experimental.safe` (not globally via a compiler flag). This is intentional: files in `internal/` and `DaprRuntime.scala`/`JsonCodec.scala` must use `@scala.caps.assumeSafe` and therefore cannot have the safe-mode import.
 
 ---
 
@@ -63,18 +67,18 @@ Non-safe-mode Scala that wraps `DaprClient` Java SDK calls. Each method is marke
 
 ```mermaid
 classDiagram
-    class `scala.caps.Capability`
     class DaprCapability {
         <<sealed trait>>
+        Note: any class can be a capability via ^ annotations in nightly CC model
     }
     class DaprScope {
         <<trait>>
-        +state(storeName: StoreName) StateCapability
-        +pubsub(pubsubName: PubSubName) PubSubCapability
-        +invoker() ServiceInvocationCapability
-        +secrets(storeName: SecretStoreName) SecretsCapability
-        +config(storeName: ConfigStoreName) ConfigurationCapability
-        +binding(name: BindingName) BindingsCapability
+        +state(storeName: StoreName) StateCapability^{this}
+        +pubsub(pubsubName: PubSubName) PubSubCapability^{this}
+        +invoker() ServiceInvocationCapability^{this}
+        +secrets(storeName: SecretStoreName) SecretsCapability^{this}
+        +config(storeName: ConfigStoreName) ConfigurationCapability^{this}
+        +binding(name: BindingName) BindingsCapability^{this}
     }
     class StateCapability {
         <<trait>>
@@ -109,8 +113,6 @@ classDiagram
         +invoke[Req,Resp](operation, data) Option[Resp]
     }
 
-    `scala.caps.Capability` <|-- DaprCapability
-    `scala.caps.Capability` <|-- DaprScope
     DaprCapability <|-- StateCapability
     DaprCapability <|-- PubSubCapability
     DaprCapability <|-- ServiceInvocationCapability
@@ -118,6 +120,8 @@ classDiagram
     DaprCapability <|-- ConfigurationCapability
     DaprCapability <|-- BindingsCapability
 ```
+
+> Note: `scala.caps.Capability` is **sealed** in nightly Scala 3 and cannot be extended in user code. In the new CC model, any class/trait can serve as a capability through `^` capture annotations. `DaprScope` and `DaprCapability` do not extend `scala.caps.Capability` — they are tracked via `^{scope}` return type annotations on `DaprScope`'s factory methods.
 
 ---
 
@@ -226,12 +230,13 @@ All DAPR errors are surfaced as `DaprException` (from the Java SDK, re-exported 
 
 ```
 scala-safe-dapr/
-├── project.scala                     # Scala CLI directives (deps, compiler options)
+├── project.scala                     # Scala CLI directives (deps, compiler options; nightly Scala)
 ├── src/
-│   ├── Models.scala                  # Opaque types, ETag, StateEntry, ConfigItem, StateOp
-│   ├── JsonCodec.scala               # JsonCodec typeclass + default instances
-│   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes)
-│   ├── DaprScope.scala               # DaprScope trait + DaprRuntime.run
+│   ├── Models.scala                  # Opaque types, ETag, StateEntry, ConfigItem, StateOp [safe mode]
+│   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe, non-safe-mode]
+│   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes) [safe mode]
+│   ├── DaprScope.scala               # DaprScope trait with ^{this} return types [safe mode]
+│   ├── DaprRuntime.scala             # DaprRuntime.run entry point [@assumeSafe, non-safe-mode]
 │   └── internal/
 │       ├── DaprScopeImpl.scala       # DaprScope implementation
 │       ├── StateCapabilityImpl.scala
@@ -263,7 +268,7 @@ scala-safe-dapr/
 | Async model | Blocking (`.block()` on `Mono`/`Flux`) | Direct-style compatible; avoids bringing in effect library dependency |
 | Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |
 | Java SDK visibility | Zero — all Java types in `internal/` | Users see only Scala types; easier to swap SDK in future |
-| Scope safety | Capture checking: capabilities `^{scope}` | Compiler enforces no DAPR resource outlives its `DaprRuntime.run` block |
+| Scope safety | Capture checking: capabilities `^{scope}` | Compiler enforces no DAPR resource outlives its `DaprRuntime.run` block (via `import language.experimental.captureChecking`, no `-Ycc` needed) |
 
 ---
 

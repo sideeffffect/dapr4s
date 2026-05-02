@@ -1,11 +1,10 @@
 package dapr.safe.internal
 
-// NOTE: @assumeSafe would be applied here once Scala 3 stable supports it.
-// Currently this annotation is only available in nightly Scala 3 builds.
-
 import dapr.safe.*
 import io.dapr.client.domain.HttpExtension
+import language.experimental.saferExceptions
 
+@scala.caps.assumeSafe
 private[safe] final class InvokerCapabilityImpl(
     scope: DaprScopeImpl
 ) extends ServiceInvocationCapability:
@@ -18,11 +17,11 @@ private[safe] final class InvokerCapabilityImpl(
       appId: AppId,
       method: String,
       data: Req
-  ): Resp =
+  ): Resp throws DaprServiceInvocationException =
     checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
-      val rawResp: String = scope.daprClient
+      val rawResp: String | Null = scope.daprClient
         .invokeMethod(
           appId.value,
           method,
@@ -31,16 +30,18 @@ private[safe] final class InvokerCapabilityImpl(
           classOf[String]
         )
         .block()
-      JsonCodec.decodeOrThrow[Resp](rawResp)
+      JsonCodec.decodeOrThrow[Resp](rawResp) match
+        case v => v
     catch
-      case e: DaprException => throw e
+      case e: DaprServiceInvocationException => throw e
+      case e: DaprException => throw DaprServiceInvocationException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
-        throw DaprException(e.getMessage, e)
+        throw DaprServiceInvocationException(e.getMessage.nn, e)
 
-  def invokeGet[Resp: JsonCodec](appId: AppId, method: String): Resp =
+  def invokeGet[Resp: JsonCodec](appId: AppId, method: String): Resp throws DaprServiceInvocationException =
     checkOpen()
     try
-      val rawResp: String = scope.daprClient
+      val rawResp: String | Null = scope.daprClient
         .invokeMethod(
           appId.value,
           method,
@@ -49,8 +50,10 @@ private[safe] final class InvokerCapabilityImpl(
           classOf[String]
         )
         .block()
-      JsonCodec.decodeOrThrow[Resp](rawResp)
+      JsonCodec.decodeOrThrow[Resp](rawResp) match
+        case v => v
     catch
-      case e: DaprException => throw e
+      case e: DaprServiceInvocationException => throw e
+      case e: DaprException => throw DaprServiceInvocationException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
-        throw DaprException(e.getMessage, e)
+        throw DaprServiceInvocationException(e.getMessage.nn, e)

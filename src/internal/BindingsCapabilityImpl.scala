@@ -1,10 +1,9 @@
 package dapr.safe.internal
 
-// NOTE: @assumeSafe would be applied here once Scala 3 stable supports it.
-// Currently this annotation is only available in nightly Scala 3 builds.
-
 import dapr.safe.*
+import language.experimental.saferExceptions
 
+@scala.caps.assumeSafe
 private[safe] final class BindingsCapabilityImpl(
     scope: DaprScopeImpl,
     val bindingName: BindingName
@@ -17,26 +16,31 @@ private[safe] final class BindingsCapabilityImpl(
   def invoke[Req: JsonCodec, Resp: JsonCodec](
       operation: String,
       data: Req
-  ): Option[Resp] =
+  ): Option[Resp] throws DaprBindingsException =
     checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
-      val rawResp: String = scope.daprClient
+      val rawResp: String | Null = scope.daprClient
         .invokeBinding(bindingName.value, operation, reqJson, classOf[String])
         .block()
       if rawResp == null || rawResp.isEmpty then None
-      else Some(JsonCodec.decodeOrThrow[Resp](rawResp))
+      else
+        val decoded = JsonCodec.decodeOrThrow[Resp](rawResp) match
+          case v => Some(v)
+        decoded
     catch
-      case e: DaprException => throw e
+      case e: DaprBindingsException => throw e
+      case e: DaprException => throw DaprBindingsException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
-        throw DaprException(e.getMessage, e)
+        throw DaprBindingsException(e.getMessage.nn, e)
 
-  def invokeOneWay[Req: JsonCodec](operation: String, data: Req): Unit =
+  def invokeOneWay[Req: JsonCodec](operation: String, data: Req): Unit throws DaprBindingsException =
     checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
-      scope.daprClient.invokeBinding(bindingName.value, operation, reqJson).block()
+      scope.daprClient.invokeBinding(bindingName.value, operation, reqJson).block(): Unit
     catch
-      case e: DaprException => throw e
+      case e: DaprBindingsException => throw e
+      case e: DaprException => throw DaprBindingsException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
-        throw DaprException(e.getMessage, e)
+        throw DaprBindingsException(e.getMessage.nn, e)

@@ -2,16 +2,19 @@ package dapr.safe.test.unit
 
 import dapr.safe.*
 import munit.FunSuite
+import language.experimental.saferExceptions
 
 // NOTE (Issue 27): Despite its name, StateCapabilityTest covers the full mock-based
 // test suite including State, PubSub, Secrets, Configuration, and DaprRuntime.run.
 // The class is not renamed to avoid disrupting test discovery and history.
+@scala.caps.assumeSafe
 class StateCapabilityTest extends FunSuite:
 
   /** Helper: run a block against a fresh [[MockDaprScope]]. */
-  def withScope[T](body: DaprScope ?=> T): T =
-    val scope = MockDaprScope()
-    body(using scope)
+  def withScope[T](body: (DaprScope, CanThrow[Exception]) ?=> T): T =
+    given scope: DaprScope = MockDaprScope()
+    given CanThrow[Exception] = unsafeExceptions.canThrowAny
+    body
 
   // -------------------------------------------------------------------------
   // get / save
@@ -61,6 +64,27 @@ class StateCapabilityTest extends FunSuite:
       assertEquals(entry.etag, None)
 
   // -------------------------------------------------------------------------
+  // getBulk / saveBulk (new methods)
+  // -------------------------------------------------------------------------
+
+  test("saveBulk then getBulk returns all values"):
+    withScope:
+      val state = summon[DaprScope].state(StoreName("test-store"))
+      state.saveBulk[Int](Seq("a" -> 1, "b" -> 2, "c" -> 3))
+      val results = state.getBulk[Int](Seq("a", "b", "c"))
+      assertEquals(results("a").value, Some(1))
+      assertEquals(results("b").value, Some(2))
+      assertEquals(results("c").value, Some(3))
+
+  test("getBulk returns missing key as None value"):
+    withScope:
+      val state = summon[DaprScope].state(StoreName("test-store"))
+      state.save("exists", "v")
+      val results = state.getBulk[String](Seq("exists", "missing"))
+      assertEquals(results("exists").value, Some("v"))
+      assertEquals(results("missing").value, None)
+
+  // -------------------------------------------------------------------------
   // saveWithETag
   // -------------------------------------------------------------------------
 
@@ -85,6 +109,13 @@ class StateCapabilityTest extends FunSuite:
       val state = summon[DaprScope].state(StoreName("test-store"))
       intercept[ETagMismatchException]:
         state.saveWithETag("nonexistent", "v", ETag("any-etag"))
+
+  test("ETagMismatchException is a DaprStateException"):
+    withScope:
+      val state = summon[DaprScope].state(StoreName("test-store"))
+      state.save("k", "v1")
+      intercept[DaprStateException]:
+        state.saveWithETag("k", "v2", ETag("wrong-etag"))
 
   // -------------------------------------------------------------------------
   // delete
@@ -160,6 +191,17 @@ class StateCapabilityTest extends FunSuite:
     assertEquals(events.length, 1)
     assertEquals(events.head._4, Map("k" -> "v"))
 
+  test("bulkPublish records all entries in mock scope"):
+    val scope = MockDaprScope()
+    val pubsub = scope.pubsub(PubSubName("my-pubsub"))
+    val entries = Seq(
+      BulkPublishEntry("1", "event-a"),
+      BulkPublishEntry("2", "event-b")
+    )
+    val result = pubsub.bulkPublish(Topic("orders"), entries)
+    assertEquals(scope.publishedEvents.length, 2)
+    assertEquals(result.failedEntries, List.empty)
+
   // -------------------------------------------------------------------------
   // Secrets through mock scope
   // -------------------------------------------------------------------------
@@ -170,7 +212,13 @@ class StateCapabilityTest extends FunSuite:
     val secrets = scope.secrets(SecretStoreName("vault"))
     assertEquals(secrets.get("db-password"), "s3cr3t")
 
-  test("secrets get throws DaprException for missing key"):
+  test("secrets get throws DaprSecretsException for missing key"):
+    val scope = MockDaprScope()
+    val secrets = scope.secrets(SecretStoreName("vault"))
+    intercept[DaprSecretsException]:
+      secrets.get("nonexistent")
+
+  test("secrets get throws DaprException (base type) for missing key"):
     val scope = MockDaprScope()
     val secrets = scope.secrets(SecretStoreName("vault"))
     intercept[DaprException]:
@@ -191,13 +239,43 @@ class StateCapabilityTest extends FunSuite:
     val scope = MockDaprScope()
     scope.seedConfig("app-config", "log-level", ConfigItem("log-level", "INFO", "1"))
     val config = scope.config(ConfigStoreName("app-config"))
-    val result = config.get("log-level")
+    val result = config.get(Seq("log-level"))
     assertEquals(result("log-level").value, "INFO")
 
   test("config get returns empty map for unknown keys"):
     val scope = MockDaprScope()
     val config = scope.config(ConfigStoreName("app-config"))
-    assert(config.get("unknown").isEmpty)
+    assert(config.get(Seq("unknown")).isEmpty)
+
+  // -------------------------------------------------------------------------
+  // Distributed lock through mock scope
+  // -------------------------------------------------------------------------
+
+  test("lock tryLock succeeds on first attempt"):
+    val scope = MockDaprScope()
+    val lock = scope.lock(StoreName("lock-store"))
+    val acquired = lock.tryLock("resource-1", "owner-1", 30)
+    assert(acquired)
+
+  test("lock tryLock fails if already held"):
+    val scope = MockDaprScope()
+    val lock = scope.lock(StoreName("lock-store"))
+    lock.tryLock("resource-1", "owner-1", 30)
+    val acquired = lock.tryLock("resource-1", "owner-2", 30)
+    assert(!acquired)
+
+  test("lock unlock releases the lock"):
+    val scope = MockDaprScope()
+    val lock = scope.lock(StoreName("lock-store"))
+    lock.tryLock("resource-1", "owner-1", 30)
+    val status = lock.unlock("resource-1", "owner-1")
+    assertEquals(status, UnlockStatus.Success)
+
+  test("lock unlock on non-held resource returns LockNotFound"):
+    val scope = MockDaprScope()
+    val lock = scope.lock(StoreName("lock-store"))
+    val status = lock.unlock("no-such-resource", "owner-1")
+    assertEquals(status, UnlockStatus.LockNotFound)
 
   // -------------------------------------------------------------------------
   // DaprRuntime.run (using mock scope indirectly via withScope helper)

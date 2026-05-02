@@ -3,13 +3,16 @@ package dapr.safe.test.integration
 import dapr.safe.*
 import io.dapr.testcontainers.{DaprContainer, Component}
 import munit.FunSuite
+import language.experimental.saferExceptions
+import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
 /** Integration tests for [[PubSubCapability]] using a real DAPR sidecar. */
+@scala.caps.assumeSafe
 class PubSubIntegrationTest extends FunSuite:
 
-  private var dapr: DaprContainer = null
+  private var dapr: DaprContainer | Null = null
 
   override def beforeAll(): Unit =
     val pubsubComponent = Component(
@@ -18,17 +21,21 @@ class PubSubIntegrationTest extends FunSuite:
       "v1",
       Collections.emptyMap[String, String]()
     )
-    dapr = DaprContainer("daprio/daprd:latest")
+    val d = DaprContainer("daprio/daprd:latest")
       .withAppName("pubsub-test-app")
       .withAppPort(0)
       .withComponent(pubsubComponent)
-    dapr.start()
+    d.start()
+    dapr = d
 
   override def afterAll(): Unit =
-    if dapr != null then dapr.stop()
+    val d = dapr
+    if d != null then d.stop()
 
-  private def httpEndpoint = s"http://${dapr.getHost}:${dapr.getHttpPort}"
-  private def grpcEndpoint = s"http://${dapr.getHost}:${dapr.getGrpcPort}"
+  private def httpEndpoint =
+    val d = dapr.nn; s"http://${d.getHost}:${d.getHttpPort}"
+  private def grpcEndpoint =
+    val d = dapr.nn; s"http://${d.getHost}:${d.getGrpcPort}"
 
   // -------------------------------------------------------------------------
 

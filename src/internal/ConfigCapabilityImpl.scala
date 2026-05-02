@@ -1,13 +1,12 @@
 package dapr.safe.internal
 
-// NOTE: @assumeSafe would be applied here once Scala 3 stable supports it.
-// Currently this annotation is only available in nightly Scala 3 builds.
-
 import dapr.safe.*
 import io.dapr.client.domain.{ConfigurationItem as JConfigItem}
+import language.experimental.saferExceptions
 
 import scala.jdk.CollectionConverters.*
 
+@scala.caps.assumeSafe
 private[safe] final class ConfigCapabilityImpl(
     scope: DaprScopeImpl,
     val storeName: ConfigStoreName
@@ -17,24 +16,26 @@ private[safe] final class ConfigCapabilityImpl(
     if scope.isClosed then
       throw IllegalStateException("Capability is closed: DaprScope has been closed")
 
-  def get(keys: String*): Map[String, ConfigItem] =
+  def get(keys: Seq[String]): Map[String, ConfigItem] throws DaprConfigurationException =
     checkOpen()
     try
-      val javaKeys: java.util.List[String] = keys.toList.asJava
+      val javaKeys: java.util.List[String] = keys.asJava
       val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
-      val result: java.util.Map[String, JConfigItem] =
+      val result: java.util.Map[String, JConfigItem] | Null =
         scope.daprClient.getConfiguration(storeName.value, javaKeys, emptyMeta).block()
       if result == null then return Map.empty
       result.asScala.map { case (k, item) =>
+        val v: String | Null       = item.getValue
+        val ver: String | Null     = item.getVersion
+        val meta: java.util.Map[String, String] | Null = item.getMetadata
         k -> ConfigItem(
           key      = k,
-          value    = if item.getValue == null then "" else item.getValue,
-          version  = if item.getVersion == null then "" else item.getVersion,
-          metadata = if item.getMetadata == null then Map.empty
-                     else item.getMetadata.asScala.toMap
+          value    = if v == null then "" else v,
+          version  = if ver == null then "" else ver,
+          metadata = if meta == null then Map.empty else meta.asScala.toMap
         )
       }.toMap
     catch
-      case e: DaprException => throw e
+      case e: DaprConfigurationException => throw e
       case e: io.dapr.exceptions.DaprException =>
-        throw DaprException(e.getMessage, e)
+        throw DaprConfigurationException(e.getMessage.nn, e)

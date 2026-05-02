@@ -2,13 +2,19 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import io.dapr.client.{DaprClient, DaprClientBuilder}
+import language.experimental.saferExceptions
+import unsafeExceptions.canThrowAny
 
 /** Concrete implementation of [[dapr.safe.DaprScope]] backed by a real [[DaprClient]].
   *
   * All interaction with the Java SDK is confined to this file and the
   * individual `*CapabilityImpl` classes. No Java types are visible in the
   * public API.
+  *
+  * Marked `@scala.caps.assumeSafe` so that safe-mode user code can use
+  * [[DaprScope]] (implemented by this class) through the trait interface.
   */
+@scala.caps.assumeSafe
 private[safe] final class DaprScopeImpl(private val client: DaprClient) extends DaprScope:
 
   @volatile private var _closed = false
@@ -39,6 +45,10 @@ private[safe] final class DaprScopeImpl(private val client: DaprClient) extends 
     if _closed then throw IllegalStateException("DaprScope is closed")
     new BindingsCapabilityImpl(this, bindingName)
 
+  def lock(storeName: StoreName): DistributedLockCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    new LockCapabilityImpl(this, storeName)
+
   def close(): Unit =
     if !_closed then
       _closed = true
@@ -47,6 +57,7 @@ private[safe] final class DaprScopeImpl(private val client: DaprClient) extends 
   /** Package-private accessor for capability impls to use the underlying client. */
   private[internal] def daprClient: DaprClient = client
 
+@scala.caps.assumeSafe
 private[safe] object DaprScopeImpl:
 
   /** Build a [[DaprScopeImpl]] using the default [[DaprClientBuilder]].

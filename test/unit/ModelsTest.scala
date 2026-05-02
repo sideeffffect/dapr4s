@@ -2,7 +2,10 @@ package dapr.safe.test.unit
 
 import dapr.safe.*
 import munit.FunSuite
+import language.experimental.saferExceptions
+import unsafeExceptions.canThrowAny
 
+@scala.caps.assumeSafe
 class ModelsTest extends FunSuite:
 
   // -------------------------------------------------------------------------
@@ -41,13 +44,14 @@ class ModelsTest extends FunSuite:
     val e = ETag("abc123")
     assertEquals(e.value, "abc123")
 
+  test("StateQuery round-trips"):
+    val q = StateQuery("{\"filter\":{}}")
+    assertEquals(q.value, "{\"filter\":{}}")
+
   // Opaque types are nominally distinct (no implicit coercion between them)
-  // This is a compile-time check; if this compiles, types are distinct.
   test("Opaque types prevent mix-up at compile time"):
     val store: StoreName    = StoreName("s")
     val pubsub: PubSubName  = PubSubName("p")
-    // store and pubsub have different types — assignment in the other
-    // direction would not compile; here we just assert they are equal as strings
     assertEquals(store.value, "s")
     assertEquals(pubsub.value, "p")
 
@@ -84,7 +88,6 @@ class ModelsTest extends FunSuite:
   test("UpsertOp stores key and pre-encoded value"):
     val op = StateOp.UpsertOp[String]("k", "v")
     assertEquals(op.key, "k")
-    // encodedValue is a JSON string literal: "\"v\""
     assert(op.encodedValue.nonEmpty)
     assertEquals(op.etag, None)
 
@@ -98,23 +101,75 @@ class ModelsTest extends FunSuite:
     assertEquals(op.etag, None)
 
   // -------------------------------------------------------------------------
-  // Exceptions
+  // New model types
+  // -------------------------------------------------------------------------
+
+  test("UnlockStatus values are distinct"):
+    assert(UnlockStatus.Success.code == 0)
+    assert(UnlockStatus.LockNotFound.code == 1)
+    assert(UnlockStatus.InternalError.code == 2)
+
+  test("BulkPublishEntry holds entryId and event"):
+    val entry = BulkPublishEntry("id-1", "event-data")
+    assertEquals(entry.entryId, "id-1")
+    assertEquals(entry.event, "event-data")
+
+  test("BulkPublishResult with no failures"):
+    val result = BulkPublishResult(List.empty)
+    assert(result.failedEntries.isEmpty)
+
+  test("BulkPublishResult with failed entries"):
+    val result = BulkPublishResult(List("id-2", "id-3"))
+    assertEquals(result.failedEntries, List("id-2", "id-3"))
+
+  // -------------------------------------------------------------------------
+  // Exception hierarchy
   // -------------------------------------------------------------------------
 
   test("DaprException message"):
     val ex = DaprException("something went wrong")
     assertEquals(ex.getMessage, "something went wrong")
-    assert(ex.getCause == null)
 
   test("DaprException with cause"):
     val cause = RuntimeException("root cause")
     val ex    = DaprException("wrapper", cause)
     assertEquals(ex.getCause, cause)
 
+  test("DaprException with null cause has null getCause"):
+    val ex = DaprException("test", null)
+    assert(ex.getCause == null)
+
   test("ETagMismatchException message contains key and etag"):
     val ex = ETagMismatchException("my-key", ETag("abc"))
     assert(ex.getMessage.contains("my-key"))
     assert(ex.getMessage.contains("abc"))
+    assert(ex.isInstanceOf[DaprException])
+    assert(ex.isInstanceOf[DaprStateException])
+
+  test("JsonDecodeException is a DaprException"):
+    val ex = JsonDecodeException("bad json")
+    assert(ex.isInstanceOf[DaprException])
+    assertEquals(ex.getMessage, "bad json")
+
+  test("DaprStateException is a DaprException"):
+    val ex = DaprStateException("state error")
+    assert(ex.isInstanceOf[DaprException])
+
+  test("DaprPubSubException is a DaprException"):
+    val ex = DaprPubSubException("pubsub error")
+    assert(ex.isInstanceOf[DaprException])
+
+  test("DaprSecretsException is a DaprException"):
+    val ex = DaprSecretsException("secrets error")
+    assert(ex.isInstanceOf[DaprException])
+
+  test("DaprLockException is a DaprException"):
+    val ex = DaprLockException("lock error")
+    assert(ex.isInstanceOf[DaprException])
+
+  test("StateTransactionException is a DaprStateException"):
+    val ex = StateTransactionException("tx error")
+    assert(ex.isInstanceOf[DaprStateException])
     assert(ex.isInstanceOf[DaprException])
 
   // -------------------------------------------------------------------------
