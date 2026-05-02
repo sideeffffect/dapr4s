@@ -7,9 +7,11 @@
 --           ConfigurationCapability (get + subscribe), BindingsCapability,
 --           DistributedLockCapability, DaprApp (inbound pub/sub, bindings,
 --           service invocation), JsonCodec
--- Excludes:
---   - DAPR actor framework (separate concern)
---   - DAPR workflow orchestration (separate concern)
+-- Excludes (not yet specified — separate specs):
+--   - DAPR actor framework: ActorCapability + DaprScope.actor() are implemented in the
+--     codebase but not specified here.
+--   - DAPR workflow orchestration: WorkflowCapability, DaprWorkflow, DaprActivity,
+--     DaprScope.workflow() are implemented but not specified here.
 --   - DAPR sidecar itself (external system)
 --   - Authentication and mTLS (managed by DAPR sidecar)
 -- Dependencies: DAPR sidecar must be running and reachable
@@ -33,40 +35,37 @@ external entity JavaDaprClient {
 -- Value Types
 ------------------------------------------------------------
 
-value StoreName {
-    value: String
+-- Component / store name opaque types (non-empty string; constructor validates)
+value StoreName        { value: String }   -- DAPR state store / lock store component name
+value PubSubName       { value: String }   -- DAPR pub/sub component name
+value Topic            { value: String }   -- Pub/sub topic (non-empty)
+value AppId            { value: String }   -- Target application ID for service invocation
+value SecretStoreName  { value: String }   -- DAPR secrets store component name
+value ConfigStoreName  { value: String }   -- DAPR configuration store component name
+value BindingName      { value: String }   -- DAPR output binding component name
+value ETag             { value: String }   -- Optimistic-concurrency tag
+
+-- Operation key / identifier opaque types (non-empty where noted)
+value StateKey         { value: String }   -- Key in a DAPR state store
+value MethodName       { value: String }   -- Service-invocation / inbound handler method name (non-empty)
+value Route            { value: String }   -- HTTP route for a pub/sub subscription (non-empty)
+value SecretKey        { value: String }   -- Key in a DAPR secrets store
+value ConfigKey        { value: String }   -- Key in a DAPR configuration store
+value LockResourceId   { value: String }   -- Resource identifier for distributed lock (non-empty)
+value LockOwner        { value: String }   -- Lock owner identifier (non-empty)
+value BindingOperation { value: String }   -- Operation name for an output binding (non-empty)
+value BulkEntryId      { value: String }   -- Caller-assigned ID for correlating bulk publish failures
+
+-- Query / filter value
+value StateQuery {
+    -- Opaque query expression passed to the state store query API.
+    -- Format depends on the state store component (e.g. JSON filter object).
+    query: String
 }
 
-value PubSubName {
-    value: String
-}
-
-value Topic {
-    value: String
-}
-
-value AppId {
-    value: String
-}
-
-value SecretStoreName {
-    value: String
-}
-
-value ConfigStoreName {
-    value: String
-}
-
-value BindingName {
-    value: String
-}
-
-value ETag {
-    value: String
-}
-
+-- Complex value types
 value ConfigItem {
-    key: String
+    key: ConfigKey
     value: String
     version: String
     metadata: Map<String, String>
@@ -78,26 +77,20 @@ value StateEntry<T> {
     -- etag is present iff value is present
 }
 
-value StateQuery {
-    -- Opaque query expression passed to the state store query API.
-    -- Format depends on the state store component (e.g. JSON filter object).
-    query: String
-}
-
 value BulkPublishEntry<T> {
-    entry_id: String    -- caller-assigned ID for correlating failures
+    entry_id: BulkEntryId   -- caller-assigned ID for correlating failures
     event: T
 }
 
 value BulkPublishResult {
-    failed_entries: List<String>
+    failed_entries: List<BulkEntryId>
     -- IDs of entries that failed to publish; empty on full success
 }
 
 value UnlockStatus {
     -- Result of a distributed lock unlock operation.
     status: success | lock_not_found | internal_error
-    -- success:       lock was held by lockOwner and has been released
+    -- success:        lock was held by lockOwner and has been released
     -- lock_not_found: no lock exists for the given resourceId
     -- internal_error: lock exists but is held by a different owner
 }
@@ -115,8 +108,8 @@ value CloudEvent<T> {
     source: String
     spec_version: String
     type: String
-    topic: String
-    pub_sub_name: String
+    topic: Topic
+    pub_sub_name: PubSubName
     data_content_type: String
     data: T
 }
@@ -125,12 +118,12 @@ variant StateOp {
     -- Sealed ADT matching the code's sealed trait StateOp.
     -- UpsertOp always carries encoded_value (structurally non-nullable).
     UpsertOp {
-        key: String
+        key: StateKey
         encoded_value: String   -- pre-encoded JSON value; always present
         etag: ETag?
     }
     DeleteOp {
-        key: String
+        key: StateKey
         etag: ETag?
     }
 }
@@ -172,7 +165,9 @@ contract JsonCodec {
 
 entity DaprRuntime {
     -- Singleton runtime; at most one active at a time in a given thread scope
-    status: idle | active | closed
+    status: idle | active
+    -- idle:   no active run/serve block; client is absent
+    -- active: inside a run/serve block; client is present
     client: JavaDaprClient?
     -- client is present iff status = active
 }
@@ -184,9 +179,13 @@ entity DaprScope {
     -- Capabilities derived from a scope share its lifetime.
 }
 
-entity DaprApp {
+-- DaprApp and its components are immutable value objects (case class / sealed class).
+-- They are specified as `value` rather than `entity` because they have no lifecycle or
+-- mutable state — they are built once and never modified.
+
+value DaprApp {
     -- Immutable, declarative description of all inbound handlers an application exposes.
-    -- Built by the serve body and handed to the HTTP server; never mutated after construction.
+    -- Built by the serve body and handed to the HTTP server.
     subscriptions: List<Subscription>
     invocations:   List<InvocationRoute>
     bindings:      List<BindingRoute>
@@ -195,19 +194,19 @@ entity DaprApp {
     -- Two DaprApp values may be combined with ++ to compose service modules.
 }
 
-entity Subscription {
+value Subscription {
     pubsub_name: PubSubName
     topic:       Topic
     route:       Route
     -- handler: CloudEvent -> SubscriptionResult (captured, CC-erased internally)
 }
 
-entity InvocationRoute {
+value InvocationRoute {
     method_name: MethodName
     -- handler: Req -> Resp (captured, CC-erased internally)
 }
 
-entity BindingRoute {
+value BindingRoute {
     binding_name: BindingName
     -- handler: Payload -> Unit (captured, CC-erased internally)
 }
@@ -304,7 +303,9 @@ rule DaprRuntimeFailsSafely {
         DaprRuntime.client = absent
         DaprRuntime.status = idle
         JavaDaprClientClosed()
-        -- Exception propagates to caller after cleanup
+        -- Exception propagates to caller after cleanup.
+        -- If scope.close() also throws a non-fatal exception, it is attached as a
+        -- suppressed exception on the body's throwable (not swallowed, not rethrown).
         ExceptionPropagated(exception: exception)
 }
 
@@ -477,6 +478,26 @@ rule StateDeleteWithETag {
             ETagMismatchExceptionThrown(key: key, etag: etag)
 }
 
+rule StateGetBulk {
+    when: StateGetBulkRequested(cap, keys)
+
+    requires: cap.status = open
+
+    ensures:
+        StateGetBulkCompleted(result: Map<StateKey, StateEntry>)
+        -- Missing keys return StateEntry with value = absent; no exception for absent keys
+}
+
+rule StateSaveBulk {
+    when: StateSaveBulkRequested(cap, entries)
+
+    requires: cap.status = open
+
+    ensures:
+        StateSaveBulkCompleted()
+        -- All entries saved in a single DAPR call
+}
+
 rule StateTransaction {
     when: StateTransactionRequested(cap, ops)
 
@@ -505,10 +526,43 @@ rule PubSubPublish {
         -- Note: delivery to subscribers is asynchronous and not tracked here
 }
 
+rule PubSubPublishWithMetadata {
+    when: PubSubPublishWithMetadataRequested(cap, topic, data, metadata)
+
+    requires: cap.status = open
+
+    ensures:
+        PubSubPublishCompleted()
+        -- metadata is forwarded to the DAPR sidecar as message metadata headers
+}
+
+rule PubSubBulkPublish {
+    when: PubSubBulkPublishRequested(cap, topic, entries)
+
+    requires: cap.status = open
+
+    ensures:
+        PubSubBulkPublishCompleted(result: BulkPublishResult)
+        -- result.failed_entries is empty on full success;
+        -- contains BulkEntryIds of any entries that failed to publish
+}
+
 -- ---- Service Invocation ----
 
 rule ServiceInvoke {
     when: ServiceInvokeRequested(cap, app_id, method, data)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprServiceResponds(app_id, method):
+            ServiceInvokeCompleted(response: any)
+        else:
+            DaprExceptionThrown()
+}
+
+rule ServiceInvokeGet {
+    when: ServiceInvokeGetRequested(cap, app_id, method)
 
     requires: cap.status = open
 
@@ -576,7 +630,7 @@ rule ConfigSubscribe {
 -- Registration is implicit: DaprAppServer derives routes from DaprApp at startup.
 
 rule DaprAppServed {
-    when: DaprRuntime.serve returns DaprApp
+    when: DaprRuntime.serve returns app: DaprApp
 
     ensures:
         for s in app.subscriptions:
@@ -586,51 +640,59 @@ rule DaprAppServed {
                 route: s.route
             )
         for inv in app.invocations:
-            InvocationHandler.registered(path: "/" + inv.method_name)
+            InvocationHandler.registered(path: "/" + inv.method_name.value)
         for bin in app.bindings:
-            BindingHandler.registered(path: "/" + bin.binding_name)
-        -- GET /dapr/subscribe returns all registered subscriptions
+            BindingHandler.registered(path: "/" + bin.binding_name.value)
+        -- GET /dapr/subscribe returns all registered subscriptions before any message is handled
 }
 
 -- ---- Inbound Dispatch (during serving) ----
 
 rule PubSubMessageDelivered {
     when: SidecarDeliversPubSubMessage(route, cloud_event_json)
-    -- Sidecar POSTs to <route> with a CloudEvent JSON body
+    -- Sidecar POSTs to <route> with a CloudEvent JSON body.
+    -- The matching Subscription (by route) provides the handler and codec.
 
     ensures:
-        let cloud_event = ParseCloudEvent(cloud_event_json)
-        if cloud_event.data decode fails:
-            -- Returns {"status":"DROP"} to sidecar; message silently discarded
-            SubscriptionResult.drop
-        else:
-            let result = handler(cloud_event)
-            -- Returns {"status":"SUCCESS"}, {"status":"RETRY"}, or {"status":"DROP"}
-            result
-        if handler throws:
+        if cloud_event_json is not parseable as a CloudEvent envelope:
+            -- Malformed JSON or missing required fields — transient, so retry
             SubscriptionResult.retry
+        else:
+            let envelope = ParseCloudEvent(cloud_event_json)
+            if envelope.data decode fails (using sub.codec):
+                -- Permanently undecodable payload — drop to avoid retry loop
+                SubscriptionResult.drop
+            else:
+                let cloud_event: CloudEvent<sub.Payload> = envelope with decoded data
+                let handler = sub.handler  -- CloudEvent<sub.Payload> -> SubscriptionResult
+                if handler(cloud_event) completes:
+                    handler(cloud_event)   -- propagate Success / Retry / Drop
+                if handler throws:
+                    SubscriptionResult.retry
 }
 
 rule BindingEventDelivered {
-    when: SidecarDeliversBindingEvent(binding_name, payload)
+    when: SidecarDeliversBindingEvent(binding_name, payload_json)
+    -- The matching BindingRoute (by binding_name) provides the handler and codec.
 
     ensures:
-        if handler(payload) succeeds:
-            HTTP 200 returned to sidecar
-        if handler throws:
-            HTTP 500 returned to sidecar
-
+        let handler = bin.handler  -- bin.Payload -> Unit
+        if payload_json decodes and handler(payload) completes:
+            SidecarAcknowledged()
+        if payload_json decode fails or handler throws:
+            SidecarErrorReturned()
 }
 
 rule ServiceInvocationReceived {
-    when: SidecarDeliversInvocation(method_name, request_body)
+    when: SidecarDeliversInvocation(method_name, request_body_json)
+    -- The matching InvocationRoute (by method_name) provides the handler and codecs.
 
     ensures:
-        if handler(request) succeeds:
-            HTTP 200 with response JSON returned
-        if handler throws:
-            HTTP 500 returned to sidecar
-
+        let handler = inv.handler  -- inv.Req -> inv.Resp
+        if request_body_json decodes and handler(request) completes:
+            SidecarResponded(body: inv.respCodec.encode(result))
+        if request_body_json decode fails or handler throws:
+            SidecarErrorReturned()
 }
 
 -- ---- Distributed Lock ----
@@ -766,6 +828,15 @@ invariant JsonCodecRoundtrip {
     -- JsonCodec.decode(JsonCodec.encode(v)) = Right(v)
 }
 
+invariant NonEmptyIdentifiers {
+    -- Opaque identifier types with non-empty constraints (enforced by constructor):
+    -- StoreName, PubSubName, Topic, MethodName, BindingName, SecretStoreName,
+    -- ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
+    -- ActorType, WorkflowName — all reject the empty string at construction time.
+    -- StateKey, AppId, ETag, SecretKey, ConfigKey, BulkEntryId, WorkflowInstanceId,
+    -- ActorId — accept any string including empty (no constraint).
+}
+
 ------------------------------------------------------------
 -- Actor Declarations
 ------------------------------------------------------------
@@ -796,19 +867,19 @@ surface DaprRuntimeSurface {
         demands JsonCodec
 
     exposes:
-        run: (body: DaprScope ?=> Any) -> Any
-        -- Acquires a DaprClient, provides DaprScope to body, releases on exit.
+        run: (body: (DaprScope, CanThrow<Exception>) ?=> Any) -> Any
+        -- Acquires a DaprClient, provides DaprScope and CanThrow<Exception> to body, releases on exit.
         -- Propagates exceptions after releasing resources.
         -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
         -- user code can call it without violating safe-mode constraints.
 
-        serve: (app_port: Int, body: DaprScope ?=> DaprApp) -> Unit
+        serve: (app_port: Int, body: (DaprScope, CanThrow<Exception>) ?=> DaprApp) -> Unit
         -- Starts an HTTP server on app_port; body returns a DaprApp describing
         -- all inbound handlers.  The server is started from the returned DaprApp,
         -- then blocks until the JVM shuts down or the calling thread is interrupted.
         -- DaprClient lifecycle matches the server's lifetime.
 
-        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: DaprScope ?=> Any) -> Any
+        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: (DaprScope, CanThrow<Exception>) ?=> Any) -> Any
         -- Like run but overrides the DAPR sidecar HTTP and gRPC endpoints.
         -- Intended for integration tests where the sidecar runs on a
         -- non-default port (e.g. via Testcontainers).
@@ -820,6 +891,28 @@ surface DaprRuntimeSurface {
         -- on exit, whether the body completes normally or throws.
 }
 
+surface DaprScopeSurface {
+    -- Primary factory for all capabilities.  DaprScope is provided as a context
+    -- parameter inside DaprRuntime.run / serve bodies.
+    facing user: UserCode
+
+    exposes:
+        state:   (store_name: StoreName)        -> StateCapability
+        pubsub:  (pubsub_name: PubSubName)      -> PubSubCapability
+        invoker: ()                             -> ServiceInvocationCapability
+        secrets: (store_name: SecretStoreName)  -> SecretsCapability
+        config:  (store_name: ConfigStoreName)  -> ConfigurationCapability
+        binding: (binding_name: BindingName)    -> BindingsCapability
+        lock:    (store_name: StoreName)        -> DistributedLockCapability
+        -- All returned capabilities carry the DaprScope lifetime (CC: ^{scope}).
+        -- Calling these methods after the scope is closed results in capabilities
+        -- that reject all operations (ClosedCapabilityRejection invariant).
+
+    @guarantee CapabilityLifetime
+        -- Every capability returned by DaprScope factory methods is open iff the
+        -- scope is open (ScopeContainment invariant).
+}
+
 surface StateCapabilitySurface {
     facing user: UserCode
 
@@ -827,17 +920,17 @@ surface StateCapabilitySurface {
         demands JsonCodec
 
     exposes:
-        get: (key: String) -> Any
+        get: (key: StateKey) -> Any
         -- Returns Option[T]; None if key not found
-        get_with_etag: (key: String) -> StateEntry
+        get_with_etag: (key: StateKey) -> StateEntry
         -- Returns StateEntry with value and current ETag
-        get_bulk: (keys: List<String>) -> Map<String, StateEntry>
+        get_bulk: (keys: List<StateKey>) -> Map<StateKey, StateEntry>
         -- Batch fetch; missing keys return StateEntry with value = absent
-        save: (key: String, value: Any) -> Unit
-        save_with_etag: (key: String, value: Any, etag: ETag) -> Unit
-        save_bulk: (entries: List<Pair<String, Any>>) -> Unit
-        delete: (key: String) -> Unit
-        delete_with_etag: (key: String, etag: ETag) -> Unit
+        save: (key: StateKey, value: Any) -> Unit
+        save_with_etag: (key: StateKey, value: Any, etag: ETag) -> Unit
+        save_bulk: (entries: List<Pair<StateKey, Any>>) -> Unit
+        delete: (key: StateKey) -> Unit
+        delete_with_etag: (key: StateKey, etag: ETag) -> Unit
         transaction: (ops: List<StateOp>) -> Unit
         query_state: (query: StateQuery) -> List<StateEntry>
         -- Query using DAPR state store query API (store must support queries)
@@ -866,24 +959,24 @@ surface ServiceInvocationSurface {
         demands JsonCodec
 
     exposes:
-        invoke: (app_id: AppId, method: String, data: Any) -> Any
-        invoke_get: (app_id: AppId, method: String) -> Any
+        invoke: (app_id: AppId, method: MethodName, data: Any) -> Any
+        invoke_get: (app_id: AppId, method: MethodName) -> Any
 }
 
 surface SecretsSurface {
     facing user: UserCode
 
     exposes:
-        get: (key: String) -> String
-        get_bulk: () -> Map<String, String>
+        get: (key: SecretKey) -> String
+        get_bulk: () -> Map<SecretKey, String>
 }
 
 surface ConfigurationSurface {
     facing user: UserCode
 
     exposes:
-        get: (keys: List<String>) -> Map<String, ConfigItem>
-        subscribe: (keys: List<String>, on_change: ConfigUpdate -> Unit) -> AutoCloseable
+        get: (keys: List<ConfigKey>) -> Map<ConfigKey, ConfigItem>
+        subscribe: (keys: List<ConfigKey>, on_change: ConfigUpdate -> Unit) -> AutoCloseable
         -- Streams config changes from sidecar; close the AutoCloseable to stop
 }
 
@@ -894,11 +987,12 @@ surface DaprAppSurface {
         demands JsonCodec
 
     exposes:
+        -- Two overloads: default route is "/" + topic.value
         Subscription: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Subscription
-        Subscription_route: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
+        Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
         InvocationRoute: (method_name: MethodName, handler: Req -> Resp) -> InvocationRoute
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
-        DaprApp: (subscriptions, invocations, bindings, workflows, activities) -> DaprApp
+        DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<DaprWorkflow>, activities: List<DaprActivity>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp
         -- Handler lambdas may capture capabilities from the enclosing DaprScope.
         -- The recommended pattern is: business logic in explicit methods with
@@ -925,9 +1019,9 @@ surface BindingsSurface {
         demands JsonCodec
 
     exposes:
-        invoke: (operation: String, data: Any) -> Any?
+        invoke: (operation: BindingOperation, data: Any) -> Any?
         -- Returns Option[Resp]; None if binding has no response
-        invoke_one_way: (operation: String, data: Any) -> Unit
+        invoke_one_way: (operation: BindingOperation, data: Any) -> Unit
         -- Fire-and-forget binding invocation; no response expected
 }
 
@@ -935,9 +1029,9 @@ surface DistributedLockSurface {
     facing user: UserCode
 
     exposes:
-        try_lock: (resourceId: String, lockOwner: String, expirySeconds: Int) -> Boolean
+        try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int) -> Boolean
         -- Attempts to acquire lock; returns true if acquired, false if already held
-        unlock: (resourceId: String, lockOwner: String) -> UnlockStatus
+        unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
         -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
 }
 

@@ -94,14 +94,14 @@ classDiagram
     }
     class StateCapability {
         <<trait>>
-        +get[T](key: String) Option[T]
-        +getWithETag[T](key: String) StateEntry[T]
-        +getBulk[T](keys: Seq[String]) Map[String,StateEntry[T]]
-        +save[T](key: String, value: T) Unit
-        +saveBulk[T](entries: Seq) Unit
-        +saveWithETag[T](key, value, etag: ETag) Unit
-        +delete(key: String) Unit
-        +deleteWithETag(key: String, etag: ETag) Unit
+        +get[T](key: StateKey) Option[T]
+        +getWithETag[T](key: StateKey) StateEntry[T]
+        +getBulk[T](keys: Seq[StateKey]) Map[StateKey,StateEntry[T]]
+        +save[T](key: StateKey, value: T) Unit
+        +saveBulk[T](entries: Seq[(StateKey,T)]) Unit
+        +saveWithETag[T](key: StateKey, value: T, etag: ETag) Unit
+        +delete(key: StateKey) Unit
+        +deleteWithETag(key: StateKey, etag: ETag) Unit
         +transaction(ops: Seq[StateOp]) Unit
         +queryState[T](query: StateQuery) List[StateEntry[T]]
     }
@@ -113,18 +113,18 @@ classDiagram
     }
     class ServiceInvocationCapability {
         <<trait>>
-        +invoke[Req,Resp](appId, method, data) Resp
-        +invokeGet[Resp](appId, method) Resp
+        +invoke[Req,Resp](appId: AppId, method: MethodName, data: Req) Resp
+        +invokeGet[Resp](appId: AppId, method: MethodName) Resp
     }
     class SecretsCapability {
         <<trait>>
-        +get(key: String) String
-        +getBulk() Map[String,String]
+        +get(key: SecretKey) String
+        +getBulk() Map[SecretKey,String]
     }
     class ConfigurationCapability {
         <<trait>>
-        +get(keys: Seq[String]) Map[String,ConfigItem]
-        +subscribe(keys)(onChange) AutoCloseable
+        +get(keys: Seq[ConfigKey]) Map[ConfigKey,ConfigItem]
+        +subscribe(keys: Seq[ConfigKey])(onChange) AutoCloseable
     }
     class DaprApp {
         <<case class>>
@@ -137,13 +137,13 @@ classDiagram
     }
     class BindingsCapability {
         <<trait>>
-        +invoke[Req,Resp](operation, data) Option[Resp]
-        +invokeOneWay[Req](operation, data) Unit
+        +invoke[Req,Resp](operation: BindingOperation, data: Req) Option[Resp]
+        +invokeOneWay[Req](operation: BindingOperation, data: Req) Unit
     }
     class DistributedLockCapability {
         <<trait>>
-        +tryLock(resourceId, lockOwner, expirySeconds) Boolean
-        +unlock(resourceId, lockOwner) UnlockStatus
+        +tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int) Boolean
+        +unlock(resourceId: LockResourceId, lockOwner: LockOwner) UnlockStatus
     }
 
     DaprCapability <|-- StateCapability
@@ -285,19 +285,33 @@ val combined = OrderServiceHandlers.daprApp() ++ InventoryServiceHandlers.daprAp
 
 All domain identifiers are opaque to prevent accidental misuse (e.g., passing a `PubSubName` where a `StoreName` is expected).
 
-| Type | Wraps | Purpose |
-|---|---|---|
-| `StoreName` | `String` | DAPR state store component name |
-| `PubSubName` | `String` | DAPR pub/sub component name |
-| `Topic` | `String` | Pub/sub topic |
-| `AppId` | `String` | Target application ID for service invocation |
-| `SecretStoreName` | `String` | DAPR secrets store name |
-| `ConfigStoreName` | `String` | DAPR configuration store name |
-| `BindingName` | `String` | DAPR output binding name |
-| `ETag` | `String` | Optimistic concurrency tag |
-| `StateQuery` | `String` | State store query expression (JSON filter) |
+| Type | Wraps | Non-empty? | Purpose |
+|---|---|---|---|
+| `StoreName` | `String` | yes | DAPR state store / lock store component name |
+| `PubSubName` | `String` | yes | DAPR pub/sub component name |
+| `Topic` | `String` | yes | Pub/sub topic |
+| `AppId` | `String` | yes | Target application ID for service invocation |
+| `SecretStoreName` | `String` | yes | DAPR secrets store component name |
+| `ConfigStoreName` | `String` | yes | DAPR configuration store component name |
+| `BindingName` | `String` | yes | DAPR output binding component name |
+| `MethodName` | `String` | yes | Service-invocation / inbound handler method name |
+| `Route` | `String` | yes | HTTP route for a pub/sub subscription |
+| `BindingOperation` | `String` | yes | Operation name for an output binding |
+| `LockResourceId` | `String` | yes | Resource identifier for a distributed lock |
+| `LockOwner` | `String` | yes | Lock owner identifier |
+| `ActorType` | `String` | yes | Dapr virtual actor type name |
+| `WorkflowName` | `String` | yes | Dapr workflow class name |
+| `ETag` | `String` | no | Optimistic-concurrency tag |
+| `StateKey` | `String` | no | Key in a DAPR state store |
+| `StateQuery` | `String` | no | State store query expression (JSON filter) |
+| `SecretKey` | `String` | no | Key in a DAPR secrets store |
+| `ConfigKey` | `String` | no | Key in a DAPR configuration store |
+| `BulkEntryId` | `String` | no | Caller-assigned ID for bulk-publish correlation |
+| `WorkflowInstanceId` | `String` | no | Dapr workflow instance ID |
+| `ActorId` | `String` | no | Dapr virtual actor instance ID |
+| `HttpMethod` | enum | — | HTTP verb used by an incoming service invocation |
 
-Smart constructors live in companion objects. Extension methods provide operations that would otherwise require unwrapping.
+Smart constructors live in companion objects and validate non-empty constraints at construction time (non-empty types). Extension methods provide `.value` unwrapping.
 
 ---
 
