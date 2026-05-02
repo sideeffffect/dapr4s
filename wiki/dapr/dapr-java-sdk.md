@@ -226,6 +226,7 @@ All Dapr exceptions extend `DaprException extends RuntimeException`. They are co
 
 ## See Also
 
+- [Dapr Java SDK — Virtual Threads](dapr-java-sdk-virtual-threads.md)
 - [Dapr Overview](dapr-overview.md)
 - [Dapr Actors](dapr-actors.md)
 - [Dapr Workflows](dapr-workflows.md)

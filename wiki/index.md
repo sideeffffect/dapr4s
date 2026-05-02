@@ -83,3 +83,4 @@ Dapr (Distributed Application Runtime) — portable, event-driven runtime for bu
 | [Dapr Workflow Patterns](dapr/dapr-workflow-patterns.md) | Task chaining, fan-out/fan-in, async HTTP APIs, monitor (eternal) pattern, external event / human approval, child workflows, compensation | 2026-05-01 |
 | [Dapr Actors Deep Dive](dapr/dapr-actors-deep-dive.md) | Virtual actor lifecycle, turn-based concurrency, reentrancy, reminders vs timers, placement service, state persistence, AI agent use cases | 2026-05-01 |
 | [Dapr Pluggable Components](dapr/dapr-pluggable-components.md) | Custom state stores, pub/sub, and bindings via gRPC/UDS; multi-interface components; independent release cycle | 2026-05-01 |
+| [Dapr Java SDK — Virtual Threads](dapr/dapr-java-sdk-virtual-threads.md) | SDK internals (gRPC/Netty transport, newGrpcStub() bypass, ThreadlessExecutor, Mono.block() vs toFuture().get() VT safety) | 2026-05-02 |

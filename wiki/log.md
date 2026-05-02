@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-05-02] ingest | Dapr Java SDK — Virtual Threads
+- Updated: Dapr Java SDK
+
 ## [2026-05-01] ingest | Effect Systems Overview
 - Updated: Direct-Style Effects
 - Updated: Capability-Based Effects
