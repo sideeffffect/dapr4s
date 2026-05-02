@@ -63,8 +63,9 @@ object DaprRuntime:
           if p != null then p.addSuppressed(t)
           else throw t
 
-  /** Start an HTTP server on `appPort`, register inbound handlers, then block
-    * until the JVM shuts down or the calling thread is interrupted.
+  /** Start an HTTP server on `appPort`, build the inbound handler set from the
+    * [[DaprApp]] returned by `body`, then block until the JVM shuts down or the
+    * calling thread is interrupted.
     *
     * The Dapr sidecar discovers pub/sub subscriptions via `GET /dapr/subscribe`
     * and delivers messages / binding events / invocations via `POST /<route>`.
@@ -73,18 +74,23 @@ object DaprRuntime:
     * == Usage ==
     * {{{
     *   DaprRuntime.serve(appPort = 8080):
-    *     val scope    = summon[DaprScope]
-    *     val handlers = summon[AppHandlers]
-    *
-    *     handlers.subscribe(PubSubName("pubsub"), Topic("orders")) { event =>
-    *       scope.state(StoreName("statestore")).save(event.data.id, event.data)
-    *       SubscriptionResult.Success
-    *     }
-    *
-    *     handlers.onInvoke[OrderRequest]("checkout")[OrderResponse] { req =>
-    *       // handle direct invocation from another Dapr app
-    *       OrderResponse(req.id, "processed")
-    *     }
+    *     val scope = summon[DaprScope]
+    *     given StateCapability  = scope.state(StoreName("statestore"))
+    *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
+    *     DaprApp(
+    *       subscriptions = List(
+    *         Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event =>
+    *           // handle incoming order event
+    *           SubscriptionResult.Success
+    *         }
+    *       ),
+    *       invocations = List(
+    *         InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+    *           // handle direct invocation
+    *           OrderResponse(req.id, "processed")
+    *         }
+    *       )
+    *     )
     * }}}
     *
     * == Sidecar startup order ==
@@ -94,16 +100,15 @@ object DaprRuntime:
     * `withAppChannelAddress` to point the sidecar at the running server.
     *
     * @param appPort the HTTP port on which the app listens (default 8080)
-    * @param body a pure context function that receives a `DaprScope` (for
-    *             outbound calls) and an `AppHandlers` (for inbound registration)
+    * @param body a pure context function that receives a `DaprScope` and returns
+    *             a [[DaprApp]] describing all inbound handlers
     */
-  def serve(appPort: Int = 8080)(body: (DaprScope, AppHandlers, CanThrow[Exception]) ?=> Unit): Unit =
-    val server = new internal.DaprAppServer()
+  def serve(appPort: Int = 8080)(body: (DaprScope, CanThrow[Exception]) ?=> DaprApp): Unit =
     run {
       val scope = summon[DaprScope]
       val ct    = summon[CanThrow[Exception]]
-      body(using scope, server, ct)
-      server.startAndBlock(appPort)
+      val app   = body(using scope, ct)
+      new internal.DaprAppServer(app).startAndBlock(appPort)
     }
 
   /** Run `body` with a [[DaprScope]] pointing to a specific sidecar endpoint.

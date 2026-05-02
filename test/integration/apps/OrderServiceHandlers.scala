@@ -12,8 +12,9 @@ import unsafeExceptions.canThrowAny
   * operation may perform, and call sites must provide the corresponding
   * capabilities.
   *
-  * The `configure` method wires these pure handler methods into an [[AppHandlers]]
-  * instance for use with a real Dapr sidecar or a [[dapr.safe.test.integration.TestAppHandlers]]
+  * The `daprApp` method injects capabilities as `given`s and builds a [[DaprApp]]
+  * describing all inbound routes.  The resulting value is immutable and can be
+  * passed to [[DaprRuntime.serve]] or [[dapr.safe.test.integration.TestDaprApp]]
   * for in-process testing.
   *
   * Configured against Dapr component names:
@@ -23,7 +24,7 @@ import unsafeExceptions.canThrowAny
   *
   * === Escape hatches and their justification ===
   *
-  * The `configure` method contains two structured workarounds:
+  * The `daprApp` method contains two structured workarounds:
   *
   * 1. '''`try { ... } catch case e: Exception => throw e` in each handler lambda'''
   *    WHY: In Scala 3.9 CC, each lambda that calls a `throws`-annotated method
@@ -38,11 +39,9 @@ import unsafeExceptions.canThrowAny
   *
   * 2. '''`given StateCapability = ...` — capability injection at configure time'''
   *    WHY: The handler lambdas capture `StateCapability` and `PubSubCapability`
-  *    from the enclosing `configure` scope.  This is intentional: the capabilities
-  *    are bound once per configure call and shared across all handler invocations,
-  *    matching the lifecycle of the underlying Dapr client connection.  The
-  *    `AppHandlers.onInvoke` parameter type uses `{cap}` (universal capture set)
-  *    precisely to allow this pattern without requiring `asInstanceOf` cast.
+  *    from the enclosing `daprApp` scope.  This is intentional: the capabilities
+  *    are bound once per `daprApp` call and shared across all handler invocations,
+  *    matching the lifecycle of the underlying Dapr client connection.
   */
 object OrderServiceHandlers:
 
@@ -80,31 +79,33 @@ object OrderServiceHandlers:
     entries.mkString("[", ",", "]")
 
   // ---------------------------------------------------------------------------
-  // Handler registration
+  // Declarative app description
   // ---------------------------------------------------------------------------
 
-  /** Register all handlers with `handlers`.
+  /** Build a [[DaprApp]] with all inbound routes for the Order service.
     *
     * Injects `StateCapability` and `PubSubCapability` as givens so the handler
     * lambdas below can call the pure handler methods without capturing the scope
     * directly.
     */
-  def configure()(using scope: DaprScope, handlers: AppHandlers): Unit =
+  def daprApp()(using scope: DaprScope): DaprApp =
     given StateCapability  = scope.state(StateName)
     given PubSubCapability = scope.pubsub(PubSubComp)
 
-    handlers.onInvoke[OrderRequest](MethodName("place-order"))[OrderResponse] { req =>
-      // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see class-level scaladoc.
-      try placeOrder(req)
-      catch case e: Exception => throw e
-    }
-
-    handlers.onInvoke[String](MethodName("get-order"))[Option[OrderRequest]] { orderId =>
-      try getOrder(orderId)
-      catch case e: Exception => throw e
-    }
-
-    handlers.onInvoke[String](MethodName("query-orders"))[String] { queryJson =>
-      try queryOrders(queryJson)
-      catch case e: Exception => throw e
-    }
+    DaprApp(
+      invocations = List(
+        InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+          // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see class-level scaladoc.
+          try placeOrder(req)
+          catch case e: Exception => throw e
+        },
+        InvocationRoute[String, Option[OrderRequest]](MethodName("get-order")) { orderId =>
+          try getOrder(orderId)
+          catch case e: Exception => throw e
+        },
+        InvocationRoute[String, String](MethodName("query-orders")) { queryJson =>
+          try queryOrders(queryJson)
+          catch case e: Exception => throw e
+        }
+      )
+    )

@@ -5,7 +5,7 @@ import munit.FunSuite
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 
-/** Unit tests for the subscriber-side types and AppHandlers implementation.
+/** Unit tests for the subscriber-side types and DaprAppServer implementation.
   *
   * These tests verify the HTTP dispatch logic of DaprAppServer without
   * requiring Docker — by calling the server's internal helpers directly via
@@ -47,24 +47,24 @@ class SubscriberTest extends FunSuite:
     assertEquals(event.data, "hello")
 
   // -------------------------------------------------------------------------
-  // AppHandlers registration + HTTP dispatch
+  // DaprApp + DaprAppServer dispatch
   // -------------------------------------------------------------------------
 
-  test("unit: DaprAppServer register and dispatch pub/sub message"):
-    val server  = new dapr.safe.internal.DaprAppServer()
+  test("unit: DaprAppServer dispatches pub/sub message from DaprApp"):
     var received: String | Null = null
-
-    server.subscribe(PubSubName("ps"), Topic("orders")) { (event: CloudEvent[String]) =>
-      received = event.data
-      SubscriptionResult.Success
-    }
-
-    // Start server on ephemeral port
-    val port    = freePort()
-    val thread  = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val app = DaprApp(
+      subscriptions = List(
+        Subscription[String](PubSubName("ps"), Topic("orders")) { event =>
+          received = event.data
+          SubscriptionResult.Success
+        }
+      )
+    )
+    val server = new dapr.safe.internal.DaprAppServer(app)
+    val port   = freePort()
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
 
     try
-      // Wait for server to come up
       waitForPort(port)
 
       // Check /dapr/subscribe
@@ -85,11 +85,14 @@ class SubscriberTest extends FunSuite:
       thread.join(2000)
 
   test("unit: DaprAppServer dispatch returns RETRY on handler exception"):
-    val server = new dapr.safe.internal.DaprAppServer()
-    server.subscribe(PubSubName("ps"), Topic("boom")) { (_: CloudEvent[String]) =>
-      throw RuntimeException("deliberate failure")
-    }
-
+    val app = DaprApp(
+      subscriptions = List(
+        Subscription[String](PubSubName("ps"), Topic("boom")) { _ =>
+          throw RuntimeException("deliberate failure")
+        }
+      )
+    )
+    val server = new dapr.safe.internal.DaprAppServer(app)
     val port   = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -105,11 +108,12 @@ class SubscriberTest extends FunSuite:
       thread.join(2000)
 
   test("unit: DaprAppServer dispatch DROP on undecodable payload"):
-    val server = new dapr.safe.internal.DaprAppServer()
-    server.subscribe(PubSubName("ps"), Topic("numbers")) { (_: CloudEvent[Int]) =>
-      SubscriptionResult.Success
-    }
-
+    val app = DaprApp(
+      subscriptions = List(
+        Subscription[Int](PubSubName("ps"), Topic("numbers")) { _ => SubscriptionResult.Success }
+      )
+    )
+    val server = new dapr.safe.internal.DaprAppServer(app)
     val port   = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -125,13 +129,14 @@ class SubscriberTest extends FunSuite:
       thread.interrupt()
       thread.join(2000)
 
-  test("unit: DaprAppServer onBinding dispatches binding event"):
-    val server  = new dapr.safe.internal.DaprAppServer()
+  test("unit: DaprAppServer dispatches binding event from DaprApp"):
     var received: String | Null = null
-    server.onBinding(BindingName("myqueue")) { (payload: String) =>
-      received = payload
-    }
-
+    val app = DaprApp(
+      bindings = List(
+        BindingRoute[String](BindingName("myqueue")) { payload => received = payload }
+      )
+    )
+    val server = new dapr.safe.internal.DaprAppServer(app)
     val port   = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -142,10 +147,13 @@ class SubscriberTest extends FunSuite:
       thread.interrupt()
       thread.join(2000)
 
-  test("unit: DaprAppServer onInvoke dispatches invocation and returns response"):
-    val server = new dapr.safe.internal.DaprAppServer()
-    server.onInvoke[String](MethodName("echo"))[String] { req => "echo:" + req }
-
+  test("unit: DaprAppServer dispatches invocation and returns response from DaprApp"):
+    val app = DaprApp(
+      invocations = List(
+        InvocationRoute[String, String](MethodName("echo")) { req => "echo:" + req }
+      )
+    )
+    val server = new dapr.safe.internal.DaprAppServer(app)
     val port   = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -157,7 +165,7 @@ class SubscriberTest extends FunSuite:
       thread.join(2000)
 
   test("unit: DaprAppServer returns 404 for unknown route"):
-    val server = new dapr.safe.internal.DaprAppServer()
+    val server = new dapr.safe.internal.DaprAppServer(DaprApp())
     val port   = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -167,6 +175,20 @@ class SubscriberTest extends FunSuite:
     finally
       thread.interrupt()
       thread.join(2000)
+
+  test("unit: DaprApp ++ merges subscriptions and invocations"):
+    val app1 = DaprApp(
+      subscriptions = List(Subscription[String](PubSubName("p"), Topic("t1")) { _ => SubscriptionResult.Success }),
+      invocations   = List(InvocationRoute[String, String](MethodName("m1")) { s => s })
+    )
+    val app2 = DaprApp(
+      invocations = List(InvocationRoute[Int, Int](MethodName("m2")) { n => n + 1 })
+    )
+    val combined = app1 ++ app2
+    assertEquals(combined.subscriptions.size, 1)
+    assertEquals(combined.invocations.size, 2)
+    assert(combined.invocations.exists(_.methodName.value == "m1"))
+    assert(combined.invocations.exists(_.methodName.value == "m2"))
 
   // -------------------------------------------------------------------------
   // Helpers

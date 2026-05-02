@@ -4,16 +4,16 @@ import dapr.safe.*
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 import io.dapr.workflows.runtime.WorkflowRuntimeBuilder
 import java.net.InetSocketAddress
-import java.util.concurrent.{CopyOnWriteArrayList, Executors}
 import java.util.{ArrayList, HashMap as JHashMap}
 import scala.jdk.CollectionConverters.*
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal
 
-/** HTTP server that implements [[AppHandlers]] for the Dapr subscriber
-  * protocol.  Registration happens before `startAndBlock`; once the server
-  * is running the internal tables are read-only.
+/** HTTP server that serves Dapr subscriber protocol from a [[DaprApp]] description.
+  *
+  * The [[DaprApp]] is provided at construction time.  Dispatch tables are built
+  * from it lazily inside [[startAndBlock]]; until then the object is immutable.
   *
   * Uses `com.sun.net.httpserver.HttpServer` (built into OpenJDK, in module
   * `jdk.httpserver`) with a virtual-thread executor, so each request runs on
@@ -23,87 +23,74 @@ import scala.util.control.NonFatal
   * stored closures outside the Scala CC tracking graph.
   */
 @scala.caps.assumeSafe
-private[safe] final class DaprAppServer extends AppHandlers:
-
-  // -------------------------------------------------------------------------
-  // Internal registration tables (written only during setup, before start)
-  // -------------------------------------------------------------------------
-
-  // For /dapr/subscribe response — ordered list of (pubsubName, topic, route) triples
-  private val pubSubEntries: ArrayList[Array[String]] = ArrayList()
-
-  // Path → handler, stored as AnyRef to keep Java collections outside CC.
-  // Actual value types: pubSubRoutes: String=>SubscriptionResult, etc.
-  private val pubSubRoutes : JHashMap[String, AnyRef] = JHashMap()
-  private val bindingRoutes: JHashMap[String, AnyRef] = JHashMap()
-  private val invokeRoutes : JHashMap[String, AnyRef] = JHashMap()
-
-  // Workflow runtime builder — created on first registerWorkflow/registerActivity call.
-  @volatile private var _workflowBuilder: WorkflowRuntimeBuilder | Null = null
-
-  private def workflowBuilder: WorkflowRuntimeBuilder =
-    if _workflowBuilder == null then _workflowBuilder = new WorkflowRuntimeBuilder()
-    _workflowBuilder.nn
-
-  // -------------------------------------------------------------------------
-  // AppHandlers implementation
-  // -------------------------------------------------------------------------
-
-  def subscribe[T: JsonCodec](pubsubName: PubSubName, topic: Topic)(
-    handler: CloudEvent[T] => SubscriptionResult
-  ): Unit =
-    subscribe(pubsubName, topic, Route("/" + topic.value))(handler)
-
-  def subscribe[T: JsonCodec](pubsubName: PubSubName, topic: Topic, route: Route)(
-    handler: CloudEvent[T] => SubscriptionResult
-  ): Unit =
-    val path  = if route.value.startsWith("/") then route.value else "/" + route.value
-    val codec = summon[JsonCodec[T]]
-    pubSubEntries.add(Array(pubsubName.value, topic.value, path))
-    val fn: String => SubscriptionResult = bodyJson =>
-      parseCloudEvent(bodyJson, codec, pubsubName.value, topic.value, handler)
-    pubSubRoutes.put(path, fn.asInstanceOf[AnyRef])
-
-  def onBinding[T: JsonCodec](bindingName: BindingName)(handler: T => Unit): Unit =
-    val codec = summon[JsonCodec[T]]
-    val path  = "/" + bindingName.value
-    val fn: String => Unit = bodyJson =>
-      codec.decode(bodyJson) match
-        case Right(data) => handler(data)
-        case Left(e)     =>
-          throw DaprAppServerException(
-            s"Cannot decode binding payload for '${bindingName.value}': ${e.getMessage}", e
-          )
-    bindingRoutes.put(path, fn.asInstanceOf[AnyRef])
-
-  def onInvoke[Req: JsonCodec](methodName: MethodName)[Resp: JsonCodec](
-    handler: Req => Resp
-  ): Unit =
-    val reqCodec  = summon[JsonCodec[Req]]
-    val respCodec = summon[JsonCodec[Resp]]
-    val path = "/" + methodName.value
-    val fn: String => String = bodyJson =>
-      reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
-        case Right(req) => respCodec.encode(handler(req))
-        case Left(e)    =>
-          throw DaprAppServerException(
-            s"Cannot decode invocation request for '${methodName.value}': ${e.getMessage}", e
-          )
-    invokeRoutes.put(path, fn.asInstanceOf[AnyRef])
-
-  def registerWorkflow(workflow: DaprWorkflow): Unit =
-    workflowBuilder.registerWorkflow(workflow)
-
-  def registerActivity(activity: DaprActivity): Unit =
-    workflowBuilder.registerActivity(activity)
-
-  // -------------------------------------------------------------------------
-  // Server lifecycle
-  // -------------------------------------------------------------------------
+private[safe] final class DaprAppServer(app: DaprApp):
 
   def startAndBlock(port: Int): Unit =
+
+    // -----------------------------------------------------------------------
+    // Build dispatch tables from DaprApp
+    // -----------------------------------------------------------------------
+
+    // For /dapr/subscribe response — ordered list of (pubsubName, topic, route) triples
+    val pubSubEntries: ArrayList[Array[String]] = ArrayList()
+
+    // Path → handler, stored as AnyRef to keep Java collections outside CC.
+    val pubSubRoutes : JHashMap[String, AnyRef] = JHashMap()
+    val bindingRoutes: JHashMap[String, AnyRef] = JHashMap()
+    val invokeRoutes : JHashMap[String, AnyRef] = JHashMap()
+
+    for sub <- app.subscriptions do
+      val path    = if sub.route.value.startsWith("/") then sub.route.value else "/" + sub.route.value
+      val handler = sub.rawHandler.asInstanceOf[CloudEvent[sub.Payload] => SubscriptionResult]
+      pubSubEntries.add(Array(sub.pubsubName.value, sub.topic.value, path))
+      val fn: String => SubscriptionResult = bodyJson =>
+        parseCloudEvent(bodyJson, sub.codec, sub.pubsubName.value, sub.topic.value, handler)
+      pubSubRoutes.put(path, fn.asInstanceOf[AnyRef])
+
+    for inv <- app.invocations do
+      val path    = "/" + inv.methodName.value
+      val handler = inv.rawHandler.asInstanceOf[inv.Req => inv.Resp]
+      val fn: String => String = bodyJson =>
+        inv.reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
+          case Right(req) => inv.respCodec.encode(handler(req))
+          case Left(e)    =>
+            throw DaprAppServerException(
+              s"Cannot decode invocation request for '${inv.methodName.value}': ${e.getMessage}", e
+            )
+      invokeRoutes.put(path, fn.asInstanceOf[AnyRef])
+
+    for bin <- app.bindings do
+      val path    = "/" + bin.bindingName.value
+      val handler = bin.rawHandler.asInstanceOf[bin.Payload => Unit]
+      val fn: String => Unit = bodyJson =>
+        bin.codec.decode(bodyJson) match
+          case Right(data) => handler(data)
+          case Left(e)     =>
+            throw DaprAppServerException(
+              s"Cannot decode binding payload for '${bin.bindingName.value}': ${e.getMessage}", e
+            )
+      bindingRoutes.put(path, fn.asInstanceOf[AnyRef])
+
+    // -----------------------------------------------------------------------
+    // Workflow/activity runtime (created only if needed)
+    // -----------------------------------------------------------------------
+
+    val workflowRuntime =
+      if app.workflows.nonEmpty || app.activities.nonEmpty then
+        val wb = new WorkflowRuntimeBuilder()
+        app.workflows.foreach(wb.registerWorkflow)
+        app.activities.foreach(wb.registerActivity)
+        val rt = wb.build()
+        rt.start(false)
+        rt
+      else null
+
+    // -----------------------------------------------------------------------
+    // HTTP server
+    // -----------------------------------------------------------------------
+
     val server = HttpServer.create(new InetSocketAddress(port), /*backlog=*/ 0)
-    server.setExecutor(Executors.newVirtualThreadPerTaskExecutor())
+    server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
 
     // Dapr sidecar calls GET /dapr/subscribe to discover pub/sub subscriptions.
     server.createContext(
@@ -136,7 +123,7 @@ private[safe] final class DaprAppServer extends AppHandlers:
         try
           val psFn = pubSubRoutes.get(path)
           if psFn != null then
-            val fn = psFn.asInstanceOf[String => SubscriptionResult]
+            val fn     = psFn.asInstanceOf[String => SubscriptionResult]
             val body   = readBody(exchange)
             val result = try fn(body) catch case NonFatal(_) => SubscriptionResult.Retry
             val status = result match
@@ -176,14 +163,6 @@ private[safe] final class DaprAppServer extends AppHandlers:
     )
 
     server.start()
-
-    // Start the workflow runtime (non-blocking) if any workflows/activities were registered.
-    val wb = _workflowBuilder
-    val workflowRuntime = if wb != null then
-      val runtime = wb.build()
-      runtime.start(false)
-      runtime
-    else null
 
     // Register a JVM shutdown hook so the server drains in-flight requests
     // on SIGTERM/SIGINT before the JVM exits.

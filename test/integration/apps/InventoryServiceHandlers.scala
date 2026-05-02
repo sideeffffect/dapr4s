@@ -76,25 +76,30 @@ object InventoryServiceHandlers:
     stock
 
   // ---------------------------------------------------------------------------
-  // Handler registration
+  // Declarative app description
   // ---------------------------------------------------------------------------
 
-  def configure()(using scope: DaprScope, handlers: AppHandlers): Unit =
+  /** Build a [[DaprApp]] with all inbound routes for the Inventory service. */
+  def daprApp()(using scope: DaprScope): DaprApp =
     given StateCapability           = scope.state(StateName)
     given DistributedLockCapability = scope.lock(LockStoreName)
 
-    handlers.subscribe[OrderEvent](PubSubComp, OrdersTopic) { event =>
-      // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see OrderServiceHandlers scaladoc.
-      try handleOrderEvent(event)
-      catch case e: Exception => throw e
-    }
-
-    handlers.onInvoke[String](MethodName("get-stock"))[StockLevel] { item =>
-      try getStock(item)
-      catch case e: Exception => throw e
-    }
-
-    handlers.onInvoke[StockLevel](MethodName("seed-stock"))[StockLevel] { stock =>
-      try seedStock(stock)
-      catch case e: Exception => throw e
-    }
+    DaprApp(
+      subscriptions = List(
+        Subscription[OrderEvent](PubSubComp, OrdersTopic) { event =>
+          // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see OrderServiceHandlers scaladoc.
+          try handleOrderEvent(event)
+          catch case e: Exception => throw e
+        }
+      ),
+      invocations = List(
+        InvocationRoute[String, StockLevel](MethodName("get-stock")) { item =>
+          try getStock(item)
+          catch case e: Exception => throw e
+        },
+        InvocationRoute[StockLevel, StockLevel](MethodName("seed-stock")) { stock =>
+          try seedStock(stock)
+          catch case e: Exception => throw e
+        }
+      )
+    )

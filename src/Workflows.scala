@@ -19,7 +19,7 @@ import language.experimental.saferExceptions
   *       ctx.complete(result)
   * }}}
   *
-  * Register with [[dapr.safe.AppHandlers.registerWorkflow]] inside
+  * Include in the `workflows` list of a [[dapr.safe.DaprApp]] returned from
   * [[dapr.safe.DaprRuntime.serve]].
   */
 @scala.caps.assumeSafe
@@ -56,7 +56,7 @@ abstract class DaprWorkflow extends io.dapr.workflows.Workflow:
   *       "payment-confirmed"
   * }}}
   *
-  * Register with [[dapr.safe.AppHandlers.registerActivity]] inside
+  * Include in the `activities` list of a [[dapr.safe.DaprApp]] returned from
   * [[dapr.safe.DaprRuntime.serve]].
   */
 @scala.caps.assumeSafe

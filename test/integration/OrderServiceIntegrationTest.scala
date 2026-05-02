@@ -13,8 +13,8 @@ import java.util.Collections
 /** Integration tests for [[OrderServiceHandlers]] against a real Dapr sidecar.
   *
   * Uses Testcontainers to spin up a Dapr sidecar with an in-memory state store
-  * and in-memory pub/sub.  Service handlers are registered in a
-  * [[TestAppHandlers]] and invoked directly — no HTTP round-trip required.
+  * and in-memory pub/sub.  The [[DaprApp]] returned by `daprApp()` is exercised
+  * via [[TestDaprApp.call]] — no HTTP round-trip required.
   *
   * Run with: `scala-cli test . -- --only "integration.*Order*"`
   * (Docker must be available.)
@@ -39,13 +39,12 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("order service: place-order saves order to state store"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        OrderServiceHandlers.configure()(using scope, handlers)
+        val app   = OrderServiceHandlers.daprApp()(using scope)
 
         val req  = OrderRequest("laptop", 2)
-        val resp = handlers.call[OrderRequest]("place-order", req)[OrderResponse]
+        val resp = TestDaprApp.call[OrderRequest](app, "place-order", req)[OrderResponse]
 
         assertEquals(resp.status, "accepted")
         assert(resp.orderId.nonEmpty)
@@ -58,38 +57,34 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("order service: get-order retrieves a previously placed order"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        OrderServiceHandlers.configure()(using scope, handlers)
+        val app   = OrderServiceHandlers.daprApp()(using scope)
 
         val req  = OrderRequest("keyboard", 1)
-        val resp = handlers.call[OrderRequest]("place-order", req)[OrderResponse]
+        val resp = TestDaprApp.call[OrderRequest](app, "place-order", req)[OrderResponse]
 
-        val fetched = handlers.call[String]("get-order", resp.orderId)[Option[OrderRequest]]
+        val fetched = TestDaprApp.call[String](app, "get-order", resp.orderId)[Option[OrderRequest]]
         assertEquals(fetched, Some(req))
     }
 
   test("order service: get-order returns None for unknown order ID"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope = summon[DaprScope]
-        OrderServiceHandlers.configure()(using scope, handlers)
-
-        val fetched = handlers.call[String]("get-order", "no-such-order-id")[Option[OrderRequest]]
+        val scope   = summon[DaprScope]
+        val app     = OrderServiceHandlers.daprApp()(using scope)
+        val fetched = TestDaprApp.call[String](app, "get-order", "no-such-order-id")[Option[OrderRequest]]
         assertEquals(fetched, None)
     }
 
   test("order service: two consecutive orders get distinct IDs"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        OrderServiceHandlers.configure()(using scope, handlers)
+        val app   = OrderServiceHandlers.daprApp()(using scope)
 
-        val r1 = handlers.call[OrderRequest]("place-order", OrderRequest("mouse",   1))[OrderResponse]
-        val r2 = handlers.call[OrderRequest]("place-order", OrderRequest("monitor", 2))[OrderResponse]
+        val r1 = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("mouse",   1))[OrderResponse]
+        val r2 = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("monitor", 2))[OrderResponse]
 
         assertNotEquals(r1.orderId, r2.orderId)
         assertEquals(r1.status, "accepted")
@@ -98,26 +93,24 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("order service: publish does not throw (fire-and-forget)"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        OrderServiceHandlers.configure()(using scope, handlers)
+        val app   = OrderServiceHandlers.daprApp()(using scope)
 
         // place-order publishes an event internally — if that throws, the test fails
-        val resp = handlers.call[OrderRequest]("place-order", OrderRequest("headphones", 3))[OrderResponse]
+        val resp = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("headphones", 3))[OrderResponse]
         assertEquals(resp.status, "accepted")
     }
 
   test("order service: bulk orders all land in state store"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        OrderServiceHandlers.configure()(using scope, handlers)
+        val app   = OrderServiceHandlers.daprApp()(using scope)
 
         val items = List("pencil", "ruler", "eraser", "notebook", "stapler")
         val ids   = items.map { item =>
-          val resp = handlers.call[OrderRequest]("place-order", OrderRequest(item, 1))[OrderResponse]
+          val resp = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest(item, 1))[OrderResponse]
           resp.orderId
         }
 
@@ -128,14 +121,13 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll:
         }
     }
 
-  test("order service: handlers are registered after configure"):
+  test("order service: all routes are declared in the app"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        OrderServiceHandlers.configure()(using scope, handlers)
+        val app   = OrderServiceHandlers.daprApp()(using scope)
 
-        assert(handlers.hasMethod("place-order"))
-        assert(handlers.hasMethod("get-order"))
-        assert(handlers.hasMethod("query-orders"))
+        assert(app.invocations.exists(_.methodName.value == "place-order"))
+        assert(app.invocations.exists(_.methodName.value == "get-order"))
+        assert(app.invocations.exists(_.methodName.value == "query-orders"))
     }

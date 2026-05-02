@@ -34,7 +34,7 @@ graph TB
     end
 
     subgraph "Public API — subscriber side"
-        AH["AppHandlers\n(subscribe / onBinding / onInvoke)"]
+        DA["DaprApp (case class)\n+ Subscription / InvocationRoute / BindingRoute"]
     end
 
     subgraph "Internal Layer (@assumeSafe boundaries)"
@@ -42,7 +42,7 @@ graph TB
         DS2["DaprRuntime.serve(port) { ... }"]
         IMPL["*CapabilityImpl\n(non-safe-mode,\n@assumeSafe methods)"]
         DC["DaprClient\n(Java SDK)"]
-        SRV["DaprAppServer\n(OpenJDK HttpServer)"]
+        SRV["DaprAppServer(DaprApp)\n(OpenJDK HttpServer)"]
     end
 
     subgraph "DAPR Sidecar"
@@ -56,10 +56,10 @@ graph TB
     DC -->|"HTTP/gRPC"| SID
 
     DR -->|"provides DaprScope ?=>"| UC
-    DS2 -->|"provides DaprScope + AppHandlers ?=>"| UC
+    DS2 -->|"body returns DaprApp"| DA
     DS2 --> SRV
+    DA -->|"passed to constructor"| SRV
     SRV -->|"GET /dapr/subscribe\nPOST /<route>"| SID
-    AH -->|"implemented by"| SRV
 ```
 
 ### Layer 1 — Public API (safe-mode-compatible)
@@ -126,12 +126,14 @@ classDiagram
         +get(keys: Seq[String]) Map[String,ConfigItem]
         +subscribe(keys)(onChange) AutoCloseable
     }
-    class AppHandlers {
-        <<trait>>
-        +subscribe[T](pubsubName, topic)(handler) Unit
-        +subscribe[T](pubsubName, topic, route)(handler) Unit
-        +onBinding[T](bindingName)(handler) Unit
-        +onInvoke[Req,Resp](methodName)(handler) Unit
+    class DaprApp {
+        <<case class>>
+        +subscriptions: List[Subscription]
+        +invocations: List[InvocationRoute]
+        +bindings: List[BindingRoute]
+        +workflows: List[DaprWorkflow]
+        +activities: List[DaprActivity]
+        +\+\+(other: DaprApp) DaprApp
     }
     class BindingsCapability {
         <<trait>>
@@ -157,7 +159,7 @@ classDiagram
 
 ## Subscriber Server (`DaprRuntime.serve`)
 
-Apps that need to receive Dapr events (pub/sub messages, input binding triggers, service invocations) use `DaprRuntime.serve` instead of `run`.  It starts an HTTP server on the given port and blocks until interrupted.
+Apps that need to receive Dapr events (pub/sub messages, input binding triggers, service invocations) use `DaprRuntime.serve` instead of `run`.  The body returns a declarative [[DaprApp]] value describing all inbound routes; the runtime passes it to `DaprAppServer` which starts an HTTP server and blocks until interrupted.
 
 ```mermaid
 sequenceDiagram
@@ -166,13 +168,11 @@ sequenceDiagram
     participant DaprAppServer
     participant Sidecar
 
-    App->>DaprRuntime: serve(port=8080) { ... }
-    DaprRuntime->>DaprAppServer: new DaprAppServer()
-    Note over DaprRuntime: body registers handlers
-    App->>DaprAppServer: subscribe(pubsub, topic) { handler }
-    App->>DaprAppServer: onBinding(binding) { handler }
-    App->>DaprAppServer: onInvoke("method") { handler }
+    App->>DaprRuntime: serve(port=8080) { ... returns DaprApp }
+    Note over App: body builds DaprApp with\nSubscription / InvocationRoute / BindingRoute
+    DaprRuntime->>DaprAppServer: new DaprAppServer(app)
     DaprRuntime->>DaprAppServer: startAndBlock(8080)
+    Note over DaprAppServer: builds dispatch tables\nfrom DaprApp fields
     DaprAppServer-->>Sidecar: (server ready on :8080)
     Sidecar->>DaprAppServer: GET /dapr/subscribe
     DaprAppServer-->>Sidecar: JSON subscription list
@@ -182,7 +182,7 @@ sequenceDiagram
     DaprAppServer-->>Sidecar: {"status":"SUCCESS"}
 ```
 
-The server runs each request on its own virtual thread (via `Executors.newVirtualThreadPerTaskExecutor()`).  Handler lambdas may capture the `DaprScope` from the `serve` body to make outbound calls (e.g., saving received messages to state).
+The server runs each request on its own virtual thread (via `Executors.newVirtualThreadPerTaskExecutor()`).  Handler lambdas may capture capabilities from the `serve` body to make outbound calls (e.g., saving received messages to state).  Two `DaprApp` values may be combined with `++` to compose service modules.
 
 ### CloudEvent envelope parsing
 
@@ -214,24 +214,30 @@ def placeOrder(req: OrderRequest)(using state: StateCapability, pubsub: PubSubCa
 
 These methods carry no `@assumeSafe`; they are pure capability-tracked code that the compiler can reason about.
 
-### Layer 2 — `configure` method with capability injection and thin lambdas
+### Layer 2 — `daprApp` method: declarative route description
 
-The `configure` method injects capabilities as `given`s once per call, then registers thin wrapper lambdas via `AppHandlers`:
+The `daprApp` method injects capabilities as `given`s once per call, then returns an immutable `DaprApp` built from `InvocationRoute` and `Subscription` factory values:
 
 ```scala
-def configure()(using scope: DaprScope, handlers: AppHandlers): Unit =
+def daprApp()(using scope: DaprScope): DaprApp =
   given StateCapability  = scope.state(StateName)
   given PubSubCapability = scope.pubsub(PubSubComp)
 
-  handlers.onInvoke[OrderRequest](MethodName("place-order"))[OrderResponse] { req =>
-    try placeOrder(req)
-    catch case e: Exception => throw e   // CC CanThrow isolation
-  }
+  DaprApp(
+    invocations = List(
+      InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+        try placeOrder(req)
+        catch case e: Exception => throw e   // CC CanThrow isolation
+      }
+    )
+  )
 ```
 
 **Why `try/catch` in each lambda**: In Scala 3.9 CC with `pureFunctions`, each lambda that calls a `throws`-annotated method creates a fresh anonymous `CanThrow` capability.  Sibling lambdas in the same method body cannot share these capabilities.  The `try/catch` absorbs the `CanThrow` at each lambda's boundary, so the next sibling lambda starts with a fresh context.  Without this, the second and later lambdas fail to compile with _"capability `any` cannot flow into capture set {any²}"_.  See AGENTS.md for the canonical explanation.
 
-**Capability injection lifetime**: Capabilities are bound once per `configure` call and shared across all handler invocations for the lifetime of the `DaprScope`.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
+**Capability injection lifetime**: Capabilities are bound once per `daprApp` call and shared across all handler invocations for the lifetime of the `DaprScope`.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
+
+**`DaprApp` stores handlers as `AnyRef`**: Handler lambdas capture DAPR capabilities.  `Subscription`, `InvocationRoute`, and `BindingRoute` store them as `rawHandler: AnyRef` (CC-opaque) so the instances have an empty capture set and can live in a plain `List`.  Internal dispatch code (`DaprAppServer`, `TestDaprApp`) casts them back via path-dependent types under `@assumeSafe`.
 
 ### Diagram
 
@@ -239,26 +245,38 @@ def configure()(using scope: DaprScope, handlers: AppHandlers): Unit =
 graph LR
     subgraph "Handler object (no @assumeSafe)"
         BL["Business logic def methods\nusing cap1: StateCapability\nusing cap2: PubSubCapability\nthrows Exception"]
-        CFG["configure()\nusing scope: DaprScope\nusing handlers: AppHandlers"]
+        CFG["daprApp()\nusing scope: DaprScope\nreturns DaprApp"]
         CFG -->|"given StateCapability = scope.state(...)\ngiven PubSubCapability = scope.pubsub(...)"| BL
     end
 
-    subgraph "Library internals (@assumeSafe)"
-        AH["AppHandlers\n(DaprAppServer / TestAppHandlers)\nstores lambdas as AnyRef"]
+    subgraph "DaprApp (immutable, declarative)"
+        DA["DaprApp\nList[Subscription]\nList[InvocationRoute]\nList[BindingRoute]"]
     end
 
-    CFG -->|"onInvoke { req => try BL(req) catch ... }"| AH
+    subgraph "Library internals (@assumeSafe)"
+        SRV["DaprAppServer(app)\nbuilds dispatch tables\nfrom DaprApp"]
+        TST["TestDaprApp\ncall / deliver"]
+    end
+
+    CFG -->|"InvocationRoute { req => try BL(req) catch ... }"| DA
+    DA -->|"passed to constructor"| SRV
+    DA -->|"passed to test helpers"| TST
 ```
 
-### Testing with `TestAppHandlers`
+### Testing with `TestDaprApp`
 
-Integration tests use `TestAppHandlers` (which is `@assumeSafe` internally) in place of a real `DaprAppServer`.  After calling `configure`, tests invoke handlers directly without an HTTP round-trip:
+Integration tests use the `TestDaprApp` object (which is `@assumeSafe` internally) to invoke handlers directly against a `DaprApp` without an HTTP round-trip:
 
 ```scala
-val testHandlers = TestAppHandlers()
 DaprRuntime.runWithEndpoints(http, grpc):
-  OrderServiceHandlers.configure()
-  val resp = testHandlers.call[OrderRequest]("place-order", OrderRequest("widget", 2))[OrderResponse]
+  val scope = summon[DaprScope]
+  val app   = OrderServiceHandlers.daprApp()(using scope)
+  val resp  = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("widget", 2))[OrderResponse]
+```
+
+Two apps can be composed with `++`:
+```scala
+val combined = OrderServiceHandlers.daprApp() ++ InventoryServiceHandlers.daprApp()
 ```
 
 ---
@@ -396,7 +414,7 @@ scala-safe-dapr/
 │   │                                 # SubscriptionResult, CloudEvent, InvocationRequest [safe mode]
 │   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe]
 │   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes) [safe mode]
-│   ├── AppHandlers.scala             # AppHandlers trait for inbound registration [@assumeSafe]
+│   ├── DaprApp.scala                 # DaprApp case class + Subscription/InvocationRoute/BindingRoute [@assumeSafe companions]
 │   ├── DaprScope.scala               # DaprScope trait with ^{this} return types [safe mode]
 │   ├── DaprRuntime.scala             # DaprRuntime.run + serve entry points [@assumeSafe]
 │   └── internal/
@@ -419,7 +437,7 @@ scala-safe-dapr/
     │   ├── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
     │   └── SubscriberTest.scala      # DaprAppServer dispatch logic (no Docker required)
     └── integration/
-        ├── TestAppHandlers.scala          # In-memory AppHandlers for tests (@assumeSafe, AnyRef storage)
+        ├── TestDaprApp.scala              # In-process DaprApp dispatch helper for tests (@assumeSafe)
         ├── DaprTestContainer.scala        # Testcontainers bridge
         ├── StateIntegrationTest.scala
         ├── PubSubIntegrationTest.scala

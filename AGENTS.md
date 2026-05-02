@@ -122,7 +122,7 @@ The `try/catch` absorbs each lambda's CanThrow requirement at that lambda's boun
 next sibling lambda starts with a fresh context.
 
 **Why `throw e` instead of a meaningful handler**: the lambda is a thin dispatcher that
-intentionally lets exceptions propagate to the calling runtime (DaprAppServer or TestAppHandlers),
+intentionally lets exceptions propagate to the calling runtime (DaprAppServer or TestDaprApp),
 which has its own error handling.  Swallowing exceptions here would hide Dapr client errors.
 
 **Why `import unsafeExceptions.canThrowAny` is also needed**: in Scala 3.9, rethrowing inside a

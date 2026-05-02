@@ -5,7 +5,7 @@
 -- Includes: DaprRuntime lifecycle (run + serve), StateCapability, PubSubCapability,
 --           ServiceInvocationCapability, SecretsCapability,
 --           ConfigurationCapability (get + subscribe), BindingsCapability,
---           DistributedLockCapability, AppHandlers (inbound pub/sub, bindings,
+--           DistributedLockCapability, DaprApp (inbound pub/sub, bindings,
 --           service invocation), JsonCodec
 -- Excludes:
 --   - DAPR actor framework (separate concern)
@@ -184,14 +184,32 @@ entity DaprScope {
     -- Capabilities derived from a scope share its lifetime.
 }
 
-entity AppHandlers {
-    -- Inbound handler registry for DaprRuntime.serve.
-    -- Handlers are registered during the serve body (setup phase) before the
-    -- HTTP server starts accepting requests.
-    scope: DaprScope
-    status: setup | serving
-    -- setup: registration phase (before startAndBlock)
-    -- serving: HTTP server is accepting requests
+entity DaprApp {
+    -- Immutable, declarative description of all inbound handlers an application exposes.
+    -- Built by the serve body and handed to the HTTP server; never mutated after construction.
+    subscriptions: List<Subscription>
+    invocations:   List<InvocationRoute>
+    bindings:      List<BindingRoute>
+    workflows:     List<DaprWorkflow>
+    activities:    List<DaprActivity>
+    -- Two DaprApp values may be combined with ++ to compose service modules.
+}
+
+entity Subscription {
+    pubsub_name: PubSubName
+    topic:       Topic
+    route:       Route
+    -- handler: CloudEvent -> SubscriptionResult (captured, CC-erased internally)
+}
+
+entity InvocationRoute {
+    method_name: MethodName
+    -- handler: Req -> Resp (captured, CC-erased internally)
+}
+
+entity BindingRoute {
+    binding_name: BindingName
+    -- handler: Payload -> Unit (captured, CC-erased internally)
 }
 
 entity StateCapability {
@@ -553,43 +571,25 @@ rule ConfigSubscribe {
         -- If the scope is closed, the subscription is implicitly stopped
 }
 
--- ---- Inbound Registration (AppHandlers) ----
+-- ---- Inbound Dispatch (DaprApp) ----
+-- DaprApp is immutable and fully described before the HTTP server starts.
+-- Registration is implicit: DaprAppServer derives routes from DaprApp at startup.
 
-rule PubSubHandlerRegistered {
-    when: PubSubHandlerRegisterRequested(handlers, pubsub_name, topic, route, handler)
-
-    requires: handlers.status = setup
-
-    ensures:
-        PubSubSubscription.created(
-            pubsub_name: pubsub_name,
-            topic: topic,
-            route: route
-        )
-        -- GET /dapr/subscribe will include this subscription
-        -- POST <route> will dispatch to handler
-}
-
-rule BindingHandlerRegistered {
-    when: BindingHandlerRegisterRequested(handlers, binding_name, handler)
-
-    requires: handlers.status = setup
+rule DaprAppServed {
+    when: DaprRuntime.serve returns DaprApp
 
     ensures:
-        BindingHandler.registered(path: "/" + binding_name)
-        -- POST /<binding_name> will dispatch to handler
-
-}
-
-rule InvocationHandlerRegistered {
-    when: InvocationHandlerRegisterRequested(handlers, method_name, handler)
-
-    requires: handlers.status = setup
-
-    ensures:
-        InvocationHandler.registered(path: "/" + method_name)
-        -- POST /<method_name> will dispatch to handler
-
+        for s in app.subscriptions:
+            PubSubSubscription.registered(
+                pubsub_name: s.pubsub_name,
+                topic: s.topic,
+                route: s.route
+            )
+        for inv in app.invocations:
+            InvocationHandler.registered(path: "/" + inv.method_name)
+        for bin in app.bindings:
+            BindingHandler.registered(path: "/" + bin.binding_name)
+        -- GET /dapr/subscribe returns all registered subscriptions
 }
 
 -- ---- Inbound Dispatch (during serving) ----
@@ -802,9 +802,10 @@ surface DaprRuntimeSurface {
         -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
         -- user code can call it without violating safe-mode constraints.
 
-        serve: (app_port: Int, body: (DaprScope, AppHandlers) ?=> Unit) -> Unit
-        -- Starts an HTTP server on app_port, runs body to register handlers,
-        -- blocks until the JVM shuts down or the calling thread is interrupted.
+        serve: (app_port: Int, body: DaprScope ?=> DaprApp) -> Unit
+        -- Starts an HTTP server on app_port; body returns a DaprApp describing
+        -- all inbound handlers.  The server is started from the returned DaprApp,
+        -- then blocks until the JVM shuts down or the calling thread is interrupted.
         -- DaprClient lifecycle matches the server's lifetime.
 
         run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: DaprScope ?=> Any) -> Any
@@ -886,17 +887,19 @@ surface ConfigurationSurface {
         -- Streams config changes from sidecar; close the AutoCloseable to stop
 }
 
-surface AppHandlersSurface {
+surface DaprAppSurface {
     facing user: UserCode
 
     contracts:
         demands JsonCodec
 
     exposes:
-        subscribe: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Unit
-        subscribe_route: (pubsub_name: PubSubName, topic: Topic, route: String, handler: CloudEvent -> SubscriptionResult) -> Unit
-        on_binding: (binding_name: BindingName, handler: Any -> Unit) -> Unit
-        on_invoke: (method_name: String, handler: Any -> Any) -> Unit
+        Subscription: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Subscription
+        Subscription_route: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
+        InvocationRoute: (method_name: MethodName, handler: Req -> Resp) -> InvocationRoute
+        BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
+        DaprApp: (subscriptions, invocations, bindings, workflows, activities) -> DaprApp
+        ++: (DaprApp, DaprApp) -> DaprApp
         -- Handler lambdas may capture capabilities from the enclosing DaprScope.
         -- The recommended pattern is: business logic in explicit methods with
         -- (using cap: Capability) parameters; thin lambdas wrap each call in
@@ -907,19 +910,12 @@ surface AppHandlersSurface {
         -- before any request is handled
 
     @guarantee CapabilityLifetime
-        -- Capabilities captured by handler lambdas are bound at configure time
-        -- and share the DaprScope lifetime.  Invocations after scope closure
-        -- result in IllegalStateException (ClosedCapabilityRejection invariant).
-}
+        -- Capabilities captured by handler lambdas share the DaprScope lifetime.
+        -- Invocations after scope closure result in IllegalStateException
+        -- (ClosedCapabilityRejection invariant).
 
-surface ServeSurface {
-    facing user: UserCode
-
-    exposes:
-        serve: (app_port: Int, body: (DaprScope, AppHandlers) ?=> Unit) -> Unit
-        -- Starts HTTP server, runs body to register handlers, then blocks.
-        -- DaprScope lifetime matches the server's lifetime.
-        -- Returns when the calling thread is interrupted (JVM shutdown).
+    @guarantee Composability
+        -- DaprApp ++ merges all lists from both apps; no handler is lost or duplicated.
 }
 
 surface BindingsSurface {

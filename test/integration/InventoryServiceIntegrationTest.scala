@@ -14,7 +14,7 @@ import java.util.Collections
   *
   * Demonstrates:
   *  - State management (get/save) via [[StateCapability]]
-  *  - Pub/sub subscription handler via [[TestAppHandlers.deliver]]
+  *  - Pub/sub subscription handler via [[TestDaprApp.deliver]]
   *  - Default stock fallback logic
   */
 @scala.caps.assumeSafe
@@ -29,117 +29,111 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
         .withAppPort(0)
         .withComponent(Component("statestore", "state.in-memory",  "v1", Collections.emptyMap()))
         .withComponent(Component("pubsub",     "pubsub.in-memory", "v1", Collections.emptyMap()))
+        .withComponent(Component("lockstore",  "lock.in-memory",   "v1", Collections.emptyMap()))
     )
 
   // -------------------------------------------------------------------------
 
   test("inventory service: get-stock returns default when no stock seeded"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        InventoryServiceHandlers.configure()(using scope, handlers)
+        val app   = InventoryServiceHandlers.daprApp()(using scope)
 
-        val stock = handlers.call[String]("get-stock", "widget")[StockLevel]
+        val stock = TestDaprApp.call[String](app, "get-stock", "widget")[StockLevel]
         assertEquals(stock.item, "widget")
         assertEquals(stock.available, InventoryServiceHandlers.DefaultStock)
     }
 
   test("inventory service: seed-stock sets explicit level"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        InventoryServiceHandlers.configure()(using scope, handlers)
+        val app   = InventoryServiceHandlers.daprApp()(using scope)
 
-        handlers.call[StockLevel]("seed-stock", StockLevel("gadget", 42))[StockLevel]
-        val stock = handlers.call[String]("get-stock", "gadget")[StockLevel]
+        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("gadget", 42))[StockLevel]
+        val stock = TestDaprApp.call[String](app, "get-stock", "gadget")[StockLevel]
         assertEquals(stock.available, 42)
     }
 
   test("inventory service: order event decrements stock"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        InventoryServiceHandlers.configure()(using scope, handlers)
+        val app   = InventoryServiceHandlers.daprApp()(using scope)
 
         // Seed 20 units
-        handlers.call[StockLevel]("seed-stock", StockLevel("monitor", 20))[StockLevel]
+        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("monitor", 20))[StockLevel]
 
         // Deliver order event for 5 monitors
-        val event = mkOrderEvent(orderId = "order-1", item = "monitor", qty = 5)
-        val result = handlers.deliver("orders", event)
+        val event  = mkOrderEvent(orderId = "order-1", item = "monitor", qty = 5)
+        val result = TestDaprApp.deliver(app, "orders", event)
 
         assertEquals(result, SubscriptionResult.Success)
 
-        val stock = handlers.call[String]("get-stock", "monitor")[StockLevel]
+        val stock = TestDaprApp.call[String](app, "get-stock", "monitor")[StockLevel]
         assertEquals(stock.available, 15)
     }
 
   test("inventory service: multiple order events accumulate correctly"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        InventoryServiceHandlers.configure()(using scope, handlers)
+        val app   = InventoryServiceHandlers.daprApp()(using scope)
 
-        handlers.call[StockLevel]("seed-stock", StockLevel("widget", 50))[StockLevel]
+        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("widget", 50))[StockLevel]
 
-        handlers.deliver("orders", mkOrderEvent("o1", "widget", 10))
-        handlers.deliver("orders", mkOrderEvent("o2", "widget", 15))
-        handlers.deliver("orders", mkOrderEvent("o3", "widget", 5))
+        TestDaprApp.deliver(app, "orders", mkOrderEvent("o1", "widget", 10))
+        TestDaprApp.deliver(app, "orders", mkOrderEvent("o2", "widget", 15))
+        TestDaprApp.deliver(app, "orders", mkOrderEvent("o3", "widget", 5))
 
-        val stock = handlers.call[String]("get-stock", "widget")[StockLevel]
+        val stock = TestDaprApp.call[String](app, "get-stock", "widget")[StockLevel]
         assertEquals(stock.available, 20)
     }
 
   test("inventory service: stock never goes below zero"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        InventoryServiceHandlers.configure()(using scope, handlers)
+        val app   = InventoryServiceHandlers.daprApp()(using scope)
 
-        handlers.call[StockLevel]("seed-stock", StockLevel("rare-item", 3))[StockLevel]
+        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("rare-item", 3))[StockLevel]
 
-        handlers.deliver("orders", mkOrderEvent("o1", "rare-item", 2))
-        handlers.deliver("orders", mkOrderEvent("o2", "rare-item", 5)) // oversell
+        TestDaprApp.deliver(app, "orders", mkOrderEvent("o1", "rare-item", 2))
+        TestDaprApp.deliver(app, "orders", mkOrderEvent("o2", "rare-item", 5)) // oversell
 
-        val stock = handlers.call[String]("get-stock", "rare-item")[StockLevel]
+        val stock = TestDaprApp.call[String](app, "get-stock", "rare-item")[StockLevel]
         assertEquals(stock.available, 0)
     }
 
   test("inventory service: independent items do not interfere"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        InventoryServiceHandlers.configure()(using scope, handlers)
+        val app   = InventoryServiceHandlers.daprApp()(using scope)
 
-        handlers.call[StockLevel]("seed-stock", StockLevel("alpha", 10))[StockLevel]
-        handlers.call[StockLevel]("seed-stock", StockLevel("beta",  20))[StockLevel]
+        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("alpha", 10))[StockLevel]
+        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("beta",  20))[StockLevel]
 
-        handlers.deliver("orders", mkOrderEvent("o1", "alpha", 3))
-        handlers.deliver("orders", mkOrderEvent("o2", "beta",  7))
+        TestDaprApp.deliver(app, "orders", mkOrderEvent("o1", "alpha", 3))
+        TestDaprApp.deliver(app, "orders", mkOrderEvent("o2", "beta",  7))
 
-        val alpha = handlers.call[String]("get-stock", "alpha")[StockLevel]
-        val beta  = handlers.call[String]("get-stock", "beta")[StockLevel]
+        val alpha = TestDaprApp.call[String](app, "get-stock", "alpha")[StockLevel]
+        val beta  = TestDaprApp.call[String](app, "get-stock", "beta")[StockLevel]
 
         assertEquals(alpha.available, 7)
         assertEquals(beta.available, 13)
     }
 
-  test("inventory service: subscriber and method handlers are registered"):
+  test("inventory service: all routes are declared in the app"):
     withContainers { c =>
-      val handlers = TestAppHandlers()
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprScope]
-        InventoryServiceHandlers.configure()(using scope, handlers)
+        val app   = InventoryServiceHandlers.daprApp()(using scope)
 
-        assert(handlers.hasSubscriber("orders"))
-        assert(handlers.hasMethod("get-stock"))
-        assert(handlers.hasMethod("seed-stock"))
+        assert(app.subscriptions.exists(_.topic.value == "orders"))
+        assert(app.invocations.exists(_.methodName.value == "get-stock"))
+        assert(app.invocations.exists(_.methodName.value == "seed-stock"))
     }
 
   // -------------------------------------------------------------------------
