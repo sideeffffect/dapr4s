@@ -6,11 +6,17 @@ import unsafeExceptions.canThrowAny
 
 /** Business logic for the Order microservice.
   *
-  * Each public handler method declares its capability requirements explicitly via
-  * `using` parameters, following the capability-as-effect-system pattern:
-  * the compiler tracks which effects (state reads/writes, pub/sub publishes) each
-  * operation may perform, and call sites must provide the corresponding
-  * capabilities.
+  * Each public handler method declares its capability requirements via anonymous
+  * `using` parameters — the capability type itself is the requirement, and the
+  * compiler enforces it statically.  Business logic calls companion-object methods
+  * (e.g. [[StateCapability.save]], [[PubSubCapability.publish]]) rather than
+  * naming a capability value, so the handler code reads like regular function calls:
+  *
+  * {{{
+  *   def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse throws Exception =
+  *     StateCapability.save(StateKey(orderId), req)
+  *     PubSubCapability.publish(OrdersTopic, event)
+  * }}}
   *
   * The `daprApp` method injects capabilities as `given`s and builds a [[DaprApp]]
   * describing all inbound routes.  The resulting value is immutable and can be
@@ -24,24 +30,18 @@ import unsafeExceptions.canThrowAny
   *
   * === Escape hatches and their justification ===
   *
-  * The `daprApp` method contains two structured workarounds:
+  * The `daprApp` method contains a structured workaround:
   *
-  * 1. '''`try { ... } catch case e: Exception => throw e` in each handler lambda'''
-  *    WHY: In Scala 3.9 CC, each lambda that calls a `throws`-annotated method
-  *    creates a fresh anonymous `CanThrow` capability.  Sibling lambdas (defined in
-  *    the same method body) cannot share these capabilities — a CC constraint that
-  *    prevents CanThrow "leaking" across unrelated lambdas.  The try/catch absorbs
-  *    the CanThrow at each lambda's boundary so the next sibling lambda starts
-  *    fresh.  Without this, the second and later lambdas fail to compile with
-  *    "capability `any` cannot flow into capture set {any²}".
-  *    The re-throw preserves the original exception without swallowing it.
-  *    See the AGENTS.md section on CC sibling lambda patterns.
-  *
-  * 2. '''`given StateCapability = ...` — capability injection at configure time'''
-  *    WHY: The handler lambdas capture `StateCapability` and `PubSubCapability`
-  *    from the enclosing `daprApp` scope.  This is intentional: the capabilities
-  *    are bound once per `daprApp` call and shared across all handler invocations,
-  *    matching the lifecycle of the underlying Dapr client connection.
+  * '''`try { ... } catch case e: Exception => throw e` in each handler lambda'''
+  * WHY: In Scala 3.9 CC, each lambda that calls a `throws`-annotated method
+  * creates a fresh anonymous `CanThrow` capability.  Sibling lambdas (defined in
+  * the same method body) cannot share these capabilities — a CC constraint that
+  * prevents CanThrow "leaking" across unrelated lambdas.  The try/catch absorbs
+  * the CanThrow at each lambda's boundary so the next sibling lambda starts
+  * fresh.  Without this, the second and later lambdas fail to compile with
+  * "capability `any` cannot flow into capture set {any²}".
+  * The re-throw preserves the original exception without swallowing it.
+  * See the AGENTS.md section on CC sibling lambda patterns.
   */
 object OrderServiceHandlers:
 
@@ -56,21 +56,21 @@ object OrderServiceHandlers:
   /** Place a new order: persist to state store and publish an [[OrderEvent]].
     * Returns the assigned order ID and acceptance status.
     */
-  def placeOrder(req: OrderRequest)(using state: StateCapability, pubsub: PubSubCapability): OrderResponse throws Exception =
+  def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse throws Exception =
     val orderId = java.util.UUID.randomUUID().toString
-    state.save(StateKey(orderId), req)
-    pubsub.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
+    StateCapability.save(StateKey(orderId), req)
+    PubSubCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
     OrderResponse(orderId, "accepted")
 
   /** Retrieve a previously placed order by ID.  Returns `None` if not found. */
-  def getOrder(orderId: String)(using state: StateCapability): Option[OrderRequest] throws Exception =
-    state.get[OrderRequest](StateKey(orderId))
+  def getOrder(orderId: String)(using StateCapability): Option[OrderRequest] throws Exception =
+    StateCapability.get[OrderRequest](StateKey(orderId))
 
   /** Query orders using a raw JSON filter expression.
     * Returns a JSON array of `{"value": ..., "etag": ...}` objects.
     */
-  def queryOrders(queryJson: String)(using state: StateCapability): String throws Exception =
-    val results = state.queryState[OrderRequest](StateQuery(queryJson))
+  def queryOrders(queryJson: String)(using StateCapability): String throws Exception =
+    val results = StateCapability.queryState[OrderRequest](StateQuery(queryJson))
     val entries = results.map { e =>
       val v    = e.value.map(r => s"""{"item":"${r.item}","quantity":${r.quantity}}""").getOrElse("null")
       val etag = e.etag.map(t => s""""${t.value}"""").getOrElse("null")

@@ -6,9 +6,11 @@ import unsafeExceptions.canThrowAny
 
 /** Business logic for the Inventory microservice.
   *
-  * Each handler method declares its capability requirements explicitly via
-  * `using` parameters.  See [[OrderServiceHandlers]] for a full explanation of
-  * the capability-as-effect-system pattern and the escape hatch justifications.
+  * Each handler method declares its capability requirements via anonymous `using`
+  * parameters, calling companion-object methods ([[StateCapability.get]],
+  * [[DistributedLockCapability.tryLock]], etc.) rather than naming a capability.
+  * See [[OrderServiceHandlers]] for a full explanation of the
+  * capability-as-effect-system pattern and the escape hatch justifications.
   *
   * Subscribes to [[OrderEvent]] messages on the `orders` pub/sub topic and
   * decrements the corresponding item's stock count in the state store.  The
@@ -46,33 +48,33 @@ object InventoryServiceHandlers:
     * key.  If the lock cannot be acquired the event is retried.
     */
   def handleOrderEvent(event: CloudEvent[OrderEvent])(
-    using state: StateCapability,
-    lock: DistributedLockCapability
+    using StateCapability,
+    DistributedLockCapability
   ): SubscriptionResult throws Exception =
     val item  = event.data.item
     val qty   = event.data.quantity
     val key   = StateKey(s"stock-$item")
     val owner = LockOwner(s"inv-${event.id}")
 
-    if lock.tryLock(LockResourceId(item), owner, 10) then
+    if DistributedLockCapability.tryLock(LockResourceId(item), owner, 10) then
       try
-        val current = state.get[Int](key).getOrElse(DefaultStock)
+        val current = StateCapability.get[Int](key).getOrElse(DefaultStock)
         val updated = math.max(0, current - qty)
-        state.save(key, updated)
+        StateCapability.save(key, updated)
       finally
-        lock.unlock(LockResourceId(item), owner)
+        DistributedLockCapability.unlock(LockResourceId(item), owner)
       SubscriptionResult.Success
     else
       SubscriptionResult.Retry
 
   /** Return current stock level for the given item name. */
-  def getStock(item: String)(using state: StateCapability): StockLevel throws Exception =
-    val available = state.get[Int](StateKey(s"stock-$item")).getOrElse(DefaultStock)
+  def getStock(item: String)(using StateCapability): StockLevel throws Exception =
+    val available = StateCapability.get[Int](StateKey(s"stock-$item")).getOrElse(DefaultStock)
     StockLevel(item, available)
 
   /** Seed the stock level for an item (test helper and k8s init). */
-  def seedStock(stock: StockLevel)(using state: StateCapability): StockLevel throws Exception =
-    state.save(StateKey(s"stock-${stock.item}"), stock.available)
+  def seedStock(stock: StockLevel)(using StateCapability): StockLevel throws Exception =
+    StateCapability.save(StateKey(s"stock-${stock.item}"), stock.available)
     stock
 
   // ---------------------------------------------------------------------------

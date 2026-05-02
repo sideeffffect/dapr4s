@@ -203,14 +203,26 @@ Handler objects follow a two-layer structure that maximises capability tracking 
 
 ### Layer 1 — Business logic methods
 
-Pure handler methods declared with explicit `using` capability parameters and a `throws Exception` clause.  The compiler tracks which effects each method may perform:
+Pure handler methods declared with **anonymous** `using` capability parameters and a `throws Exception` clause.  Business logic calls **companion-object methods** on the capability types (`StateCapability.save(...)`, `PubSubCapability.publish(...)`) rather than naming the capability value — the compiler resolves the implicit from the anonymous `using` context:
 
 ```scala
-def placeOrder(req: OrderRequest)(using state: StateCapability, pubsub: PubSubCapability): OrderResponse throws Exception =
+def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse throws Exception =
   val orderId = java.util.UUID.randomUUID().toString
-  state.save(StateKey(orderId), req)
-  pubsub.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
+  StateCapability.save(StateKey(orderId), req)
+  PubSubCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
   OrderResponse(orderId, "accepted")
+```
+
+Each capability trait has a companion object that mirrors every instance method as a static forwarder taking `using cap: CapabilityType`.  This makes the call-site type act as both a static effect declaration (which capabilities are required) and as a namespace for the API:
+
+```scala
+// src/Capabilities.scala
+object StateCapability:
+  def save[T: JsonCodec](key: StateKey, value: T)(using cap: StateCapability): Unit throws DaprStateException =
+    cap.save(key, value)
+  def get[T: JsonCodec](key: StateKey)(using cap: StateCapability): Option[T] throws DaprStateException =
+    cap.get(key)
+  // ... all other methods
 ```
 
 These methods carry no `@assumeSafe`; they are pure capability-tracked code that the compiler can reason about.
@@ -245,7 +257,7 @@ def daprApp()(using scope: DaprScope): DaprApp =
 ```mermaid
 graph LR
     subgraph "Handler object (no @assumeSafe)"
-        BL["Business logic def methods\nusing cap1: StateCapability\nusing cap2: PubSubCapability\nthrows Exception"]
+        BL["Business logic def methods\nusing StateCapability\nusing PubSubCapability\nthrows Exception\n→ calls StateCapability.save/get/...\n→ calls PubSubCapability.publish/..."]
         CFG["daprApp()\nusing scope: DaprScope\nreturns DaprApp"]
         CFG -->|"given StateCapability = scope.state(...)\ngiven PubSubCapability = scope.pubsub(...)"| BL
     end

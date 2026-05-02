@@ -1033,8 +1033,11 @@ surface DaprAppSurface {
         ++: (DaprApp, DaprApp) -> DaprApp
         -- Handler lambdas may capture capabilities from the enclosing DaprScope.
         -- The recommended pattern is: business logic in explicit methods with
-        -- (using cap: Capability) parameters; thin lambdas wrap each call in
-        -- try/catch for CC CanThrow isolation (see DESIGN.md — Handler Pattern).
+        -- anonymous (using Capability) context parameters; companion-object
+        -- forwarders (e.g. StateCapability.save(...), PubSubCapability.publish(...))
+        -- dispatch to the implicit instance, so callers never name the capability
+        -- value.  Thin handler lambdas wrap each call in try/catch for CC
+        -- CanThrow isolation (see DESIGN.md — Handler Pattern).
 
     @guarantee SubscriptionDiscovery
         -- GET /dapr/subscribe returns all registered pub/sub subscriptions
