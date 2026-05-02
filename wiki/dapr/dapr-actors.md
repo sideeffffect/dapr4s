@@ -122,3 +122,4 @@ actor.processOrder(request).block();
 - [Dapr Workflows](dapr-workflows.md)
 - [Dapr State Management](dapr-state-management.md)
 - [Dapr Java SDK](dapr-java-sdk.md)
+- [Dapr Actors Deep Dive](dapr-actors-deep-dive.md)

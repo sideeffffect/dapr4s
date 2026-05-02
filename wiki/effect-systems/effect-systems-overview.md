@@ -61,3 +61,5 @@ Scala 3's context functions (`A ?=> B`) allow expressing that a computation *req
 - [Direct-Style Effects](direct-style-effects.md)
 - [Capability-Based Effects](capability-based-effects.md)
 - [Capabilities for Safe Agents](../capabilities-research/capabilities-for-safe-agents.md)
+- [Scala Effect Libraries Comparison](../scala-effect-libraries/scala-effect-libraries-comparison.md)
+- [Algebraic Effects and Handlers](../capabilities-research/algebraic-effects-handlers.md)

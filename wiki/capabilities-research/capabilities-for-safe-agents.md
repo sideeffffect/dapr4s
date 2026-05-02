@@ -106,3 +106,5 @@ The approach is notable because it doesn't require modifying the LLM — it cons
 - [Capability-Based Effects](../effect-systems/capability-based-effects.md)
 - [Direct-Style Effects](../effect-systems/direct-style-effects.md)
 - [Effect Systems Overview](../effect-systems/effect-systems-overview.md)
+- [Safe Mode](../scala-capture-checking/safe-mode.md)
+- [Java Interop and Safe Scala](../scala3-language/java-interop-safe-scala.md)

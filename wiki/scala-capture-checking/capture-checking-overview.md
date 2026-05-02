@@ -101,3 +101,4 @@ Capture checking enables solutions for:
 - [Separation and Mutability](separation-and-mutability.md)
 - [How to Use Capture Checking](how-to-use.md)
 - [Capability-Based Effects](../effect-systems/capability-based-effects.md)
+- [CC Calculus (Capturing Types)](../capabilities-research/cc-calculus.md) — formal theory behind CC

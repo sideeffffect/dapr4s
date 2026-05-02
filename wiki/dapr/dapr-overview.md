@@ -91,3 +91,5 @@ Official SDKs: Go, Java, JavaScript, .NET, PHP, Python. Framework integrations: 
 - [Dapr Actors](dapr-actors.md)
 - [Dapr Workflows](dapr-workflows.md)
 - [Dapr Java SDK](dapr-java-sdk.md)
+- [Dapr Resiliency](dapr-resiliency.md)
+- [Dapr Pluggable Components](dapr-pluggable-components.md)

@@ -157,3 +157,4 @@ String instanceId = workflowClient.scheduleNewWorkflow(
 - [Dapr Building Blocks](dapr-building-blocks.md)
 - [Dapr Actors](dapr-actors.md)
 - [Dapr Java SDK](dapr-java-sdk.md)
+- [Dapr Workflow Patterns](dapr-workflow-patterns.md)

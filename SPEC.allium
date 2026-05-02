@@ -1,0 +1,680 @@
+-- allium: 3
+-- SPEC.allium — scala-safe-dapr behavioural specification
+--
+-- Scope: Safe Scala capability library wrapping DAPR building blocks
+-- Includes: DaprRuntime lifecycle, StateCapability, PubSubCapability,
+--           ServiceInvocationCapability, SecretsCapability,
+--           ConfigurationCapability, BindingsCapability, JsonCodec
+-- Excludes:
+--   - DAPR actor framework (separate concern)
+--   - DAPR workflow orchestration (separate concern)
+--   - Inbound pub/sub subscription handling (requires HTTP server)
+--   - DAPR sidecar itself (external system)
+--   - Authentication and mTLS (managed by DAPR sidecar)
+-- Dependencies: DAPR sidecar must be running and reachable
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+external entity DaprSidecar {
+    host: String
+    port: Integer
+    app_id: String
+    reachable: Boolean
+}
+
+external entity JavaDaprClient {
+    -- Managed entirely inside @assumeSafe boundaries; opaque to user code
+}
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+value StoreName {
+    value: String
+}
+
+value PubSubName {
+    value: String
+}
+
+value Topic {
+    value: String
+}
+
+value AppId {
+    value: String
+}
+
+value SecretStoreName {
+    value: String
+}
+
+value ConfigStoreName {
+    value: String
+}
+
+value BindingName {
+    value: String
+}
+
+value ETag {
+    value: String
+}
+
+value ConfigItem {
+    key: String
+    value: String
+    version: String
+    metadata: Map<String, String>
+}
+
+value StateEntry<T> {
+    value: T?
+    etag: ETag?
+    -- etag is present iff value is present
+}
+
+value StateOperation {
+    key: String
+    operation: upsert | delete
+    value: String?
+    -- value must be present when operation = upsert
+    etag: ETag?
+}
+
+value BindingOperation {
+    name: String
+    metadata: Map<String, String>
+}
+
+------------------------------------------------------------
+-- Contracts
+------------------------------------------------------------
+
+contract JsonCodec {
+    -- Typeclass contract: a T with a JsonCodec can be
+    -- serialised to/from JSON string form.
+    encode: (value: Any) -> String
+    decode: (json: String) -> DecodeResult
+
+    @invariant Roundtrip
+        -- For any value v where encode and decode are defined:
+        -- decode(encode(v)) = Right(v)
+
+    @invariant EncodeTotal
+        -- encode never throws; it always returns a String.
+
+    @guidance
+        -- decode returns Left(errorMessage) on malformed JSON
+        -- or type mismatch, never throws.
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+-- (none at module level; operation kinds are inline on StateOperation)
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+entity DaprRuntime {
+    -- Singleton runtime; at most one active at a time in a given thread scope
+    status: idle | active | closed
+    client: JavaDaprClient?
+    -- client is present iff status = active
+}
+
+entity DaprScope {
+    runtime: DaprRuntime
+    status: open | closed
+    -- A DaprScope is created by DaprRuntime.run and closed when the block exits.
+    -- Capabilities derived from a scope share its lifetime.
+}
+
+entity StateCapability {
+    scope: DaprScope
+    store_name: StoreName
+    status: open | closed
+    -- status mirrors scope.status
+}
+
+entity PubSubCapability {
+    scope: DaprScope
+    pubsub_name: PubSubName
+    status: open | closed
+}
+
+entity ServiceInvocationCapability {
+    scope: DaprScope
+    status: open | closed
+}
+
+entity SecretsCapability {
+    scope: DaprScope
+    store_name: SecretStoreName
+    status: open | closed
+}
+
+entity ConfigurationCapability {
+    scope: DaprScope
+    store_name: ConfigStoreName
+    status: open | closed
+}
+
+entity BindingsCapability {
+    scope: DaprScope
+    binding_name: BindingName
+    status: open | closed
+}
+
+entity DecodeResult {
+    -- Represents Either[String, T] from JsonCodec.decode
+    outcome: success | failure
+    value: Any?          -- present when outcome = success
+    error: String?       -- present when outcome = failure
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- ---- Runtime Lifecycle ----
+
+rule DaprRuntimeActivates {
+    when: DaprRun()
+    -- DaprRun() is the user calling DaprRuntime.run { body }
+
+    requires: DaprRuntime.status = idle
+
+    ensures:
+        DaprRuntime.status = active
+        DaprRuntime.client = JavaDaprClient.created()
+        DaprScope.created(runtime: DaprRuntime, status: open)
+}
+
+rule DaprRuntimeCompletes {
+    when: DaprBodyCompleted()
+    -- Body function returned normally
+
+    requires: DaprRuntime.status = active
+
+    ensures:
+        DaprScope.status = closed
+        DaprRuntime.client = absent
+        DaprRuntime.status = idle
+        JavaDaprClientClosed()
+        -- All capabilities derived from this scope become closed
+}
+
+rule DaprRuntimeFailsSafely {
+    when: DaprBodyThrew(exception)
+    -- Body function threw an exception
+
+    requires: DaprRuntime.status = active
+
+    ensures:
+        DaprScope.status = closed
+        DaprRuntime.client = absent
+        DaprRuntime.status = idle
+        JavaDaprClientClosed()
+        -- Exception propagates to caller after cleanup
+        ExceptionPropagated(exception: exception)
+}
+
+-- ---- Capability Acquisition ----
+
+rule StateCapabilityAcquired {
+    when: DaprScopeStateRequested(scope, store_name)
+
+    requires: scope.status = open
+
+    ensures:
+        StateCapability.created(
+            scope: scope,
+            store_name: store_name,
+            status: open
+        )
+}
+
+rule PubSubCapabilityAcquired {
+    when: DaprScopePubSubRequested(scope, pubsub_name)
+
+    requires: scope.status = open
+
+    ensures:
+        PubSubCapability.created(
+            scope: scope,
+            pubsub_name: pubsub_name,
+            status: open
+        )
+}
+
+rule ServiceInvocationCapabilityAcquired {
+    when: DaprScopeInvokerRequested(scope)
+
+    requires: scope.status = open
+
+    ensures:
+        ServiceInvocationCapability.created(
+            scope: scope,
+            status: open
+        )
+}
+
+rule SecretsCapabilityAcquired {
+    when: DaprScopeSecretsRequested(scope, store_name)
+
+    requires: scope.status = open
+
+    ensures:
+        SecretsCapability.created(
+            scope: scope,
+            store_name: store_name,
+            status: open
+        )
+}
+
+rule ConfigCapabilityAcquired {
+    when: DaprScopeConfigRequested(scope, store_name)
+
+    requires: scope.status = open
+
+    ensures:
+        ConfigurationCapability.created(
+            scope: scope,
+            store_name: store_name,
+            status: open
+        )
+}
+
+rule BindingCapabilityAcquired {
+    when: DaprScopeBindingRequested(scope, binding_name)
+
+    requires: scope.status = open
+
+    ensures:
+        BindingsCapability.created(
+            scope: scope,
+            binding_name: binding_name,
+            status: open
+        )
+}
+
+-- ---- Capability Closure (cascade from scope) ----
+
+rule CapabilitiesClosedWithScope {
+    when: scope: DaprScope.status = closed
+
+    ensures:
+        for cap in StateCapability where cap.scope = scope:
+            cap.status = closed
+        for cap in PubSubCapability where cap.scope = scope:
+            cap.status = closed
+        for cap in ServiceInvocationCapability where cap.scope = scope:
+            cap.status = closed
+        for cap in SecretsCapability where cap.scope = scope:
+            cap.status = closed
+        for cap in ConfigurationCapability where cap.scope = scope:
+            cap.status = closed
+        for cap in BindingsCapability where cap.scope = scope:
+            cap.status = closed
+}
+
+-- ---- State Operations ----
+
+rule StateGet {
+    when: StateGetRequested(cap, key)
+
+    requires: cap.status = open
+
+    ensures:
+        -- Either returns a value or absent; throws DaprException on DAPR error
+        StateGetCompleted(result: StateEntry.created(value: any, etag: any))
+}
+
+rule StateSave {
+    when: StateSaveRequested(cap, key, value)
+
+    requires: cap.status = open
+
+    ensures:
+        StateSaveCompleted()
+        -- DAPR stores the value at key in store cap.store_name
+}
+
+rule StateSaveWithETag {
+    when: StateSaveWithETagRequested(cap, key, value, etag)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprETagMatches(cap.store_name, key, etag):
+            StateSaveCompleted()
+        else:
+            ETagMismatchExceptionThrown(key: key, etag: etag)
+}
+
+rule StateDelete {
+    when: StateDeleteRequested(cap, key)
+
+    requires: cap.status = open
+
+    ensures:
+        StateDeleteCompleted()
+}
+
+rule StateDeleteWithETag {
+    when: StateDeleteWithETagRequested(cap, key, etag)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprETagMatches(cap.store_name, key, etag):
+            StateDeleteCompleted()
+        else:
+            ETagMismatchExceptionThrown(key: key, etag: etag)
+}
+
+rule StateTransaction {
+    when: StateTransactionRequested(cap, ops)
+
+    requires: cap.status = open
+    requires: ops.count > 0
+    requires:
+        for op in ops where op.operation = upsert:
+            op.value != absent
+
+    ensures:
+        -- All ops applied atomically; on any failure all are rolled back
+        if DaprTransactionSucceeds(cap.store_name, ops):
+            StateTransactionCompleted()
+        else:
+            DaprExceptionThrown()
+}
+
+-- ---- PubSub Operations ----
+
+rule PubSubPublish {
+    when: PubSubPublishRequested(cap, topic, data)
+
+    requires: cap.status = open
+
+    ensures:
+        -- Fire-and-forget from caller's perspective; DAPR delivers at-least-once
+        PubSubPublishCompleted()
+        -- Note: delivery to subscribers is asynchronous and not tracked here
+}
+
+-- ---- Service Invocation ----
+
+rule ServiceInvoke {
+    when: ServiceInvokeRequested(cap, app_id, method, data)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprServiceResponds(app_id, method):
+            ServiceInvokeCompleted(response: any)
+        else:
+            DaprExceptionThrown()
+}
+
+-- ---- Secrets ----
+
+rule SecretsGet {
+    when: SecretsGetRequested(cap, key)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprSecretExists(cap.store_name, key):
+            SecretsGetCompleted(value: String)
+        else:
+            DaprExceptionThrown()
+}
+
+rule SecretsGetBulk {
+    when: SecretsGetBulkRequested(cap)
+
+    requires: cap.status = open
+
+    ensures:
+        SecretsGetBulkCompleted(values: Map<String, String>)
+}
+
+-- ---- Configuration ----
+
+rule ConfigGet {
+    when: ConfigGetRequested(cap, keys)
+
+    requires: cap.status = open
+    requires: keys.count > 0
+
+    ensures:
+        ConfigGetCompleted(items: Map<String, ConfigItem>)
+}
+
+-- ---- Output Bindings ----
+
+rule BindingInvoke {
+    when: BindingInvokeRequested(cap, operation, data)
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprBindingResponds(cap.binding_name, operation):
+            BindingInvokeCompleted(response: any)
+        else:
+            DaprExceptionThrown()
+}
+
+-- ---- JsonCodec ----
+
+rule JsonEncode {
+    when: JsonEncodeRequested(value, codec)
+
+    ensures:
+        JsonEncodeCompleted(json: String)
+        -- Never throws (codec.encode is total)
+}
+
+rule JsonDecode {
+    when: JsonDecodeRequested(json, codec)
+
+    ensures:
+        if codec.decode(json).outcome = success:
+            JsonDecodeCompleted(value: codec.decode(json).value)
+        else:
+            JsonDecodeCompleted(error: codec.decode(json).error)
+        -- Never throws; errors expressed as Left(String)
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+invariant ScopeContainment {
+    -- A capability with status = open cannot outlive its DaprScope.
+    -- If scope.status = closed then cap.status = closed for all capabilities
+    -- derived from that scope. Enforced by the Scala capture checker:
+    -- capability types carry ^{scope}, preventing escape.
+    for cap in StateCapability where cap.status = open:
+        cap.scope.status = open
+    for cap in PubSubCapability where cap.status = open:
+        cap.scope.status = open
+    for cap in ServiceInvocationCapability where cap.status = open:
+        cap.scope.status = open
+    for cap in SecretsCapability where cap.status = open:
+        cap.scope.status = open
+    for cap in ConfigurationCapability where cap.status = open:
+        cap.scope.status = open
+    for cap in BindingsCapability where cap.status = open:
+        cap.scope.status = open
+}
+
+invariant ClientLifetime {
+    -- The JavaDaprClient exists iff DaprRuntime is active.
+    DaprRuntime.status = active <-> DaprRuntime.client != absent
+}
+
+invariant ScopeLifetime {
+    -- DaprScope is open iff DaprRuntime is active.
+    DaprRuntime.status = active <-> DaprScope.status = open
+}
+
+invariant ClosedCapabilityRejection {
+    -- Operations on closed capabilities are rejected.
+    -- Any operation requested on a capability with status = closed
+    -- results in IllegalStateException, not a DAPR call.
+}
+
+invariant TransactionAtomicity {
+    -- A state transaction either fully succeeds or fully fails.
+    -- No partial application is observable.
+}
+
+invariant ETagOptimisticConcurrency {
+    -- saveWithETag and deleteWithETag succeed only when the provided ETag
+    -- matches the current server-side ETag for that key.
+    -- On mismatch, ETagMismatchException is thrown and no mutation occurs.
+}
+
+invariant PublishAtLeastOnce {
+    -- PubSubPublish completing successfully means DAPR has accepted the message.
+    -- Delivery to subscribers is at-least-once (DAPR guarantee, not this library's).
+}
+
+invariant JsonCodecRoundtrip {
+    -- For any value v of type T with given JsonCodec[T]:
+    -- JsonCodec.decode(JsonCodec.encode(v)) = Right(v)
+}
+
+------------------------------------------------------------
+-- Actor Declarations
+------------------------------------------------------------
+
+actor UserCode {
+    -- Safe-mode Scala code written by library users.
+    -- May only interact with the library through declared surfaces.
+    -- Cannot use @assumeSafe, cannot access JavaDaprClient directly.
+}
+
+actor LibraryAuthor {
+    -- Non-safe-mode Scala code in internal/ package.
+    -- Responsible for @assumeSafe correctness.
+    -- Has access to JavaDaprClient.
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+surface DaprRuntimeSurface {
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        run: (body: DaprScope ?=> Any) -> Any
+        -- Acquires a DaprClient, provides DaprScope to body, releases on exit.
+        -- Propagates exceptions after releasing resources.
+
+    @guarantee ResourceCleanup
+        -- DaprRuntime.run always closes the DaprClient on exit, whether
+        -- the body completes normally or throws.
+}
+
+surface StateCapabilitySurface {
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        get: (key: String) -> Any
+        -- Returns Option[T]; None if key not found
+        get_with_etag: (key: String) -> StateEntry
+        -- Returns StateEntry with value and current ETag
+        save: (key: String, value: Any) -> Unit
+        save_with_etag: (key: String, value: Any, etag: ETag) -> Unit
+        delete: (key: String) -> Unit
+        delete_with_etag: (key: String, etag: ETag) -> Unit
+        transaction: (ops: List<StateOperation>) -> Unit
+
+    @guarantee AtomicTransaction
+        -- transaction applies all operations or none.
+}
+
+surface PubSubCapabilitySurface {
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        publish: (topic: Topic, data: Any) -> Unit
+        publish_with_metadata: (topic: Topic, data: Any, metadata: Map<String, String>) -> Unit
+}
+
+surface ServiceInvocationSurface {
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        invoke: (app_id: AppId, method: String, data: Any) -> Any
+        invoke_get: (app_id: AppId, method: String) -> Any
+}
+
+surface SecretsSurface {
+    facing user: UserCode
+
+    exposes:
+        get: (key: String) -> String
+        get_bulk: () -> Map<String, String>
+}
+
+surface ConfigurationSurface {
+    facing user: UserCode
+
+    exposes:
+        get: (keys: List<String>) -> Map<String, ConfigItem>
+}
+
+surface BindingsSurface {
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        invoke: (operation: BindingOperation, data: Any) -> Any
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "Should DaprRuntime support a custom DaprClient (e.g. for testing without sidecar)?"
+-- Current design always creates a fresh client via DaprClientBuilder.
+-- An override for tests would allow passing a mock client.
+
+open question "Should StateCapability expose a query API (DAPR state query)?"
+-- DAPR supports JSON query syntax for state stores that support it.
+-- Not all state store components support queries.
+-- Deferred to v2.
+
+open question "Should PubSubCapability support bulk publish?"
+-- DAPR Java SDK has publishEvents (bulk). Exposed or not?
+-- Deferred to v2.
+
+open question "Should there be a typed ETagMismatchException or reuse DaprException?"
+-- Current design throws ETagMismatchException as a distinct subtype.
+-- This allows callers to specifically catch concurrency conflicts.

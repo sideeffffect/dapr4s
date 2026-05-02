@@ -1,0 +1,57 @@
+package dapr.safe.internal
+
+import dapr.safe.*
+import io.dapr.client.{DaprClient, DaprClientBuilder}
+
+/** Concrete implementation of [[dapr.safe.DaprScope]] backed by a real [[DaprClient]].
+  *
+  * All interaction with the Java SDK is confined to this file and the
+  * individual `*CapabilityImpl` classes. No Java types are visible in the
+  * public API.
+  */
+private[safe] final class DaprScopeImpl(private val client: DaprClient) extends DaprScope:
+
+  @volatile private var _closed = false
+
+  def isClosed: Boolean = _closed
+
+  def state(storeName: StoreName): StateCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    new StateCapabilityImpl(this, storeName)
+
+  def pubsub(pubsubName: PubSubName): PubSubCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    new PubSubCapabilityImpl(this, pubsubName)
+
+  def invoker: ServiceInvocationCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    new InvokerCapabilityImpl(this)
+
+  def secrets(storeName: SecretStoreName): SecretsCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    new SecretsCapabilityImpl(this, storeName)
+
+  def config(storeName: ConfigStoreName): ConfigurationCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    new ConfigCapabilityImpl(this, storeName)
+
+  def binding(bindingName: BindingName): BindingsCapability =
+    if _closed then throw IllegalStateException("DaprScope is closed")
+    new BindingsCapabilityImpl(this, bindingName)
+
+  def close(): Unit =
+    if !_closed then
+      _closed = true
+      client.close()
+
+  /** Package-private accessor for capability impls to use the underlying client. */
+  private[internal] def daprClient: DaprClient = client
+
+private[safe] object DaprScopeImpl:
+
+  /** Build a [[DaprScopeImpl]] using the default [[DaprClientBuilder]].
+    * This is the only place where the Java [[DaprClientBuilder]] is instantiated.
+    */
+  def create(): DaprScopeImpl =
+    val client: DaprClient = new DaprClientBuilder().build()
+    new DaprScopeImpl(client)

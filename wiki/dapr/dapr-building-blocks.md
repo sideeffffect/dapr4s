@@ -79,3 +79,6 @@ Not a standalone API but a cross-cutting concern. All building block calls autom
 - [Dapr Actors](dapr-actors.md)
 - [Dapr Workflows](dapr-workflows.md)
 - [Dapr Other Building Blocks](dapr-other-building-blocks.md)
+- [Dapr Resiliency](dapr-resiliency.md)
+- [Dapr Workflow Patterns](dapr-workflow-patterns.md)
+- [Dapr Pluggable Components](dapr-pluggable-components.md)
