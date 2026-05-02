@@ -4,6 +4,7 @@
 //> using options "-Ycc-verbose"
 //> using options "-Yexplicit-nulls"
 //> using options "-experimental"
+//> using options "-Wconf:any:error"
 // Note: -language:experimental.safe is NOT applied globally because non-safe-mode
 // files (DaprRuntime, JsonCodec, internal/*) need to use @scala.caps.assumeSafe.
 // Safe mode is enabled per-file via: import language.experimental.safe
