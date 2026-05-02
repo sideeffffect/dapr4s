@@ -2,6 +2,7 @@ package dapr.safe.test.integration
 
 import dapr.safe.*
 import io.dapr.testcontainers.DaprContainer
+import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
@@ -14,36 +15,31 @@ import unsafeExceptions.canThrowAny
   * peer app).
   */
 @scala.caps.assumeSafe
-class InvokerIntegrationTest extends FunSuite:
+class InvokerIntegrationTest extends FunSuite with TestContainersForAll:
 
-  private var dapr: DaprContainer | Null = null
+  type Containers = DaprTestContainer
 
-  override def beforeAll(): Unit =
-    val d = DaprContainer("daprio/daprd:latest")
-      .withAppName("invoker-test-app")
-      .withAppPort(0)
-    d.start()
-    dapr = d
-
-  override def afterAll(): Unit =
-    val d = dapr
-    if d != null then d.stop()
-
-  private def httpEndpoint =
-    val d = dapr.nn; s"http://${d.getHost}:${d.getHttpPort}"
-  private def grpcEndpoint =
-    val d = dapr.nn; s"http://${d.getHost}:${d.getGrpcPort}"
+  override def startContainers(): DaprTestContainer =
+    DaprTestContainer(
+      DaprContainer("daprio/daprd:latest")
+        .withAppName("invoker-test-app")
+        .withAppPort(0)
+    )
 
   // -------------------------------------------------------------------------
 
   test("integration: invoke non-existent app throws DaprException"):
-    DaprRuntime.runWithEndpoints(httpEndpoint, grpcEndpoint):
-      val invoker = summon[DaprScope].invoker
-      intercept[DaprException]:
-        invoker.invoke[String, String](AppId("no-such-app"), "method", "data")
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        val invoker = summon[DaprScope].invoker
+        intercept[DaprException]:
+          invoker.invoke[String, String](AppId("no-such-app"), "method", "data")
+    }
 
   test("integration: invokeGet non-existent app throws DaprException"):
-    DaprRuntime.runWithEndpoints(httpEndpoint, grpcEndpoint):
-      val invoker = summon[DaprScope].invoker
-      intercept[DaprException]:
-        invoker.invokeGet[String](AppId("no-such-app"), "method")
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        val invoker = summon[DaprScope].invoker
+        intercept[DaprException]:
+          invoker.invokeGet[String](AppId("no-such-app"), "method")
+    }

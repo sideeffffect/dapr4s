@@ -24,13 +24,13 @@ graph TB
 
     subgraph "Public API (capability traits)"
         DS["DaprScope (root capability)"]
-        SC["StateCapability^{scope}"]
-        PC["PubSubCapability^{scope}"]
-        IC["ServiceInvocationCapability^{scope}"]
-        SEC["SecretsCapability^{scope}"]
-        CC["ConfigurationCapability^{scope}"]
-        BC["BindingsCapability^{scope}"]
-        LC["DistributedLockCapability^{scope}"]
+        SC["StateCapability^scope"]
+        PC["PubSubCapability^scope"]
+        IC["ServiceInvocationCapability^scope"]
+        SEC["SecretsCapability^scope"]
+        CC["ConfigurationCapability^scope"]
+        BC["BindingsCapability^scope"]
+        LC["DistributedLockCapability^scope"]
     end
 
     subgraph "Internal Layer (@assumeSafe boundaries)"
@@ -70,17 +70,17 @@ Note: safe mode is enabled **per-file** via `import language.experimental.safe` 
 classDiagram
     class DaprCapability {
         <<sealed trait>>
-        Note: any class can be a capability via ^ annotations in nightly CC model
     }
+    note for DaprCapability "Any class/trait can serve as a capability via ^ capture annotations in the nightly CC model"
     class DaprScope {
         <<trait>>
-        +state(storeName: StoreName) StateCapability^{this}
-        +pubsub(pubsubName: PubSubName) PubSubCapability^{this}
-        +invoker ServiceInvocationCapability^{this}
-        +secrets(storeName: SecretStoreName) SecretsCapability^{this}
-        +config(storeName: ConfigStoreName) ConfigurationCapability^{this}
-        +binding(name: BindingName) BindingsCapability^{this}
-        +lock(storeName: StoreName) DistributedLockCapability^{this}
+        +state(storeName: StoreName) StateCapability^this
+        +pubsub(pubsubName: PubSubName) PubSubCapability^this
+        +invoker ServiceInvocationCapability^this
+        +secrets(storeName: SecretStoreName) SecretsCapability^this
+        +config(storeName: ConfigStoreName) ConfigurationCapability^this
+        +binding(name: BindingName) BindingsCapability^this
+        +lock(storeName: StoreName) DistributedLockCapability^this
     }
     class StateCapability {
         <<trait>>
@@ -88,7 +88,7 @@ classDiagram
         +getWithETag[T](key: String) StateEntry[T]
         +getBulk[T](keys: Seq[String]) Map[String,StateEntry[T]]
         +save[T](key: String, value: T) Unit
-        +saveBulk[T](entries: Seq[(String,T)]) Unit
+        +saveBulk[T](entries: Seq) Unit
         +saveWithETag[T](key, value, etag: ETag) Unit
         +delete(key: String) Unit
         +deleteWithETag(key: String, etag: ETag) Unit
@@ -153,6 +153,7 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `ConfigStoreName` | `String` | DAPR configuration store name |
 | `BindingName` | `String` | DAPR output binding name |
 | `ETag` | `String` | Optimistic concurrency tag |
+| `StateQuery` | `String` | State store query expression (JSON filter) |
 
 Smart constructors live in companion objects. Extension methods provide operations that would otherwise require unwrapping.
 
@@ -193,7 +194,7 @@ sequenceDiagram
     DaprRuntime->>DaprScope: new DaprScopeImpl(client)
     DaprRuntime->>App: body (given DaprScope)
     App->>DaprScope: .state("my-store")
-    DaprScope-->>App: StateCapability^{scope}
+    DaprScope-->>App: StateCapability^scope
     App->>DaprScope: state.save("k", value)
     DaprScope->>DaprClient: saveState(...).block()
     DaprClient->>Sidecar: HTTP PUT /v1.0/state/my-store
@@ -213,7 +214,7 @@ stateDiagram-v2
     [*] --> Ready: DaprScope.state(storeName) called
 
     Ready --> Fetching: get(key)
-    Fetching --> Ready: Option[T] returned
+    Fetching --> Ready: Option value returned
     Fetching --> Error: DaprException
 
     Ready --> Saving: save(key, value)
@@ -230,7 +231,10 @@ stateDiagram-v2
 
     Error --> [*]: exception propagates to caller
 
-    note right of Ready: Capability bound to DaprScope;\ncannot escape run{} block
+    note right of Ready
+        Capability bound to DaprScope
+        Cannot escape the run block
+    end note
 ```
 
 ---
@@ -249,6 +253,8 @@ All DAPR errors are surfaced as typed subtypes of `DaprException`:
 | `DaprBindingsException` | `BindingsCapability` operations |
 | `DaprLockException` | `DistributedLockCapability` operations |
 | `ETagMismatchException` | `saveWithETag`, `deleteWithETag` (subtype of `DaprStateException`) |
+| `StateTransactionException` | failed state transactions (subtype of `DaprStateException`) |
+| `DaprConnectionException` | connectivity failures reaching the DAPR sidecar |
 | `JsonDecodeException` | `JsonCodec.decodeOrThrow` (subtype of `DaprException`) |
 
 The library does not catch exceptions internally — callers use `Try` or `Either` adapters if they want explicit error handling. Under `import language.experimental.saferExceptions`, all `throws` clauses are checked by the compiler.
@@ -310,3 +316,4 @@ scala-safe-dapr/
 - Actor framework (DaprActor interface) — complex enough to warrant separate treatment.
 - Workflow orchestration — complex; requires special determinism constraints.
 - Subscription handling (inbound pub/sub) — requires HTTP server integration.
+- Configuration subscription / streaming — `ConfigUpdate` is defined in `Models.scala` as a stub but no subscription surface is exposed; inbound streaming requires HTTP server integration.

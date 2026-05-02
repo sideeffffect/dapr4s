@@ -10,6 +10,7 @@
 --   - DAPR actor framework (separate concern)
 --   - DAPR workflow orchestration (separate concern)
 --   - Inbound pub/sub subscription handling (requires HTTP server)
+--   - Configuration subscription / streaming (ConfigUpdate stub exists in code, feature excluded v1)
 --   - DAPR sidecar itself (external system)
 --   - Authentication and mTLS (managed by DAPR sidecar)
 -- Dependencies: DAPR sidecar must be running and reachable
@@ -78,17 +79,42 @@ value StateEntry<T> {
     -- etag is present iff value is present
 }
 
-value StateOperation {
-    key: String
-    operation: upsert | delete
-    value: String?
-    -- value must be present when operation = upsert
-    etag: ETag?
+value StateQuery {
+    -- Opaque query expression passed to the state store query API.
+    -- Format depends on the state store component (e.g. JSON filter object).
+    query: String
 }
 
-value BindingOperation {
-    name: String
-    metadata: Map<String, String>
+value BulkPublishEntry<T> {
+    entry_id: String    -- caller-assigned ID for correlating failures
+    event: T
+}
+
+value BulkPublishResult {
+    failed_entries: List<String>
+    -- IDs of entries that failed to publish; empty on full success
+}
+
+value UnlockStatus {
+    -- Result of a distributed lock unlock operation.
+    status: success | lock_not_found | internal_error
+    -- success:       lock was held by lockOwner and has been released
+    -- lock_not_found: no lock exists for the given resourceId
+    -- internal_error: lock exists but is held by a different owner
+}
+
+variant StateOp {
+    -- Sealed ADT matching the code's sealed trait StateOp.
+    -- UpsertOp always carries encoded_value (structurally non-nullable).
+    UpsertOp {
+        key: String
+        encoded_value: String   -- pre-encoded JSON value; always present
+        etag: ETag?
+    }
+    DeleteOp {
+        key: String
+        etag: ETag?
+    }
 }
 
 ------------------------------------------------------------
@@ -99,7 +125,10 @@ contract JsonCodec {
     -- Typeclass contract: a T with a JsonCodec can be
     -- serialised to/from JSON string form.
     encode: (value: Any) -> String
-    decode: (json: String) -> DecodeResult
+    decode: (json: String?) -> DecodeResult
+    -- decode accepts null input; returns Left(JsonDecodeException("null input")) for null
+    decode_or_throw: (json: String?) -> Any throws JsonDecodeException
+    -- Convenience: unwraps Right or throws the JsonDecodeException from Left
 
     @invariant Roundtrip
         -- For any value v where encode and decode are defined:
@@ -108,16 +137,16 @@ contract JsonCodec {
     @invariant EncodeTotal
         -- encode never throws; it always returns a String.
 
-    @guidance
-        -- decode returns Left(errorMessage) on malformed JSON
-        -- or type mismatch, never throws.
+    @invariant DecodeNeverThrows
+        -- decode always returns Left or Right; it never throws.
+        -- decode(null) returns Left(JsonDecodeException("null input")).
 }
 
 ------------------------------------------------------------
 -- Enumerations
 ------------------------------------------------------------
 
--- (none at module level; operation kinds are inline on StateOperation)
+-- (none at module level; StateOp variants are declared in Value Types above)
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -407,9 +436,7 @@ rule StateTransaction {
 
     requires: cap.status = open
     requires: ops.count > 0
-    requires:
-        for op in ops where op.operation = upsert:
-            op.value != absent
+    -- UpsertOp.encoded_value is structurally always present (non-nullable by construction)
 
     ensures:
         -- All ops applied atomically; on any failure all are rolled back
@@ -475,7 +502,7 @@ rule ConfigGet {
     when: ConfigGetRequested(cap, keys)
 
     requires: cap.status = open
-    requires: keys.count > 0
+    -- empty keys list is accepted; returns empty map
 
     ensures:
         ConfigGetCompleted(items: Map<String, ConfigItem>)
@@ -650,9 +677,16 @@ surface DaprRuntimeSurface {
         -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
         -- user code can call it without violating safe-mode constraints.
 
+        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: DaprScope ?=> Any) -> Any
+        -- Like run but overrides the DAPR sidecar HTTP and gRPC endpoints.
+        -- Intended for integration tests where the sidecar runs on a
+        -- non-default port (e.g. via Testcontainers).
+        -- Endpoint overrides are reset to their original values on exit,
+        -- whether the body completes normally or throws.
+
     @guarantee ResourceCleanup
-        -- DaprRuntime.run always closes the DaprClient on exit, whether
-        -- the body completes normally or throws.
+        -- DaprRuntime.run (and run_with_endpoints) always closes the DaprClient
+        -- on exit, whether the body completes normally or throws.
 }
 
 surface StateCapabilitySurface {
@@ -673,7 +707,7 @@ surface StateCapabilitySurface {
         save_bulk: (entries: List<Pair<String, Any>>) -> Unit
         delete: (key: String) -> Unit
         delete_with_etag: (key: String, etag: ETag) -> Unit
-        transaction: (ops: List<StateOperation>) -> Unit
+        transaction: (ops: List<StateOp>) -> Unit
         query_state: (query: StateQuery) -> List<StateEntry>
         -- Query using DAPR state store query API (store must support queries)
 

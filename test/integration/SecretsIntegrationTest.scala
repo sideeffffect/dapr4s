@@ -2,6 +2,7 @@ package dapr.safe.test.integration
 
 import dapr.safe.*
 import io.dapr.testcontainers.DaprContainer
+import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
@@ -12,36 +13,31 @@ import unsafeExceptions.canThrowAny
   * not exist surfaces [[DaprException]].
   */
 @scala.caps.assumeSafe
-class SecretsIntegrationTest extends FunSuite:
+class SecretsIntegrationTest extends FunSuite with TestContainersForAll:
 
-  private var dapr: DaprContainer | Null = null
+  type Containers = DaprTestContainer
 
-  override def beforeAll(): Unit =
-    val d = DaprContainer("daprio/daprd:latest")
-      .withAppName("secrets-test-app")
-      .withAppPort(0)
-    d.start()
-    dapr = d
-
-  override def afterAll(): Unit =
-    val d = dapr
-    if d != null then d.stop()
-
-  private def httpEndpoint =
-    val d = dapr.nn; s"http://${d.getHost}:${d.getHttpPort}"
-  private def grpcEndpoint =
-    val d = dapr.nn; s"http://${d.getHost}:${d.getGrpcPort}"
+  override def startContainers(): DaprTestContainer =
+    DaprTestContainer(
+      DaprContainer("daprio/daprd:latest")
+        .withAppName("secrets-test-app")
+        .withAppPort(0)
+    )
 
   // -------------------------------------------------------------------------
 
   test("integration: get from non-configured secrets store throws DaprException"):
-    DaprRuntime.runWithEndpoints(httpEndpoint, grpcEndpoint):
-      val secrets = summon[DaprScope].secrets(SecretStoreName("nonexistent-store"))
-      intercept[DaprException]:
-        secrets.get("any-key")
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        val secrets = summon[DaprScope].secrets(SecretStoreName("nonexistent-store"))
+        intercept[DaprException]:
+          secrets.get("any-key")
+    }
 
   test("integration: getBulk from non-configured secrets store throws DaprException"):
-    DaprRuntime.runWithEndpoints(httpEndpoint, grpcEndpoint):
-      val secrets = summon[DaprScope].secrets(SecretStoreName("nonexistent-store"))
-      intercept[DaprException]:
-        secrets.getBulk()
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        val secrets = summon[DaprScope].secrets(SecretStoreName("nonexistent-store"))
+        intercept[DaprException]:
+          secrets.getBulk()
+    }
