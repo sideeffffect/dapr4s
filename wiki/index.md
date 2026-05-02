@@ -63,6 +63,16 @@ Kyo, Ox, Effekt, and related Scala effect libraries — design approaches, algeb
 | [Scala Effect Libraries Comparison](scala-effect-libraries/scala-effect-libraries-comparison.md) | Kyo/Ox/Effekt/ZIO/Cats Effect: design approach, capture checking integration, composability, DAPR wrapper recommendations | 2026-05-01 |
 | [Gears Async](scala-effect-libraries/gears-async.md) | EPFL experimental direct-style async library: `Async` capability, structured concurrency, Future types, capture checking integration, comparison with Ox | 2026-05-01 |
 
+## scala-type-safety
+
+Type-driven design patterns for correct, self-documenting Scala code: ADTs, opaque types, parse-don't-validate, and eliminating primitive obsession.
+
+| Article | Summary | Updated |
+|---------|---------|---------|
+| [Parse, Don't Validate](scala-type-safety/parse-dont-validate.md) | Alexis King's principle: encode validation results in types rather than discarding them; stratify programs into a parsing phase and an execution phase | 2026-05-02 |
+| [Primitive Obsession and Opaque Types](scala-type-safety/primitive-obsession-opaque-types.md) | Using raw String/Int for domain values; opaque types as zero-cost wrappers; smart constructors; vs. case classes and value classes | 2026-05-02 |
+| [ADTs and Making Illegal States Unrepresentable](scala-type-safety/adts-illegal-states.md) | Sealed hierarchies, final subtypes, case-class discipline, enum vs. Enumeration; nrinaudo best-practice rules for exhaustive ADTs | 2026-05-02 |
+
 ## dapr
 
 Dapr (Distributed Application Runtime) — portable, event-driven runtime for building resilient microservices; covers architecture, building blocks, Java SDK, and testing.

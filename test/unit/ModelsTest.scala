@@ -102,9 +102,9 @@ class ModelsTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("UnlockStatus values are distinct"):
-    assert(UnlockStatus.Success.code == 0)
-    assert(UnlockStatus.LockNotFound.code == 1)
-    assert(UnlockStatus.InternalError.code == 2)
+    assert(UnlockStatus.Success != UnlockStatus.LockNotFound)
+    assert(UnlockStatus.LockNotFound != UnlockStatus.InternalError)
+    assert(UnlockStatus.Success != UnlockStatus.InternalError)
 
   test("BulkPublishEntry holds entryId and event"):
     val entry = BulkPublishEntry("id-1", "event-data")

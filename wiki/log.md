@@ -1,5 +1,7 @@
 # Wiki Log
 
+## [2026-05-02] ingest | Parse, Don't Validate; Primitive Obsession and Opaque Types; ADTs and Making Illegal States Unrepresentable
+
 ## [2026-05-02] ingest | Dapr Java SDK — Virtual Threads (extended: injection point survey)
 - Updated: Dapr Java SDK
 

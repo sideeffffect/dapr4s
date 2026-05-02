@@ -215,7 +215,7 @@ private[safe] final class DaprAppServer extends AppHandlers:
               id              = env.get("id").map(_.str).getOrElse(""),
               source          = env.get("source").map(_.str).getOrElse(""),
               specVersion     = env.get("specversion").map(_.str).getOrElse("1.0"),
-              `type`          = env.get("type").map(_.str).getOrElse(""),
+              eventType       = env.get("type").map(_.str).getOrElse(""),
               topic           = env.get("topic").map(_.str).getOrElse(defaultTopic),
               pubSubName      = env.get("pubsubname").map(_.str).getOrElse(defaultPubsubName),
               dataContentType = env.get("datacontenttype").map(_.str).getOrElse("application/json"),

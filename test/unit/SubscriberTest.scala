@@ -34,7 +34,7 @@ class SubscriberTest extends FunSuite:
       id              = "abc",
       source          = "test",
       specVersion     = "1.0",
-      `type`          = "com.example.event",
+      eventType       = "com.example.event",
       topic           = "orders",
       pubSubName      = "pubsub",
       dataContentType = "application/json",

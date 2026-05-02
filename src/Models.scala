@@ -70,10 +70,10 @@ object StateQuery:
 // ---------------------------------------------------------------------------
 
 /** Result of a state fetch that also exposes the server-side ETag. */
-case class StateEntry[T](value: Option[T], etag: Option[ETag])
+final case class StateEntry[T](value: Option[T], etag: Option[ETag])
 
 /** A single item returned by the configuration API. */
-case class ConfigItem(
+final case class ConfigItem(
     key: String,
     value: String,
     version: String,
@@ -93,7 +93,7 @@ object StateOp:
     * when the operation is processed in [[StateCapability.transaction]].
     * Use the companion `apply[T]` smart constructor to encode a typed value.
     */
-  case class UpsertOp(key: String, encodedValue: String, etag: Option[ETag]) extends StateOp
+  final case class UpsertOp(key: String, encodedValue: String, etag: Option[ETag]) extends StateOp
 
   object UpsertOp:
     /** Smart constructor that encodes `value` immediately using its [[JsonCodec]]. */
@@ -101,36 +101,34 @@ object StateOp:
       new UpsertOp(key, summon[JsonCodec[T]].encode(value), etag)
 
   /** Delete a key with an optional ETag for optimistic concurrency. */
-  case class DeleteOp(key: String, etag: Option[ETag] = None) extends StateOp
+  final case class DeleteOp(key: String, etag: Option[ETag] = None) extends StateOp
 
 // ---------------------------------------------------------------------------
 // Distributed Lock
 // ---------------------------------------------------------------------------
 
-/** Result status of an unlock operation. 0=success, 1=lock not found, 2=internal error */
-case class UnlockStatus(code: Int)
-
-object UnlockStatus:
-  val Success: UnlockStatus      = UnlockStatus(0)
-  val LockNotFound: UnlockStatus = UnlockStatus(1)
-  val InternalError: UnlockStatus = UnlockStatus(2)
+/** Result status of an unlock operation. */
+enum UnlockStatus:
+  case Success
+  case LockNotFound
+  case InternalError
 
 // ---------------------------------------------------------------------------
 // Bulk Pub/Sub
 // ---------------------------------------------------------------------------
 
 /** An entry in a bulk publish request. */
-case class BulkPublishEntry[T](entryId: String, event: T)
+final case class BulkPublishEntry[T](entryId: String, event: T)
 
 /** Result of a bulk publish — contains IDs of any failed entries. */
-case class BulkPublishResult(failedEntries: List[String])
+final case class BulkPublishResult(failedEntries: List[String])
 
 // ---------------------------------------------------------------------------
 // Configuration subscription
 // ---------------------------------------------------------------------------
 
 /** Represents a configuration update notification. */
-case class ConfigUpdate(storeName: String, items: Map[String, ConfigItem])
+final case class ConfigUpdate(storeName: String, items: Map[String, ConfigItem])
 
 // ---------------------------------------------------------------------------
 // Pub/Sub subscription (incoming messages)
@@ -146,11 +144,11 @@ enum SubscriptionResult:
   case Drop
 
 /** An incoming pub/sub CloudEvent delivered by the Dapr sidecar. */
-case class CloudEvent[T](
+final case class CloudEvent[T](
   id: String,
   source: String,
   specVersion: String,
-  `type`: String,
+  eventType: String,
   topic: String,
   pubSubName: String,
   dataContentType: String,
@@ -164,7 +162,7 @@ case class CloudEvent[T](
 /** An incoming service invocation request. `httpMethod` is the HTTP verb
   * (GET, POST, PUT, DELETE, etc.) used by the calling app.
   */
-case class InvocationRequest[T](
+final case class InvocationRequest[T](
   methodName: String,
   httpMethod: String,
   data: T
