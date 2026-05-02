@@ -1,7 +1,6 @@
 package dapr.safe
 
 import language.experimental.safe
-import language.experimental.saferExceptions
 
 // ---------------------------------------------------------------------------
 // Opaque domain types — prevent accidental misuse (e.g. StoreName vs PubSubName)

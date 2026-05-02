@@ -3,7 +3,6 @@ package dapr.safe.test.unit
 import dapr.safe.*
 import munit.FunSuite
 import language.experimental.saferExceptions
-import unsafeExceptions.canThrowAny
 
 @scala.caps.assumeSafe
 class JsonCodecTest extends FunSuite:
@@ -18,7 +17,6 @@ class JsonCodecTest extends FunSuite:
 
   test("JsonCodec[String] encode produces JSON string literal"):
     val codec = summon[JsonCodec[String]]
-    // upickle wraps plain strings in double-quotes
     assertEquals(codec.encode("world"), "\"world\"")
 
   test("JsonCodec[Int] roundtrip"):
@@ -42,7 +40,7 @@ class JsonCodecTest extends FunSuite:
     assertEquals(codec.decode(codec.encode(3.14)), Right(3.14))
 
   // -------------------------------------------------------------------------
-  // Decode errors — now return Left(JsonDecodeException)
+  // Decode errors — return Left(JsonDecodeException)
   // -------------------------------------------------------------------------
 
   test("JsonCodec[Int] decode returns Left on non-integer JSON"):
@@ -76,26 +74,31 @@ class JsonCodecTest extends FunSuite:
 
   test("JsonCodec via ReadWriter decode error returns Left"):
     val codec = summon[JsonCodec[Point]]
-    assert(codec.decode("{\"x\": 1}").isLeft)   // missing y field
+    assert(codec.decode("{\"x\": 1}").isLeft) // missing y field
 
   // -------------------------------------------------------------------------
-  // decodeOrThrow helper
+  // decodeOrThrow helper — needs CanThrow created inside the test body lambda
   // -------------------------------------------------------------------------
 
   test("decodeOrThrow returns value on success"):
-    val v = JsonCodec.decodeOrThrow[Int]("99")
+    // Use try/catch to avoid needing CanThrow capability — we expect no exception here
+    val v = try JsonCodec.decodeOrThrow[Int]("99") catch case e: Exception => fail(s"unexpected: $e")
     assertEquals(v, 99)
 
   test("decodeOrThrow throws JsonDecodeException on failure"):
-    intercept[JsonDecodeException]:
-      JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
+    var exOpt: Exception | Null = null
+    try JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
+    catch case e: Exception => exOpt = e
+    assert(exOpt != null && exOpt.isInstanceOf[JsonDecodeException])
 
   test("decodeOrThrow throws DaprException (subtype) on failure"):
-    intercept[DaprException]:
-      JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
+    var exOpt: Exception | Null = null
+    try JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
+    catch case e: Exception => exOpt = e
+    assert(exOpt != null && exOpt.isInstanceOf[DaprException])
 
   // -------------------------------------------------------------------------
-  // Null input guard — now returns Left(JsonDecodeException("null input"))
+  // Null input guard — returns Left(JsonDecodeException("null input"))
   // -------------------------------------------------------------------------
 
   test("JsonCodec[String] decode(null) returns Left with JsonDecodeException"):

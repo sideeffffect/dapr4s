@@ -2,8 +2,6 @@ package dapr.safe.test.unit
 
 import dapr.safe.*
 import munit.FunSuite
-import language.experimental.saferExceptions
-import unsafeExceptions.canThrowAny
 
 @scala.caps.assumeSafe
 class ModelsTest extends FunSuite:
@@ -48,7 +46,6 @@ class ModelsTest extends FunSuite:
     val q = StateQuery("{\"filter\":{}}")
     assertEquals(q.value, "{\"filter\":{}}")
 
-  // Opaque types are nominally distinct (no implicit coercion between them)
   test("Opaque types prevent mix-up at compile time"):
     val store: StoreName    = StoreName("s")
     val pubsub: PubSubName  = PubSubName("p")

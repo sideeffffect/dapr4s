@@ -4,17 +4,25 @@ import dapr.safe.*
 import munit.FunSuite
 import language.experimental.saferExceptions
 
-// NOTE (Issue 27): Despite its name, StateCapabilityTest covers the full mock-based
-// test suite including State, PubSub, Secrets, Configuration, and DaprRuntime.run.
-// The class is not renamed to avoid disrupting test discovery and history.
+// NOTE: Despite its name, StateCapabilityTest covers the full mock-based test suite
+// including State, PubSub, Secrets, Configuration, Lock, and closed-scope invariants.
 @scala.caps.assumeSafe
 class StateCapabilityTest extends FunSuite:
 
-  /** Helper: run a block against a fresh [[MockDaprScope]]. */
-  def withScope[T](body: (DaprScope, CanThrow[Exception]) ?=> T): T =
-    given scope: DaprScope = MockDaprScope()
+  /** Provide CanThrow[Exception] via a method body so no lambda ever captures canThrowAny.
+    * Multiple calls from different lambdas are safe — each creates a fresh method stack frame.
+    */
+  def runSafe[T](body: CanThrow[Exception] ?=> T): T =
     given CanThrow[Exception] = unsafeExceptions.canThrowAny
     body
+
+  /** Run a block against a fresh [[MockDaprScope]].
+    * Uses runSafe internally so canThrowAny is never captured in any lambda.
+    */
+  def withScope[T](body: (DaprScope, CanThrow[Exception]) ?=> T): T =
+    given scope: DaprScope = MockDaprScope()
+    runSafe:
+      body
 
   // -------------------------------------------------------------------------
   // get / save
@@ -64,7 +72,7 @@ class StateCapabilityTest extends FunSuite:
       assertEquals(entry.etag, None)
 
   // -------------------------------------------------------------------------
-  // getBulk / saveBulk (new methods)
+  // getBulk / saveBulk
   // -------------------------------------------------------------------------
 
   test("saveBulk then getBulk returns all values"):
@@ -101,21 +109,27 @@ class StateCapabilityTest extends FunSuite:
     withScope:
       val state = summon[DaprScope].state(StoreName("test-store"))
       state.save("k", "v1")
-      intercept[ETagMismatchException]:
-        state.saveWithETag("k", "v2", ETag("wrong-etag"))
+      var exOpt: Exception | Null = null
+      try state.saveWithETag("k", "v2", ETag("wrong-etag"))
+      catch case e: ETagMismatchException => exOpt = e
+      assert(exOpt != null)
 
   test("saveWithETag throws ETagMismatchException when key does not exist"):
     withScope:
       val state = summon[DaprScope].state(StoreName("test-store"))
-      intercept[ETagMismatchException]:
-        state.saveWithETag("nonexistent", "v", ETag("any-etag"))
+      var exOpt: Exception | Null = null
+      try state.saveWithETag("nonexistent", "v", ETag("any-etag"))
+      catch case e: ETagMismatchException => exOpt = e
+      assert(exOpt != null)
 
   test("ETagMismatchException is a DaprStateException"):
     withScope:
       val state = summon[DaprScope].state(StoreName("test-store"))
       state.save("k", "v1")
-      intercept[DaprStateException]:
-        state.saveWithETag("k", "v2", ETag("wrong-etag"))
+      var exOpt: Exception | Null = null
+      try state.saveWithETag("k", "v2", ETag("wrong-etag"))
+      catch case e: DaprStateException => exOpt = e
+      assert(exOpt != null && exOpt.isInstanceOf[ETagMismatchException])
 
   // -------------------------------------------------------------------------
   // delete
@@ -149,8 +163,10 @@ class StateCapabilityTest extends FunSuite:
     withScope:
       val state = summon[DaprScope].state(StoreName("test-store"))
       state.save("k", "v")
-      intercept[ETagMismatchException]:
-        state.deleteWithETag("k", ETag("wrong"))
+      var exOpt: Exception | Null = null
+      try state.deleteWithETag("k", ETag("wrong"))
+      catch case e: ETagMismatchException => exOpt = e
+      assert(exOpt != null)
 
   // -------------------------------------------------------------------------
   // transaction
@@ -174,111 +190,128 @@ class StateCapabilityTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("publish records event in mock scope"):
-    val scope = MockDaprScope()
-    val pubsub = scope.pubsub(PubSubName("my-pubsub"))
-    pubsub.publish(Topic("orders"), "order-payload")
-    val events = scope.publishedEvents
-    assertEquals(events.length, 1)
-    assertEquals(events.head._1, "my-pubsub")
-    assertEquals(events.head._2, "orders")
-    assertEquals(events.head._4, Map.empty[String, String])
+    runSafe:
+      val scope = MockDaprScope()
+      val pubsub = scope.pubsub(PubSubName("my-pubsub"))
+      pubsub.publish(Topic("orders"), "order-payload")
+      val events = scope.publishedEvents
+      assertEquals(events.length, 1)
+      assertEquals(events.head._1, "my-pubsub")
+      assertEquals(events.head._2, "orders")
+      assertEquals(events.head._4, Map.empty[String, String])
 
   test("publishWithMetadata records event with metadata in mock scope"):
-    val scope = MockDaprScope()
-    val pubsub = scope.pubsub(PubSubName("my-pubsub"))
-    pubsub.publishWithMetadata(Topic("orders"), "payload", Map("k" -> "v"))
-    val events = scope.publishedEvents
-    assertEquals(events.length, 1)
-    assertEquals(events.head._4, Map("k" -> "v"))
+    runSafe:
+      val scope = MockDaprScope()
+      val pubsub = scope.pubsub(PubSubName("my-pubsub"))
+      pubsub.publishWithMetadata(Topic("orders"), "payload", Map("k" -> "v"))
+      val events = scope.publishedEvents
+      assertEquals(events.length, 1)
+      assertEquals(events.head._4, Map("k" -> "v"))
 
   test("bulkPublish records all entries in mock scope"):
-    val scope = MockDaprScope()
-    val pubsub = scope.pubsub(PubSubName("my-pubsub"))
-    val entries = Seq(
-      BulkPublishEntry("1", "event-a"),
-      BulkPublishEntry("2", "event-b")
-    )
-    val result = pubsub.bulkPublish(Topic("orders"), entries)
-    assertEquals(scope.publishedEvents.length, 2)
-    assertEquals(result.failedEntries, List.empty)
+    runSafe:
+      val scope = MockDaprScope()
+      val pubsub = scope.pubsub(PubSubName("my-pubsub"))
+      val entries = Seq(
+        BulkPublishEntry("1", "event-a"),
+        BulkPublishEntry("2", "event-b")
+      )
+      val result = pubsub.bulkPublish(Topic("orders"), entries)
+      assertEquals(scope.publishedEvents.length, 2)
+      assertEquals(result.failedEntries, List.empty)
 
   // -------------------------------------------------------------------------
   // Secrets through mock scope
   // -------------------------------------------------------------------------
 
   test("secrets get returns seeded value"):
-    val scope = MockDaprScope()
-    scope.seedSecret("vault", "db-password", "s3cr3t")
-    val secrets = scope.secrets(SecretStoreName("vault"))
-    assertEquals(secrets.get("db-password"), "s3cr3t")
+    runSafe:
+      val scope = MockDaprScope()
+      scope.seedSecret("vault", "db-password", "s3cr3t")
+      val secrets = scope.secrets(SecretStoreName("vault"))
+      assertEquals(secrets.get("db-password"), "s3cr3t")
 
   test("secrets get throws DaprSecretsException for missing key"):
-    val scope = MockDaprScope()
-    val secrets = scope.secrets(SecretStoreName("vault"))
-    intercept[DaprSecretsException]:
-      secrets.get("nonexistent")
+    runSafe:
+      val scope = MockDaprScope()
+      val secrets = scope.secrets(SecretStoreName("vault"))
+      var exOpt: Exception | Null = null
+      try secrets.get("nonexistent")
+      catch case e: DaprSecretsException => exOpt = e
+      assert(exOpt != null)
 
   test("secrets get throws DaprException (base type) for missing key"):
-    val scope = MockDaprScope()
-    val secrets = scope.secrets(SecretStoreName("vault"))
-    intercept[DaprException]:
-      secrets.get("nonexistent")
+    runSafe:
+      val scope = MockDaprScope()
+      val secrets = scope.secrets(SecretStoreName("vault"))
+      var exOpt: Exception | Null = null
+      try secrets.get("nonexistent")
+      catch case e: DaprException => exOpt = e
+      assert(exOpt != null)
 
   test("secrets getBulk returns all seeded values"):
-    val scope = MockDaprScope()
-    scope.seedSecret("vault", "a", "1")
-    scope.seedSecret("vault", "b", "2")
-    val secrets = scope.secrets(SecretStoreName("vault"))
-    assertEquals(secrets.getBulk(), Map("a" -> "1", "b" -> "2"))
+    runSafe:
+      val scope = MockDaprScope()
+      scope.seedSecret("vault", "a", "1")
+      scope.seedSecret("vault", "b", "2")
+      val secrets = scope.secrets(SecretStoreName("vault"))
+      assertEquals(secrets.getBulk(), Map("a" -> "1", "b" -> "2"))
 
   // -------------------------------------------------------------------------
   // Configuration through mock scope
   // -------------------------------------------------------------------------
 
   test("config get returns seeded items"):
-    val scope = MockDaprScope()
-    scope.seedConfig("app-config", "log-level", ConfigItem("log-level", "INFO", "1"))
-    val config = scope.config(ConfigStoreName("app-config"))
-    val result = config.get(Seq("log-level"))
-    assertEquals(result("log-level").value, "INFO")
+    runSafe:
+      val scope = MockDaprScope()
+      scope.seedConfig("app-config", "log-level", ConfigItem("log-level", "INFO", "1"))
+      val config = scope.config(ConfigStoreName("app-config"))
+      val result = config.get(Seq("log-level"))
+      assertEquals(result("log-level").value, "INFO")
 
   test("config get returns empty map for unknown keys"):
-    val scope = MockDaprScope()
-    val config = scope.config(ConfigStoreName("app-config"))
-    assert(config.get(Seq("unknown")).isEmpty)
+    runSafe:
+      val scope = MockDaprScope()
+      val config = scope.config(ConfigStoreName("app-config"))
+      assert(config.get(Seq("unknown")).isEmpty)
 
   // -------------------------------------------------------------------------
   // Distributed lock through mock scope
   // -------------------------------------------------------------------------
 
   test("lock tryLock succeeds on first attempt"):
-    val scope = MockDaprScope()
-    val lock = scope.lock(StoreName("lock-store"))
-    val acquired = lock.tryLock("resource-1", "owner-1", 30)
-    assert(acquired)
+    runSafe:
+      val scope = MockDaprScope()
+      val lock = scope.lock(StoreName("lock-store"))
+      val acquired = lock.tryLock("resource-1", "owner-1", 30)
+      assert(acquired)
 
   test("lock tryLock fails if already held"):
-    val scope = MockDaprScope()
-    val lock = scope.lock(StoreName("lock-store"))
-    lock.tryLock("resource-1", "owner-1", 30)
-    val acquired = lock.tryLock("resource-1", "owner-2", 30)
-    assert(!acquired)
+    runSafe:
+      val scope = MockDaprScope()
+      val lock = scope.lock(StoreName("lock-store"))
+      lock.tryLock("resource-1", "owner-1", 30)
+      val acquired = lock.tryLock("resource-1", "owner-2", 30)
+      assert(!acquired)
 
   test("lock unlock releases the lock"):
-    val scope = MockDaprScope()
-    val lock = scope.lock(StoreName("lock-store"))
-    lock.tryLock("resource-1", "owner-1", 30)
-    val status = lock.unlock("resource-1", "owner-1")
-    assertEquals(status, UnlockStatus.Success)
+    runSafe:
+      val scope = MockDaprScope()
+      val lock = scope.lock(StoreName("lock-store"))
+      lock.tryLock("resource-1", "owner-1", 30)
+      val status = lock.unlock("resource-1", "owner-1")
+      assertEquals(status, UnlockStatus.Success)
 
   test("lock unlock on non-held resource returns LockNotFound"):
-    val scope = MockDaprScope()
-    val lock = scope.lock(StoreName("lock-store"))
-    val status = lock.unlock("no-such-resource", "owner-1")
-    assertEquals(status, UnlockStatus.LockNotFound)
+    runSafe:
+      val scope = MockDaprScope()
+      val lock = scope.lock(StoreName("lock-store"))
+      val status = lock.unlock("no-such-resource", "owner-1")
+      assertEquals(status, UnlockStatus.LockNotFound)
 
   // -------------------------------------------------------------------------
-  // DaprRuntime.run (using mock scope indirectly via withScope helper)
+  // DaprScope via withScope helper
   // -------------------------------------------------------------------------
 
   test("DaprScope factory is available as context parameter"):
@@ -293,12 +326,15 @@ class StateCapabilityTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("state operation throws IllegalStateException after scope close"):
-    val scope = MockDaprScope()
-    val state = scope.state(StoreName("test-store"))
-    state.save("k", "v")
-    scope.close()
-    intercept[IllegalStateException]:
-      state.get[String]("k")
+    runSafe:
+      val scope = MockDaprScope()
+      val state = scope.state(StoreName("test-store"))
+      state.save("k", "v")
+      scope.close()
+      var exOpt: Exception | Null = null
+      try state.get[String]("k")
+      catch case e: IllegalStateException => exOpt = e
+      assert(exOpt != null)
 
   test("scope factory throws IllegalStateException after close"):
     val scope = MockDaprScope()
@@ -307,16 +343,22 @@ class StateCapabilityTest extends FunSuite:
       scope.state(StoreName("test-store"))
 
   test("pubsub operation throws IllegalStateException after scope close"):
-    val scope  = MockDaprScope()
-    val pubsub = scope.pubsub(PubSubName("ps"))
-    scope.close()
-    intercept[IllegalStateException]:
-      pubsub.publish(Topic("t"), "msg")
+    runSafe:
+      val scope  = MockDaprScope()
+      val pubsub = scope.pubsub(PubSubName("ps"))
+      scope.close()
+      var exOpt: Exception | Null = null
+      try pubsub.publish(Topic("t"), "msg")
+      catch case e: IllegalStateException => exOpt = e
+      assert(exOpt != null)
 
   test("secrets operation throws IllegalStateException after scope close"):
-    val scope   = MockDaprScope()
-    scope.seedSecret("vault", "k", "v")
-    val secrets = scope.secrets(SecretStoreName("vault"))
-    scope.close()
-    intercept[IllegalStateException]:
-      secrets.get("k")
+    runSafe:
+      val scope   = MockDaprScope()
+      scope.seedSecret("vault", "k", "v")
+      val secrets = scope.secrets(SecretStoreName("vault"))
+      scope.close()
+      var exOpt: Exception | Null = null
+      try secrets.get("k")
+      catch case e: IllegalStateException => exOpt = e
+      assert(exOpt != null)
