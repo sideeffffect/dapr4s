@@ -6,8 +6,9 @@ import io.dapr.testcontainers.{DaprContainer => JDaprContainer}
 /** Thin bridge so [[JDaprContainer]] plugs into testcontainers-scala-munit's
   * [[com.dimafeng.testcontainers.Container]] lifecycle API.
   *
-  * `TestContainersForAll` calls `start()` / `stop()` on this wrapper;
-  * `SingleContainer` delegates both to the underlying [[JDaprContainer]].
+  * `TestContainersForAll` expects `startContainers()` to return an already-started
+  * container. Call `c.start()` before returning from `startContainers()`.
+  * `SingleContainer` delegates `stop()` to the underlying [[JDaprContainer]].
   */
 final class DaprTestContainer(override val container: JDaprContainer)
     extends SingleContainer[JDaprContainer]:

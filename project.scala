@@ -17,4 +17,4 @@
 //> using dep "org.scalameta::munit:1.3.0"
 //> using dep "com.dimafeng::testcontainers-scala-munit:0.44.1"
 //> using dep "io.dapr:testcontainers-dapr:1.17.2"
-//> using dep "org.testcontainers:testcontainers:2.0.5"
+//> using dep "org.testcontainers:testcontainers:1.21.3"

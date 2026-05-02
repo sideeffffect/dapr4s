@@ -6,16 +6,16 @@ import unsafeExceptions.canThrowAny
 
 import scala.collection.mutable
 
-/** In-memory [[DaprScope]] for unit tests — no Docker, no sidecar required. */
+/** In-memory [[DaprCapability]] for unit tests — no Docker, no sidecar required. */
 @scala.caps.assumeSafe
-final class MockDaprScope extends DaprScope:
+final class MockDaprCapability extends DaprCapability:
 
   @volatile private var _closed = false
 
   def isClosed: Boolean = _closed
 
   private def checkOpen(): Unit =
-    if _closed then throw java.lang.IllegalStateException("MockDaprScope is closed")
+    if _closed then throw java.lang.IllegalStateException("MockDaprCapability is closed")
 
   private val storeMap: mutable.Map[String, mutable.Map[String, (String, String)]] =
     mutable.Map.empty // storeName -> key -> (jsonValue, etag)
@@ -44,7 +44,7 @@ final class MockDaprScope extends DaprScope:
   def seedConfig(storeName: String, key: String, item: ConfigItem): Unit =
     configStores.getOrElseUpdate(storeName, mutable.Map.empty)(key) = item
 
-  // ---- DaprScope implementation ------------------------------------------
+  // ---- DaprCapability implementation ------------------------------------------
 
   def state(storeName: StoreName): StateCapability =
     checkOpen()
@@ -90,13 +90,13 @@ final class MockDaprScope extends DaprScope:
 private class MockStateCapability(
     val storeName: StoreName,
     store: mutable.Map[String, (String, String)],
-    scope: MockDaprScope
+    scope: MockDaprCapability
 ) extends StateCapability:
 
   private var etagCounter: Int = 100
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def get[T: JsonCodec](key: StateKey): Option[T] throws DaprStateException =
     checkOpen()
@@ -187,11 +187,11 @@ private class MockStateCapability(
 private class MockPubSubCapability(
     val pubsubName: PubSubName,
     events: mutable.ArrayBuffer[(String, String, String, Map[String, String])],
-    scope: MockDaprScope
+    scope: MockDaprCapability
 ) extends PubSubCapability:
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def publish[T: JsonCodec](topic: Topic, data: T): Unit throws DaprPubSubException =
     checkOpen()
@@ -217,10 +217,10 @@ private class MockPubSubCapability(
 
 // ---------------------------------------------------------------------------
 
-private class MockServiceInvocationCapability(scope: MockDaprScope) extends ServiceInvocationCapability:
+private class MockServiceInvocationCapability(scope: MockDaprCapability) extends ServiceInvocationCapability:
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
     checkOpen()
@@ -239,11 +239,11 @@ private class MockServiceInvocationCapability(scope: MockDaprScope) extends Serv
 private class MockSecretsCapability(
     val storeName: SecretStoreName,
     store: mutable.Map[String, String],
-    scope: MockDaprScope
+    scope: MockDaprCapability
 ) extends SecretsCapability:
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def get(key: SecretKey): String throws DaprSecretsException =
     checkOpen()
@@ -258,11 +258,11 @@ private class MockSecretsCapability(
 private class MockConfigurationCapability(
     val storeName: ConfigStoreName,
     store: mutable.Map[String, ConfigItem],
-    scope: MockDaprScope
+    scope: MockDaprCapability
 ) extends ConfigurationCapability:
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] throws DaprConfigurationException =
     checkOpen()
@@ -274,10 +274,10 @@ private class MockConfigurationCapability(
 
 // ---------------------------------------------------------------------------
 
-private class MockBindingsCapability(val bindingName: BindingName, scope: MockDaprScope) extends BindingsCapability:
+private class MockBindingsCapability(val bindingName: BindingName, scope: MockDaprCapability) extends BindingsCapability:
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
     checkOpen()
@@ -291,13 +291,13 @@ private class MockBindingsCapability(val bindingName: BindingName, scope: MockDa
 
 private class MockDistributedLockCapability(
     val storeName: StoreName,
-    scope: MockDaprScope
+    scope: MockDaprCapability
 ) extends DistributedLockCapability:
   // Simple in-memory lock state for testing
   private val locks: mutable.Map[String, String] = mutable.Map.empty // resourceId -> lockOwner
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int): Boolean throws DaprLockException =
     checkOpen()
@@ -320,11 +320,11 @@ private class MockDistributedLockCapability(
 private class MockActorCapability(
     val actorType: ActorType,
     val actorId: ActorId,
-    scope: MockDaprScope
+    scope: MockDaprCapability
 ) extends ActorCapability:
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprActorException =
     checkOpen()
@@ -346,12 +346,12 @@ private class MockActorCapability(
 
 // ---------------------------------------------------------------------------
 
-private class MockWorkflowCapability(scope: MockDaprScope) extends WorkflowCapability:
+private class MockWorkflowCapability(scope: MockDaprCapability) extends WorkflowCapability:
 
   private val instances: mutable.Map[String, WorkflowSnapshot] = mutable.Map.empty
 
   private def checkOpen(): Unit =
-    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprScope has been closed")
+    if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
   private def genId(): String = java.util.UUID.randomUUID().toString
 

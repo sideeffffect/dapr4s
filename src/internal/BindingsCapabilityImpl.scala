@@ -6,16 +6,11 @@ import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class BindingsCapabilityImpl(
-    scope: DaprScopeImpl,
+    scope: DaprCapabilityImpl,
     val bindingName: BindingName
 ) extends BindingsCapability:
 
-  private def checkOpen(): Unit =
-    if scope.isClosed then
-      throw IllegalStateException("Capability is closed: DaprScope has been closed")
-
   def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
-    checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
       val rawResp: String | Null = scope.client
@@ -33,7 +28,6 @@ private[safe] final class BindingsCapabilityImpl(
         throw DaprBindingsException(e.getMessage.nn, e)
 
   def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req): Unit throws DaprBindingsException =
-    checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
       scope.client.invokeBinding(bindingName.value, operation.value, reqJson).awaitResult(): Unit

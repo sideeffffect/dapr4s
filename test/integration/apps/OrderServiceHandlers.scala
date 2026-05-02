@@ -84,28 +84,29 @@ object OrderServiceHandlers:
 
   /** Build a [[DaprApp]] with all inbound routes for the Order service.
     *
-    * Injects `StateCapability` and `PubSubCapability` as givens so the handler
-    * lambdas below can call the pure handler methods without capturing the scope
-    * directly.
+    * Uses the [[DaprCapability]] transformer API to introduce `StateCapability`
+    * and `PubSubCapability` into the body scope, so the handler lambdas capture
+    * them without requiring explicit `given` declarations.
     */
-  def daprApp()(using scope: DaprScope): DaprApp =
-    given StateCapability  = scope.state(StateName)
-    given PubSubCapability = scope.pubsub(PubSubComp)
-
-    DaprApp(
-      invocations = List(
-        InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
-          // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see class-level scaladoc.
-          try placeOrder(req)
-          catch case e: Exception => throw e
-        },
-        InvocationRoute[String, Option[OrderRequest]](MethodName("get-order")) { orderId =>
-          try getOrder(orderId)
-          catch case e: Exception => throw e
-        },
-        InvocationRoute[String, String](MethodName("query-orders")) { queryJson =>
-          try queryOrders(queryJson)
-          catch case e: Exception => throw e
-        }
-      )
-    )
+  def daprApp()(using DaprCapability): DaprApp =
+    DaprCapability.state(StateName) {
+      DaprCapability.pubsub(PubSubComp) {
+        DaprApp(
+          invocations = List(
+            InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+              // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see class-level scaladoc.
+              try placeOrder(req)
+              catch case e: Exception => throw e
+            },
+            InvocationRoute[String, Option[OrderRequest]](MethodName("get-order")) { orderId =>
+              try getOrder(orderId)
+              catch case e: Exception => throw e
+            },
+            InvocationRoute[String, String](MethodName("query-orders")) { queryJson =>
+              try queryOrders(queryJson)
+              catch case e: Exception => throw e
+            }
+          )
+        )
+      }
+    }

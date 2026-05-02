@@ -16,11 +16,11 @@ class StateCapabilityTest extends FunSuite:
     given CanThrow[Exception] = unsafeExceptions.canThrowAny
     body
 
-  /** Run a block against a fresh [[MockDaprScope]].
+  /** Run a block against a fresh [[MockDaprCapability]].
     * Uses runSafe internally so canThrowAny is never captured in any lambda.
     */
-  def withScope[T](body: (DaprScope, CanThrow[Exception]) ?=> T): T =
-    given scope: DaprScope = MockDaprScope()
+  def withScope[T](body: (DaprCapability, CanThrow[Exception]) ?=> T): T =
+    given scope: DaprCapability = MockDaprCapability()
     runSafe:
       body
 
@@ -30,25 +30,25 @@ class StateCapabilityTest extends FunSuite:
 
   test("save then get returns the saved value"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("key1"), "hello")
       assertEquals(state.get[String](StateKey("key1")), Some("hello"))
 
   test("get on missing key returns None"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       assertEquals(state.get[String](StateKey("missing")), None)
 
   test("save overwrites previous value"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "first")
       state.save(StateKey("k"), "second")
       assertEquals(state.get[String](StateKey("k")), Some("second"))
 
   test("save and get Int"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("n"), 42)
       assertEquals(state.get[Int](StateKey("n")), Some(42))
 
@@ -58,7 +58,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("getWithETag returns value and etag after save"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v")
       val entry = state.getWithETag[String](StateKey("k"))
       assertEquals(entry.value, Some("v"))
@@ -66,7 +66,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("getWithETag on missing key returns empty entry"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       val entry = state.getWithETag[String](StateKey("absent"))
       assertEquals(entry.value, None)
       assertEquals(entry.etag, None)
@@ -77,7 +77,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("saveBulk then getBulk returns all values"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.saveBulk[Int](Seq(StateKey("a") -> 1, StateKey("b") -> 2, StateKey("c") -> 3))
       val results = state.getBulk[Int](Seq(StateKey("a"), StateKey("b"), StateKey("c")))
       assertEquals(results(StateKey("a")).value, Some(1))
@@ -86,7 +86,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("getBulk returns missing key as None value"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("exists"), "v")
       val results = state.getBulk[String](Seq(StateKey("exists"), StateKey("missing")))
       assertEquals(results(StateKey("exists")).value, Some("v"))
@@ -98,7 +98,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("saveWithETag succeeds with correct etag"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v1")
       val entry = state.getWithETag[String](StateKey("k"))
       val etag  = entry.etag.getOrElse(fail("expected etag after save"))
@@ -107,7 +107,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("saveWithETag throws ETagMismatchException on wrong etag"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v1")
       var exOpt: Exception | Null = null
       try state.saveWithETag(StateKey("k"), "v2", ETag("wrong-etag"))
@@ -116,7 +116,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("saveWithETag throws ETagMismatchException when key does not exist"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       var exOpt: Exception | Null = null
       try state.saveWithETag(StateKey("nonexistent"), "v", ETag("any-etag"))
       catch case e: ETagMismatchException => exOpt = e
@@ -124,7 +124,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("ETagMismatchException is a DaprStateException"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v1")
       var exOpt: Exception | Null = null
       try state.saveWithETag(StateKey("k"), "v2", ETag("wrong-etag"))
@@ -137,14 +137,14 @@ class StateCapabilityTest extends FunSuite:
 
   test("delete removes a key"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v")
       state.delete(StateKey("k"))
       assertEquals(state.get[String](StateKey("k")), None)
 
   test("delete on absent key is a no-op"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.delete(StateKey("nonexistent")) // must not throw
 
   // -------------------------------------------------------------------------
@@ -153,7 +153,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("deleteWithETag succeeds with correct etag"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v")
       val etag = state.getWithETag[String](StateKey("k")).etag.getOrElse(fail("expected etag after save"))
       state.deleteWithETag(StateKey("k"), etag)
@@ -161,7 +161,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("deleteWithETag throws ETagMismatchException on wrong etag"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v")
       var exOpt: Exception | Null = null
       try state.deleteWithETag(StateKey("k"), ETag("wrong"))
@@ -174,13 +174,13 @@ class StateCapabilityTest extends FunSuite:
 
   test("transaction upsert inserts new key"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.transaction(Seq(StateOp.UpsertOp[String](StateKey("newKey"), "newVal")))
       assert(state.get[String](StateKey("newKey")).isDefined)
 
   test("transaction delete removes existing key"):
     withScope:
-      val state = summon[DaprScope].state(StoreName("test-store"))
+      val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v")
       state.transaction(Seq(StateOp.DeleteOp(StateKey("k"))))
       assertEquals(state.get[String](StateKey("k")), None)
@@ -191,7 +191,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("publish records event in mock scope"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val pubsub = scope.pubsub(PubSubName("my-pubsub"))
       pubsub.publish(Topic("orders"), "order-payload")
       val events = scope.publishedEvents
@@ -203,7 +203,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("publishWithMetadata records event with metadata in mock scope"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val pubsub = scope.pubsub(PubSubName("my-pubsub"))
       pubsub.publishWithMetadata(Topic("orders"), "payload", Map("k" -> "v"))
       val events = scope.publishedEvents
@@ -213,7 +213,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("bulkPublish records all entries in mock scope"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val pubsub = scope.pubsub(PubSubName("my-pubsub"))
       val entries = Seq(
         BulkPublishEntry(BulkEntryId("1"), "event-a"),
@@ -229,14 +229,14 @@ class StateCapabilityTest extends FunSuite:
 
   test("secrets get returns seeded value"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       scope.seedSecret("vault", "db-password", "s3cr3t")
       val secrets = scope.secrets(SecretStoreName("vault"))
       assertEquals(secrets.get(SecretKey("db-password")), "s3cr3t")
 
   test("secrets get throws DaprSecretsException for missing key"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val secrets = scope.secrets(SecretStoreName("vault"))
       var exOpt: Exception | Null = null
       try secrets.get(SecretKey("nonexistent"))
@@ -245,7 +245,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("secrets get throws DaprException (base type) for missing key"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val secrets = scope.secrets(SecretStoreName("vault"))
       var exOpt: Exception | Null = null
       try secrets.get(SecretKey("nonexistent"))
@@ -254,7 +254,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("secrets getBulk returns all seeded values"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       scope.seedSecret("vault", "a", "1")
       scope.seedSecret("vault", "b", "2")
       val secrets = scope.secrets(SecretStoreName("vault"))
@@ -266,7 +266,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("config get returns seeded items"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       scope.seedConfig("app-config", "log-level", ConfigItem(ConfigKey("log-level"), "INFO", "1"))
       val config = scope.config(ConfigStoreName("app-config"))
       val result = config.get(Seq(ConfigKey("log-level")))
@@ -274,7 +274,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("config get returns empty map for unknown keys"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val config = scope.config(ConfigStoreName("app-config"))
       assert(config.get(Seq(ConfigKey("unknown"))).isEmpty)
 
@@ -284,14 +284,14 @@ class StateCapabilityTest extends FunSuite:
 
   test("lock tryLock succeeds on first attempt"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val lock = scope.lock(StoreName("lock-store"))
       val acquired = lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
       assert(acquired)
 
   test("lock tryLock fails if already held"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val lock = scope.lock(StoreName("lock-store"))
       lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
       val acquired = lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-2"), 30)
@@ -299,7 +299,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("lock unlock releases the lock"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val lock = scope.lock(StoreName("lock-store"))
       lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
       val status = lock.unlock(LockResourceId("resource-1"), LockOwner("owner-1"))
@@ -307,26 +307,26 @@ class StateCapabilityTest extends FunSuite:
 
   test("lock unlock on non-held resource returns LockNotFound"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val lock = scope.lock(StoreName("lock-store"))
       val status = lock.unlock(LockResourceId("no-such-resource"), LockOwner("owner-1"))
       assertEquals(status, UnlockStatus.LockNotFound)
 
   test("lock unlock with wrong owner returns InternalError"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val lock = scope.lock(StoreName("lock-store"))
       lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
       val status = lock.unlock(LockResourceId("resource-1"), LockOwner("owner-2"))
       assertEquals(status, UnlockStatus.InternalError)
 
   // -------------------------------------------------------------------------
-  // DaprScope via withScope helper
+  // DaprCapability via withScope helper
   // -------------------------------------------------------------------------
 
-  test("DaprScope factory is available as context parameter"):
+  test("DaprCapability factory is available as context parameter"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val state = scope.state(StoreName("s"))
       state.save(StateKey("x"), 1)
       assertEquals(state.get[Int](StateKey("x")), Some(1))
@@ -337,7 +337,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("state operation throws IllegalStateException after scope close"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val state = scope.state(StoreName("test-store"))
       state.save(StateKey("k"), "v")
       scope.close()
@@ -347,14 +347,14 @@ class StateCapabilityTest extends FunSuite:
       assert(exOpt != null)
 
   test("scope factory throws IllegalStateException after close"):
-    val scope = MockDaprScope()
+    val scope = MockDaprCapability()
     scope.close()
     intercept[IllegalStateException]:
       scope.state(StoreName("test-store"))
 
   test("pubsub operation throws IllegalStateException after scope close"):
     runSafe:
-      val scope  = MockDaprScope()
+      val scope  = MockDaprCapability()
       val pubsub = scope.pubsub(PubSubName("ps"))
       scope.close()
       var exOpt: Exception | Null = null
@@ -364,7 +364,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("secrets operation throws IllegalStateException after scope close"):
     runSafe:
-      val scope   = MockDaprScope()
+      val scope   = MockDaprCapability()
       scope.seedSecret("vault", "k", "v")
       val secrets = scope.secrets(SecretStoreName("vault"))
       scope.close()
@@ -379,20 +379,20 @@ class StateCapabilityTest extends FunSuite:
 
   test("actor capability can be created from scope"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val actor = scope.actor(ActorType("OrderActor"), ActorId("order-1"))
       assertEquals(actor.actorType.value, "OrderActor")
       assertEquals(actor.actorId.value, "order-1")
 
   test("mock actor invoke throws UnsupportedOperationException"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val actor = scope.actor(ActorType("TestActor"), ActorId("id-1"))
       intercept[UnsupportedOperationException]:
         actor.invokeVoid(MethodName("doSomething"))
 
   test("actor factory throws IllegalStateException after scope close"):
-    val scope = MockDaprScope()
+    val scope = MockDaprCapability()
     scope.close()
     intercept[IllegalStateException]:
       scope.actor(ActorType("A"), ActorId("1"))
@@ -403,14 +403,14 @@ class StateCapabilityTest extends FunSuite:
 
   test("workflow.start returns a non-empty instance ID"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val id    = wf.start(WorkflowName("MyWorkflow"))
       assert(id.value.nonEmpty)
 
   test("workflow.startWithId uses the provided ID"):
     withScope:
-      val scope    = summon[DaprScope]
+      val scope    = summon[DaprCapability]
       val wf       = scope.workflow
       val expected = WorkflowInstanceId("my-fixed-id")
       val id       = wf.startWithId(WorkflowName("MyWorkflow"), expected)
@@ -418,7 +418,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("workflow.getStatus returns Running for newly started instance"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val id    = wf.start(WorkflowName("MyWorkflow"))
       val snap  = wf.getStatus(id)
@@ -427,14 +427,14 @@ class StateCapabilityTest extends FunSuite:
 
   test("workflow.getStatus returns None for unknown instance"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val snap  = wf.getStatus(WorkflowInstanceId("no-such-instance"))
       assert(snap.isEmpty)
 
   test("workflow.suspend transitions instance to Suspended"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val id    = wf.start(WorkflowName("MyWorkflow"))
       wf.suspend(id)
@@ -442,7 +442,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("workflow.resume transitions instance to Running"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val id    = wf.start(WorkflowName("MyWorkflow"))
       wf.suspend(id)
@@ -451,7 +451,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("workflow.terminate transitions instance to Terminated"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val id    = wf.start(WorkflowName("MyWorkflow"))
       wf.terminate(id)
@@ -459,7 +459,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("workflow.purge removes instance and returns true"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val id    = wf.start(WorkflowName("MyWorkflow"))
       val purged = wf.purge(id)
@@ -468,13 +468,13 @@ class StateCapabilityTest extends FunSuite:
 
   test("workflow.purge returns false for unknown instance"):
     withScope:
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val wf    = scope.workflow
       val purged = wf.purge(WorkflowInstanceId("ghost-id"))
       assert(!purged)
 
   test("workflow factory throws IllegalStateException after scope close"):
-    val scope = MockDaprScope()
+    val scope = MockDaprCapability()
     scope.close()
     intercept[IllegalStateException]:
       scope.workflow

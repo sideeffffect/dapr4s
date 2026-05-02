@@ -8,16 +8,11 @@ import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class PubSubCapabilityImpl(
-    scope: DaprScopeImpl,
+    scope: DaprCapabilityImpl,
     val pubsubName: PubSubName
 ) extends PubSubCapability:
 
-  private def checkOpen(): Unit =
-    if scope.isClosed then
-      throw IllegalStateException("Capability is closed: DaprScope has been closed")
-
   def publish[T: JsonCodec](topic: Topic, data: T): Unit throws DaprPubSubException =
-    checkOpen()
     try
       val json = summon[JsonCodec[T]].encode(data)
       scope.client.publishEvent(pubsubName.value, topic.value, json).awaitResult(): Unit
@@ -31,7 +26,6 @@ private[safe] final class PubSubCapabilityImpl(
       data: T,
       metadata: Map[String, String]
   ): Unit throws DaprPubSubException =
-    checkOpen()
     try
       val json    = summon[JsonCodec[T]].encode(data)
       val javaMeta: java.util.Map[String, String] = metadata.asJava
@@ -44,7 +38,6 @@ private[safe] final class PubSubCapabilityImpl(
         throw DaprPubSubException(e.getMessage.nn, e)
 
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult throws DaprPubSubException =
-    checkOpen()
     try
       val javaEntries: java.util.List[io.dapr.client.domain.BulkPublishEntry[String]] =
         entries.map { entry =>

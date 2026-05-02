@@ -26,7 +26,6 @@ import unsafeExceptions.canThrowAny
   val port = sys.env.getOrElse("APP_PORT", "8081").toInt
   println(s"[inventory-service] starting on port $port")
   DaprRuntime.serve(appPort = port):
-    val scope = summon[DaprScope]
-    val app   = InventoryServiceHandlers.daprApp()(using scope)
+    val app = InventoryServiceHandlers.daprApp()
     println("[inventory-service] handlers declared, serving...")
     app

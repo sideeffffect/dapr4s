@@ -3,27 +3,30 @@ package dapr.safe
 import language.experimental.captureChecking
 import language.experimental.saferExceptions
 import scala.util.control.NonFatal
+import io.dapr.client.{DaprClient, DaprClientBuilder}
+import io.dapr.actors.client.ActorClient
+import io.dapr.workflows.client.DaprWorkflowClient
+import java.util.concurrent.atomic.AtomicReference
 
-/** Entry-point singleton that manages the [[DaprScope]] lifecycle.
+/** Entry-point singleton that manages the [[DaprCapability]] lifecycle.
   *
   * This object is annotated `@scala.caps.assumeSafe` so that safe-mode user
   * code can call `DaprRuntime.run` without seeing any unsafe operations.
-  * The internal use of `DaprScopeImpl` (a Java-SDK-backed class) is safely
-  * encapsulated here.
+  * The internal use of `DaprCapabilityImpl` (a Java-SDK-backed class) and the
+  * Java SDK clients it wraps are managed entirely here.
   */
 @scala.caps.assumeSafe
 object DaprRuntime:
 
-  /** Acquire a `DaprClient`, run `body` with a `DaprScope` in context, then
+  /** Acquire a `DaprClient`, run `body` with a `DaprCapability` in context, then
     * release the client whether `body` completes normally or throws.
     *
-    * If both `body` and `scope.close()` throw non-fatal exceptions, the
-    * close exception is added as a suppressed exception on the body's
-    * throwable.  Fatal exceptions (`OutOfMemoryError`, `StackOverflowError`,
-    * etc.) are never caught — they propagate immediately.  In the pathological
-    * case where the body throws a fatal error and `close()` also throws, the
-    * close exception will propagate instead of the fatal one; this is an
-    * acceptable trade-off because the JVM is already in an unrecoverable state.
+    * Three clients are potentially created: a `DaprClient` (always), an `ActorClient`
+    * and a `DaprWorkflowClient` (lazily, only when `actor()` / `workflow` are first used).
+    * All three are closed in the `finally` block in order; if any close throws a non-fatal
+    * exception, it is suppressed onto the body's throwable (or rethrown standalone if
+    * the body succeeded).  `InterruptedException` from `DaprWorkflowClient.close()` is
+    * handled by re-interrupting the current thread rather than propagating.
     *
     * == Virtual threads ==
     *
@@ -43,25 +46,40 @@ object DaprRuntime:
     *   // Helidon 4:          virtual threads by default — no annotation needed
     * }}}
     *
-    * @param body a pure context function that receives a `DaprScope`
+    * @param body a pure context function that receives a `DaprCapability`
     * @return the value returned by `body`
     */
-  def run[T](body: (DaprScope, CanThrow[Exception]) ?=> T): T =
-    val scope: DaprScope = internal.DaprScopeImpl.create()
+  def run[T](body: (DaprCapability, CanThrow[Exception]) ?=> T): T =
+    val client            = new DaprClientBuilder().build()
+    val actorClientRef    = new AtomicReference[ActorClient](null)
+    val workflowClientRef = new AtomicReference[DaprWorkflowClient](null)
+    val impl = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef)
     given canThrow: CanThrow[Exception] = unsafeExceptions.canThrowAny
     var primary: Throwable | Null = null
-    try body(using scope, canThrow)
+    try body(using impl, canThrow)
     catch
       case NonFatal(t) =>
         primary = t
         throw t
     finally
-      try scope.close()
-      catch
-        case NonFatal(t) =>
-          val p = primary
-          if p != null then p.addSuppressed(t)
-          else throw t
+      var closeEx: Throwable | Null = null
+      def tryClose(autoCloseable: AutoCloseable): Unit =
+        try autoCloseable.close()
+        catch
+          case _: InterruptedException => Thread.currentThread().interrupt()
+          case NonFatal(t) =>
+            if closeEx == null then closeEx = t
+            else closeEx.nn.addSuppressed(t)
+      tryClose(client)
+      val ac = actorClientRef.get()
+      if ac != null then tryClose(ac)
+      val wc = workflowClientRef.get()
+      if wc != null then tryClose(wc)
+      val ce = closeEx
+      if ce != null then
+        val p = primary
+        if p != null then p.addSuppressed(ce)
+        else throw ce
 
   /** Start an HTTP server on `appPort`, build the inbound handler set from the
     * [[DaprApp]] returned by `body`, then block until the JVM shuts down or the
@@ -74,7 +92,7 @@ object DaprRuntime:
     * == Usage ==
     * {{{
     *   DaprRuntime.serve(appPort = 8080):
-    *     val scope = summon[DaprScope]
+    *     val scope = summon[DaprCapability]
     *     given StateCapability  = scope.state(StoreName("statestore"))
     *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
     *     DaprApp(
@@ -100,18 +118,18 @@ object DaprRuntime:
     * `withAppChannelAddress` to point the sidecar at the running server.
     *
     * @param appPort the HTTP port on which the app listens (default 8080)
-    * @param body a pure context function that receives a `DaprScope` and returns
+    * @param body a pure context function that receives a `DaprCapability` and returns
     *             a [[DaprApp]] describing all inbound handlers
     */
-  def serve(appPort: Int = 8080)(body: (DaprScope, CanThrow[Exception]) ?=> DaprApp): Unit =
+  def serve(appPort: Int = 8080)(body: (DaprCapability, CanThrow[Exception]) ?=> DaprApp): Unit =
     run {
-      val scope = summon[DaprScope]
+      val scope = summon[DaprCapability]
       val ct    = summon[CanThrow[Exception]]
       val app   = body(using scope, ct)
       new internal.DaprAppServer(app).startAndBlock(appPort)
     }
 
-  /** Run `body` with a [[DaprScope]] pointing to a specific sidecar endpoint.
+  /** Run `body` with a [[DaprCapability]] pointing to a specific sidecar endpoint.
     *
     * Useful in tests (e.g. Testcontainers) where the sidecar runs on a
     * non-default port. This avoids importing Java SDK types directly.
@@ -121,7 +139,7 @@ object DaprRuntime:
     *
     * See [[run]] for virtual-thread usage guidance.
     */
-  def runWithEndpoints[T](httpEndpoint: String, grpcEndpoint: String)(body: (DaprScope, CanThrow[Exception]) ?=> T): T =
+  def runWithEndpoints[T](httpEndpoint: String, grpcEndpoint: String)(body: (DaprCapability, CanThrow[Exception]) ?=> T): T =
     val prevHttp  = Option(System.getProperty("dapr.http.endpoint"))
     val prevGrpc  = Option(System.getProperty("dapr.grpc.endpoint"))
     System.setProperty("dapr.http.endpoint", httpEndpoint)

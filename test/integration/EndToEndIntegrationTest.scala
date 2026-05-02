@@ -3,7 +3,9 @@ package dapr.safe.test.integration
 import dapr.safe.*
 import dapr.safe.test.integration.apps.*
 import io.dapr.testcontainers.{DaprContainer, Component}
+import com.dimafeng.testcontainers.GenericContainer
 import com.dimafeng.testcontainers.munit.TestContainersForAll
+import org.testcontainers.containers.Network
 import munit.FunSuite
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
@@ -26,27 +28,52 @@ import java.util.Collections
   * [[TestDaprApp.deliver]], which reflects real delivery semantics without
   * requiring two running HTTP servers.
   */
+/** See [[InventoryServiceIntegrationTest]] for an explanation of why `lock.redis`
+  * is used rather than `lock.in-memory`.
+  */
 @scala.caps.assumeSafe
 class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
 
   type Containers = DaprTestContainer
 
+  private var extraRedis: GenericContainer | Null     = null
+  private var extraNetwork: Network | Null = null
+
+  override def afterAll(): Unit =
+    super.afterAll()
+    val r = extraRedis
+    if r != null then r.stop()
+    val n = extraNetwork
+    if n != null then n.close()
+
   override def startContainers(): DaprTestContainer =
-    DaprTestContainer(
-      DaprContainer("daprio/daprd:latest")
+    val network = Network.newNetwork()
+    extraNetwork = network
+
+    val redis = GenericContainer(dockerImage = "redis:7-alpine", exposedPorts = Seq(6379))
+    redis.container.withNetwork(network)
+    redis.container.withNetworkAliases("redis")
+    redis.start()
+    extraRedis = redis
+
+    val c = DaprTestContainer(
+      DaprContainer("daprio/daprd:1.17.0")
+        .withNetwork(network)
         .withAppName("e2e-test")
         .withAppPort(0)
         .withComponent(Component("statestore", "state.in-memory",  "v1", Collections.emptyMap()))
         .withComponent(Component("pubsub",     "pubsub.in-memory", "v1", Collections.emptyMap()))
-        .withComponent(Component("lockstore",  "lock.in-memory",   "v1", Collections.emptyMap()))
+        .withComponent(Component("lockstore",  "lock.redis",       "v1", java.util.Map.of("redisHost", "redis:6379")))
     )
+    c.start()
+    c
 
   // -------------------------------------------------------------------------
 
   test("e2e: placing an order decrements inventory stock"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprScope]
+        val scope        = summon[DaprCapability]
         val orderApp     = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
@@ -87,7 +114,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: multiple orders reduce inventory cumulatively"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprScope]
+        val scope        = summon[DaprCapability]
         val orderApp     = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
@@ -106,7 +133,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: orders for different items tracked independently"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprScope]
+        val scope        = summon[DaprCapability]
         val orderApp     = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
@@ -126,7 +153,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: order state survives re-query after inventory update"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprScope]
+        val scope        = summon[DaprCapability]
         val orderApp     = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
@@ -147,7 +174,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: concurrent orders use bulk state operations"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprScope]
+        val scope        = summon[DaprCapability]
         val orderApp     = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
@@ -171,12 +198,12 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
         assertEquals(stock.available, 145)
     }
 
-  test("e2e: DaprScope is closed after run block — capabilities become unavailable"):
+  test("e2e: DaprCapability is closed after run block — capabilities become unavailable"):
     withContainers { c =>
-      var capturedScope: DaprScope | Null = null
+      var capturedScope: DaprCapability | Null = null
 
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        capturedScope = summon[DaprScope]
+        capturedScope = summon[DaprCapability]
 
       // After the run block, the scope is closed
       val closed = capturedScope
@@ -188,7 +215,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: DaprApp composition with ++ merges routes"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprScope]
+        val scope        = summon[DaprCapability]
         val orderApp     = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
         val combined     = orderApp ++ inventoryApp

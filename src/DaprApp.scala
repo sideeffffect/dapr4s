@@ -10,7 +10,7 @@ import language.experimental.saferExceptions
   *
   * {{{
   *   DaprRuntime.serve(appPort = 8080):
-  *     val scope = summon[DaprScope]
+  *     val scope = summon[DaprCapability]
   *     given StateCapability  = scope.state(StoreName("statestore"))
   *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
   *     DaprApp(

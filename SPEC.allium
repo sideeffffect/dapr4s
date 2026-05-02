@@ -8,10 +8,10 @@
 --           DistributedLockCapability, DaprApp (inbound pub/sub, bindings,
 --           service invocation), JsonCodec
 -- Excludes (not yet specified — separate specs):
---   - DAPR actor framework: ActorCapability + DaprScope.actor() are implemented in the
+--   - DAPR actor framework: ActorCapability + DaprCapability.actor() are implemented in the
 --     codebase but not specified here.
 --   - DAPR workflow orchestration: WorkflowCapability, DaprWorkflow, DaprActivity,
---     DaprScope.workflow() are implemented but not specified here.
+--     DaprCapability.workflow() are implemented but not specified here.
 --   - DAPR sidecar itself (external system)
 --   - Authentication and mTLS (managed by DAPR sidecar)
 -- Dependencies: DAPR sidecar must be running and reachable
@@ -198,11 +198,14 @@ entity DaprRuntime {
     -- client is present iff status = active
 }
 
-entity DaprScope {
+entity DaprCapability {
     runtime: DaprRuntime
     status: open | closed
-    -- A DaprScope is created by DaprRuntime.run (or serve) and closed when the block exits.
-    -- Capabilities derived from a scope share its lifetime.
+    -- A DaprCapability is created by DaprRuntime.run (or serve) and closed when the block exits.
+    -- Sub-capabilities derived from a DaprCapability share its lifetime.
+    -- Sub-capabilities are acquired via transformer methods on the DaprCapability companion
+    -- object (e.g. DaprCapability.state(storeName) { body }), which provide the
+    -- sub-capability as an implicit context parameter to body rather than returning it directly.
 }
 
 -- DaprApp and its components are immutable value objects (case class / sealed class).
@@ -238,43 +241,43 @@ value BindingRoute {
 }
 
 entity StateCapability {
-    scope: DaprScope
+    capability: DaprCapability
     store_name: StoreName
     status: open | closed
-    -- status mirrors scope.status
+    -- status mirrors capability.status
 }
 
 entity PubSubCapability {
-    scope: DaprScope
+    capability: DaprCapability
     pubsub_name: PubSubName
     status: open | closed
 }
 
 entity ServiceInvocationCapability {
-    scope: DaprScope
+    capability: DaprCapability
     status: open | closed
 }
 
 entity SecretsCapability {
-    scope: DaprScope
+    capability: DaprCapability
     store_name: SecretStoreName
     status: open | closed
 }
 
 entity ConfigurationCapability {
-    scope: DaprScope
+    capability: DaprCapability
     store_name: ConfigStoreName
     status: open | closed
 }
 
 entity BindingsCapability {
-    scope: DaprScope
+    capability: DaprCapability
     binding_name: BindingName
     status: open | closed
 }
 
 entity DistributedLockCapability {
-    scope: DaprScope
+    capability: DaprCapability
     store_name: StoreName
     status: open | closed
 }
@@ -319,7 +322,7 @@ rule DaprRuntimeActivates {
     ensures:
         DaprRuntime.status = active
         DaprRuntime.client = JavaDaprClient.created()
-        DaprScope.created(runtime: DaprRuntime, status: open)
+        DaprCapability.created(runtime: DaprRuntime, status: open)
 }
 
 rule DaprRuntimeCompletes {
@@ -329,11 +332,11 @@ rule DaprRuntimeCompletes {
     requires: DaprRuntime.status = active
 
     ensures:
-        DaprScope.status = closed
+        DaprCapability.status = closed
         DaprRuntime.client = null
         DaprRuntime.status = idle
         JavaDaprClientClosed()
-        -- All capabilities derived from this scope become closed
+        -- All sub-capabilities derived from this DaprCapability become closed
 }
 
 rule DaprRuntimeFailsSafely {
@@ -343,7 +346,7 @@ rule DaprRuntimeFailsSafely {
     requires: DaprRuntime.status = active
 
     ensures:
-        DaprScope.status = closed
+        DaprCapability.status = closed
         DaprRuntime.client = null
         DaprRuntime.status = idle
         JavaDaprClientClosed()
@@ -356,90 +359,98 @@ rule DaprRuntimeFailsSafely {
 -- ---- Capability Acquisition ----
 
 rule StateCapabilityAcquired {
-    when: DaprScopeStateRequested(scope, store_name)
+    when: DaprCapabilityStateRequested(cap, store_name)
+    -- Triggered by DaprCapability.state(store_name) { body }; sub-capability provided
+    -- as implicit context parameter to body, not returned directly.
 
-    requires: scope.status = open
+    requires: cap.status = open
 
     ensures:
         StateCapability.created(
-            scope: scope,
+            capability: cap,
             store_name: store_name,
             status: open
         )
 }
 
 rule PubSubCapabilityAcquired {
-    when: DaprScopePubSubRequested(scope, pubsub_name)
+    when: DaprCapabilityPubSubRequested(cap, pubsub_name)
+    -- Triggered by DaprCapability.pubsub(pubsub_name) { body }.
 
-    requires: scope.status = open
+    requires: cap.status = open
 
     ensures:
         PubSubCapability.created(
-            scope: scope,
+            capability: cap,
             pubsub_name: pubsub_name,
             status: open
         )
 }
 
 rule ServiceInvocationCapabilityAcquired {
-    when: DaprScopeInvokerRequested(scope)
+    when: DaprCapabilityInvokerRequested(cap)
+    -- Triggered by DaprCapability.invoker { body }.
 
-    requires: scope.status = open
+    requires: cap.status = open
 
     ensures:
         ServiceInvocationCapability.created(
-            scope: scope,
+            capability: cap,
             status: open
         )
 }
 
 rule SecretsCapabilityAcquired {
-    when: DaprScopeSecretsRequested(scope, store_name)
+    when: DaprCapabilitySecretsRequested(cap, store_name)
+    -- Triggered by DaprCapability.secrets(store_name) { body }.
 
-    requires: scope.status = open
+    requires: cap.status = open
 
     ensures:
         SecretsCapability.created(
-            scope: scope,
+            capability: cap,
             store_name: store_name,
             status: open
         )
 }
 
 rule ConfigCapabilityAcquired {
-    when: DaprScopeConfigRequested(scope, store_name)
+    when: DaprCapabilityConfigRequested(cap, store_name)
+    -- Triggered by DaprCapability.config(store_name) { body }.
 
-    requires: scope.status = open
+    requires: cap.status = open
 
     ensures:
         ConfigurationCapability.created(
-            scope: scope,
+            capability: cap,
             store_name: store_name,
             status: open
         )
 }
 
 rule BindingCapabilityAcquired {
-    when: DaprScopeBindingRequested(scope, binding_name)
+    when: DaprCapabilityBindingRequested(cap, binding_name)
+    -- Triggered by DaprCapability.binding(binding_name) { body }.
 
-    requires: scope.status = open
+    requires: cap.status = open
 
     ensures:
         BindingsCapability.created(
-            scope: scope,
+            capability: cap,
             binding_name: binding_name,
             status: open
         )
 }
 
 rule LockCapabilityAcquired {
-    when: DaprScopeLockRequested(scope, store_name)
+    when: DaprCapabilityLockRequested(cap, store_name)
+    -- Triggered by DaprCapability.lock(store_name) { body }.
 
-    requires: scope.status = open
+    requires: cap.status = open
 
     ensures:
         DistributedLockCapability.created(
-            scope: scope,
+            capability: cap,
             store_name: store_name,
             status: open
         )
@@ -448,22 +459,22 @@ rule LockCapabilityAcquired {
 -- ---- Capability Closure (cascade from scope) ----
 
 rule CapabilitiesClosedWithScope {
-    when: scope: DaprScope.status transitions_to closed
+    when: dc: DaprCapability.status transitions_to closed
 
     ensures:
-        for cap in StateCapability where cap.scope = scope:
+        for cap in StateCapability where cap.capability = dc:
             cap.status = closed
-        for cap in PubSubCapability where cap.scope = scope:
+        for cap in PubSubCapability where cap.capability = dc:
             cap.status = closed
-        for cap in ServiceInvocationCapability where cap.scope = scope:
+        for cap in ServiceInvocationCapability where cap.capability = dc:
             cap.status = closed
-        for cap in SecretsCapability where cap.scope = scope:
+        for cap in SecretsCapability where cap.capability = dc:
             cap.status = closed
-        for cap in ConfigurationCapability where cap.scope = scope:
+        for cap in ConfigurationCapability where cap.capability = dc:
             cap.status = closed
-        for cap in BindingsCapability where cap.scope = scope:
+        for cap in BindingsCapability where cap.capability = dc:
             cap.status = closed
-        for cap in DistributedLockCapability where cap.scope = scope:
+        for cap in DistributedLockCapability where cap.capability = dc:
             cap.status = closed
 }
 
@@ -812,24 +823,24 @@ rule JsonDecode {
 ------------------------------------------------------------
 
 invariant ScopeContainment {
-    -- A capability with status = open cannot outlive its DaprScope.
-    -- If scope.status = closed then cap.status = closed for all capabilities
-    -- derived from that scope. Enforced by the Scala capture checker:
-    -- capability types carry ^{scope}, preventing escape.
+    -- A sub-capability with status = open cannot outlive its DaprCapability.
+    -- If DaprCapability.status = closed then all sub-capabilities derived from it
+    -- are also closed. Enforced by the Scala capture checker:
+    -- sub-capability types carry ^{capability}, preventing escape.
     for cap in StateCapability where cap.status = open:
-        cap.scope.status = open
+        cap.capability.status = open
     for cap in PubSubCapability where cap.status = open:
-        cap.scope.status = open
+        cap.capability.status = open
     for cap in ServiceInvocationCapability where cap.status = open:
-        cap.scope.status = open
+        cap.capability.status = open
     for cap in SecretsCapability where cap.status = open:
-        cap.scope.status = open
+        cap.capability.status = open
     for cap in ConfigurationCapability where cap.status = open:
-        cap.scope.status = open
+        cap.capability.status = open
     for cap in BindingsCapability where cap.status = open:
-        cap.scope.status = open
+        cap.capability.status = open
     for cap in DistributedLockCapability where cap.status = open:
-        cap.scope.status = open
+        cap.capability.status = open
 }
 
 invariant ClientLifetime {
@@ -840,10 +851,10 @@ invariant ClientLifetime {
 }
 
 invariant ScopeLifetime {
-    -- DaprScope is open iff DaprRuntime is active.
-    (DaprRuntime.status = active implies DaprScope.status = open)
+    -- DaprCapability is open iff DaprRuntime is active.
+    (DaprRuntime.status = active implies DaprCapability.status = open)
     and
-    (DaprScope.status = open implies DaprRuntime.status = active)
+    (DaprCapability.status = open implies DaprRuntime.status = active)
 }
 
 -- Non-empty identifier constraints (not machine-expressible as a state invariant;
@@ -884,19 +895,19 @@ surface DaprRuntimeSurface {
         demands JsonCodec
 
     exposes:
-        run: (body: (DaprScope, CanThrow<Exception>) ?=> Any) -> Any
-        -- Acquires a DaprClient, provides DaprScope and CanThrow<Exception> to body, releases on exit.
+        run: (body: (DaprCapability, CanThrow<Exception>) ?=> Any) -> Any
+        -- Acquires a DaprClient, provides DaprCapability and CanThrow<Exception> to body, releases on exit.
         -- Propagates exceptions after releasing resources.
         -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
         -- user code can call it without violating safe-mode constraints.
 
-        serve: (app_port: Int, body: (DaprScope, CanThrow<Exception>) ?=> DaprApp) -> Unit
+        serve: (app_port: Int, body: (DaprCapability, CanThrow<Exception>) ?=> DaprApp) -> Unit
         -- Starts an HTTP server on app_port; body returns a DaprApp describing
         -- all inbound handlers.  The server is started from the returned DaprApp,
         -- then blocks until the JVM shuts down or the calling thread is interrupted.
         -- DaprClient lifecycle matches the server's lifetime.
 
-        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: (DaprScope, CanThrow<Exception>) ?=> Any) -> Any
+        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: (DaprCapability, CanThrow<Exception>) ?=> Any) -> Any
         -- Like run but overrides the DAPR sidecar HTTP and gRPC endpoints.
         -- Intended for integration tests where the sidecar runs on a
         -- non-default port (e.g. via Testcontainers).
@@ -908,34 +919,39 @@ surface DaprRuntimeSurface {
         -- on exit, whether the body completes normally or throws.
 }
 
-surface DaprScopeSurface {
-    -- Primary factory for all capabilities.  DaprScope is provided as a context
-    -- parameter inside DaprRuntime.run / serve bodies.
+surface DaprCapabilitySurface {
+    -- Transformer methods on the DaprCapability companion object.
+    -- DaprCapability is provided as a context parameter inside DaprRuntime.run / serve bodies.
+    -- Each method acquires the requested sub-capability and provides it as an implicit
+    -- context parameter to body (transformer / context-function pattern), rather than
+    -- returning the sub-capability directly.
     facing user: UserCode
 
     exposes:
-        state:   (store_name: StoreName)        -> StateCapability
-        pubsub:  (pubsub_name: PubSubName)      -> PubSubCapability
-        invoker:                                -> ServiceInvocationCapability
-        secrets: (store_name: SecretStoreName)  -> SecretsCapability
-        config:  (store_name: ConfigStoreName)  -> ConfigurationCapability
-        binding: (binding_name: BindingName)    -> BindingsCapability
-        lock:    (store_name: StoreName)        -> DistributedLockCapability
-        -- All returned capabilities carry the DaprScope lifetime (CC: ^{scope}).
-        -- Calling these methods after the scope is closed results in capabilities
+        state:   (store_name: StoreName,       body: StateCapability ?=> T)              -> T (using DaprCapability)
+        pubsub:  (pubsub_name: PubSubName,     body: PubSubCapability ?=> T)             -> T (using DaprCapability)
+        invoker: (                             body: ServiceInvocationCapability ?=> T)  -> T (using DaprCapability)
+        secrets: (store_name: SecretStoreName, body: SecretsCapability ?=> T)            -> T (using DaprCapability)
+        config:  (store_name: ConfigStoreName, body: ConfigurationCapability ?=> T)      -> T (using DaprCapability)
+        binding: (binding_name: BindingName,   body: BindingsCapability ?=> T)           -> T (using DaprCapability)
+        lock:    (store_name: StoreName,       body: DistributedLockCapability ?=> T)    -> T (using DaprCapability)
+        -- Sub-capabilities carry the DaprCapability lifetime (CC: ^{capability}).
+        -- body is a context function; the sub-capability is passed as an implicit and
+        -- is not accessible outside body's lexical scope.
+        -- Calling these methods when DaprCapability is closed results in sub-capabilities
         -- that reject all operations (ClosedCapabilityRejection invariant).
         --
         -- Intentionally omitted from this surface (pending separate specs):
-        --   actor(actorType, actorId): ActorCapability  — Dapr actor framework
-        --   workflow: WorkflowCapability                — Dapr workflow orchestration
+        --   actor(actorType, actorId) { body: ActorCapability ?=> T }  — Dapr actor framework
+        --   workflow { body: WorkflowCapability ?=> T }                 — Dapr workflow orchestration
 
     @guarantee CapabilityLifetime
-        -- Every capability returned by DaprScope factory methods is open iff the
-        -- scope is open (ScopeContainment invariant).
+        -- Every sub-capability provided to a body is open iff the DaprCapability is open
+        -- (ScopeContainment invariant).
 
     @guarantee ClosedCapabilityRejection
-        -- Operations on closed capabilities are rejected.
-        -- Any operation requested on a capability with status = closed results in
+        -- Operations on closed sub-capabilities are rejected.
+        -- Any operation requested on a sub-capability with status = closed results in
         -- IllegalStateException, not a DAPR call.
         -- Enforced at runtime by impl classes annotated @scala.caps.assumeSafe
         -- (from the scala.caps package), which permits safe-mode user code to call them.
@@ -1031,21 +1047,24 @@ surface DaprAppSurface {
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
         DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<DaprWorkflow>, activities: List<DaprActivity>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp
-        -- Handler lambdas may capture capabilities from the enclosing DaprScope.
+        -- Handler lambdas may capture sub-capabilities from the enclosing DaprCapability
+        -- transformer bodies.
         -- The recommended pattern is: business logic in explicit methods with
         -- anonymous (using Capability) context parameters; companion-object
         -- forwarders (e.g. StateCapability.save(...), PubSubCapability.publish(...))
         -- dispatch to the implicit instance, so callers never name the capability
         -- value.  Thin handler lambdas wrap each call in try/catch for CC
         -- CanThrow isolation (see DESIGN.md — Handler Pattern).
+        -- Handler methods declare `using DaprCapability` without naming the parameter;
+        -- sub-capabilities are acquired via DaprCapability.state/pubsub/etc. transformers.
 
     @guarantee SubscriptionDiscovery
         -- GET /dapr/subscribe returns all registered pub/sub subscriptions
         -- before any request is handled
 
     @guarantee CapabilityLifetime
-        -- Capabilities captured by handler lambdas share the DaprScope lifetime.
-        -- Invocations after scope closure result in IllegalStateException
+        -- Sub-capabilities captured by handler lambdas share the DaprCapability lifetime.
+        -- Invocations after DaprCapability closure result in IllegalStateException
         -- (ClosedCapabilityRejection invariant).
 
     @guarantee Composability

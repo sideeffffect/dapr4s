@@ -7,16 +7,11 @@ import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class LockCapabilityImpl(
-    scope: DaprScopeImpl,
+    scope: DaprCapabilityImpl,
     val storeName: StoreName
 ) extends DistributedLockCapability:
 
-  private def checkOpen(): Unit =
-    if scope.isClosed then
-      throw IllegalStateException("Capability is closed: DaprScope has been closed")
-
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int): Boolean throws DaprLockException =
-    checkOpen()
     try
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val request = new LockRequest(storeName.value, resourceId.value, lockOwner.value, expirySeconds)
@@ -32,7 +27,6 @@ private[safe] final class LockCapabilityImpl(
         throw DaprLockException("Distributed lock requires DaprPreviewClient (not available)", e)
 
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus throws DaprLockException =
-    checkOpen()
     try
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val request = new UnlockRequest(storeName.value, resourceId.value, lockOwner.value)

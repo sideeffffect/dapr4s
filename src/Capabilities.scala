@@ -4,25 +4,15 @@ import language.experimental.captureChecking
 import language.experimental.saferExceptions
 
 // ---------------------------------------------------------------------------
-// Root capability marker — all DAPR capabilities extend this
-// ---------------------------------------------------------------------------
-
-/** Marker trait for all DAPR capabilities.
-  * In the Scala 3 CC model, any class can serve as a capability via `^` annotations.
-  */
-@scala.caps.assumeSafe
-sealed trait DaprCapability
-
-// ---------------------------------------------------------------------------
 // Individual capability traits
 // ---------------------------------------------------------------------------
 
 /** Capability for DAPR state management operations against a named store.
   *
-  * Acquired via [[DaprScope.state]].
+  * Acquired via [[DaprCapability.state]].
   */
 @scala.caps.assumeSafe
-trait StateCapability extends DaprCapability:
+trait StateCapability:
   val storeName: StoreName
 
   /** Fetch a value; returns `None` if the key does not exist. */
@@ -94,7 +84,7 @@ object StateCapability:
 
 /** Capability for DAPR pub/sub publish operations against a named component. */
 @scala.caps.assumeSafe
-trait PubSubCapability extends DaprCapability:
+trait PubSubCapability:
   val pubsubName: PubSubName
 
   /** Publish `data` to `topic`. */
@@ -127,7 +117,7 @@ object PubSubCapability:
 
 /** Capability for synchronous service invocation (RPC) via DAPR. */
 @scala.caps.assumeSafe
-trait ServiceInvocationCapability extends DaprCapability:
+trait ServiceInvocationCapability:
 
   /** Invoke a remote method with a request body (HTTP POST).
     * `Req` is inferred from `data`; `Resp` is specified at the call site:
@@ -149,7 +139,7 @@ object ServiceInvocationCapability:
 
 /** Capability for reading secrets from a named DAPR secrets store. */
 @scala.caps.assumeSafe
-trait SecretsCapability extends DaprCapability:
+trait SecretsCapability:
   val storeName: SecretStoreName
 
   /** Retrieve a single named secret value. Throws [[DaprSecretsException]] if absent. */
@@ -169,7 +159,7 @@ object SecretsCapability:
 
 /** Capability for reading configuration items from a named DAPR config store. */
 @scala.caps.assumeSafe
-trait ConfigurationCapability extends DaprCapability:
+trait ConfigurationCapability:
   val storeName: ConfigStoreName
 
   /** Retrieve one or more configuration items by key. */
@@ -179,7 +169,7 @@ trait ConfigurationCapability extends DaprCapability:
     *
     * `onChange` is called on a background thread whenever the sidecar delivers
     * an update.  Returns an `AutoCloseable` that stops the subscription when
-    * closed.  The subscription is also stopped when the enclosing [[DaprScope]]
+    * closed.  The subscription is also stopped when the enclosing [[DaprCapability]]
     * is closed.
     */
   def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException
@@ -195,7 +185,7 @@ object ConfigurationCapability:
 
 /** Capability for invoking DAPR output bindings. */
 @scala.caps.assumeSafe
-trait BindingsCapability extends DaprCapability:
+trait BindingsCapability:
   val bindingName: BindingName
 
   /** Invoke a binding operation that may return a response.
@@ -218,7 +208,7 @@ object BindingsCapability:
 
 /** Capability for DAPR distributed locking against a named lock store. */
 @scala.caps.assumeSafe
-trait DistributedLockCapability extends DaprCapability:
+trait DistributedLockCapability:
   val storeName: StoreName
 
   /** Try to acquire a lock. Returns true if acquired, false if already held. */
@@ -238,7 +228,7 @@ object DistributedLockCapability:
 
 /** Capability for invoking methods on a specific Dapr virtual actor instance. */
 @scala.caps.assumeSafe
-trait ActorCapability extends DaprCapability:
+trait ActorCapability:
   val actorType: ActorType
   val actorId: ActorId
 
@@ -269,7 +259,7 @@ object ActorCapability:
 
 /** Capability for managing Dapr workflow instances (client-side). */
 @scala.caps.assumeSafe
-trait WorkflowCapability extends DaprCapability:
+trait WorkflowCapability:
 
   /** Start a new workflow instance. Returns the generated instance ID. */
   def start(name: WorkflowName): WorkflowInstanceId throws DaprWorkflowException

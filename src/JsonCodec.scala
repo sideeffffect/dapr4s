@@ -1,6 +1,7 @@
 package dapr.safe
 
 import language.experimental.saferExceptions
+import scala.util.control.NonFatal
 
 /** Typeclass for JSON serialisation/deserialisation.
   *
@@ -37,7 +38,7 @@ object JsonCodec:
     def decode(json: String | Null): Either[JsonDecodeException, String] =
       if json == null then return Left(JsonDecodeException("null input"))
       try Right(upickle.default.read[String](json.nn))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   given JsonCodec[Int] with
     def encode(value: Int): String =
@@ -45,7 +46,7 @@ object JsonCodec:
     def decode(json: String | Null): Either[JsonDecodeException, Int] =
       if json == null then return Left(JsonDecodeException("null input"))
       try Right(upickle.default.read[Int](json.nn))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   given JsonCodec[Long] with
     def encode(value: Long): String =
@@ -53,7 +54,7 @@ object JsonCodec:
     def decode(json: String | Null): Either[JsonDecodeException, Long] =
       if json == null then return Left(JsonDecodeException("null input"))
       try Right(upickle.default.read[Long](json.nn))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   given JsonCodec[Float] with
     def encode(value: Float): String =
@@ -61,7 +62,7 @@ object JsonCodec:
     def decode(json: String | Null): Either[JsonDecodeException, Float] =
       if json == null then return Left(JsonDecodeException("null input"))
       try Right(upickle.default.read[Float](json.nn))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   given JsonCodec[Boolean] with
     def encode(value: Boolean): String =
@@ -69,7 +70,7 @@ object JsonCodec:
     def decode(json: String | Null): Either[JsonDecodeException, Boolean] =
       if json == null then return Left(JsonDecodeException("null input"))
       try Right(upickle.default.read[Boolean](json.nn))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   given JsonCodec[Double] with
     def encode(value: Double): String =
@@ -77,7 +78,7 @@ object JsonCodec:
     def decode(json: String | Null): Either[JsonDecodeException, Double] =
       if json == null then return Left(JsonDecodeException("null input"))
       try Right(upickle.default.read[Double](json.nn))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   // -------------------------------------------------------------------------
   // Collection instances
@@ -109,7 +110,7 @@ object JsonCodec:
             if errors.nonEmpty then Left(JsonDecodeException(errors.map(_.getMessage).mkString("; ")))
             else Right(results.collect { case Right(v) => v }.toList)
           case _ => Left(JsonDecodeException(s"Expected JSON array, got: $json"))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   // -------------------------------------------------------------------------
   // Generic instance via upickle ReadWriter derivation
@@ -120,4 +121,4 @@ object JsonCodec:
     def decode(json: String | Null): Either[JsonDecodeException, T] =
       if json == null then return Left(JsonDecodeException("null input"))
       try Right(upickle.default.read[T](json.nn))
-      catch case e: Exception => Left(JsonDecodeException(e.getMessage, e))
+      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))

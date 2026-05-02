@@ -82,26 +82,27 @@ object InventoryServiceHandlers:
   // ---------------------------------------------------------------------------
 
   /** Build a [[DaprApp]] with all inbound routes for the Inventory service. */
-  def daprApp()(using scope: DaprScope): DaprApp =
-    given StateCapability           = scope.state(StateName)
-    given DistributedLockCapability = scope.lock(LockStoreName)
-
-    DaprApp(
-      subscriptions = List(
-        Subscription[OrderEvent](PubSubComp, OrdersTopic) { event =>
-          // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see OrderServiceHandlers scaladoc.
-          try handleOrderEvent(event)
-          catch case e: Exception => throw e
-        }
-      ),
-      invocations = List(
-        InvocationRoute[String, StockLevel](MethodName("get-stock")) { item =>
-          try getStock(item)
-          catch case e: Exception => throw e
-        },
-        InvocationRoute[StockLevel, StockLevel](MethodName("seed-stock")) { stock =>
-          try seedStock(stock)
-          catch case e: Exception => throw e
-        }
-      )
-    )
+  def daprApp()(using DaprCapability): DaprApp =
+    DaprCapability.state(StateName) {
+      DaprCapability.lock(LockStoreName) {
+        DaprApp(
+          subscriptions = List(
+            Subscription[OrderEvent](PubSubComp, OrdersTopic) { event =>
+              // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see OrderServiceHandlers scaladoc.
+              try handleOrderEvent(event)
+              catch case e: Exception => throw e
+            }
+          ),
+          invocations = List(
+            InvocationRoute[String, StockLevel](MethodName("get-stock")) { item =>
+              try getStock(item)
+              catch case e: Exception => throw e
+            },
+            InvocationRoute[StockLevel, StockLevel](MethodName("seed-stock")) { stock =>
+              try seedStock(stock)
+              catch case e: Exception => throw e
+            }
+          )
+        )
+      }
+    }

@@ -6,12 +6,13 @@ import io.dapr.actors.client.{ActorClient as JavaActorClient, ActorProxy as Java
 import dapr.safe.internal.MonoOps.awaitResult
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
+import scala.util.control.NonFatal
 
 /** Client-side capability for invoking methods on a specific Dapr virtual actor instance.
   *
   * The actor proxy communicates with the Dapr sidecar via gRPC. A
   * [[JavaActorClient]] (and its underlying gRPC channel) is shared across all
-  * actor invocations within the same [[dapr.safe.DaprScope]].
+  * actor invocations within the same [[dapr.safe.DaprCapability]].
   *
   * Serialization uses raw `byte[]` pass-through: the request value is encoded to
   * JSON by our [[JsonCodec]], sent as raw bytes, and the response bytes are decoded
@@ -31,7 +32,7 @@ private[safe] final class ActorCapabilityImpl(
       decodeResponse[Resp](method, rawResult)
     catch
       case e: DaprActorException => throw e
-      case e: Exception => throw DaprActorException(s"Actor invocation '${actorType.value}/${actorId.value}/${method.value}' failed: ${e.getMessage}", e)
+      case NonFatal(e: Exception) => throw DaprActorException(s"Actor invocation '${actorType.value}/${actorId.value}/${method.value}' failed: ${e.getMessage}", e)
 
   def invokeGet[Resp: JsonCodec](method: MethodName): Resp throws DaprActorException =
     try
@@ -39,7 +40,7 @@ private[safe] final class ActorCapabilityImpl(
       decodeResponse[Resp](method, rawResult)
     catch
       case e: DaprActorException => throw e
-      case e: Exception => throw DaprActorException(s"Actor invocation '${actorType.value}/${actorId.value}/${method.value}' failed: ${e.getMessage}", e)
+      case NonFatal(e: Exception) => throw DaprActorException(s"Actor invocation '${actorType.value}/${actorId.value}/${method.value}' failed: ${e.getMessage}", e)
 
   def invokeVoid(method: MethodName): Unit throws DaprActorException =
     try proxy.invokeMethod(method.value).awaitResult()

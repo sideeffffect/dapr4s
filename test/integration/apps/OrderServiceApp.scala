@@ -26,7 +26,6 @@ import unsafeExceptions.canThrowAny
   val port = sys.env.getOrElse("APP_PORT", "8080").toInt
   println(s"[order-service] starting on port $port")
   DaprRuntime.serve(appPort = port):
-    val scope = summon[DaprScope]
-    val app   = OrderServiceHandlers.daprApp()(using scope)
+    val app = OrderServiceHandlers.daprApp()
     println("[order-service] handlers declared, serving...")
     app

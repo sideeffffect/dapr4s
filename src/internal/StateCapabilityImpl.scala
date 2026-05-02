@@ -10,16 +10,11 @@ import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class StateCapabilityImpl(
-    scope: DaprScopeImpl,
+    scope: DaprCapabilityImpl,
     val storeName: StoreName
 ) extends StateCapability:
 
-  private def checkOpen(): Unit =
-    if scope.isClosed then
-      throw IllegalStateException("Capability is closed: DaprScope has been closed")
-
   def get[T: JsonCodec](key: StateKey): Option[T] throws DaprStateException =
-    checkOpen()
     try
       val state: DaprState[String] | Null =
         scope.client.getState(storeName.value, key.value, classOf[String]).awaitResult()
@@ -36,7 +31,6 @@ private[safe] final class StateCapabilityImpl(
         throw DaprStateException(e.getMessage.nn, e)
 
   def getWithETag[T: JsonCodec](key: StateKey): StateEntry[T] throws DaprStateException =
-    checkOpen()
     try
       val state: DaprState[String] | Null =
         scope.client.getState(storeName.value, key.value, classOf[String]).awaitResult()
@@ -56,7 +50,6 @@ private[safe] final class StateCapabilityImpl(
         throw DaprStateException(e.getMessage.nn, e)
 
   def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]] throws DaprStateException =
-    checkOpen()
     if keys.isEmpty then return Map.empty
     try
       val javaKeys: java.util.List[String] = keys.map(_.value).asJava
@@ -83,7 +76,6 @@ private[safe] final class StateCapabilityImpl(
         throw DaprStateException(e.getMessage.nn, e)
 
   def save[T: JsonCodec](key: StateKey, value: T): Unit throws DaprStateException =
-    checkOpen()
     try
       val json = summon[JsonCodec[T]].encode(value)
       scope.client.saveState(storeName.value, key.value, json).awaitResult(): Unit
@@ -94,7 +86,6 @@ private[safe] final class StateCapabilityImpl(
         throw DaprStateException(e.getMessage.nn, e)
 
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit throws DaprStateException =
-    checkOpen()
     if entries.isEmpty then return
     try
       val states: java.util.List[DaprState[?]] = entries.map { case (key, value) =>
@@ -109,7 +100,6 @@ private[safe] final class StateCapabilityImpl(
         throw DaprStateException(e.getMessage.nn, e)
 
   def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Unit throws DaprStateException =
-    checkOpen()
     try
       val json = summon[JsonCodec[T]].encode(value)
       val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
@@ -124,7 +114,6 @@ private[safe] final class StateCapabilityImpl(
         else throw DaprStateException(e.getMessage.nn, e)
 
   def delete(key: StateKey): Unit throws DaprStateException =
-    checkOpen()
     try
       scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
     catch
@@ -134,7 +123,6 @@ private[safe] final class StateCapabilityImpl(
         throw DaprStateException(e.getMessage.nn, e)
 
   def deleteWithETag(key: StateKey, etag: ETag): Unit throws DaprStateException =
-    checkOpen()
     try
       val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
       scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(): Unit
@@ -146,7 +134,6 @@ private[safe] final class StateCapabilityImpl(
         else throw DaprStateException(e.getMessage.nn, e)
 
   def transaction(ops: Seq[StateOp]): Unit throws DaprStateException =
-    checkOpen()
     try
       val javaOps: java.util.List[TransactionalStateOperation[?]] =
         ops.map(toJavaOp).asJava
@@ -160,7 +147,6 @@ private[safe] final class StateCapabilityImpl(
         throw DaprStateException(e.getMessage.nn, e)
 
   def queryState[T: JsonCodec](query: StateQuery): List[StateEntry[T]] throws DaprStateException =
-    checkOpen()
     try
       val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
       val result: io.dapr.client.domain.QueryStateResponse[String] | Null =

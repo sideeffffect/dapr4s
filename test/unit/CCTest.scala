@@ -38,10 +38,10 @@ class CCTest extends FunSuite:
   // With -language:experimental.pureFunctions, A => B is a *pure* function
   // type — the compiler rejects lambdas whose body captures a CC-tracked
   // capability.  The key guarantee for this library:
-  //   DaprRuntime.run body: (DaprScope, CanThrow[Exception]) ?=> T
+  //   DaprRuntime.run body: (DaprCapability, CanThrow[Exception]) ?=> T
   // is now a pure context function.  The body may use only the two context
   // parameters it is explicitly given; it cannot silently close over an
-  // external DaprScope or CanThrow capability.
+  // external DaprCapability or CanThrow capability.
   //
   // typeCheckErrors compiles strings without the project's experimental flags,
   // so negative-compilation checks for CC purity cannot be expressed as unit
@@ -57,22 +57,22 @@ class CCTest extends FunSuite:
     assertEquals(pipeline("  Hello World  "), "hello world!")
 
   test("pureFunctions: DaprRuntime.run body is a pure context function"):
-    // The body type (DaprScope, CanThrow[Exception]) ?=> T is now pure.
+    // The body type (DaprCapability, CanThrow[Exception]) ?=> T is now pure.
     // Verify the runtime contract: scope is provided, used, and released.
     runSafe:
-      val mock = MockDaprScope()
+      val mock = MockDaprCapability()
       mock.state(StoreName("s")).save(StateKey("k"), "v")
       assertEquals(mock.state(StoreName("s")).get[String](StateKey("k")), Some("v"))
       mock.close()
       assert(mock.isClosed)
 
   // ---------------------------------------------------------------------------
-  // clauseInterleaving: Resp inferred position verified via MockDaprScope
+  // clauseInterleaving: Resp inferred position verified via MockDaprCapability
   // ---------------------------------------------------------------------------
 
   test("clauseInterleaving: invoke syntax — Req inferred, Resp specified after args"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val invoker = scope.invoker
       // Req (String) is inferred from "request-data"; Resp specified as trailing [String]
       intercept[UnsupportedOperationException]:
@@ -81,7 +81,7 @@ class CCTest extends FunSuite:
 
   test("clauseInterleaving: binding invoke syntax — Req inferred, Resp specified after args"):
     runSafe:
-      val scope = MockDaprScope()
+      val scope = MockDaprCapability()
       val binding = scope.binding(BindingName("my-binding"))
       // Req (String) inferred from "payload"; Resp specified as trailing [String]
       val result: Option[String] = binding.invoke(BindingOperation("operation"), "payload")[String]

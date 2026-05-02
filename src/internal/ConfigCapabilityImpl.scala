@@ -5,20 +5,16 @@ import io.dapr.client.domain.{ConfigurationItem as JConfigItem, SubscribeConfigu
 import language.experimental.saferExceptions
 
 import scala.jdk.CollectionConverters.*
+import scala.util.control.NonFatal
 import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class ConfigCapabilityImpl(
-    scope: DaprScopeImpl,
+    scope: DaprCapabilityImpl,
     val storeName: ConfigStoreName
 ) extends ConfigurationCapability:
 
-  private def checkOpen(): Unit =
-    if scope.isClosed then
-      throw IllegalStateException("Capability is closed: DaprScope has been closed")
-
   def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] throws DaprConfigurationException =
-    checkOpen()
     try
       val javaKeys: java.util.List[String] = keys.map(_.value).asJava
       val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
@@ -42,7 +38,6 @@ private[safe] final class ConfigCapabilityImpl(
         throw DaprConfigurationException(e.getMessage.nn, e)
 
   def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException =
-    checkOpen()
     try
       val javaKeys: java.util.List[String] = keys.map(_.value).asJava
       val storeNameStr = storeName.value
@@ -63,7 +58,7 @@ private[safe] final class ConfigCapabilityImpl(
               )
             }.toMap
             try onChange(ConfigUpdate(ConfigStoreName(storeNameStr), items))
-            catch case _: Exception => ()
+            catch case NonFatal(_) => ()
       }
       () => sub.dispose()
     catch

@@ -7,15 +7,10 @@ import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class InvokerCapabilityImpl(
-    scope: DaprScopeImpl
+    scope: DaprCapabilityImpl
 ) extends ServiceInvocationCapability:
 
-  private def checkOpen(): Unit =
-    if scope.isClosed then
-      throw IllegalStateException("Capability is closed: DaprScope has been closed")
-
   def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
-    checkOpen()
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
       val rawResp: String | Null = scope.client
@@ -36,7 +31,6 @@ private[safe] final class InvokerCapabilityImpl(
         throw DaprServiceInvocationException(e.getMessage.nn, e)
 
   def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName): Resp throws DaprServiceInvocationException =
-    checkOpen()
     try
       val rawResp: String | Null = scope.client
         .invokeMethod(

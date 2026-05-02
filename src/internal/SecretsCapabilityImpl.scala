@@ -8,16 +8,11 @@ import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class SecretsCapabilityImpl(
-    scope: DaprScopeImpl,
+    scope: DaprCapabilityImpl,
     val storeName: SecretStoreName
 ) extends SecretsCapability:
 
-  private def checkOpen(): Unit =
-    if scope.isClosed then
-      throw IllegalStateException("Capability is closed: DaprScope has been closed")
-
   def get(key: SecretKey): String throws DaprSecretsException =
-    checkOpen()
     try
       val result: java.util.Map[String, String] | Null =
         scope.client.getSecret(storeName.value, key.value).awaitResult()
@@ -36,7 +31,6 @@ private[safe] final class SecretsCapabilityImpl(
         throw DaprSecretsException(e.getMessage.nn, e)
 
   def getBulk(): Map[SecretKey, String] throws DaprSecretsException =
-    checkOpen()
     try
       val result: java.util.Map[String, java.util.Map[String, String]] | Null =
         scope.client.getBulkSecret(storeName.value).awaitResult()

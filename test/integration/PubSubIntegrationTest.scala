@@ -24,26 +24,28 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
       "v1",
       Collections.emptyMap[String, String]()
     )
-    DaprTestContainer(
-      DaprContainer("daprio/daprd:latest")
+    val c = DaprTestContainer(
+      DaprContainer("daprio/daprd:1.17.0")
         .withAppName("pubsub-test-app")
         .withAppPort(0)
         .withComponent(component)
     )
+    c.start()
+    c
 
   // -------------------------------------------------------------------------
 
   test("integration: publish string payload does not throw"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val ps = summon[DaprScope].pubsub(PubSubName("pubsub"))
+        val ps = summon[DaprCapability].pubsub(PubSubName("pubsub"))
         ps.publish(Topic("test-topic"), "hello-pubsub")
     }
 
   test("integration: publishWithMetadata does not throw"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val ps = summon[DaprScope].pubsub(PubSubName("pubsub"))
+        val ps = summon[DaprCapability].pubsub(PubSubName("pubsub"))
         ps.publishWithMetadata(
           Topic("test-topic"),
           "with-metadata",
@@ -54,6 +56,6 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
   test("integration: publish Int payload does not throw"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val ps = summon[DaprScope].pubsub(PubSubName("pubsub"))
+        val ps = summon[DaprCapability].pubsub(PubSubName("pubsub"))
         ps.publish(Topic("numbers"), 42)
     }

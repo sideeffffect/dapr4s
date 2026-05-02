@@ -5,6 +5,7 @@ import io.dapr.workflows.client.{DaprWorkflowClient, NewWorkflowOptions, Workflo
 import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 import java.util.concurrent.TimeoutException as JavaTimeoutException
+import scala.util.control.NonFatal
 
 @scala.caps.assumeSafe
 private[safe] final class WorkflowCapabilityImpl(
@@ -60,7 +61,7 @@ private[safe] final class WorkflowCapabilityImpl(
     catch
       case _: JavaTimeoutException =>
         throw DaprWorkflowException(s"Timed out waiting for workflow '${instanceId.value}' to complete")
-      case e: Exception =>
+      case NonFatal(e: Exception) =>
         throw DaprWorkflowException(s"waitForCompletion failed for '${instanceId.value}': ${e.getMessage}", e)
 
   def purge(instanceId: WorkflowInstanceId): Boolean throws DaprWorkflowException =

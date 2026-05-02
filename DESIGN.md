@@ -23,7 +23,7 @@ graph TB
     end
 
     subgraph "Public API (capability traits)"
-        DS["DaprScope (root capability)"]
+        DS["DaprCapability (root capability)"]
         SC["StateCapability^scope"]
         PC["PubSubCapability^scope"]
         IC["ServiceInvocationCapability^scope"]
@@ -49,13 +49,13 @@ graph TB
         SID["localhost:3500 HTTP API\n/ gRPC :50001"]
     end
 
-    UC -->|"summon[DaprScope].state(...)"| DS
+    UC -->|"summon[DaprCapability].state(...)"| DS
     DS --> SC & PC & IC & SEC & CC & BC & LC
     SC & PC & IC & SEC & CC & BC & LC -->|"implemented by"| IMPL
     IMPL -->|"DaprClient.*().toFuture().get()"| DC
     DC -->|"HTTP/gRPC"| SID
 
-    DR -->|"provides DaprScope ?=>"| UC
+    DR -->|"provides DaprCapability ?=>"| UC
     DS2 -->|"body returns DaprApp"| DA
     DS2 --> SRV
     DA -->|"passed to constructor"| SRV
@@ -79,10 +79,6 @@ Note: safe mode is enabled **per-file** via `import language.experimental.safe` 
 ```mermaid
 classDiagram
     class DaprCapability {
-        <<sealed trait>>
-    }
-    note for DaprCapability "Any class/trait can serve as a capability via ^ capture annotations in the nightly CC model"
-    class DaprScope {
         <<trait>>
         +state(storeName: StoreName) StateCapability^this
         +pubsub(pubsubName: PubSubName) PubSubCapability^this
@@ -91,7 +87,10 @@ classDiagram
         +config(storeName: ConfigStoreName) ConfigurationCapability^this
         +binding(name: BindingName) BindingsCapability^this
         +lock(storeName: StoreName) DistributedLockCapability^this
+        +actor(actorType, actorId) ActorCapability^this
+        +workflow WorkflowCapability^this
     }
+    note for DaprCapability "Root capability. Companion object provides transformer API:\nDaprCapability.state(name) { ... } introduces StateCapability into body scope"
     class StateCapability {
         <<trait>>
         +get[T](key: StateKey) Option[T]
@@ -147,13 +146,13 @@ classDiagram
         +unlock(resourceId: LockResourceId, lockOwner: LockOwner) UnlockStatus
     }
 
-    DaprCapability <|-- StateCapability
-    DaprCapability <|-- PubSubCapability
-    DaprCapability <|-- ServiceInvocationCapability
-    DaprCapability <|-- SecretsCapability
-    DaprCapability <|-- ConfigurationCapability
-    DaprCapability <|-- BindingsCapability
-    DaprCapability <|-- DistributedLockCapability
+    DaprCapability --> StateCapability : .state()
+    DaprCapability --> PubSubCapability : .pubsub()
+    DaprCapability --> ServiceInvocationCapability : .invoker
+    DaprCapability --> SecretsCapability : .secrets()
+    DaprCapability --> ConfigurationCapability : .config()
+    DaprCapability --> BindingsCapability : .binding()
+    DaprCapability --> DistributedLockCapability : .lock()
 ```
 
 ---
@@ -193,7 +192,7 @@ The Dapr sidecar wraps pub/sub messages in CloudEvents.  `DaprAppServer` extract
 
 Pub/sub routes (default `/<topic>`), input binding paths (`/<bindingName>`), and service invocation paths (`/<methodName>`) all use the same flat namespace.  Users should choose distinct names.  Registration is first-writer-wins.
 
-> Note: `scala.caps.Capability` is **sealed** in nightly Scala 3 and cannot be extended in user code. In the new CC model, any class/trait can serve as a capability through `^` capture annotations. `DaprScope` and `DaprCapability` do not extend `scala.caps.Capability` — they are tracked via `^{scope}` return type annotations on `DaprScope`'s factory methods.
+> Note: `scala.caps.Capability` is **sealed** in nightly Scala 3 and cannot be extended in user code. In the new CC model, any class/trait can serve as a capability through `^` capture annotations. `DaprCapability` and `DaprCapability` do not extend `scala.caps.Capability` — they are tracked via `^{scope}` return type annotations on `DaprCapability`'s factory methods.
 
 ---
 
@@ -229,26 +228,34 @@ These methods carry no `@assumeSafe`; they are pure capability-tracked code that
 
 ### Layer 2 — `daprApp` method: declarative route description
 
-The `daprApp` method injects capabilities as `given`s once per call, then returns an immutable `DaprApp` built from `InvocationRoute` and `Subscription` factory values:
+The `daprApp` method uses the **`DaprCapability` transformer API** to nest sub-capabilities into scope, then returns an immutable `DaprApp`.  Each `DaprCapability.xxx(...)` call acquires a sub-capability and makes it available as an implicit inside its body block:
 
 ```scala
-def daprApp()(using scope: DaprScope): DaprApp =
-  given StateCapability  = scope.state(StateName)
-  given PubSubCapability = scope.pubsub(PubSubComp)
+def daprApp()(using DaprCapability): DaprApp =
+  DaprCapability.state(StateName) {
+    DaprCapability.pubsub(PubSubComp) {
+      DaprApp(
+        invocations = List(
+          InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+            try placeOrder(req)
+            catch case e: Exception => throw e   // CC CanThrow isolation
+          }
+        )
+      )
+    }
+  }
+```
 
-  DaprApp(
-    invocations = List(
-      InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
-        try placeOrder(req)
-        catch case e: Exception => throw e   // CC CanThrow isolation
-      }
-    )
-  )
+Transformer signature (in `src/DaprScope.scala` — the file name is unchanged but it now defines `trait DaprCapability`):
+```scala
+object DaprCapability:
+  def state(storeName: StoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.state(storeName))
 ```
 
 **Why `try/catch` in each lambda**: In Scala 3.9 CC with `pureFunctions`, each lambda that calls a `throws`-annotated method creates a fresh anonymous `CanThrow` capability.  Sibling lambdas in the same method body cannot share these capabilities.  The `try/catch` absorbs the `CanThrow` at each lambda's boundary, so the next sibling lambda starts with a fresh context.  Without this, the second and later lambdas fail to compile with _"capability `any` cannot flow into capture set {any²}"_.  See AGENTS.md for the canonical explanation.
 
-**Capability injection lifetime**: Capabilities are bound once per `daprApp` call and shared across all handler invocations for the lifetime of the `DaprScope`.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
+**Capability injection lifetime**: Capabilities are bound once per `daprApp` call and shared across all handler invocations for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
 
 **`DaprApp` stores handlers as `AnyRef`**: Handler lambdas capture DAPR capabilities.  `Subscription`, `InvocationRoute`, and `BindingRoute` store them as `rawHandler: AnyRef` (CC-opaque) so the instances have an empty capture set and can live in a plain `List`.  Internal dispatch code (`DaprAppServer`, `TestDaprApp`) casts them back via path-dependent types under `@assumeSafe`.
 
@@ -258,8 +265,8 @@ def daprApp()(using scope: DaprScope): DaprApp =
 graph LR
     subgraph "Handler object (no @assumeSafe)"
         BL["Business logic def methods\nusing StateCapability\nusing PubSubCapability\nthrows Exception\n→ calls StateCapability.save/get/...\n→ calls PubSubCapability.publish/..."]
-        CFG["daprApp()\nusing scope: DaprScope\nreturns DaprApp"]
-        CFG -->|"given StateCapability = scope.state(...)\ngiven PubSubCapability = scope.pubsub(...)"| BL
+        CFG["daprApp()\nusing DaprCapability\nreturns DaprApp"]
+        CFG -->|"DaprCapability.state(name) { ... }\nDaprCapability.pubsub(name) { ... }"| BL
     end
 
     subgraph "DaprApp (immutable, declarative)"
@@ -282,7 +289,7 @@ Integration tests use the `TestDaprApp` object (which is `@assumeSafe` internall
 
 ```scala
 DaprRuntime.runWithEndpoints(http, grpc):
-  val scope = summon[DaprScope]
+  val scope = summon[DaprCapability]
   val app   = OrderServiceHandlers.daprApp()(using scope)
   val resp  = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("widget", 2))[OrderResponse]
 ```
@@ -387,28 +394,28 @@ object JsonCodec:
 
 ## Resource Lifecycle (Scope Safety)
 
-`DaprRuntime.run` acquires a `DaprClient`, creates a `DaprScope` that captures the client reference, and releases both on exit. The return type of capabilities created inside `run` captures `DaprScope`, so they cannot outlive the `run` block.
+`DaprRuntime.run` acquires a `DaprClient`, creates a `DaprCapability` that captures the client reference, and releases both on exit. The return type of capabilities created inside `run` captures `DaprCapability`, so they cannot outlive the `run` block.
 
 ```mermaid
 sequenceDiagram
     participant App
     participant DaprRuntime
-    participant DaprScope
+    participant DaprCapability
     participant DaprClient
     participant Sidecar
 
     App->>DaprRuntime: run { body }
     DaprRuntime->>DaprClient: DaprClientBuilder().build()
-    DaprRuntime->>DaprScope: new DaprScopeImpl(client)
-    DaprRuntime->>App: body (given DaprScope)
-    App->>DaprScope: .state("my-store")
-    DaprScope-->>App: StateCapability^scope
-    App->>DaprScope: state.save("k", value)
-    DaprScope->>DaprClient: saveState(...).block()
+    DaprRuntime->>DaprCapability: new DaprCapabilityImpl(client)
+    DaprRuntime->>App: body (given DaprCapability)
+    App->>DaprCapability: .state("my-store")
+    DaprCapability-->>App: StateCapability^scope
+    App->>DaprCapability: state.save("k", value)
+    DaprCapability->>DaprClient: saveState(...).block()
     DaprClient->>Sidecar: HTTP PUT /v1.0/state/my-store
     Sidecar-->>DaprClient: 200 OK
-    DaprClient-->>DaprScope: ()
-    DaprScope-->>App: ()
+    DaprClient-->>DaprCapability: ()
+    DaprCapability-->>App: ()
     App->>DaprRuntime: (body complete)
     DaprRuntime->>DaprClient: close()
 ```
@@ -419,7 +426,7 @@ sequenceDiagram
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Ready: DaprScope.state(storeName) called
+    [*] --> Ready: DaprCapability.state(storeName) called
 
     Ready --> Fetching: get(key)
     Fetching --> Ready: Option value returned
@@ -440,7 +447,7 @@ stateDiagram-v2
     Error --> [*]: exception propagates to caller
 
     note right of Ready
-        Capability bound to DaprScope
+        Capability bound to DaprCapability
         Cannot escape the run block
     end note
 ```
@@ -468,6 +475,15 @@ All DAPR errors are surfaced as typed subtypes of `DaprException`:
 
 The library does not catch exceptions internally — callers use `Try` or `Either` adapters if they want explicit error handling. Under `import language.experimental.saferExceptions`, all `throws` clauses are checked by the compiler.
 
+All broad catch clauses in library internals use `scala.util.control.NonFatal` to ensure fatal JVM errors (`OutOfMemoryError`, `StackOverflowError`, `ThreadDeath`, `LinkageError`, `ControlThrowable`) propagate immediately rather than being wrapped in domain exceptions. `InterruptedException` is never silently swallowed: blocking bridges (see `MonoOps.awaitResult`) catch it explicitly to restore the interrupt flag before rethrowing; subscription callbacks use `NonFatal` which naturally excludes it. The canonical pattern in `*CapabilityImpl` files:
+
+```scala
+try body
+catch
+  case e: DomainException => throw e              // already a typed error — rethrow as-is
+  case NonFatal(e: Exception) => throw DomainException(e.getMessage, e)  // wrap, let fatals through
+```
+
 ---
 
 ## Project Structure (Scala CLI)
@@ -481,10 +497,10 @@ scala-safe-dapr/
 │   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe]
 │   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes) [safe mode]
 │   ├── DaprApp.scala                 # DaprApp case class + Subscription/InvocationRoute/BindingRoute [@assumeSafe companions]
-│   ├── DaprScope.scala               # DaprScope trait with ^{this} return types [safe mode]
+│   ├── DaprCapability.scala               # DaprCapability trait with ^{this} return types [safe mode]
 │   ├── DaprRuntime.scala             # DaprRuntime.run + serve entry points [@assumeSafe]
 │   └── internal/
-│       ├── DaprScopeImpl.scala       # DaprScope implementation
+│       ├── DaprCapabilityImpl.scala       # DaprCapability implementation
 │       ├── MonoOps.scala             # Reactor Mono → blocking bridge (.toFuture().get())
 │       ├── DaprAppServer.scala       # HTTP server (OpenJDK jdk.httpserver) for subscriber side
 │       ├── StateCapabilityImpl.scala
@@ -499,7 +515,7 @@ scala-safe-dapr/
     │   ├── ModelsTest.scala
     │   ├── JsonCodecTest.scala
     │   ├── CCTest.scala              # capture checking / CanThrow invariants
-    │   ├── MockDaprScope.scala       # in-memory mock for unit tests
+    │   ├── MockDaprCapability.scala       # in-memory mock for unit tests
     │   ├── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
     │   └── SubscriberTest.scala      # DaprAppServer dispatch logic (no Docker required)
     └── integration/
@@ -526,7 +542,7 @@ scala-safe-dapr/
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Capability root | `DaprScope` provides factory methods | Single entry point; child capabilities capture scope, preventing escape |
+| Capability root | `DaprCapability` provides factory methods | Single entry point; child capabilities capture scope, preventing escape |
 | JSON library | upickle | Pure Scala, Scala CLI friendly, automatic derivation |
 | Async model | Blocking (`.toFuture().get()` on `Mono`) | Direct-style compatible; avoids bringing in effect library dependency; CAS-based VT-safe bridging |
 | Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |

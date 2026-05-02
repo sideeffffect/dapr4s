@@ -170,10 +170,10 @@ classes, etc.) may appear in `src/` files outside `internal/` or in any test fil
 - **Unit tests** (no Docker required): `scala-cli test . --test-only "*unit*"`. Currently 119
   tests across `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`.
 - **Integration tests** (require Docker): use `testcontainers-scala-munit` with the
-  `TestContainersForAll` pattern. `startContainers()` creates but does not start the container —
-  the framework calls `start()` in `beforeAll()`. Tests use `withContainers { c => }`. The
-  `DaprTestContainer` wrapper bridges the testcontainers-scala `SingleContainer` type to the
-  Dapr Java testcontainers type.
+  `TestContainersForAll` pattern. `startContainers()` **must return an already-started container**
+  — call `c.start()` before returning; the framework does NOT auto-start it. Tests use
+  `withContainers { c => }`. The `DaprTestContainer` wrapper bridges the testcontainers-scala
+  `SingleContainer` type to the Dapr Java testcontainers type.
 - After every non-trivial change: compile first, then run unit tests, then integration tests if
   relevant. Do not batch large changes and test only at the end.
 
