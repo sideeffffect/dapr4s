@@ -6,9 +6,8 @@ import unsafeExceptions.canThrowAny
 
 /** Standalone entry point for the Inventory microservice.
   *
-  * Starts an HTTP server on port 8081 (configurable via APP_PORT env var) that
-  * receives Dapr sidecar traffic: pub/sub subscription deliveries and service
-  * invocation calls.
+  * Starts an HTTP server on port 8081 (configurable via APP_PORT env var) that receives Dapr sidecar traffic: pub/sub
+  * subscription deliveries and service invocation calls.
   *
   * Run locally (requires Dapr sidecar on localhost:3500/50001):
   * {{{

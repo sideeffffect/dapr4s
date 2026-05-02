@@ -11,8 +11,8 @@ import scala.util.control.NonFatal
   *   - `decode(null)` returns `Left(JsonDecodeException("null input"))`
   *   - roundtrip: `decode(encode(v)) == Right(v)`
   *
-  * Marked `@scala.caps.assumeSafe` because the underlying upickle library is not
-  * compiled in safe mode. Library authors vouch for the safety contract.
+  * Marked `@scala.caps.assumeSafe` because the underlying upickle library is not compiled in safe mode. Library authors
+  * vouch for the safety contract.
   */
 @scala.caps.assumeSafe
 trait JsonCodec[T]:

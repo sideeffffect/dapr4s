@@ -9,15 +9,15 @@ import language.experimental.saferExceptions
 @scala.caps.assumeSafe
 class StateCapabilityTest extends FunSuite:
 
-  /** Provide CanThrow[Exception] via a method body so no lambda ever captures canThrowAny.
-    * Multiple calls from different lambdas are safe — each creates a fresh method stack frame.
+  /** Provide CanThrow[Exception] via a method body so no lambda ever captures canThrowAny. Multiple calls from
+    * different lambdas are safe — each creates a fresh method stack frame.
     */
   def runSafe[T](body: CanThrow[Exception] ?=> T): T =
     given CanThrow[Exception] = unsafeExceptions.canThrowAny
     body
 
-  /** Run a block against a fresh [[MockDaprCapability]].
-    * Uses runSafe internally so canThrowAny is never captured in any lambda.
+  /** Run a block against a fresh [[MockDaprCapability]]. Uses runSafe internally so canThrowAny is never captured in
+    * any lambda.
     */
   def withScope[T](body: (DaprCapability, CanThrow[Exception]) ?=> T): T =
     given scope: DaprCapability = MockDaprCapability()
@@ -101,7 +101,7 @@ class StateCapabilityTest extends FunSuite:
       val state = summon[DaprCapability].state(StoreName("test-store"))
       state.save(StateKey("k"), "v1")
       val entry = state.getWithETag[String](StateKey("k"))
-      val etag  = entry.etag.getOrElse(fail("expected etag after save"))
+      val etag = entry.etag.getOrElse(fail("expected etag after save"))
       state.saveWithETag(StateKey("k"), "v2", etag)
       assertEquals(state.get[String](StateKey("k")), Some("v2"))
 
@@ -217,7 +217,7 @@ class StateCapabilityTest extends FunSuite:
       val pubsub = scope.pubsub(PubSubName("my-pubsub"))
       val entries = Seq(
         BulkPublishEntry(BulkEntryId("1"), "event-a"),
-        BulkPublishEntry(BulkEntryId("2"), "event-b")
+        BulkPublishEntry(BulkEntryId("2"), "event-b"),
       )
       val result = pubsub.bulkPublish(Topic("orders"), entries)
       assertEquals(scope.publishedEvents.length, 2)
@@ -354,7 +354,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("pubsub operation throws IllegalStateException after scope close"):
     runSafe:
-      val scope  = MockDaprCapability()
+      val scope = MockDaprCapability()
       val pubsub = scope.pubsub(PubSubName("ps"))
       scope.close()
       var exOpt: Exception | Null = null
@@ -364,7 +364,7 @@ class StateCapabilityTest extends FunSuite:
 
   test("secrets operation throws IllegalStateException after scope close"):
     runSafe:
-      val scope   = MockDaprCapability()
+      val scope = MockDaprCapability()
       scope.seedSecret("vault", "k", "v")
       val secrets = scope.secrets(SecretStoreName("vault"))
       scope.close()
@@ -404,47 +404,47 @@ class StateCapabilityTest extends FunSuite:
   test("workflow.start returns a non-empty instance ID"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
-      val id    = wf.start(WorkflowName("MyWorkflow"))
+      val wf = scope.workflow
+      val id = wf.start(WorkflowName("MyWorkflow"))
       assert(id.value.nonEmpty)
 
   test("workflow.startWithId uses the provided ID"):
     withScope:
-      val scope    = summon[DaprCapability]
-      val wf       = scope.workflow
+      val scope = summon[DaprCapability]
+      val wf = scope.workflow
       val expected = WorkflowInstanceId("my-fixed-id")
-      val id       = wf.startWithId(WorkflowName("MyWorkflow"), expected)
+      val id = wf.startWithId(WorkflowName("MyWorkflow"), expected)
       assertEquals(id, expected)
 
   test("workflow.getStatus returns Running for newly started instance"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
-      val id    = wf.start(WorkflowName("MyWorkflow"))
-      val snap  = wf.getStatus(id)
+      val wf = scope.workflow
+      val id = wf.start(WorkflowName("MyWorkflow"))
+      val snap = wf.getStatus(id)
       assert(snap.isDefined)
       assertEquals(snap.get.status, WorkflowStatus.Running)
 
   test("workflow.getStatus returns None for unknown instance"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
-      val snap  = wf.getStatus(WorkflowInstanceId("no-such-instance"))
+      val wf = scope.workflow
+      val snap = wf.getStatus(WorkflowInstanceId("no-such-instance"))
       assert(snap.isEmpty)
 
   test("workflow.suspend transitions instance to Suspended"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
-      val id    = wf.start(WorkflowName("MyWorkflow"))
+      val wf = scope.workflow
+      val id = wf.start(WorkflowName("MyWorkflow"))
       wf.suspend(id)
       assertEquals(wf.getStatus(id).get.status, WorkflowStatus.Suspended)
 
   test("workflow.resume transitions instance to Running"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
-      val id    = wf.start(WorkflowName("MyWorkflow"))
+      val wf = scope.workflow
+      val id = wf.start(WorkflowName("MyWorkflow"))
       wf.suspend(id)
       wf.resume(id)
       assertEquals(wf.getStatus(id).get.status, WorkflowStatus.Running)
@@ -452,16 +452,16 @@ class StateCapabilityTest extends FunSuite:
   test("workflow.terminate transitions instance to Terminated"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
-      val id    = wf.start(WorkflowName("MyWorkflow"))
+      val wf = scope.workflow
+      val id = wf.start(WorkflowName("MyWorkflow"))
       wf.terminate(id)
       assertEquals(wf.getStatus(id).get.status, WorkflowStatus.Terminated)
 
   test("workflow.purge removes instance and returns true"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
-      val id    = wf.start(WorkflowName("MyWorkflow"))
+      val wf = scope.workflow
+      val id = wf.start(WorkflowName("MyWorkflow"))
       val purged = wf.purge(id)
       assert(purged)
       assert(wf.getStatus(id).isEmpty)
@@ -469,7 +469,7 @@ class StateCapabilityTest extends FunSuite:
   test("workflow.purge returns false for unknown instance"):
     withScope:
       val scope = summon[DaprCapability]
-      val wf    = scope.workflow
+      val wf = scope.workflow
       val purged = wf.purge(WorkflowInstanceId("ghost-id"))
       assert(!purged)
 

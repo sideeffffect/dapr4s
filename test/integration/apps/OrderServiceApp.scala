@@ -6,9 +6,8 @@ import unsafeExceptions.canThrowAny
 
 /** Standalone entry point for the Order microservice.
   *
-  * Starts an HTTP server on port 8080 (configurable via APP_PORT env var) that
-  * receives Dapr sidecar traffic: service invocation and (optionally) pub/sub
-  * subscriptions.
+  * Starts an HTTP server on port 8080 (configurable via APP_PORT env var) that receives Dapr sidecar traffic: service
+  * invocation and (optionally) pub/sub subscriptions.
   *
   * Run locally (requires Dapr sidecar on localhost:3500/50001):
   * {{{

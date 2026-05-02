@@ -90,7 +90,7 @@ final class MockDaprCapability extends DaprCapability:
 private class MockStateCapability(
     val storeName: StoreName,
     store: mutable.Map[String, (String, String)],
-    scope: MockDaprCapability
+    scope: MockDaprCapability,
 ) extends StateCapability:
 
   private var etagCounter: Int = 100
@@ -131,7 +131,7 @@ private class MockStateCapability(
     checkOpen()
     if etag.value.nonEmpty then
       store.get(key.value) match
-        case None => throw ETagMismatchException(key, etag)
+        case None                                                => throw ETagMismatchException(key, etag)
         case Some((_, currentEtag)) if currentEtag != etag.value =>
           throw ETagMismatchException(key, etag)
         case _ => // proceed
@@ -187,7 +187,7 @@ private class MockStateCapability(
 private class MockPubSubCapability(
     val pubsubName: PubSubName,
     events: mutable.ArrayBuffer[(String, String, String, Map[String, String])],
-    scope: MockDaprCapability
+    scope: MockDaprCapability,
 ) extends PubSubCapability:
 
   private def checkOpen(): Unit =
@@ -201,13 +201,14 @@ private class MockPubSubCapability(
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
       data: T,
-      metadata: Map[String, String]
+      metadata: Map[String, String],
   ): Unit throws DaprPubSubException =
     checkOpen()
     val json = summon[JsonCodec[T]].encode(data)
     events += ((pubsubName.value, topic.value, json, metadata))
 
-  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult throws DaprPubSubException =
+  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult throws
+    DaprPubSubException =
     checkOpen()
     entries.foreach { entry =>
       val json = summon[JsonCodec[T]].encode(entry.event)
@@ -222,16 +223,17 @@ private class MockServiceInvocationCapability(scope: MockDaprCapability) extends
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
-  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
+  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws
+    DaprServiceInvocationException =
     checkOpen()
     throw UnsupportedOperationException(
-      "MockServiceInvocationCapability does not support invoke — use integration tests"
+      "MockServiceInvocationCapability does not support invoke — use integration tests",
     )
 
   def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName): Resp throws DaprServiceInvocationException =
     checkOpen()
     throw UnsupportedOperationException(
-      "MockServiceInvocationCapability does not support invokeGet — use integration tests"
+      "MockServiceInvocationCapability does not support invokeGet — use integration tests",
     )
 
 // ---------------------------------------------------------------------------
@@ -239,7 +241,7 @@ private class MockServiceInvocationCapability(scope: MockDaprCapability) extends
 private class MockSecretsCapability(
     val storeName: SecretStoreName,
     store: mutable.Map[String, String],
-    scope: MockDaprCapability
+    scope: MockDaprCapability,
 ) extends SecretsCapability:
 
   private def checkOpen(): Unit =
@@ -258,7 +260,7 @@ private class MockSecretsCapability(
 private class MockConfigurationCapability(
     val storeName: ConfigStoreName,
     store: mutable.Map[String, ConfigItem],
-    scope: MockDaprCapability
+    scope: MockDaprCapability,
 ) extends ConfigurationCapability:
 
   private def checkOpen(): Unit =
@@ -274,12 +276,14 @@ private class MockConfigurationCapability(
 
 // ---------------------------------------------------------------------------
 
-private class MockBindingsCapability(val bindingName: BindingName, scope: MockDaprCapability) extends BindingsCapability:
+private class MockBindingsCapability(val bindingName: BindingName, scope: MockDaprCapability)
+    extends BindingsCapability:
 
   private def checkOpen(): Unit =
     if scope.isClosed then throw java.lang.IllegalStateException("Capability is closed: DaprCapability has been closed")
 
-  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException =
+  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws
+    DaprBindingsException =
     checkOpen()
     None // mock: no binding response
 
@@ -291,7 +295,7 @@ private class MockBindingsCapability(val bindingName: BindingName, scope: MockDa
 
 private class MockDistributedLockCapability(
     val storeName: StoreName,
-    scope: MockDaprCapability
+    scope: MockDaprCapability,
 ) extends DistributedLockCapability:
   // Simple in-memory lock state for testing
   private val locks: mutable.Map[String, String] = mutable.Map.empty // resourceId -> lockOwner
@@ -309,9 +313,9 @@ private class MockDistributedLockCapability(
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus throws DaprLockException =
     checkOpen()
     locks.get(resourceId.value) match
-      case None                                        => UnlockStatus.LockNotFound
-      case Some(owner) if owner != lockOwner.value     => UnlockStatus.InternalError
-      case Some(_) =>
+      case None                                    => UnlockStatus.LockNotFound
+      case Some(owner) if owner != lockOwner.value => UnlockStatus.InternalError
+      case Some(_)                                 =>
         locks.remove(resourceId.value)
         UnlockStatus.Success
 
@@ -320,7 +324,7 @@ private class MockDistributedLockCapability(
 private class MockActorCapability(
     val actorType: ActorType,
     val actorId: ActorId,
-    scope: MockDaprCapability
+    scope: MockDaprCapability,
 ) extends ActorCapability:
 
   private def checkOpen(): Unit =
@@ -329,19 +333,19 @@ private class MockActorCapability(
   def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprActorException =
     checkOpen()
     throw UnsupportedOperationException(
-      "MockActorCapability does not support invoke — use integration tests"
+      "MockActorCapability does not support invoke — use integration tests",
     )
 
   def invokeGet[Resp: JsonCodec](method: MethodName): Resp throws DaprActorException =
     checkOpen()
     throw UnsupportedOperationException(
-      "MockActorCapability does not support invokeGet — use integration tests"
+      "MockActorCapability does not support invokeGet — use integration tests",
     )
 
   def invokeVoid(method: MethodName): Unit throws DaprActorException =
     checkOpen()
     throw UnsupportedOperationException(
-      "MockActorCapability does not support invokeVoid — use integration tests"
+      "MockActorCapability does not support invokeVoid — use integration tests",
     )
 
 // ---------------------------------------------------------------------------
@@ -369,7 +373,8 @@ private class MockWorkflowCapability(scope: MockDaprCapability) extends Workflow
     instances(instanceId.value) = mockSnapshot(name, instanceId)
     instanceId
 
-  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId throws DaprWorkflowException =
+  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId throws
+    DaprWorkflowException =
     startWithId(name, instanceId)
 
   def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] throws DaprWorkflowException =
@@ -388,11 +393,13 @@ private class MockWorkflowCapability(scope: MockDaprCapability) extends Workflow
     checkOpen()
     updateStatus(instanceId, WorkflowStatus.Terminated)
 
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit throws DaprWorkflowException =
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit throws
+    DaprWorkflowException =
     checkOpen()
     () // mock: no-op
 
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] throws DaprWorkflowException =
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] throws
+    DaprWorkflowException =
     checkOpen()
     instances.get(instanceId.value)
 

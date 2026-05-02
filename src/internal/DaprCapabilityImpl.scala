@@ -11,24 +11,22 @@ import scala.util.control.NonFatal
 
 /** Concrete implementation of [[dapr.safe.DaprCapability]] backed by a real [[DaprClient]].
   *
-  * All interaction with the Java SDK is confined to this file and the
-  * individual `*CapabilityImpl` classes. No Java types are visible in the
-  * public API.
+  * All interaction with the Java SDK is confined to this file and the individual `*CapabilityImpl` classes. No Java
+  * types are visible in the public API.
   *
-  * Lifecycle: [[dapr.safe.DaprRuntime.run]] owns all three clients; it creates them,
-  * passes them here, and closes them in its `finally` block.  `actorClientRef` and
-  * `workflowClientRef` start as `null` and are lazily populated on first use via
-  * `AtomicReference.compareAndSet`, so [[dapr.safe.DaprRuntime.run]] can read the
-  * refs at teardown and close only what was actually created.
+  * Lifecycle: [[dapr.safe.DaprRuntime.run]] owns all three clients; it creates them, passes them here, and closes them
+  * in its `finally` block. `actorClientRef` and `workflowClientRef` start as `null` and are lazily populated on first
+  * use via `AtomicReference.compareAndSet`, so [[dapr.safe.DaprRuntime.run]] can read the refs at teardown and close
+  * only what was actually created.
   *
-  * Marked `@scala.caps.assumeSafe` so that safe-mode user code can use
-  * [[DaprCapability]] (implemented by this class) through the trait interface.
+  * Marked `@scala.caps.assumeSafe` so that safe-mode user code can use [[DaprCapability]] (implemented by this class)
+  * through the trait interface.
   */
 @scala.caps.assumeSafe
 private[safe] final class DaprCapabilityImpl(
     private[internal] val client: DaprClient,
     private val actorClientRef: AtomicReference[ActorClient],
-    private val workflowClientRef: AtomicReference[DaprWorkflowClient]
+    private val workflowClientRef: AtomicReference[DaprWorkflowClient],
 ) extends DaprCapability:
 
   def state(storeName: StoreName): StateCapability =
@@ -62,7 +60,7 @@ private[safe] final class DaprCapabilityImpl(
           try newAc.close()
           catch
             case _: InterruptedException => Thread.currentThread().interrupt()
-            case NonFatal(_) => ()
+            case NonFatal(_)             => ()
           actorClientRef.get().nn
       case existing => existing
     ActorCapabilityImpl.build(actorType, actorId, ac)
@@ -77,7 +75,7 @@ private[safe] final class DaprCapabilityImpl(
           try newWc.close()
           catch
             case _: InterruptedException => Thread.currentThread().interrupt()
-            case NonFatal(_) => ()
+            case NonFatal(_)             => ()
           workflowClientRef.get().nn
       case existing => existing
     new WorkflowCapabilityImpl(wc)

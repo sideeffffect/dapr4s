@@ -9,10 +9,8 @@ import unsafeExceptions.canThrowAny
 
 /** Integration tests for [[ServiceInvocationCapability]].
   *
-  * Service invocation requires a running target application. These tests
-  * verify that the wrapper correctly propagates the [[DaprException]] from
-  * the sidecar when no target is available (expected in CI without a real
-  * peer app).
+  * Service invocation requires a running target application. These tests verify that the wrapper correctly propagates
+  * the [[DaprException]] from the sidecar when no target is available (expected in CI without a real peer app).
   */
 @scala.caps.assumeSafe
 class InvokerIntegrationTest extends FunSuite with TestContainersForAll:
@@ -23,7 +21,7 @@ class InvokerIntegrationTest extends FunSuite with TestContainersForAll:
     val c = DaprTestContainer(
       DaprContainer("daprio/daprd:1.17.0")
         .withAppName("invoker-test-app")
-        .withAppPort(0)
+        .withAppPort(0),
     )
     c.start()
     c

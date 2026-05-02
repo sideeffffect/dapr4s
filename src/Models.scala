@@ -160,7 +160,7 @@ final case class ConfigItem(
     key: ConfigKey,
     value: String,
     version: String,
-    metadata: Map[String, String] = Map.empty
+    metadata: Map[String, String] = Map.empty,
 )
 
 // ---------------------------------------------------------------------------
@@ -172,9 +172,8 @@ sealed abstract class StateOp
 object StateOp:
   /** Upsert a key with a pre-encoded JSON value and an optional ETag.
     *
-    * Values are encoded at construction time to avoid type erasure issues
-    * when the operation is processed in [[StateCapability.transaction]].
-    * Use the companion `apply[T]` smart constructor to encode a typed value.
+    * Values are encoded at construction time to avoid type erasure issues when the operation is processed in
+    * [[StateCapability.transaction]]. Use the companion `apply[T]` smart constructor to encode a typed value.
     */
   final case class UpsertOp(key: StateKey, encodedValue: String, etag: Option[ETag]) extends StateOp
 
@@ -221,34 +220,36 @@ final case class ConfigUpdate(storeName: ConfigStoreName, items: Map[ConfigKey, 
 enum SubscriptionResult:
   /** ACK — do not redeliver. */
   case Success
+
   /** NAK — redeliver after the configured retry interval. */
   case Retry
+
   /** Silently discard — do not redeliver, do not report an error. */
   case Drop
 
 /** An incoming pub/sub CloudEvent delivered by the Dapr sidecar. */
 final case class CloudEvent[T](
-  id: String,
-  source: String,
-  specVersion: String,
-  eventType: String,
-  topic: Topic,
-  pubSubName: PubSubName,
-  dataContentType: String,
-  data: T
+    id: String,
+    source: String,
+    specVersion: String,
+    eventType: String,
+    topic: Topic,
+    pubSubName: PubSubName,
+    dataContentType: String,
+    data: T,
 )
 
 // ---------------------------------------------------------------------------
 // Service invocation (as a target)
 // ---------------------------------------------------------------------------
 
-/** An incoming service invocation request. `httpMethod` is the HTTP verb
-  * (GET, POST, PUT, DELETE, etc.) used by the calling app.
+/** An incoming service invocation request. `httpMethod` is the HTTP verb (GET, POST, PUT, DELETE, etc.) used by the
+  * calling app.
   */
 final case class InvocationRequest[T](
-  methodName: MethodName,
-  httpMethod: HttpMethod,
-  data: T
+    methodName: MethodName,
+    httpMethod: HttpMethod,
+    data: T,
 )
 
 // ---------------------------------------------------------------------------
@@ -268,11 +269,11 @@ enum WorkflowStatus:
 
 /** A snapshot of a workflow instance's current state. */
 final case class WorkflowSnapshot(
-  name: WorkflowName,
-  instanceId: WorkflowInstanceId,
-  status: WorkflowStatus,
-  createdAt: java.time.Instant,
-  lastUpdatedAt: java.time.Instant,
-  serializedInput: Option[String],
-  serializedOutput: Option[String]
+    name: WorkflowName,
+    instanceId: WorkflowInstanceId,
+    status: WorkflowStatus,
+    createdAt: java.time.Instant,
+    lastUpdatedAt: java.time.Instant,
+    serializedInput: Option[String],
+    serializedOutput: Option[String],
 )

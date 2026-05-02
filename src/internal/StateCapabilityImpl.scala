@@ -11,7 +11,7 @@ import MonoOps.*
 @scala.caps.assumeSafe
 private[safe] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
-    val storeName: StoreName
+    val storeName: StoreName,
 ) extends StateCapability:
 
   def get[T: JsonCodec](key: StateKey): Option[T] throws DaprStateException =
@@ -25,8 +25,8 @@ private[safe] final class StateCapabilityImpl(
         JsonCodec.decodeOrThrow[T](raw) match
           case v => Some(v)
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
@@ -35,17 +35,16 @@ private[safe] final class StateCapabilityImpl(
       val state: DaprState[String] | Null =
         scope.client.getState(storeName.value, key.value, classOf[String]).awaitResult()
       if state == null then return StateEntry(None, None)
-      val raw: String | Null  = state.getValue
+      val raw: String | Null = state.getValue
       val etag: String | Null = state.getEtag
-      if raw == null || raw.isEmpty then
-        StateEntry(None, Option(etag.asInstanceOf[String]).map(ETag(_)))
+      if raw == null || raw.isEmpty then StateEntry(None, Option(etag.asInstanceOf[String]).map(ETag(_)))
       else
         val decoded = JsonCodec.decodeOrThrow[T](raw) match
           case v => Some(v)
         StateEntry(decoded, Option(etag.asInstanceOf[String]).map(ETag(_)))
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
@@ -57,12 +56,11 @@ private[safe] final class StateCapabilityImpl(
         scope.client.getBulkState(storeName.value, javaKeys, classOf[String]).awaitResult()
       if results == null then return keys.map(k => k -> StateEntry[T](None, None)).toMap
       results.asScala.map { state =>
-        val key   = StateKey(state.getKey.nn)
-        val raw: String | Null  = state.getValue
+        val key = StateKey(state.getKey.nn)
+        val raw: String | Null = state.getValue
         val etag: String | Null = state.getEtag
         val entry: StateEntry[T] =
-          if raw == null || raw.isEmpty then
-            StateEntry(None, Option(etag.asInstanceOf[String]).map(ETag(_)))
+          if raw == null || raw.isEmpty then StateEntry(None, Option(etag.asInstanceOf[String]).map(ETag(_)))
           else
             val decoded = JsonCodec.decodeOrThrow[T](raw) match
               case v => Some(v)
@@ -70,8 +68,8 @@ private[safe] final class StateCapabilityImpl(
         key -> entry
       }.toMap
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
@@ -80,8 +78,8 @@ private[safe] final class StateCapabilityImpl(
       val json = summon[JsonCodec[T]].encode(value)
       scope.client.saveState(storeName.value, key.value, json).awaitResult(): Unit
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
@@ -94,8 +92,8 @@ private[safe] final class StateCapabilityImpl(
       }.asJava
       scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
@@ -107,18 +105,17 @@ private[safe] final class StateCapabilityImpl(
         .saveState(storeName.value, key.value, etag.value, json, opts)
         .awaitResult(): Unit
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         if isETagConflict(e) then throw ETagMismatchException(key, etag)
         else throw DaprStateException(e.getMessage.nn, e)
 
   def delete(key: StateKey): Unit throws DaprStateException =
-    try
-      scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
+    try scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
@@ -127,8 +124,8 @@ private[safe] final class StateCapabilityImpl(
       val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
       scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(): Unit
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         if isETagConflict(e) then throw ETagMismatchException(key, etag)
         else throw DaprStateException(e.getMessage.nn, e)
@@ -141,8 +138,8 @@ private[safe] final class StateCapabilityImpl(
         .executeStateTransaction(storeName.value, javaOps)
         .awaitResult(): Unit
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
 
@@ -155,18 +152,17 @@ private[safe] final class StateCapabilityImpl(
       val items = result.getResults
       if items == null then return List.empty
       items.asScala.toList.map { item =>
-        val raw: String | Null  = item.getValue
+        val raw: String | Null = item.getValue
         val etag: String | Null = item.getEtag
-        if raw == null || raw.isEmpty then
-          StateEntry[T](None, Option(etag.asInstanceOf[String]).map(ETag(_)))
+        if raw == null || raw.isEmpty then StateEntry[T](None, Option(etag.asInstanceOf[String]).map(ETag(_)))
         else
           val decoded = JsonCodec.decodeOrThrow[T](raw) match
             case v => Some(v)
           StateEntry(decoded, Option(etag.asInstanceOf[String]).map(ETag(_)))
       }
     catch
-      case e: DaprStateException => throw e
-      case e: DaprException => throw DaprStateException(e.getMessage, e)
+      case e: DaprStateException               => throw e
+      case e: DaprException                    => throw DaprStateException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprStateException(e.getMessage.nn, e)
       case e: ClassCastException =>

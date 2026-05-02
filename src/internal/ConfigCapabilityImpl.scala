@@ -11,7 +11,7 @@ import MonoOps.*
 @scala.caps.assumeSafe
 private[safe] final class ConfigCapabilityImpl(
     scope: DaprCapabilityImpl,
-    val storeName: ConfigStoreName
+    val storeName: ConfigStoreName,
 ) extends ConfigurationCapability:
 
   def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] throws DaprConfigurationException =
@@ -22,18 +22,18 @@ private[safe] final class ConfigCapabilityImpl(
         scope.client.getConfiguration(storeName.value, javaKeys, emptyMeta).awaitResult()
       if result == null then return Map.empty
       result.asScala.map { case (k, item) =>
-        val v: String | Null       = item.getValue
-        val ver: String | Null     = item.getVersion
+        val v: String | Null = item.getValue
+        val ver: String | Null = item.getVersion
         val meta: java.util.Map[String, String] | Null = item.getMetadata
         ConfigKey(k) -> ConfigItem(
-          key      = ConfigKey(k),
-          value    = if v == null then "" else v,
-          version  = if ver == null then "" else ver,
-          metadata = if meta == null then Map.empty else meta.asScala.toMap
+          key = ConfigKey(k),
+          value = if v == null then "" else v,
+          version = if ver == null then "" else ver,
+          metadata = if meta == null then Map.empty else meta.asScala.toMap,
         )
       }.toMap
     catch
-      case e: DaprConfigurationException => throw e
+      case e: DaprConfigurationException       => throw e
       case e: io.dapr.exceptions.DaprException =>
         throw DaprConfigurationException(e.getMessage.nn, e)
 
@@ -47,14 +47,14 @@ private[safe] final class ConfigCapabilityImpl(
           val jItems: java.util.Map[String, JConfigItem] | Null = response.getItems
           if jItems != null then
             val items = jItems.asScala.map { case (k, item) =>
-              val v: String | Null   = item.getValue
+              val v: String | Null = item.getValue
               val ver: String | Null = item.getVersion
               val meta: java.util.Map[String, String] | Null = item.getMetadata
               ConfigKey(k) -> ConfigItem(
-                key      = ConfigKey(k),
-                value    = if v == null then "" else v,
-                version  = if ver == null then "" else ver,
-                metadata = if meta == null then Map.empty else meta.asScala.toMap
+                key = ConfigKey(k),
+                value = if v == null then "" else v,
+                version = if ver == null then "" else ver,
+                metadata = if meta == null then Map.empty else meta.asScala.toMap,
               )
             }.toMap
             try onChange(ConfigUpdate(ConfigStoreName(storeNameStr), items))
@@ -62,6 +62,6 @@ private[safe] final class ConfigCapabilityImpl(
       }
       () => sub.dispose()
     catch
-      case e: DaprConfigurationException => throw e
+      case e: DaprConfigurationException       => throw e
       case e: io.dapr.exceptions.DaprException =>
         throw DaprConfigurationException(e.getMessage.nn, e)

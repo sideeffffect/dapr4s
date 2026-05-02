@@ -9,7 +9,7 @@ import MonoOps.*
 @scala.caps.assumeSafe
 private[safe] final class SecretsCapabilityImpl(
     scope: DaprCapabilityImpl,
-    val storeName: SecretStoreName
+    val storeName: SecretStoreName,
 ) extends SecretsCapability:
 
   def get(key: SecretKey): String throws DaprSecretsException =
@@ -21,12 +21,12 @@ private[safe] final class SecretsCapabilityImpl(
       val scalaMap = result.asScala
       scalaMap.get(key.value) match
         case Some(v) => v
-        case None =>
+        case None    =>
           scalaMap.valuesIterator.nextOption() match
             case Some(v) if scalaMap.sizeIs == 1 => v
             case _ => throw DaprSecretsException(s"Secret key '${key.value}' not found in store '${storeName.value}'")
     catch
-      case e: DaprSecretsException => throw e
+      case e: DaprSecretsException             => throw e
       case e: io.dapr.exceptions.DaprException =>
         throw DaprSecretsException(e.getMessage.nn, e)
 
@@ -37,11 +37,12 @@ private[safe] final class SecretsCapabilityImpl(
       if result == null then return Map.empty
       result.asScala.flatMap { case (secretKey, subMap) =>
         if subMap == null then Map.empty
-        else subMap.asScala.map { case (subKey, v) =>
-          SecretKey(s"$secretKey/$subKey") -> v
-        }.toMap
+        else
+          subMap.asScala.map { case (subKey, v) =>
+            SecretKey(s"$secretKey/$subKey") -> v
+          }.toMap
       }.toMap
     catch
-      case e: DaprSecretsException => throw e
+      case e: DaprSecretsException             => throw e
       case e: io.dapr.exceptions.DaprException =>
         throw DaprSecretsException(e.getMessage.nn, e)

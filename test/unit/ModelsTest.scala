@@ -47,8 +47,8 @@ class ModelsTest extends FunSuite:
     assertEquals(q.value, "{\"filter\":{}}")
 
   test("Opaque types prevent mix-up at compile time"):
-    val store: StoreName    = StoreName("s")
-    val pubsub: PubSubName  = PubSubName("p")
+    val store: StoreName = StoreName("s")
+    val pubsub: PubSubName = PubSubName("p")
     assertEquals(store.value, "s")
     assertEquals(pubsub.value, "p")
 
@@ -129,7 +129,7 @@ class ModelsTest extends FunSuite:
 
   test("DaprException with cause"):
     val cause = RuntimeException("root cause")
-    val ex    = DaprException("wrapper", cause)
+    val ex = DaprException("wrapper", cause)
     assertEquals(ex.getCause, cause)
 
   test("DaprException with null cause has null getCause"):
@@ -241,20 +241,20 @@ class ModelsTest extends FunSuite:
       WorkflowStatus.Canceled,
       WorkflowStatus.Terminated,
       WorkflowStatus.Pending,
-      WorkflowStatus.Suspended
+      WorkflowStatus.Suspended,
     )
     assertEquals(all.distinct.size, 8)
 
   test("WorkflowSnapshot holds all fields"):
     val now = java.time.Instant.now()
     val snap = WorkflowSnapshot(
-      name            = WorkflowName("MyWorkflow"),
-      instanceId      = WorkflowInstanceId("inst-1"),
-      status          = WorkflowStatus.Running,
-      createdAt       = now,
-      lastUpdatedAt   = now,
-      serializedInput  = Some("{\"x\":1}"),
-      serializedOutput = None
+      name = WorkflowName("MyWorkflow"),
+      instanceId = WorkflowInstanceId("inst-1"),
+      status = WorkflowStatus.Running,
+      createdAt = now,
+      lastUpdatedAt = now,
+      serializedInput = Some("{\"x\":1}"),
+      serializedOutput = None,
     )
     assertEquals(snap.name.value, "MyWorkflow")
     assertEquals(snap.instanceId.value, "inst-1")

@@ -7,9 +7,8 @@ import unsafeExceptions.canThrowAny
 
 /** Unit tests for the subscriber-side types and DaprAppServer implementation.
   *
-  * These tests verify the HTTP dispatch logic of DaprAppServer without
-  * requiring Docker — by calling the server's internal helpers directly via
-  * a real local HTTP server on an ephemeral port.
+  * These tests verify the HTTP dispatch logic of DaprAppServer without requiring Docker — by calling the server's
+  * internal helpers directly via a real local HTTP server on an ephemeral port.
   */
 @scala.caps.assumeSafe
 class SubscriberTest extends FunSuite:
@@ -31,14 +30,14 @@ class SubscriberTest extends FunSuite:
 
   test("unit: CloudEvent stores all fields"):
     val event = CloudEvent[String](
-      id              = "abc",
-      source          = "test",
-      specVersion     = "1.0",
-      eventType       = "com.example.event",
-      topic           = Topic("orders"),
-      pubSubName      = PubSubName("pubsub"),
+      id = "abc",
+      source = "test",
+      specVersion = "1.0",
+      eventType = "com.example.event",
+      topic = Topic("orders"),
+      pubSubName = PubSubName("pubsub"),
       dataContentType = "application/json",
-      data            = "hello"
+      data = "hello",
     )
     assertEquals(event.id, "abc")
     assertEquals(event.source, "test")
@@ -57,11 +56,11 @@ class SubscriberTest extends FunSuite:
         Subscription[String](PubSubName("ps"), Topic("orders")) { event =>
           received = event.data
           SubscriptionResult.Success
-        }
-      )
+        },
+      ),
     )
     val server = new dapr.safe.internal.DaprAppServer(app)
-    val port   = freePort()
+    val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
 
     try
@@ -70,7 +69,7 @@ class SubscriberTest extends FunSuite:
       // Check /dapr/subscribe
       val subResp = httpGet(s"http://localhost:$port/dapr/subscribe")
       assert(subResp.contains("orders"), s"subscribe list missing topic: $subResp")
-      assert(subResp.contains("ps"),     s"subscribe list missing pubsub: $subResp")
+      assert(subResp.contains("ps"), s"subscribe list missing pubsub: $subResp")
 
       // POST a CloudEvent to /orders
       val cloudEvent =
@@ -89,11 +88,11 @@ class SubscriberTest extends FunSuite:
       subscriptions = List(
         Subscription[String](PubSubName("ps"), Topic("boom")) { _ =>
           throw RuntimeException("deliberate failure")
-        }
-      )
+        },
+      ),
     )
     val server = new dapr.safe.internal.DaprAppServer(app)
-    val port   = freePort()
+    val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
       waitForPort(port)
@@ -110,11 +109,11 @@ class SubscriberTest extends FunSuite:
   test("unit: DaprAppServer dispatch DROP on undecodable payload"):
     val app = DaprApp(
       subscriptions = List(
-        Subscription[Int](PubSubName("ps"), Topic("numbers")) { _ => SubscriptionResult.Success }
-      )
+        Subscription[Int](PubSubName("ps"), Topic("numbers")) { _ => SubscriptionResult.Success },
+      ),
     )
     val server = new dapr.safe.internal.DaprAppServer(app)
-    val port   = freePort()
+    val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
       waitForPort(port)
@@ -133,11 +132,11 @@ class SubscriberTest extends FunSuite:
     var received: String | Null = null
     val app = DaprApp(
       bindings = List(
-        BindingRoute[String](BindingName("myqueue")) { payload => received = payload }
-      )
+        BindingRoute[String](BindingName("myqueue")) { payload => received = payload },
+      ),
     )
     val server = new dapr.safe.internal.DaprAppServer(app)
-    val port   = freePort()
+    val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
       waitForPort(port)
@@ -150,11 +149,11 @@ class SubscriberTest extends FunSuite:
   test("unit: DaprAppServer dispatches invocation and returns response from DaprApp"):
     val app = DaprApp(
       invocations = List(
-        InvocationRoute[String, String](MethodName("echo")) { req => "echo:" + req }
-      )
+        InvocationRoute[String, String](MethodName("echo")) { req => "echo:" + req },
+      ),
     )
     val server = new dapr.safe.internal.DaprAppServer(app)
-    val port   = freePort()
+    val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
       waitForPort(port)
@@ -166,7 +165,7 @@ class SubscriberTest extends FunSuite:
 
   test("unit: DaprAppServer returns 404 for unknown route"):
     val server = new dapr.safe.internal.DaprAppServer(DaprApp())
-    val port   = freePort()
+    val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
       waitForPort(port)
@@ -179,10 +178,10 @@ class SubscriberTest extends FunSuite:
   test("unit: DaprApp ++ merges subscriptions and invocations"):
     val app1 = DaprApp(
       subscriptions = List(Subscription[String](PubSubName("p"), Topic("t1")) { _ => SubscriptionResult.Success }),
-      invocations   = List(InvocationRoute[String, String](MethodName("m1")) { s => s })
+      invocations = List(InvocationRoute[String, String](MethodName("m1")) { s => s }),
     )
     val app2 = DaprApp(
-      invocations = List(InvocationRoute[Int, Int](MethodName("m2")) { n => n + 1 })
+      invocations = List(InvocationRoute[Int, Int](MethodName("m2")) { n => n + 1 }),
     )
     val combined = app1 ++ app2
     assertEquals(combined.subscriptions.size, 1)
@@ -207,8 +206,9 @@ class SubscriberTest extends FunSuite:
         val sock = java.net.Socket("localhost", port)
         sock.close()
         return
-      catch case _: java.io.IOException =>
-        Thread.sleep(20)
+      catch
+        case _: java.io.IOException =>
+          Thread.sleep(20)
     throw RuntimeException(s"Port $port did not open within ${maxMs}ms")
 
   private def httpGet(url: String): String =
@@ -232,7 +232,7 @@ class SubscriberTest extends FunSuite:
     conn.connect()
     conn.getOutputStream.nn.write(bytes)
     conn.getOutputStream.nn.flush()
-    val code   = conn.getResponseCode
+    val code = conn.getResponseCode
     // getInputStream throws FileNotFoundException on 4xx/5xx; use getErrorStream instead
     val stream =
       val err = conn.getErrorStream

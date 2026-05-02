@@ -8,7 +8,7 @@ import MonoOps.*
 @scala.caps.assumeSafe
 private[safe] final class LockCapabilityImpl(
     scope: DaprCapabilityImpl,
-    val storeName: StoreName
+    val storeName: StoreName,
 ) extends DistributedLockCapability:
 
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int): Boolean throws DaprLockException =
@@ -20,7 +20,7 @@ private[safe] final class LockCapabilityImpl(
       if result == null then false
       else result.booleanValue()
     catch
-      case e: DaprLockException => throw e
+      case e: DaprLockException                => throw e
       case e: io.dapr.exceptions.DaprException =>
         throw DaprLockException(e.getMessage.nn, e)
       case e: ClassCastException =>
@@ -35,12 +35,12 @@ private[safe] final class LockCapabilityImpl(
       if status == null then UnlockStatus.InternalError
       else
         status match
-          case UnlockResponseStatus.SUCCESS              => UnlockStatus.Success
-          case UnlockResponseStatus.LOCK_UNEXIST         => UnlockStatus.LockNotFound
+          case UnlockResponseStatus.SUCCESS               => UnlockStatus.Success
+          case UnlockResponseStatus.LOCK_UNEXIST          => UnlockStatus.LockNotFound
           case UnlockResponseStatus.LOCK_BELONG_TO_OTHERS => UnlockStatus.InternalError
-          case UnlockResponseStatus.INTERNAL_ERROR       => UnlockStatus.InternalError
+          case UnlockResponseStatus.INTERNAL_ERROR        => UnlockStatus.InternalError
     catch
-      case e: DaprLockException => throw e
+      case e: DaprLockException                => throw e
       case e: io.dapr.exceptions.DaprException =>
         throw DaprLockException(e.getMessage.nn, e)
       case e: ClassCastException =>

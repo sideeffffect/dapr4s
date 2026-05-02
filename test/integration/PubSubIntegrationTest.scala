@@ -9,8 +9,7 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Integration tests for [[PubSubCapability]] using a real DAPR sidecar in
-  * Docker via Testcontainers.
+/** Integration tests for [[PubSubCapability]] using a real DAPR sidecar in Docker via Testcontainers.
   */
 @scala.caps.assumeSafe
 class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
@@ -22,13 +21,13 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
       "pubsub",
       "pubsub.in-memory",
       "v1",
-      Collections.emptyMap[String, String]()
+      Collections.emptyMap[String, String](),
     )
     val c = DaprTestContainer(
       DaprContainer("daprio/daprd:1.17.0")
         .withAppName("pubsub-test-app")
         .withAppPort(0)
-        .withComponent(component)
+        .withComponent(component),
     )
     c.start()
     c
@@ -49,7 +48,7 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
         ps.publishWithMetadata(
           Topic("test-topic"),
           "with-metadata",
-          Map("traceparent" -> "00-abc-def-01")
+          Map("traceparent" -> "00-abc-def-01"),
         )
     }
 

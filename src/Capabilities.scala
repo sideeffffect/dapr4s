@@ -30,16 +30,14 @@ trait StateCapability:
   /** Save multiple key-value pairs in a single call. */
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit throws DaprStateException
 
-  /** Save a value only if the provided ETag matches the server-side ETag.
-    * Throws [[ETagMismatchException]] on conflict.
+  /** Save a value only if the provided ETag matches the server-side ETag. Throws [[ETagMismatchException]] on conflict.
     */
   def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Unit throws DaprStateException
 
   /** Unconditionally delete a key (no-op if the key is absent). */
   def delete(key: StateKey): Unit throws DaprStateException
 
-  /** Delete a key only if the provided ETag matches.
-    * Throws [[ETagMismatchException]] on conflict.
+  /** Delete a key only if the provided ETag matches. Throws [[ETagMismatchException]] on conflict.
     */
   def deleteWithETag(key: StateKey, etag: ETag): Unit throws DaprStateException
 
@@ -51,8 +49,8 @@ trait StateCapability:
 
 /** Companion-object API for [[StateCapability]].
   *
-  * Each method forwards to the `StateCapability` provided by the enclosing
-  * `using` context, so callers never need to name the capability:
+  * Each method forwards to the `StateCapability` provided by the enclosing `using` context, so callers never need to
+  * name the capability:
   * {{{
   *   def myHandler(key: StateKey)(using StateCapability): String throws Exception =
   *     StateCapability.get[String](key).getOrElse("default")
@@ -63,13 +61,17 @@ object StateCapability:
     cap.get(key)
   def getWithETag[T: JsonCodec](key: StateKey)(using cap: StateCapability): StateEntry[T] throws DaprStateException =
     cap.getWithETag(key)
-  def getBulk[T: JsonCodec](keys: Seq[StateKey])(using cap: StateCapability): Map[StateKey, StateEntry[T]] throws DaprStateException =
+  def getBulk[T: JsonCodec](keys: Seq[StateKey])(using
+      cap: StateCapability,
+  ): Map[StateKey, StateEntry[T]] throws DaprStateException =
     cap.getBulk(keys)
   def save[T: JsonCodec](key: StateKey, value: T)(using cap: StateCapability): Unit throws DaprStateException =
     cap.save(key, value)
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)])(using cap: StateCapability): Unit throws DaprStateException =
     cap.saveBulk(entries)
-  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag)(using cap: StateCapability): Unit throws DaprStateException =
+  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag)(using
+      cap: StateCapability,
+  ): Unit throws DaprStateException =
     cap.saveWithETag(key, value, etag)
   def delete(key: StateKey)(using cap: StateCapability): Unit throws DaprStateException =
     cap.delete(key)
@@ -77,7 +79,9 @@ object StateCapability:
     cap.deleteWithETag(key, etag)
   def transaction(ops: Seq[StateOp])(using cap: StateCapability): Unit throws DaprStateException =
     cap.transaction(ops)
-  def queryState[T: JsonCodec](query: StateQuery)(using cap: StateCapability): List[StateEntry[T]] throws DaprStateException =
+  def queryState[T: JsonCodec](query: StateQuery)(using
+      cap: StateCapability,
+  ): List[StateEntry[T]] throws DaprStateException =
     cap.queryState(query)
 
 // ---------------------------------------------------------------------------
@@ -94,11 +98,12 @@ trait PubSubCapability:
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
       data: T,
-      metadata: Map[String, String]
+      metadata: Map[String, String],
   ): Unit throws DaprPubSubException
 
   /** Publish multiple entries to `topic` in a single call. */
-  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult throws DaprPubSubException
+  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult throws
+    DaprPubSubException
 
 /** Companion-object API for [[PubSubCapability]]. */
 object PubSubCapability:
@@ -107,10 +112,12 @@ object PubSubCapability:
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
       data: T,
-      metadata: Map[String, String]
+      metadata: Map[String, String],
   )(using cap: PubSubCapability): Unit throws DaprPubSubException =
     cap.publishWithMetadata(topic, data, metadata)
-  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]])(using cap: PubSubCapability): BulkPublishResult throws DaprPubSubException =
+  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]])(using
+      cap: PubSubCapability,
+  ): BulkPublishResult throws DaprPubSubException =
     cap.bulkPublish(topic, entries)
 
 // ---------------------------------------------------------------------------
@@ -119,20 +126,24 @@ object PubSubCapability:
 @scala.caps.assumeSafe
 trait ServiceInvocationCapability:
 
-  /** Invoke a remote method with a request body (HTTP POST).
-    * `Req` is inferred from `data`; `Resp` is specified at the call site:
-    * {{{invoker.invoke(appId, method, requestData)[ResponseType]}}}
+  /** Invoke a remote method with a request body (HTTP POST). `Req` is inferred from `data`; `Resp` is specified at the
+    * call site: {{{invoker.invoke(appId, method, requestData)[ResponseType]}}}
     */
-  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException
+  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws
+    DaprServiceInvocationException
 
   /** Invoke a remote method with no request body (HTTP GET). */
   def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName): Resp throws DaprServiceInvocationException
 
 /** Companion-object API for [[ServiceInvocationCapability]]. */
 object ServiceInvocationCapability:
-  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec](using cap: ServiceInvocationCapability): Resp throws DaprServiceInvocationException =
+  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec](using
+      cap: ServiceInvocationCapability,
+  ): Resp throws DaprServiceInvocationException =
     cap.invoke(appId, method, data)[Resp]
-  def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName)(using cap: ServiceInvocationCapability): Resp throws DaprServiceInvocationException =
+  def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName)(using
+      cap: ServiceInvocationCapability,
+  ): Resp throws DaprServiceInvocationException =
     cap.invokeGet(appId, method)
 
 // ---------------------------------------------------------------------------
@@ -167,18 +178,21 @@ trait ConfigurationCapability:
 
   /** Subscribe to live configuration changes for the given keys.
     *
-    * `onChange` is called on a background thread whenever the sidecar delivers
-    * an update.  Returns an `AutoCloseable` that stops the subscription when
-    * closed.  The subscription is also stopped when the enclosing [[DaprCapability]]
-    * is closed.
+    * `onChange` is called on a background thread whenever the sidecar delivers an update. Returns an `AutoCloseable`
+    * that stops the subscription when closed. The subscription is also stopped when the enclosing [[DaprCapability]] is
+    * closed.
     */
   def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable throws DaprConfigurationException
 
 /** Companion-object API for [[ConfigurationCapability]]. */
 object ConfigurationCapability:
-  def get(keys: Seq[ConfigKey])(using cap: ConfigurationCapability): Map[ConfigKey, ConfigItem] throws DaprConfigurationException =
+  def get(keys: Seq[ConfigKey])(using
+      cap: ConfigurationCapability,
+  ): Map[ConfigKey, ConfigItem] throws DaprConfigurationException =
     cap.get(keys)
-  def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit)(using cap: ConfigurationCapability): AutoCloseable throws DaprConfigurationException =
+  def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit)(using
+      cap: ConfigurationCapability,
+  ): AutoCloseable throws DaprConfigurationException =
     cap.subscribe(keys)(onChange)
 
 // ---------------------------------------------------------------------------
@@ -188,20 +202,24 @@ object ConfigurationCapability:
 trait BindingsCapability:
   val bindingName: BindingName
 
-  /** Invoke a binding operation that may return a response.
-    * `Req` is inferred from `data`; `Resp` is specified at the call site:
-    * {{{binding.invoke(operation, requestData)[ResponseType]}}}
+  /** Invoke a binding operation that may return a response. `Req` is inferred from `data`; `Resp` is specified at the
+    * call site: {{{binding.invoke(operation, requestData)[ResponseType]}}}
     */
-  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws DaprBindingsException
+  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp] throws
+    DaprBindingsException
 
   /** Fire-and-forget binding invocation (no response expected). */
   def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req): Unit throws DaprBindingsException
 
 /** Companion-object API for [[BindingsCapability]]. */
 object BindingsCapability:
-  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec](using cap: BindingsCapability): Option[Resp] throws DaprBindingsException =
+  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec](using
+      cap: BindingsCapability,
+  ): Option[Resp] throws DaprBindingsException =
     cap.invoke(operation, data)[Resp]
-  def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req)(using cap: BindingsCapability): Unit throws DaprBindingsException =
+  def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req)(using
+      cap: BindingsCapability,
+  ): Unit throws DaprBindingsException =
     cap.invokeOneWay(operation, data)
 
 // ---------------------------------------------------------------------------
@@ -219,9 +237,13 @@ trait DistributedLockCapability:
 
 /** Companion-object API for [[DistributedLockCapability]]. */
 object DistributedLockCapability:
-  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int)(using cap: DistributedLockCapability): Boolean throws DaprLockException =
+  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int)(using
+      cap: DistributedLockCapability,
+  ): Boolean throws DaprLockException =
     cap.tryLock(resourceId, lockOwner, expirySeconds)
-  def unlock(resourceId: LockResourceId, lockOwner: LockOwner)(using cap: DistributedLockCapability): UnlockStatus throws DaprLockException =
+  def unlock(resourceId: LockResourceId, lockOwner: LockOwner)(using
+      cap: DistributedLockCapability,
+  ): UnlockStatus throws DaprLockException =
     cap.unlock(resourceId, lockOwner)
 
 // ---------------------------------------------------------------------------
@@ -248,7 +270,9 @@ trait ActorCapability:
 
 /** Companion-object API for [[ActorCapability]]. */
 object ActorCapability:
-  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec](using cap: ActorCapability): Resp throws DaprActorException =
+  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec](using
+      cap: ActorCapability,
+  ): Resp throws DaprActorException =
     cap.invoke(method, data)[Resp]
   def invokeGet[Resp: JsonCodec](method: MethodName)(using cap: ActorCapability): Resp throws DaprActorException =
     cap.invokeGet(method)
@@ -271,10 +295,10 @@ trait WorkflowCapability:
   def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId throws DaprWorkflowException
 
   /** Start a new workflow instance with a specific instance ID and typed input. */
-  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId throws DaprWorkflowException
+  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId throws
+    DaprWorkflowException
 
-  /** Fetch the current status snapshot of a workflow instance.
-    * Returns `None` if the instance does not exist.
+  /** Fetch the current status snapshot of a workflow instance. Returns `None` if the instance does not exist.
     */
   def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] throws DaprWorkflowException
 
@@ -288,13 +312,14 @@ trait WorkflowCapability:
   def terminate(instanceId: WorkflowInstanceId): Unit throws DaprWorkflowException
 
   /** Send an external event to a waiting workflow instance. */
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit throws DaprWorkflowException
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit throws
+    DaprWorkflowException
 
-  /** Block until the workflow instance completes (or the timeout expires).
-    * Returns the final snapshot, or `None` if the instance was not found.
-    * Throws `DaprWorkflowException` on timeout.
+  /** Block until the workflow instance completes (or the timeout expires). Returns the final snapshot, or `None` if the
+    * instance was not found. Throws `DaprWorkflowException` on timeout.
     */
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] throws DaprWorkflowException
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] throws
+    DaprWorkflowException
 
   /** Purge the workflow instance state from the state store. Returns `true` if purged. */
   def purge(instanceId: WorkflowInstanceId): Boolean throws DaprWorkflowException
@@ -303,13 +328,21 @@ trait WorkflowCapability:
 object WorkflowCapability:
   def start(name: WorkflowName)(using cap: WorkflowCapability): WorkflowInstanceId throws DaprWorkflowException =
     cap.start(name)
-  def start[I: JsonCodec](name: WorkflowName, input: I)(using cap: WorkflowCapability): WorkflowInstanceId throws DaprWorkflowException =
+  def start[I: JsonCodec](name: WorkflowName, input: I)(using
+      cap: WorkflowCapability,
+  ): WorkflowInstanceId throws DaprWorkflowException =
     cap.start(name, input)
-  def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): WorkflowInstanceId throws DaprWorkflowException =
+  def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId)(using
+      cap: WorkflowCapability,
+  ): WorkflowInstanceId throws DaprWorkflowException =
     cap.startWithId(name, instanceId)
-  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I)(using cap: WorkflowCapability): WorkflowInstanceId throws DaprWorkflowException =
+  def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I)(using
+      cap: WorkflowCapability,
+  ): WorkflowInstanceId throws DaprWorkflowException =
     cap.startWithId(name, instanceId, input)
-  def getStatus(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Option[WorkflowSnapshot] throws DaprWorkflowException =
+  def getStatus(instanceId: WorkflowInstanceId)(using
+      cap: WorkflowCapability,
+  ): Option[WorkflowSnapshot] throws DaprWorkflowException =
     cap.getStatus(instanceId)
   def suspend(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Unit throws DaprWorkflowException =
     cap.suspend(instanceId)
@@ -317,9 +350,13 @@ object WorkflowCapability:
     cap.resume(instanceId)
   def terminate(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Unit throws DaprWorkflowException =
     cap.terminate(instanceId)
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E)(using cap: WorkflowCapability): Unit throws DaprWorkflowException =
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E)(using
+      cap: WorkflowCapability,
+  ): Unit throws DaprWorkflowException =
     cap.raiseEvent(instanceId, eventName, payload)
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration)(using cap: WorkflowCapability): Option[WorkflowSnapshot] throws DaprWorkflowException =
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration)(using
+      cap: WorkflowCapability,
+  ): Option[WorkflowSnapshot] throws DaprWorkflowException =
     cap.waitForCompletion(instanceId, timeout)
   def purge(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Boolean throws DaprWorkflowException =
     cap.purge(instanceId)

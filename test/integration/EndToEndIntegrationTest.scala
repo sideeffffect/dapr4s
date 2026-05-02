@@ -12,31 +12,27 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** End-to-end integration test that runs both [[OrderServiceHandlers]] and
-  * [[InventoryServiceHandlers]] against the same real Dapr sidecar, exercising
-  * the full order-placement → inventory-update flow.
+/** End-to-end integration test that runs both [[OrderServiceHandlers]] and [[InventoryServiceHandlers]] against the
+  * same real Dapr sidecar, exercising the full order-placement → inventory-update flow.
   *
   * Showcases how multiple scala-safe-dapr capabilities work together:
-  *   - [[StateCapability]]            — persisting orders and stock levels
-  *   - [[PubSubCapability]]           — publishing order events (fire-and-forget)
-  *   - [[DistributedLockCapability]]  — serialising concurrent stock updates
-  *   - [[DaprApp]]                    — declarative handler composition
+  *   - [[StateCapability]] — persisting orders and stock levels
+  *   - [[PubSubCapability]] — publishing order events (fire-and-forget)
+  *   - [[DistributedLockCapability]] — serialising concurrent stock updates
+  *   - [[DaprApp]] — declarative handler composition
   *
-  * In production, Order and Inventory services run in separate pods with
-  * separate Dapr sidecars; here both run in the same test process for speed.
-  * The pub/sub event delivery between them is simulated via
-  * [[TestDaprApp.deliver]], which reflects real delivery semantics without
-  * requiring two running HTTP servers.
+  * In production, Order and Inventory services run in separate pods with separate Dapr sidecars; here both run in the
+  * same test process for speed. The pub/sub event delivery between them is simulated via [[TestDaprApp.deliver]], which
+  * reflects real delivery semantics without requiring two running HTTP servers.
   */
-/** See [[InventoryServiceIntegrationTest]] for an explanation of why `lock.redis`
-  * is used rather than `lock.in-memory`.
+/** See [[InventoryServiceIntegrationTest]] for an explanation of why `lock.redis` is used rather than `lock.in-memory`.
   */
 @scala.caps.assumeSafe
 class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
 
   type Containers = DaprTestContainer
 
-  private var extraRedis: GenericContainer | Null     = null
+  private var extraRedis: GenericContainer | Null = null
   private var extraNetwork: Network | Null = null
 
   override def afterAll(): Unit =
@@ -61,9 +57,9 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
         .withNetwork(network)
         .withAppName("e2e-test")
         .withAppPort(0)
-        .withComponent(Component("statestore", "state.in-memory",  "v1", Collections.emptyMap()))
-        .withComponent(Component("pubsub",     "pubsub.in-memory", "v1", Collections.emptyMap()))
-        .withComponent(Component("lockstore",  "lock.redis",       "v1", java.util.Map.of("redisHost", "redis:6379")))
+        .withComponent(Component("statestore", "state.in-memory", "v1", Collections.emptyMap()))
+        .withComponent(Component("pubsub", "pubsub.in-memory", "v1", Collections.emptyMap()))
+        .withComponent(Component("lockstore", "lock.redis", "v1", java.util.Map.of("redisHost", "redis:6379"))),
     )
     c.start()
     c
@@ -73,35 +69,36 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: placing an order decrements inventory stock"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprCapability]
-        val orderApp     = OrderServiceHandlers.daprApp()(using scope)
+        val scope = summon[DaprCapability]
+        val orderApp = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
         // Seed initial inventory
         TestDaprApp.call[StockLevel](inventoryApp, "seed-stock", StockLevel("tablet", 30))[StockLevel]
 
         // Place an order for 4 tablets
-        val req  = OrderRequest("tablet", 4)
+        val req = OrderRequest("tablet", 4)
         val resp = TestDaprApp.call[OrderRequest](orderApp, "place-order", req)[OrderResponse]
 
         assertEquals(resp.status, "accepted")
         assert(resp.orderId.nonEmpty, "orderId must be non-empty")
 
         // The order is persisted in the state store
-        val savedOrder = scope.state(StoreName("statestore"))
+        val savedOrder = scope
+          .state(StoreName("statestore"))
           .get[OrderRequest](StateKey(resp.orderId))
         assertEquals(savedOrder, Some(req))
 
         // Simulate event delivery from order-service to inventory-service
         val event = CloudEvent(
-          id              = resp.orderId,
-          source          = "order-service",
-          specVersion     = "1.0",
-          eventType       = "order.placed",
-          topic           = Topic("orders"),
-          pubSubName      = PubSubName("pubsub"),
+          id = resp.orderId,
+          source = "order-service",
+          specVersion = "1.0",
+          eventType = "order.placed",
+          topic = Topic("orders"),
+          pubSubName = PubSubName("pubsub"),
           dataContentType = "application/json",
-          data            = OrderEvent(resp.orderId, "tablet", 4)
+          data = OrderEvent(resp.orderId, "tablet", 4),
         )
         val subResult = TestDaprApp.deliver(inventoryApp, "orders", event)
         assertEquals(subResult, SubscriptionResult.Success)
@@ -114,8 +111,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: multiple orders reduce inventory cumulatively"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprCapability]
-        val orderApp     = OrderServiceHandlers.daprApp()(using scope)
+        val scope = summon[DaprCapability]
+        val orderApp = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
         TestDaprApp.call[StockLevel](inventoryApp, "seed-stock", StockLevel("cable", 100))[StockLevel]
@@ -133,33 +130,34 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: orders for different items tracked independently"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprCapability]
-        val orderApp     = OrderServiceHandlers.daprApp()(using scope)
+        val scope = summon[DaprCapability]
+        val orderApp = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
-        TestDaprApp.call[StockLevel](inventoryApp, "seed-stock", StockLevel("pen",    50))[StockLevel]
+        TestDaprApp.call[StockLevel](inventoryApp, "seed-stock", StockLevel("pen", 50))[StockLevel]
         TestDaprApp.call[StockLevel](inventoryApp, "seed-stock", StockLevel("pencil", 80))[StockLevel]
 
-        val penResp    = TestDaprApp.call[OrderRequest](orderApp, "place-order", OrderRequest("pen",    6))[OrderResponse]
-        val pencilResp = TestDaprApp.call[OrderRequest](orderApp, "place-order", OrderRequest("pencil", 4))[OrderResponse]
+        val penResp = TestDaprApp.call[OrderRequest](orderApp, "place-order", OrderRequest("pen", 6))[OrderResponse]
+        val pencilResp =
+          TestDaprApp.call[OrderRequest](orderApp, "place-order", OrderRequest("pencil", 4))[OrderResponse]
 
-        TestDaprApp.deliver(inventoryApp, "orders", mkEvent(penResp.orderId,    "pen",    6))
+        TestDaprApp.deliver(inventoryApp, "orders", mkEvent(penResp.orderId, "pen", 6))
         TestDaprApp.deliver(inventoryApp, "orders", mkEvent(pencilResp.orderId, "pencil", 4))
 
-        assertEquals(TestDaprApp.call[String](inventoryApp, "get-stock", "pen"   )[StockLevel].available, 44)
+        assertEquals(TestDaprApp.call[String](inventoryApp, "get-stock", "pen")[StockLevel].available, 44)
         assertEquals(TestDaprApp.call[String](inventoryApp, "get-stock", "pencil")[StockLevel].available, 76)
     }
 
   test("e2e: order state survives re-query after inventory update"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprCapability]
-        val orderApp     = OrderServiceHandlers.daprApp()(using scope)
+        val scope = summon[DaprCapability]
+        val orderApp = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
         TestDaprApp.call[StockLevel](inventoryApp, "seed-stock", StockLevel("drive", 10))[StockLevel]
 
-        val req  = OrderRequest("drive", 2)
+        val req = OrderRequest("drive", 2)
         val resp = TestDaprApp.call[OrderRequest](orderApp, "place-order", req)[OrderResponse]
         TestDaprApp.deliver(inventoryApp, "orders", mkEvent(resp.orderId, "drive", 2))
 
@@ -174,8 +172,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: concurrent orders use bulk state operations"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprCapability]
-        val orderApp     = OrderServiceHandlers.daprApp()(using scope)
+        val scope = summon[DaprCapability]
+        val orderApp = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
 
         TestDaprApp.call[StockLevel](inventoryApp, "seed-stock", StockLevel("lamp", 200))[StockLevel]
@@ -215,10 +213,10 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
   test("e2e: DaprApp composition with ++ merges routes"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val scope        = summon[DaprCapability]
-        val orderApp     = OrderServiceHandlers.daprApp()(using scope)
+        val scope = summon[DaprCapability]
+        val orderApp = OrderServiceHandlers.daprApp()(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp()(using scope)
-        val combined     = orderApp ++ inventoryApp
+        val combined = orderApp ++ inventoryApp
 
         // Combined app has routes from both services
         assert(combined.invocations.exists(_.methodName.value == "place-order"))
@@ -230,12 +228,12 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
 
   private def mkEvent(orderId: String, item: String, qty: Int): CloudEvent[OrderEvent] =
     CloudEvent(
-      id              = orderId,
-      source          = "order-service",
-      specVersion     = "1.0",
-      eventType       = "order.placed",
-      topic           = Topic("orders"),
-      pubSubName      = PubSubName("pubsub"),
+      id = orderId,
+      source = "order-service",
+      specVersion = "1.0",
+      eventType = "order.placed",
+      topic = Topic("orders"),
+      pubSubName = PubSubName("pubsub"),
       dataContentType = "application/json",
-      data            = OrderEvent(orderId, item, qty)
+      data = OrderEvent(orderId, item, qty),
     )

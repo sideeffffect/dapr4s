@@ -165,6 +165,22 @@ classes, etc.) may appear in `src/` files outside `internal/` or in any test fil
 
 ---
 
+## Formatting
+
+The project uses scalafmt. Config is in `.scalafmt.conf` (version 3.10.4, dialect `scala3`,
+`maxColumn = 120`, trailing commas everywhere).
+
+Run the formatter: `scala-cli fmt .`
+Check without writing: `scala-cli fmt --check .`
+
+**Always format before committing.** If `--check` fails, CI is broken.
+
+One file is intentionally excluded from formatting: `src/DaprCapability.scala` uses experimental
+capture-checking `^{this}` return-type annotations that scalafmt's parser does not yet support.
+Format it manually (or leave it) until scalafmt gains nightly CC syntax support.
+
+---
+
 ## Testing
 
 - **Unit tests** (no Docker required): `scala-cli test . --test-only "*unit*"`. Currently 119

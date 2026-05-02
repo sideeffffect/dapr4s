@@ -50,7 +50,7 @@ class JsonCodecTest extends FunSuite:
   test("JsonCodec[Int] decode returns Left containing JsonDecodeException"):
     val codec = summon[JsonCodec[Int]]
     codec.decode("\"not a number\"") match
-      case Left(e) => assert(e.isInstanceOf[JsonDecodeException])
+      case Left(e)  => assert(e.isInstanceOf[JsonDecodeException])
       case Right(_) => fail("Expected Left")
 
   test("JsonCodec[Int] decode returns Left on empty string"):
@@ -82,7 +82,9 @@ class JsonCodecTest extends FunSuite:
 
   test("decodeOrThrow returns value on success"):
     // Use try/catch to avoid needing CanThrow capability — we expect no exception here
-    val v = try JsonCodec.decodeOrThrow[Int]("99") catch case e: Exception => fail(s"unexpected: $e")
+    val v =
+      try JsonCodec.decodeOrThrow[Int]("99")
+      catch case e: Exception => fail(s"unexpected: $e")
     assertEquals(v, 99)
 
   test("decodeOrThrow throws JsonDecodeException on failure"):
@@ -114,7 +116,7 @@ class JsonCodecTest extends FunSuite:
     val result = summon[JsonCodec[Int]].decode(null)
     assert(result.isLeft)
     result match
-      case Left(e) => assertEquals(e.getMessage, "null input")
+      case Left(e)  => assertEquals(e.getMessage, "null input")
       case Right(_) => fail("Expected Left")
 
   // -------------------------------------------------------------------------
@@ -144,12 +146,12 @@ class JsonCodecTest extends FunSuite:
 
   test("JsonCodec[List[String]] roundtrip"):
     val codec = summon[JsonCodec[List[String]]]
-    val xs    = List("a", "b", "c")
+    val xs = List("a", "b", "c")
     assertEquals(codec.decode(codec.encode(xs)), Right(xs))
 
   test("JsonCodec[List[Int]] roundtrip"):
     val codec = summon[JsonCodec[List[Int]]]
-    val xs    = List(1, 2, 3)
+    val xs = List(1, 2, 3)
     assertEquals(codec.decode(codec.encode(xs)), Right(xs))
 
   test("JsonCodec[List[String]] empty list roundtrip"):
@@ -164,5 +166,5 @@ class JsonCodecTest extends FunSuite:
     val result = summon[JsonCodec[List[Int]]].decode(null)
     assert(result.isLeft)
     result match
-      case Left(e) => assertEquals(e.getMessage, "null input")
+      case Left(e)  => assertEquals(e.getMessage, "null input")
       case Right(_) => fail("Expected Left")

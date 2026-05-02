@@ -9,8 +9,7 @@ import unsafeExceptions.canThrowAny
 
 /** Integration tests for [[SecretsCapability]].
   *
-  * These tests verify the error path — calling against a component that does
-  * not exist surfaces [[DaprException]].
+  * These tests verify the error path — calling against a component that does not exist surfaces [[DaprException]].
   */
 @scala.caps.assumeSafe
 class SecretsIntegrationTest extends FunSuite with TestContainersForAll:
@@ -21,7 +20,7 @@ class SecretsIntegrationTest extends FunSuite with TestContainersForAll:
     val c = DaprTestContainer(
       DaprContainer("daprio/daprd:1.17.0")
         .withAppName("secrets-test-app")
-        .withAppPort(0)
+        .withAppPort(0),
     )
     c.start()
     c

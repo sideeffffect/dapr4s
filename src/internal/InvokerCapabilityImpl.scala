@@ -7,10 +7,11 @@ import MonoOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class InvokerCapabilityImpl(
-    scope: DaprCapabilityImpl
+    scope: DaprCapabilityImpl,
 ) extends ServiceInvocationCapability:
 
-  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprServiceInvocationException =
+  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws
+    DaprServiceInvocationException =
     try
       val reqJson = summon[JsonCodec[Req]].encode(data)
       val rawResp: String | Null = scope.client
@@ -19,14 +20,14 @@ private[safe] final class InvokerCapabilityImpl(
           method.value,
           reqJson,
           HttpExtension.POST,
-          classOf[String]
+          classOf[String],
         )
         .awaitResult()
       JsonCodec.decodeOrThrow[Resp](rawResp) match
         case v => v
     catch
-      case e: DaprServiceInvocationException => throw e
-      case e: DaprException => throw DaprServiceInvocationException(e.getMessage, e)
+      case e: DaprServiceInvocationException   => throw e
+      case e: DaprException                    => throw DaprServiceInvocationException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprServiceInvocationException(e.getMessage.nn, e)
 
@@ -38,13 +39,13 @@ private[safe] final class InvokerCapabilityImpl(
           method.value,
           null,
           HttpExtension.GET,
-          classOf[String]
+          classOf[String],
         )
         .awaitResult()
       JsonCodec.decodeOrThrow[Resp](rawResp) match
         case v => v
     catch
-      case e: DaprServiceInvocationException => throw e
-      case e: DaprException => throw DaprServiceInvocationException(e.getMessage, e)
+      case e: DaprServiceInvocationException   => throw e
+      case e: DaprException                    => throw DaprServiceInvocationException(e.getMessage, e)
       case e: io.dapr.exceptions.DaprException =>
         throw DaprServiceInvocationException(e.getMessage.nn, e)
