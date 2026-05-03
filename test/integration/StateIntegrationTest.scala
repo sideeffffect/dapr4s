@@ -1,6 +1,5 @@
 package dapr.safe.test.integration
 
-import language.experimental.saferExceptions
 import dapr.safe.*
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
@@ -73,21 +72,17 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
         val key = uniqueKey()
         state.save(key, "v1")
         val etag = state.getWithETag[String](key).etag.getOrElse(fail("expected etag after save"))
-        try state.saveWithETag(key, "v2", etag)
-        catch case e: ETagMismatchException => fail(s"unexpected ETagMismatchException: $e")
+        assertEquals(state.saveWithETag(key, "v2", etag), None)
         assertEquals(state.get[String](key), Some("v2"))
     }
 
-  test("integration: saveWithETag conflict throws ETagMismatchException"):
+  test("integration: saveWithETag conflict returns Some(ETagMismatchException)"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val key = uniqueKey()
         state.save(key, "v1")
-        var threw = false
-        try state.saveWithETag(key, "v2", ETag("wrong-etag-999"))
-        catch case _: ETagMismatchException => threw = true
-        assert(threw, "expected ETagMismatchException")
+        assert(state.saveWithETag(key, "v2", ETag("wrong-etag-999")).isDefined)
     }
 
   test("integration: delete removes key"):

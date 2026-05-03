@@ -1,8 +1,6 @@
 package dapr.safe.test.unit
 
-import language.experimental.saferExceptions
 import dapr.safe.*
-import unsafeExceptions.canThrowAny
 
 import scala.collection.mutable
 
@@ -127,31 +125,32 @@ private class MockStateCapability(
     checkOpen()
     entries.foreach { case (key, value) => save[T](key, value) }
 
-  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Unit throws ETagMismatchException =
+  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Option[ETagMismatchException] =
     checkOpen()
     if etag.value.nonEmpty then
       store.get(key.value) match
-        case None                                                => throw ETagMismatchException(key, etag)
+        case None => return Some(ETagMismatchException(key, etag))
         case Some((_, currentEtag)) if currentEtag != etag.value =>
-          throw ETagMismatchException(key, etag)
+          return Some(ETagMismatchException(key, etag))
         case _ => // proceed
     val json = summon[JsonCodec[T]].encode(value)
     etagCounter += 1
     store(key.value) = (json, etagCounter.toString)
+    None
 
   def delete(key: StateKey): Unit =
     checkOpen()
     store.remove(key.value)
     ()
 
-  def deleteWithETag(key: StateKey, etag: ETag): Unit throws ETagMismatchException =
+  def deleteWithETag(key: StateKey, etag: ETag): Option[ETagMismatchException] =
     checkOpen()
     store.get(key.value) match
       case Some((_, currentEtag)) if currentEtag != etag.value =>
-        throw ETagMismatchException(key, etag)
+        Some(ETagMismatchException(key, etag))
       case _ =>
         store.remove(key.value)
-        ()
+        None
 
   def transaction(ops: Seq[StateOp]): Unit =
     checkOpen()

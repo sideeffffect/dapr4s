@@ -1,7 +1,5 @@
 package dapr.safe
 
-import language.experimental.saferExceptions
-
 // ---------------------------------------------------------------------------
 // Individual capability traits
 // ---------------------------------------------------------------------------
@@ -29,16 +27,18 @@ trait StateCapability:
   /** Save multiple key-value pairs in a single call. */
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit
 
-  /** Save a value only if the provided ETag matches the server-side ETag. Throws [[ETagMismatchException]] on conflict.
+  /** Save a value only if the provided ETag matches the server-side ETag.
+    * Returns `None` on success, `Some(e)` if the ETag did not match.
     */
-  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Unit throws ETagMismatchException
+  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Option[ETagMismatchException]
 
   /** Unconditionally delete a key (no-op if the key is absent). */
   def delete(key: StateKey): Unit
 
-  /** Delete a key only if the provided ETag matches. Throws [[ETagMismatchException]] on conflict.
+  /** Delete a key only if the provided ETag matches.
+    * Returns `None` on success, `Some(e)` if the ETag did not match.
     */
-  def deleteWithETag(key: StateKey, etag: ETag): Unit throws ETagMismatchException
+  def deleteWithETag(key: StateKey, etag: ETag): Option[ETagMismatchException]
 
   /** Execute multiple state operations atomically (all-or-nothing). */
   def transaction(ops: Seq[StateOp]): Unit
@@ -71,11 +71,11 @@ object StateCapability:
     cap.saveBulk(entries)
   def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag)(using
       cap: StateCapability,
-  ): Unit throws ETagMismatchException =
+  ): Option[ETagMismatchException] =
     cap.saveWithETag(key, value, etag)
   def delete(key: StateKey)(using cap: StateCapability): Unit =
     cap.delete(key)
-  def deleteWithETag(key: StateKey, etag: ETag)(using cap: StateCapability): Unit throws ETagMismatchException =
+  def deleteWithETag(key: StateKey, etag: ETag)(using cap: StateCapability): Option[ETagMismatchException] =
     cap.deleteWithETag(key, etag)
   def transaction(ops: Seq[StateOp])(using cap: StateCapability): Unit =
     cap.transaction(ops)

@@ -1,10 +1,8 @@
 package dapr.safe.internal
 
-import language.experimental.saferExceptions
 import dapr.safe.*
 import io.dapr.client.domain.{State as DaprState, StateOptions, TransactionalStateOperation}
 import io.dapr.client.domain.TransactionalStateOperation.OperationType
-import unsafeExceptions.canThrowAny
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*
@@ -64,19 +62,23 @@ private[safe] final class StateCapabilityImpl(
     }.asJava
     scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
 
-  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Unit throws ETagMismatchException =
+  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Option[ETagMismatchException] =
     val json = summon[JsonCodec[T]].encode(value)
     val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
-    try scope.client.saveState(storeName.value, key.value, etag.value, json, opts).awaitResult(): Unit
-    catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => throw ETagMismatchException(key, etag)
+    try
+      scope.client.saveState(storeName.value, key.value, etag.value, json, opts).awaitResult(): Unit
+      None
+    catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
 
   def delete(key: StateKey): Unit =
     scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
 
-  def deleteWithETag(key: StateKey, etag: ETag): Unit throws ETagMismatchException =
+  def deleteWithETag(key: StateKey, etag: ETag): Option[ETagMismatchException] =
     val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
-    try scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(): Unit
-    catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => throw ETagMismatchException(key, etag)
+    try
+      scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(): Unit
+      None
+    catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
 
   def transaction(ops: Seq[StateOp]): Unit =
     val javaOps: java.util.List[TransactionalStateOperation[?]] =
