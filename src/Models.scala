@@ -132,6 +132,20 @@ object ActorId:
   def apply(s: String): ActorId = s
   extension (id: ActorId) def value: String = id
 
+opaque type ReminderName = String
+object ReminderName:
+  def apply(s: String): ReminderName =
+    require(s.nonEmpty, "ReminderName must not be empty")
+    s
+  extension (n: ReminderName) def value: String = n
+
+opaque type TimerName = String
+object TimerName:
+  def apply(s: String): TimerName =
+    require(s.nonEmpty, "TimerName must not be empty")
+    s
+  extension (n: TimerName) def value: String = n
+
 opaque type WorkflowName = String
 object WorkflowName:
   def apply(s: String): WorkflowName =

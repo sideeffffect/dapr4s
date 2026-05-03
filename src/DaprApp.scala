@@ -2,8 +2,8 @@ package dapr.safe
 
 /** Immutable, declarative description of all inbound handlers an application exposes.
   *
-  * Build a `DaprApp` using the [[Subscription]], [[InvocationRoute]], and [[BindingRoute]] factory objects, then return
-  * it from the [[DaprRuntime.serve]] body:
+  * Build a `DaprApp` using the [[Subscription]], [[InvocationRoute]], [[BindingRoute]], and [[ActorDefinition]] factory
+  * objects, then return it from the [[DaprRuntime.serve]] body:
   *
   * {{{
   *   DaprRuntime.serve(appPort = 8080):
@@ -16,6 +16,13 @@ package dapr.safe
   *       ),
   *       invocations = List(
   *         InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req => ... }
+  *       ),
+  *       actors = List(
+  *         ActorDefinition(ActorType("Counter")) { (id, ctx) =>
+  *           given ActorContext = ctx
+  *           val actor = new CounterActor
+  *           ActorRoutes(methods = List(ActorMethodRoute[Int, Int](MethodName("increment"))(actor.increment)))
+  *         }
   *       )
   *     )
   * }}}
@@ -27,7 +34,8 @@ final case class DaprApp(
     invocations: List[InvocationRoute] = Nil,
     bindings: List[BindingRoute] = Nil,
     workflows: List[DaprWorkflow] = Nil,
-    activities: List[DaprActivity] = Nil,
+    activities: List[DaprActivity[?, ?]] = Nil,
+    actors: List[ActorDefinition] = Nil,
 ):
   def ++(other: DaprApp): DaprApp = DaprApp(
     subscriptions ++ other.subscriptions,
@@ -35,6 +43,7 @@ final case class DaprApp(
     bindings ++ other.bindings,
     workflows ++ other.workflows,
     activities ++ other.activities,
+    actors ++ other.actors,
   )
 
 @scala.caps.assumeSafe
