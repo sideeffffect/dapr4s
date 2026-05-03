@@ -98,9 +98,9 @@ classDiagram
         +getBulk[T](keys: Seq[StateKey]) Map[StateKey,StateEntry[T]]
         +save[T](key: StateKey, value: T) Unit
         +saveBulk[T](entries: Seq[(StateKey,T)]) Unit
-        +saveWithETag[T](key: StateKey, value: T, etag: ETag) Unit
+        +saveWithETag[T](key: StateKey, value: T, etag: ETag) Option[ETagMismatchException]
         +delete(key: StateKey) Unit
-        +deleteWithETag(key: StateKey, etag: ETag) Unit
+        +deleteWithETag(key: StateKey, etag: ETag) Option[ETagMismatchException]
         +transaction(ops: Seq[StateOp]) Unit
         +queryState[T](query: StateQuery) List[StateEntry[T]]
     }
@@ -202,10 +202,10 @@ Handler objects follow a two-layer structure that maximises capability tracking 
 
 ### Layer 1 — Business logic methods
 
-Pure handler methods declared with **anonymous** `using` capability parameters and a `throws Exception` clause.  Business logic calls **companion-object methods** on the capability types (`StateCapability.save(...)`, `PubSubCapability.publish(...)`) rather than naming the capability value — the compiler resolves the implicit from the anonymous `using` context:
+Pure handler methods declared with **anonymous** `using` capability parameters.  Business logic calls **companion-object methods** on the capability types (`StateCapability.save(...)`, `PubSubCapability.publish(...)`) rather than naming the capability value — the compiler resolves the implicit from the anonymous `using` context:
 
 ```scala
-def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse throws Exception =
+def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse =
   val orderId = java.util.UUID.randomUUID().toString
   StateCapability.save(StateKey(orderId), req)
   PubSubCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
@@ -217,9 +217,9 @@ Each capability trait has a companion object that mirrors every instance method 
 ```scala
 // src/Capabilities.scala
 object StateCapability:
-  def save[T: JsonCodec](key: StateKey, value: T)(using cap: StateCapability): Unit throws DaprStateException =
+  def save[T: JsonCodec](key: StateKey, value: T)(using cap: StateCapability): Unit =
     cap.save(key, value)
-  def get[T: JsonCodec](key: StateKey)(using cap: StateCapability): Option[T] throws DaprStateException =
+  def get[T: JsonCodec](key: StateKey)(using cap: StateCapability): Option[T] =
     cap.get(key)
   // ... all other methods
 ```
@@ -228,32 +228,28 @@ These methods carry no `@assumeSafe`; they are pure capability-tracked code that
 
 ### Layer 2 — `daprApp` method: declarative route description
 
-The `daprApp` method uses the **`DaprCapability` transformer API** to nest sub-capabilities into scope, then returns an immutable `DaprApp`.  Each `DaprCapability.xxx(...)` call acquires a sub-capability and makes it available as an implicit inside its body block:
+The `daprApp` method uses the **`DaprCapability` transformer API** to nest sub-capabilities into scope, then returns an immutable `DaprApp`.  Each `DaprCapability.xxx(...)` call acquires a sub-capability and makes it available as an implicit inside its body block.  Handler methods are passed as direct function references — no wrapping lambda is needed because no library method carries a `throws T` annotation:
 
 ```scala
-def daprApp()(using DaprCapability): DaprApp =
+def daprApp(using DaprCapability): DaprApp =
   DaprCapability.state(StateName) {
     DaprCapability.pubsub(PubSubComp) {
       DaprApp(
         invocations = List(
-          InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
-            try placeOrder(req)
-            catch case e: Exception => throw e   // CC CanThrow isolation
-          }
+          InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order"))(placeOrder),
+          InvocationRoute[String, Option[OrderRequest]](MethodName("get-order"))(getOrder)
         )
       )
     }
   }
 ```
 
-Transformer signature (in `src/DaprScope.scala` — the file name is unchanged but it now defines `trait DaprCapability`):
+Transformer signature (in `src/DaprCapability.scala`):
 ```scala
 object DaprCapability:
   def state(storeName: StoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.state(storeName))
 ```
-
-**Why `try/catch` in each lambda**: In Scala 3.9 CC with `pureFunctions`, each lambda that calls a `throws`-annotated method creates a fresh anonymous `CanThrow` capability.  Sibling lambdas in the same method body cannot share these capabilities.  The `try/catch` absorbs the `CanThrow` at each lambda's boundary, so the next sibling lambda starts with a fresh context.  Without this, the second and later lambdas fail to compile with _"capability `any` cannot flow into capture set {any²}"_.  See AGENTS.md for the canonical explanation.
 
 **Capability injection lifetime**: Capabilities are bound once per `daprApp` call and shared across all handler invocations for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
 
@@ -264,8 +260,8 @@ object DaprCapability:
 ```mermaid
 graph LR
     subgraph "Handler object (no @assumeSafe)"
-        BL["Business logic def methods\nusing StateCapability\nusing PubSubCapability\nthrows Exception\n→ calls StateCapability.save/get/...\n→ calls PubSubCapability.publish/..."]
-        CFG["daprApp()\nusing DaprCapability\nreturns DaprApp"]
+        BL["Business logic def methods\nusing StateCapability\nusing PubSubCapability\n→ calls StateCapability.save/get/...\n→ calls PubSubCapability.publish/..."]
+        CFG["daprApp\nusing DaprCapability\nreturns DaprApp"]
         CFG -->|"DaprCapability.state(name) { ... }\nDaprCapability.pubsub(name) { ... }"| BL
     end
 
@@ -278,7 +274,7 @@ graph LR
         TST["TestDaprApp\ncall / deliver"]
     end
 
-    CFG -->|"InvocationRoute { req => try BL(req) catch ... }"| DA
+    CFG -->|"InvocationRoute(BL-method)"| DA
     DA -->|"passed to constructor"| SRV
     DA -->|"passed to test helpers"| TST
 ```
@@ -290,13 +286,13 @@ Integration tests use the `TestDaprApp` object (which is `@assumeSafe` internall
 ```scala
 DaprRuntime.runWithEndpoints(http, grpc):
   val scope = summon[DaprCapability]
-  val app   = OrderServiceHandlers.daprApp()(using scope)
+  val app   = OrderServiceHandlers.daprApp(using scope)
   val resp  = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("widget", 2))[OrderResponse]
 ```
 
 Two apps can be composed with `++`:
 ```scala
-val combined = OrderServiceHandlers.daprApp() ++ InventoryServiceHandlers.daprApp()
+val combined = OrderServiceHandlers.daprApp ++ InventoryServiceHandlers.daprApp
 ```
 
 ---
@@ -386,7 +382,7 @@ trait JsonCodec[T]:
 object JsonCodec:
   given JsonCodec[String] = ...
   given JsonCodec[Int]    = ...
-  def decodeOrThrow[T: JsonCodec](json: String | Null): T throws JsonDecodeException
+  def decodeOrThrow[T: JsonCodec](json: String | Null): T   -- throws JsonDecodeException (unchecked)
   given [T: upickle.default.ReadWriter]: JsonCodec[T] = ...
 ```
 
@@ -456,12 +452,12 @@ stateDiagram-v2
 
 ## Error Handling
 
-Only two exceptions are declared in `Exceptions.scala` — those where the caller has a genuine, distinct action to take:
+Only two exception types are declared in `Exceptions.scala` — those where the caller has a genuine, distinct action to take:
 
-| Exception | Thrown by | Why it is meaningful |
+| Exception | How surfaced | Why it is meaningful |
 |---|---|---|
-| `ETagMismatchException` | `StateCapability.saveWithETag`, `deleteWithETag` | Caller must fetch the new ETag and retry; no other exception requires this |
-| `JsonDecodeException` | `JsonCodec.decodeOrThrow` | Data in the store/response does not match the expected type; a data-contract violation the caller may want to log or handle separately |
+| `ETagMismatchException` | **Returned** as `Option[ETagMismatchException]` by `StateCapability.saveWithETag` and `deleteWithETag` | Caller must fetch the new ETag and retry; using a return value (not a thrown exception) makes handling explicit without try/catch |
+| `JsonDecodeException` | **Thrown** by `JsonCodec.decodeOrThrow` | Data in the store/response does not match the expected type; a data-contract violation the caller may want to log or handle separately |
 
 All other failures — sidecar unreachable, component not configured, gRPC errors — propagate as unchecked `io.dapr.exceptions.DaprException` (from the Java SDK, a `RuntimeException` subclass). These are unexpected infrastructure failures that callers cannot meaningfully handle at the call site; they bubble up to a top-level error boundary. There is no per-capability exception hierarchy: such a hierarchy would be a lie of precision, implying callers need to handle `DaprStateException` differently from `DaprPubSubException` when they do not.
 
@@ -499,7 +495,7 @@ scala-safe-dapr/
     ├── unit/
     │   ├── ModelsTest.scala
     │   ├── JsonCodecTest.scala
-    │   ├── CCTest.scala              # capture checking / CanThrow invariants
+    │   ├── CCTest.scala              # capture checking invariants (ScopeContainment, JsonCodec)
     │   ├── MockDaprCapability.scala       # in-memory mock for unit tests
     │   ├── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
     │   └── SubscriberTest.scala      # DaprAppServer dispatch logic (no Docker required)

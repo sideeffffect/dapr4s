@@ -12,7 +12,7 @@ import unsafeExceptions.canThrowAny
   * {{{
   *   DaprRuntime.runWithEndpoints(httpEndpoint, grpcEndpoint):
   *     val scope = summon[DaprCapability]
-  *     val app   = MyServiceHandlers.daprApp()(using scope)
+  *     val app   = MyServiceHandlers.daprApp(using scope)
   *
   *     val resp = TestDaprApp.call[MyRequest](app, "my-method", MyRequest(...))[MyResponse]
   *     val res  = TestDaprApp.deliver(app, "my-topic", cloudEvent)

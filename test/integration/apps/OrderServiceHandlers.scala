@@ -68,7 +68,7 @@ object OrderServiceHandlers:
     * Uses the [[DaprCapability]] transformer API to introduce `StateCapability` and `PubSubCapability` into the body
     * scope, so the handler lambdas capture them without requiring explicit `given` declarations.
     */
-  def daprApp()(using DaprCapability): DaprApp =
+  def daprApp(using DaprCapability): DaprApp =
     DaprCapability.state(StateName) {
       DaprCapability.pubsub(PubSubComp) {
         DaprApp(

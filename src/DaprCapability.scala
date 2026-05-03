@@ -17,7 +17,7 @@ package dapr.safe
   *   given StateCapability = cap.state(StoreName("statestore"))
   *
   *   // Transformer style (recommended for service handlers)
-  *   def daprApp()(using DaprCapability): DaprApp =
+  *   def daprApp(using DaprCapability): DaprApp =
   *     DaprCapability.state(StoreName("statestore")) {
   *       DaprCapability.pubsub(PubSubName("pubsub")) {
   *         DaprApp(...)
@@ -64,7 +64,7 @@ trait DaprCapability:
   * by nesting:
   *
   * {{{
-  *   def daprApp()(using DaprCapability): DaprApp =
+  *   def daprApp(using DaprCapability): DaprApp =
   *     DaprCapability.state(StoreName("statestore")) {
   *       DaprCapability.pubsub(PubSubName("pubsub")) {
   *         DaprApp(

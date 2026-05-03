@@ -510,8 +510,9 @@ rule StateSaveWithETag {
     ensures:
         if DaprETagMatches(cap.store_name, key, etag):
             StateSaveCompleted()
+            -- Returns None
         else:
-            ETagMismatchExceptionThrown(key: key, etag: etag)
+            -- Returns Some(ETagMismatchException(key, etag)); no exception thrown, no mutation
 }
 
 rule StateDelete {
@@ -531,8 +532,9 @@ rule StateDeleteWithETag {
     ensures:
         if DaprETagMatches(cap.store_name, key, etag):
             StateDeleteCompleted()
+            -- Returns None
         else:
-            ETagMismatchExceptionThrown(key: key, etag: etag)
+            -- Returns Some(ETagMismatchException(key, etag)); no exception thrown, no mutation
 }
 
 rule StateGetBulk {
@@ -899,19 +901,19 @@ surface DaprRuntimeSurface {
         demands JsonCodec
 
     exposes:
-        run: (body: (DaprCapability, CanThrow<Exception>) ?=> Any) -> Any
-        -- Acquires a DaprClient, provides DaprCapability and CanThrow<Exception> to body, releases on exit.
+        run: (body: DaprCapability ?=> Any) -> Any
+        -- Acquires a DaprClient, provides DaprCapability to body, releases on exit.
         -- Propagates exceptions after releasing resources.
         -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
         -- user code can call it without violating safe-mode constraints.
 
-        serve: (app_port: Int, body: (DaprCapability, CanThrow<Exception>) ?=> DaprApp) -> Unit
+        serve: (app_port: Int, body: DaprCapability ?=> DaprApp) -> Unit
         -- Starts an HTTP server on app_port; body returns a DaprApp describing
         -- all inbound handlers.  The server is started from the returned DaprApp,
         -- then blocks until the JVM shuts down or the calling thread is interrupted.
         -- DaprClient lifecycle matches the server's lifetime.
 
-        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: (DaprCapability, CanThrow<Exception>) ?=> Any) -> Any
+        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: DaprCapability ?=> Any) -> Any
         -- Like run but overrides the DAPR sidecar HTTP and gRPC endpoints.
         -- Intended for integration tests where the sidecar runs on a
         -- non-default port (e.g. via Testcontainers).
@@ -975,10 +977,12 @@ surface StateCapabilitySurface {
         get_bulk: (keys: List<StateKey>) -> Map<StateKey, StateEntry>
         -- Batch fetch; missing keys return StateEntry with value = absent
         save: (key: StateKey, value: Any) -> Unit
-        save_with_etag: (key: StateKey, value: Any, etag: ETag) -> Unit
+        save_with_etag: (key: StateKey, value: Any, etag: ETag) -> Option<ETagMismatchException>
+        -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
         save_bulk: (entries: List<StateKeyValue>) -> Unit
         delete: (key: StateKey) -> Unit
-        delete_with_etag: (key: StateKey, etag: ETag) -> Unit
+        delete_with_etag: (key: StateKey, etag: ETag) -> Option<ETagMismatchException>
+        -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
         transaction: (ops: List<StateOp>) -> Unit
         query_state: (query: StateQuery) -> List<StateEntry>
         -- Query using DAPR state store query API (store must support queries)
@@ -989,7 +993,7 @@ surface StateCapabilitySurface {
     @guarantee ETagOptimisticConcurrency
         -- save_with_etag and delete_with_etag succeed only when the provided ETag
         -- matches the current server-side ETag for that key.
-        -- On mismatch, ETagMismatchException is thrown and no mutation occurs.
+        -- On mismatch, Some(ETagMismatchException) is returned and no mutation occurs (no exception thrown).
 }
 
 surface PubSubCapabilitySurface {
@@ -1057,10 +1061,9 @@ surface DaprAppSurface {
         -- anonymous (using Capability) context parameters; companion-object
         -- forwarders (e.g. StateCapability.save(...), PubSubCapability.publish(...))
         -- dispatch to the implicit instance, so callers never name the capability
-        -- value.  Thin handler lambdas wrap each call in try/catch for CC
-        -- CanThrow isolation (see DESIGN.md — Handler Pattern).
-        -- Handler methods declare `using DaprCapability` without naming the parameter;
-        -- sub-capabilities are acquired via DaprCapability.state/pubsub/etc. transformers.
+        -- value.  Methods are passed as direct handler references (no wrapping lambda)
+        -- because no library method carries a throws annotation.
+        -- Sub-capabilities are acquired via DaprCapability.state/pubsub/etc. transformers.
 
     @guarantee SubscriptionDiscovery
         -- GET /dapr/subscribe returns all registered pub/sub subscriptions

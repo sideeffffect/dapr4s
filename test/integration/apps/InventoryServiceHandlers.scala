@@ -75,7 +75,7 @@ object InventoryServiceHandlers:
   // ---------------------------------------------------------------------------
 
   /** Build a [[DaprApp]] with all inbound routes for the Inventory service. */
-  def daprApp()(using DaprCapability): DaprApp =
+  def daprApp(using DaprCapability): DaprApp =
     DaprCapability.state(StateName) {
       DaprCapability.lock(LockStoreName) {
         DaprApp(

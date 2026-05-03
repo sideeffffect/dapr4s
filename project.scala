@@ -2,7 +2,6 @@
 //> using jvm "zulu:25.0.3"
 //> using options "-language:experimental.captureChecking"
 //> using options "-language:experimental.pureFunctions"
-//> using options "-language:experimental.modularity"
 //> using options "-Ycc-verbose"
 //> using options "-Yexplicit-nulls"
 //> using options "-experimental"

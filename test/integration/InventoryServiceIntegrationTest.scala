@@ -65,7 +65,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = InventoryServiceHandlers.daprApp()(using scope)
+        val app = InventoryServiceHandlers.daprApp(using scope)
 
         val stock = TestDaprApp.call[String](app, "get-stock", "widget")[StockLevel]
         assertEquals(stock.item, "widget")
@@ -76,7 +76,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = InventoryServiceHandlers.daprApp()(using scope)
+        val app = InventoryServiceHandlers.daprApp(using scope)
 
         TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("gadget", 42))[StockLevel]
         val stock = TestDaprApp.call[String](app, "get-stock", "gadget")[StockLevel]
@@ -87,7 +87,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = InventoryServiceHandlers.daprApp()(using scope)
+        val app = InventoryServiceHandlers.daprApp(using scope)
 
         // Seed 20 units
         TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("monitor", 20))[StockLevel]
@@ -106,7 +106,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = InventoryServiceHandlers.daprApp()(using scope)
+        val app = InventoryServiceHandlers.daprApp(using scope)
 
         TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("widget", 50))[StockLevel]
 
@@ -122,7 +122,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = InventoryServiceHandlers.daprApp()(using scope)
+        val app = InventoryServiceHandlers.daprApp(using scope)
 
         TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("rare-item", 3))[StockLevel]
 
@@ -137,7 +137,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = InventoryServiceHandlers.daprApp()(using scope)
+        val app = InventoryServiceHandlers.daprApp(using scope)
 
         TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("alpha", 10))[StockLevel]
         TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("beta", 20))[StockLevel]
@@ -156,7 +156,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = InventoryServiceHandlers.daprApp()(using scope)
+        val app = InventoryServiceHandlers.daprApp(using scope)
 
         assert(app.subscriptions.exists(_.topic.value == "orders"))
         assert(app.invocations.exists(_.methodName.value == "get-stock"))
