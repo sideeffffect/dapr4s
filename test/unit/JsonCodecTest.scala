@@ -1,6 +1,5 @@
 package dapr.safe.test.unit
 
-import language.experimental.saferExceptions
 import dapr.safe.*
 import munit.FunSuite
 

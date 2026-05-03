@@ -1,6 +1,6 @@
 package dapr.safe
 
-import language.experimental.saferExceptions
+import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal
 
 /** Typeclass for JSON serialisation/deserialisation.
@@ -23,7 +23,7 @@ trait JsonCodec[T]:
 object JsonCodec:
 
   /** Convenience: decode and throw [[JsonDecodeException]] on failure. */
-  def decodeOrThrow[T](json: String | Null)(using codec: JsonCodec[T]): T throws JsonDecodeException =
+  def decodeOrThrow[T](json: String | Null)(using codec: JsonCodec[T]): T =
     codec.decode(json) match
       case Right(v)  => v
       case Left(err) => throw err

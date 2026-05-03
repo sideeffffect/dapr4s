@@ -1,7 +1,6 @@
 package dapr.safe.internal
 
 import dapr.safe.*
-import unsafeExceptions.canThrowAny
 import MonoOps.*
 
 @scala.caps.assumeSafe

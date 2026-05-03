@@ -1,11 +1,10 @@
 package dapr.safe.test.integration
 
+import language.experimental.saferExceptions
 import dapr.safe.*
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
-import unsafeExceptions.canThrowAny
-
 import java.util.Collections
 
 /** Integration tests for [[StateCapability]] using a real DAPR sidecar in Docker via Testcontainers.
@@ -74,7 +73,8 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
         val key = uniqueKey()
         state.save(key, "v1")
         val etag = state.getWithETag[String](key).etag.getOrElse(fail("expected etag after save"))
-        state.saveWithETag(key, "v2", etag)
+        try state.saveWithETag(key, "v2", etag)
+        catch case e: ETagMismatchException => fail(s"unexpected ETagMismatchException: $e")
         assertEquals(state.get[String](key), Some("v2"))
     }
 
@@ -84,8 +84,10 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val key = uniqueKey()
         state.save(key, "v1")
-        intercept[ETagMismatchException]:
-          state.saveWithETag(key, "v2", ETag("wrong-etag-999"))
+        var threw = false
+        try state.saveWithETag(key, "v2", ETag("wrong-etag-999"))
+        catch case _: ETagMismatchException => threw = true
+        assert(threw, "expected ETagMismatchException")
     }
 
   test("integration: delete removes key"):

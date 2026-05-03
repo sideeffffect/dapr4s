@@ -5,7 +5,6 @@ import dapr.safe.test.integration.apps.*
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
-import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 

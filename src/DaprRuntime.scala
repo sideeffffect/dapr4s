@@ -45,14 +45,13 @@ object DaprRuntime:
     * @return
     *   the value returned by `body`
     */
-  def run[T](body: (DaprCapability, CanThrow[Exception]) ?=> T): T =
+  def run[T](body: DaprCapability ?=> T): T =
     val client = new DaprClientBuilder().build()
     val actorClientRef = new AtomicReference[ActorClient](null)
     val workflowClientRef = new AtomicReference[DaprWorkflowClient](null)
     val impl = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef)
-    given canThrow: CanThrow[Exception] = unsafeExceptions.canThrowAny
     var primary: Throwable | Null = null
-    try body(using impl, canThrow)
+    try body(using impl)
     catch
       case NonFatal(t) =>
         primary = t
@@ -116,13 +115,9 @@ object DaprRuntime:
     *   a pure context function that receives a `DaprCapability` and returns a [[DaprApp]] describing all inbound
     *   handlers
     */
-  def serve(appPort: Int = 8080)(body: (DaprCapability, CanThrow[Exception]) ?=> DaprApp): Unit =
-    run {
-      val scope = summon[DaprCapability]
-      val ct = summon[CanThrow[Exception]]
-      val app = body(using scope, ct)
-      new internal.DaprAppServer(app).startAndBlock(appPort)
-    }
+  def serve(appPort: Int = 8080)(body: DaprCapability ?=> DaprApp): Unit =
+    run:
+      new internal.DaprAppServer(body).startAndBlock(appPort)
 
   /** Run `body` with a [[DaprCapability]] pointing to a specific sidecar endpoint.
     *
@@ -135,7 +130,7 @@ object DaprRuntime:
     * See [[run]] for virtual-thread usage guidance.
     */
   def runWithEndpoints[T](httpEndpoint: String, grpcEndpoint: String)(
-      body: (DaprCapability, CanThrow[Exception]) ?=> T,
+      body: DaprCapability ?=> T,
   ): T =
     val prevHttp = Option(System.getProperty("dapr.http.endpoint"))
     val prevGrpc = Option(System.getProperty("dapr.grpc.endpoint"))

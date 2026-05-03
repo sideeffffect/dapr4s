@@ -2,7 +2,6 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import io.dapr.client.domain.HttpExtension
-import unsafeExceptions.canThrowAny
 import MonoOps.*
 
 @scala.caps.assumeSafe
