@@ -4,7 +4,6 @@ import dapr.safe.*
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
-import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 
 import java.util.Collections

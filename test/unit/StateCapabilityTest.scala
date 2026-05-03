@@ -2,7 +2,6 @@ package dapr.safe.test.unit
 
 import dapr.safe.*
 import munit.FunSuite
-import language.experimental.saferExceptions
 
 // NOTE: Despite its name, StateCapabilityTest covers the full mock-based test suite
 // including State, PubSub, Secrets, Configuration, Lock, and closed-scope invariants.

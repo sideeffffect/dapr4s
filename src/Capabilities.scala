@@ -1,6 +1,5 @@
 package dapr.safe
 
-import language.experimental.captureChecking
 import language.experimental.saferExceptions
 
 // ---------------------------------------------------------------------------
@@ -56,6 +55,7 @@ trait StateCapability:
   *     StateCapability.get[String](key).getOrElse("default")
   * }}}
   */
+@scala.caps.assumeSafe
 object StateCapability:
   def get[T: JsonCodec](key: StateKey)(using cap: StateCapability): Option[T] =
     cap.get(key)
@@ -105,6 +105,7 @@ trait PubSubCapability:
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult
 
 /** Companion-object API for [[PubSubCapability]]. */
+@scala.caps.assumeSafe
 object PubSubCapability:
   def publish[T: JsonCodec](topic: Topic, data: T)(using cap: PubSubCapability): Unit =
     cap.publish(topic, data)
@@ -134,6 +135,7 @@ trait ServiceInvocationCapability:
   def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName): Resp
 
 /** Companion-object API for [[ServiceInvocationCapability]]. */
+@scala.caps.assumeSafe
 object ServiceInvocationCapability:
   def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec](using
       cap: ServiceInvocationCapability,
@@ -158,6 +160,7 @@ trait SecretsCapability:
   def getBulk(): Map[SecretKey, String]
 
 /** Companion-object API for [[SecretsCapability]]. */
+@scala.caps.assumeSafe
 object SecretsCapability:
   def get(key: SecretKey)(using cap: SecretsCapability): Option[String] =
     cap.get(key)
@@ -183,6 +186,7 @@ trait ConfigurationCapability:
   def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable
 
 /** Companion-object API for [[ConfigurationCapability]]. */
+@scala.caps.assumeSafe
 object ConfigurationCapability:
   def get(keys: Seq[ConfigKey])(using
       cap: ConfigurationCapability,
@@ -209,6 +213,7 @@ trait BindingsCapability:
   def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req): Unit
 
 /** Companion-object API for [[BindingsCapability]]. */
+@scala.caps.assumeSafe
 object BindingsCapability:
   def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec](using
       cap: BindingsCapability,
@@ -233,6 +238,7 @@ trait DistributedLockCapability:
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus
 
 /** Companion-object API for [[DistributedLockCapability]]. */
+@scala.caps.assumeSafe
 object DistributedLockCapability:
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int)(using
       cap: DistributedLockCapability,
@@ -266,6 +272,7 @@ trait ActorCapability:
   def invokeVoid(method: MethodName): Unit
 
 /** Companion-object API for [[ActorCapability]]. */
+@scala.caps.assumeSafe
 object ActorCapability:
   def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec](using
       cap: ActorCapability,
@@ -319,6 +326,7 @@ trait WorkflowCapability:
   def purge(instanceId: WorkflowInstanceId): Boolean
 
 /** Companion-object API for [[WorkflowCapability]]. */
+@scala.caps.assumeSafe
 object WorkflowCapability:
   def start(name: WorkflowName)(using cap: WorkflowCapability): WorkflowInstanceId =
     cap.start(name)

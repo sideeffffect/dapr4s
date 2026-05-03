@@ -1,7 +1,5 @@
 package dapr.safe
 
-import language.experimental.saferExceptions
-
 /** Base class for Dapr workflow orchestration implementations.
   *
   * Extend this class to define a workflow. The `run` method is called by the Dapr workflow runtime whenever a new

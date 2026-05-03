@@ -1,8 +1,5 @@
 package dapr.safe
 
-import language.experimental.captureChecking
-import language.experimental.saferExceptions
-
 /** Immutable, declarative description of all inbound handlers an application exposes.
   *
   * Build a `DaprApp` using the [[Subscription]], [[InvocationRoute]], and [[BindingRoute]] factory objects, then return
@@ -39,6 +36,9 @@ final case class DaprApp(
     workflows ++ other.workflows,
     activities ++ other.activities,
   )
+
+@scala.caps.assumeSafe
+object DaprApp
 
 /** Existential wrapper for a pub/sub subscription handler.
   *

@@ -1,8 +1,6 @@
 package dapr.safe.test.integration.apps
 
 import dapr.safe.*
-import language.experimental.saferExceptions
-import unsafeExceptions.canThrowAny
 
 /** Standalone entry point for the Inventory microservice.
   *

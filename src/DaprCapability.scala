@@ -1,7 +1,5 @@
 package dapr.safe
 
-import language.experimental.captureChecking
-import language.experimental.saferExceptions
 
 /** Root capability that acts as a factory for all DAPR sub-capabilities.
   *
@@ -9,11 +7,6 @@ import language.experimental.saferExceptions
   * [[DaprRuntime.run]]. It must not outlive the `run` block — the Scala 3
   * capture checker enforces this via `^{this}` return type annotations on
   * the factory methods below.
-  *
-  * Note: This trait does not import `language.experimental.safe` because
-  * safe mode is incompatible with saferExceptions in the same file (compiler
-  * limitation in current nightly). User code that imports safe mode can still
-  * use DaprCapability freely.
   *
   * The factory methods can be called directly or via the companion-object
   * transformer API (see [[DaprCapability$ companion object]]):

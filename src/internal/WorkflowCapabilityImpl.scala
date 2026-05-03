@@ -2,7 +2,6 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import io.dapr.workflows.client.{DaprWorkflowClient, NewWorkflowOptions, WorkflowRuntimeStatus, WorkflowState}
-import unsafeExceptions.canThrowAny
 
 @scala.caps.assumeSafe
 private[safe] final class WorkflowCapabilityImpl(

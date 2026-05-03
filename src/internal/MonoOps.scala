@@ -1,7 +1,5 @@
 package dapr.safe.internal
 
-import language.experimental.saferExceptions
-
 /** Reactor ↔ virtual-thread bridge. See [[MonoOps.awaitResult]]. */
 @scala.caps.assumeSafe
 private[internal] object MonoOps:

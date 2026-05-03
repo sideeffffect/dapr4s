@@ -6,7 +6,6 @@ import io.dapr.workflows.runtime.WorkflowRuntimeBuilder
 import java.net.InetSocketAddress
 import java.util.{ArrayList, HashMap as JHashMap}
 import scala.jdk.CollectionConverters.*
-import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal
 

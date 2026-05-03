@@ -1,7 +1,7 @@
 package dapr.safe.test.unit
 
-import dapr.safe.*
 import language.experimental.saferExceptions
+import dapr.safe.*
 import unsafeExceptions.canThrowAny
 
 import scala.collection.mutable

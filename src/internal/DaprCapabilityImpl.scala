@@ -5,8 +5,6 @@ import io.dapr.client.DaprClient
 import io.dapr.actors.client.ActorClient
 import io.dapr.workflows.client.DaprWorkflowClient
 import java.util.concurrent.atomic.AtomicReference
-import language.experimental.saferExceptions
-import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal
 
 /** Concrete implementation of [[dapr.safe.DaprCapability]] backed by a real [[DaprClient]].

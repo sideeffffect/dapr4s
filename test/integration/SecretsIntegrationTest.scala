@@ -4,7 +4,6 @@ import dapr.safe.*
 import io.dapr.testcontainers.DaprContainer
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
-import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 
 /** Integration tests for [[SecretsCapability]].

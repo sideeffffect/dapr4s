@@ -2,7 +2,6 @@ package dapr.safe.test.unit
 
 import dapr.safe.*
 import munit.FunSuite
-import language.experimental.saferExceptions
 
 @scala.caps.assumeSafe
 class CCTest extends FunSuite:

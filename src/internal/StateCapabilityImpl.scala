@@ -1,9 +1,9 @@
 package dapr.safe.internal
 
+import language.experimental.saferExceptions
 import dapr.safe.*
 import io.dapr.client.domain.{State as DaprState, StateOptions, TransactionalStateOperation}
 import io.dapr.client.domain.TransactionalStateOperation.OperationType
-import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 
 import scala.jdk.CollectionConverters.*

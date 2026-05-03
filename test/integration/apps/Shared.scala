@@ -6,25 +6,30 @@ import upickle.default.{ReadWriter, macroRW}
 
 /** A request to place an order. */
 final case class OrderRequest(item: String, quantity: Int)
+@scala.caps.assumeSafe
 object OrderRequest:
   given ReadWriter[OrderRequest] = macroRW
 
 /** Response returned after placing an order. */
 final case class OrderResponse(orderId: String, status: String)
+@scala.caps.assumeSafe
 object OrderResponse:
   given ReadWriter[OrderResponse] = macroRW
 
 /** The pub/sub event published when an order is accepted. */
 final case class OrderEvent(orderId: String, item: String, quantity: Int)
+@scala.caps.assumeSafe
 object OrderEvent:
   given ReadWriter[OrderEvent] = macroRW
 
 /** Query for the stock level of a named item. */
 final case class StockQuery(item: String)
+@scala.caps.assumeSafe
 object StockQuery:
   given ReadWriter[StockQuery] = macroRW
 
 /** Current stock level for an item. */
 final case class StockLevel(item: String, available: Int)
+@scala.caps.assumeSafe
 object StockLevel:
   given ReadWriter[StockLevel] = macroRW

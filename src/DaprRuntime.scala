@@ -1,7 +1,5 @@
 package dapr.safe
 
-import language.experimental.captureChecking
-import language.experimental.saferExceptions
 import scala.util.control.NonFatal
 import io.dapr.client.{DaprClient, DaprClientBuilder}
 import io.dapr.actors.client.ActorClient

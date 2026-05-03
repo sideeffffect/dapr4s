@@ -7,7 +7,6 @@ import com.dimafeng.testcontainers.GenericContainer
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import org.testcontainers.containers.Network
 import munit.FunSuite
-import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 
 import java.util.Collections

@@ -1,15 +1,13 @@
 package dapr.safe.test.integration.apps
 
 import dapr.safe.*
-import language.experimental.saferExceptions
-import unsafeExceptions.canThrowAny
+import language.experimental.safe
 
 /** Business logic for the Inventory microservice.
   *
   * Each handler method declares its capability requirements via anonymous `using` parameters, calling companion-object
   * methods ([[StateCapability.get]], [[DistributedLockCapability.tryLock]], etc.) rather than naming a capability. See
-  * [[OrderServiceHandlers]] for a full explanation of the capability-as-effect-system pattern and the escape hatch
-  * justifications.
+  * [[OrderServiceHandlers]] for a full explanation of the capability-as-effect-system pattern.
   *
   * Subscribes to [[OrderEvent]] messages on the `orders` pub/sub topic and decrements the corresponding item's stock
   * count in the state store. The decrement is protected by a distributed lock to prevent concurrent over-decrements
@@ -47,7 +45,7 @@ object InventoryServiceHandlers:
   def handleOrderEvent(event: CloudEvent[OrderEvent])(using
       StateCapability,
       DistributedLockCapability,
-  ): SubscriptionResult throws Exception =
+  ): SubscriptionResult =
     val item = event.data.item
     val qty = event.data.quantity
     val key = StateKey(s"stock-$item")
@@ -63,12 +61,12 @@ object InventoryServiceHandlers:
     else SubscriptionResult.Retry
 
   /** Return current stock level for the given item name. */
-  def getStock(item: String)(using StateCapability): StockLevel throws Exception =
+  def getStock(item: String)(using StateCapability): StockLevel =
     val available = StateCapability.get[Int](StateKey(s"stock-$item")).getOrElse(DefaultStock)
     StockLevel(item, available)
 
   /** Seed the stock level for an item (test helper and k8s init). */
-  def seedStock(stock: StockLevel)(using StateCapability): StockLevel throws Exception =
+  def seedStock(stock: StockLevel)(using StateCapability): StockLevel =
     StateCapability.save(StateKey(s"stock-${stock.item}"), stock.available)
     stock
 
@@ -82,21 +80,11 @@ object InventoryServiceHandlers:
       DaprCapability.lock(LockStoreName) {
         DaprApp(
           subscriptions = List(
-            Subscription[OrderEvent](PubSubComp, OrdersTopic) { event =>
-              // WHY TRY/CATCH: sibling-lambda CanThrow isolation — see OrderServiceHandlers scaladoc.
-              try handleOrderEvent(event)
-              catch case e: Exception => throw e
-            },
+            Subscription[OrderEvent](PubSubComp, OrdersTopic)(handleOrderEvent),
           ),
           invocations = List(
-            InvocationRoute[String, StockLevel](MethodName("get-stock")) { item =>
-              try getStock(item)
-              catch case e: Exception => throw e
-            },
-            InvocationRoute[StockLevel, StockLevel](MethodName("seed-stock")) { stock =>
-              try seedStock(stock)
-              catch case e: Exception => throw e
-            },
+            InvocationRoute[String, StockLevel](MethodName("get-stock"))(getStock),
+            InvocationRoute[StockLevel, StockLevel](MethodName("seed-stock"))(seedStock),
           ),
         )
       }

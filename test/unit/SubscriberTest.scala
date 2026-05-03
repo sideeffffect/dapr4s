@@ -2,7 +2,6 @@ package dapr.safe.test.unit
 
 import dapr.safe.*
 import munit.FunSuite
-import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
 
 /** Unit tests for the subscriber-side types and DaprAppServer implementation.
