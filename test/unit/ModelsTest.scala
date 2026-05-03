@@ -120,54 +120,17 @@ class ModelsTest extends FunSuite:
     assertEquals(result.failedEntries, List(BulkEntryId("id-2"), BulkEntryId("id-3")))
 
   // -------------------------------------------------------------------------
-  // Exception hierarchy
+  // Exceptions
   // -------------------------------------------------------------------------
-
-  test("DaprException message"):
-    val ex = DaprException("something went wrong")
-    assertEquals(ex.getMessage, "something went wrong")
-
-  test("DaprException with cause"):
-    val cause = RuntimeException("root cause")
-    val ex = DaprException("wrapper", cause)
-    assertEquals(ex.getCause, cause)
-
-  test("DaprException with null cause has null getCause"):
-    val ex = DaprException("test", null)
-    assert(ex.getCause == null)
 
   test("ETagMismatchException message contains key and etag"):
     val ex = ETagMismatchException(StateKey("my-key"), ETag("abc"))
     assert(ex.getMessage.contains("my-key"))
     assert(ex.getMessage.contains("abc"))
-    assert(ex.isInstanceOf[DaprException])
-    assert(ex.isInstanceOf[DaprStateException])
 
-  test("JsonDecodeException is a DaprException"):
+  test("JsonDecodeException message"):
     val ex = JsonDecodeException("bad json")
-    assert(ex.isInstanceOf[DaprException])
     assertEquals(ex.getMessage, "bad json")
-
-  test("DaprStateException is a DaprException"):
-    val ex = DaprStateException("state error")
-    assert(ex.isInstanceOf[DaprException])
-
-  test("DaprPubSubException is a DaprException"):
-    val ex = DaprPubSubException("pubsub error")
-    assert(ex.isInstanceOf[DaprException])
-
-  test("DaprSecretsException is a DaprException"):
-    val ex = DaprSecretsException("secrets error")
-    assert(ex.isInstanceOf[DaprException])
-
-  test("DaprLockException is a DaprException"):
-    val ex = DaprLockException("lock error")
-    assert(ex.isInstanceOf[DaprException])
-
-  test("StateTransactionException is a DaprStateException"):
-    val ex = StateTransactionException("tx error")
-    assert(ex.isInstanceOf[DaprStateException])
-    assert(ex.isInstanceOf[DaprException])
 
   // -------------------------------------------------------------------------
   // Non-empty validation for opaque types

@@ -486,7 +486,9 @@ rule StateGet {
     requires: cap.status = open
 
     ensures:
-        -- Either returns a value or absent; throws DaprException on DAPR error
+        -- Returns Option[T]: None when key is absent, Some(decoded) when present.
+        -- On infrastructure failure the SDK's io.dapr.exceptions.DaprException
+        -- (unchecked RuntimeException) propagates; no library wrapper is added.
         StateGetCompleted(result: StateEntry.created(value: any, etag: any))
 }
 
@@ -565,7 +567,7 @@ rule StateTransaction {
         if DaprTransactionSucceeds(cap.store_name, ops):
             StateTransactionCompleted()
         else:
-            DaprExceptionThrown()
+            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
 }
 
 -- ---- PubSub Operations ----
@@ -613,7 +615,7 @@ rule ServiceInvoke {
         if DaprServiceResponds(app_id, method):
             ServiceInvokeCompleted(response: any)
         else:
-            DaprExceptionThrown()
+            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
 }
 
 rule ServiceInvokeGet {
@@ -625,7 +627,7 @@ rule ServiceInvokeGet {
         if DaprServiceResponds(app_id, method):
             ServiceInvokeCompleted(response: any)
         else:
-            DaprExceptionThrown()
+            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
 }
 
 -- ---- Secrets ----
@@ -637,9 +639,11 @@ rule SecretsGet {
 
     ensures:
         if DaprSecretExists(cap.store_name, key):
-            SecretsGetCompleted(value: String)
+            SecretsGetCompleted(value: Some(String))
         else:
-            DaprExceptionThrown()
+            -- Key absent or store returns empty: SecretsCapability.get returns None (no exception)
+            SecretsGetCompleted(value: None)
+        -- On infrastructure failure the SDK's io.dapr.exceptions.DaprException propagates unchecked
 }
 
 rule SecretsGetBulk {
@@ -793,7 +797,7 @@ rule BindingInvoke {
         if DaprBindingResponds(cap.binding_name, operation):
             BindingInvokeCompleted(response: any)
         else:
-            DaprExceptionThrown()
+            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
 }
 
 -- ---- JsonCodec ----
@@ -1020,7 +1024,7 @@ surface SecretsSurface {
     facing user: UserCode
 
     exposes:
-        get: (key: SecretKey) -> String
+        get: (key: SecretKey) -> String?   -- None when key absent; Some(value) when found
         get_bulk: () -> Map<SecretKey, String>
 }
 
@@ -1108,5 +1112,6 @@ open question "Should DaprRuntime support a custom DaprClient (e.g. for testing 
 
 -- RESOLVED: PubSubCapability supports bulkPublish via BulkPublishEntry / BulkPublishResult.
 
--- RESOLVED: ETagMismatchException is a distinct subtype of DaprStateException,
--- allowing callers to specifically catch concurrency conflicts.
+-- RESOLVED: ETagMismatchException extends Exception directly (DaprStateException was removed).
+-- It is the only exception declared for state operations; callers catch it to handle
+-- optimistic-concurrency conflicts (fetch new ETag, retry).

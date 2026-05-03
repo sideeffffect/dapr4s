@@ -24,7 +24,7 @@ class CCTest extends FunSuite:
 
   test("t3"):
     runSafe:
-      intercept[DaprException]:
+      intercept[JsonDecodeException]:
         runSafe:
           JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
 

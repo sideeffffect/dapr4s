@@ -93,12 +93,6 @@ class JsonCodecTest extends FunSuite:
     catch case e: Exception => exOpt = e
     assert(exOpt != null && exOpt.isInstanceOf[JsonDecodeException])
 
-  test("decodeOrThrow throws DaprException (subtype) on failure"):
-    var exOpt: Exception | Null = null
-    try JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
-    catch case e: Exception => exOpt = e
-    assert(exOpt != null && exOpt.isInstanceOf[DaprException])
-
   // -------------------------------------------------------------------------
   // Null input guard — returns Left(JsonDecodeException("null input"))
   // -------------------------------------------------------------------------

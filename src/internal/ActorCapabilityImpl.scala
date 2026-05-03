@@ -8,9 +8,7 @@ import io.dapr.actors.client.{
   ActorProxyBuilder as JavaActorProxyBuilder,
 }
 import dapr.safe.internal.MonoOps.awaitResult
-import language.experimental.saferExceptions
 import unsafeExceptions.canThrowAny
-import scala.util.control.NonFatal
 
 /** Client-side capability for invoking methods on a specific Dapr virtual actor instance.
   *
@@ -28,39 +26,17 @@ private[safe] final class ActorCapabilityImpl(
     private val proxy: JavaActorProxy,
 ) extends ActorCapability:
 
-  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp throws DaprActorException =
+  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp =
     val requestBytes = summon[JsonCodec[Req]].encode(data).getBytes(java.nio.charset.StandardCharsets.UTF_8).nn
-    try
-      val rawResult = proxy.invokeMethod(method.value, requestBytes, classOf[Array[Byte]]).awaitResult()
-      decodeResponse[Resp](method, rawResult)
-    catch
-      case e: DaprActorException  => throw e
-      case NonFatal(e: Exception) =>
-        throw DaprActorException(
-          s"Actor invocation '${actorType.value}/${actorId.value}/${method.value}' failed: ${e.getMessage}",
-          e,
-        )
+    val rawResult = proxy.invokeMethod(method.value, requestBytes, classOf[Array[Byte]]).awaitResult()
+    decodeResponse[Resp](method, rawResult)
 
-  def invokeGet[Resp: JsonCodec](method: MethodName): Resp throws DaprActorException =
-    try
-      val rawResult = proxy.invokeMethod(method.value, classOf[Array[Byte]]).awaitResult()
-      decodeResponse[Resp](method, rawResult)
-    catch
-      case e: DaprActorException  => throw e
-      case NonFatal(e: Exception) =>
-        throw DaprActorException(
-          s"Actor invocation '${actorType.value}/${actorId.value}/${method.value}' failed: ${e.getMessage}",
-          e,
-        )
+  def invokeGet[Resp: JsonCodec](method: MethodName): Resp =
+    val rawResult = proxy.invokeMethod(method.value, classOf[Array[Byte]]).awaitResult()
+    decodeResponse[Resp](method, rawResult)
 
-  def invokeVoid(method: MethodName): Unit throws DaprActorException =
-    try proxy.invokeMethod(method.value).awaitResult()
-    catch
-      case NonFatal(e: Exception) =>
-        throw DaprActorException(
-          s"Actor invocation '${actorType.value}/${actorId.value}/${method.value}' failed: ${e.getMessage}",
-          e,
-        )
+  def invokeVoid(method: MethodName): Unit =
+    proxy.invokeMethod(method.value).awaitResult()
 
   private def decodeResponse[Resp: JsonCodec](method: MethodName, rawResult: Array[Byte] | Null): Resp =
     val bytes = if rawResult == null then Array.empty[Byte] else rawResult

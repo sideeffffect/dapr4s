@@ -53,7 +53,7 @@ private[safe] final class DaprAppServer(app: DaprApp):
         inv.reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
           case Right(req) => inv.respCodec.encode(handler(req))
           case Left(e)    =>
-            throw DaprAppServerException(
+            throw RuntimeException(
               s"Cannot decode invocation request for '${inv.methodName.value}': ${e.getMessage}",
               e,
             )
@@ -66,7 +66,7 @@ private[safe] final class DaprAppServer(app: DaprApp):
         bin.codec.decode(bodyJson) match
           case Right(data) => handler(data)
           case Left(e)     =>
-            throw DaprAppServerException(
+            throw RuntimeException(
               s"Cannot decode binding payload for '${bin.bindingName.value}': ${e.getMessage}",
               e,
             )

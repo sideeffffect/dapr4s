@@ -122,15 +122,6 @@ class StateCapabilityTest extends FunSuite:
       catch case e: ETagMismatchException => exOpt = e
       assert(exOpt != null)
 
-  test("ETagMismatchException is a DaprStateException"):
-    withScope:
-      val state = summon[DaprCapability].state(StoreName("test-store"))
-      state.save(StateKey("k"), "v1")
-      var exOpt: Exception | Null = null
-      try state.saveWithETag(StateKey("k"), "v2", ETag("wrong-etag"))
-      catch case e: DaprStateException => exOpt = e
-      assert(exOpt != null && exOpt.isInstanceOf[ETagMismatchException])
-
   // -------------------------------------------------------------------------
   // delete
   // -------------------------------------------------------------------------
@@ -232,25 +223,13 @@ class StateCapabilityTest extends FunSuite:
       val scope = MockDaprCapability()
       scope.seedSecret("vault", "db-password", "s3cr3t")
       val secrets = scope.secrets(SecretStoreName("vault"))
-      assertEquals(secrets.get(SecretKey("db-password")), "s3cr3t")
+      assertEquals(secrets.get(SecretKey("db-password")), Some("s3cr3t"))
 
-  test("secrets get throws DaprSecretsException for missing key"):
+  test("secrets get returns None for missing key"):
     runSafe:
       val scope = MockDaprCapability()
       val secrets = scope.secrets(SecretStoreName("vault"))
-      var exOpt: Exception | Null = null
-      try secrets.get(SecretKey("nonexistent"))
-      catch case e: DaprSecretsException => exOpt = e
-      assert(exOpt != null)
-
-  test("secrets get throws DaprException (base type) for missing key"):
-    runSafe:
-      val scope = MockDaprCapability()
-      val secrets = scope.secrets(SecretStoreName("vault"))
-      var exOpt: Exception | Null = null
-      try secrets.get(SecretKey("nonexistent"))
-      catch case e: DaprException => exOpt = e
-      assert(exOpt != null)
+      assertEquals(secrets.get(SecretKey("nonexistent")), None)
 
   test("secrets getBulk returns all seeded values"):
     runSafe:

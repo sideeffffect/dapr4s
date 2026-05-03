@@ -456,33 +456,18 @@ stateDiagram-v2
 
 ## Error Handling
 
-All DAPR errors are surfaced as typed subtypes of `DaprException`:
+Only two exceptions are declared in `Exceptions.scala` — those where the caller has a genuine, distinct action to take:
 
-| Exception | Thrown by |
-|---|---|
-| `DaprStateException` | `StateCapability` operations |
-| `DaprPubSubException` | `PubSubCapability` operations |
-| `DaprServiceInvocationException` | `ServiceInvocationCapability` operations |
-| `DaprSecretsException` | `SecretsCapability` operations |
-| `DaprConfigurationException` | `ConfigurationCapability` operations |
-| `DaprBindingsException` | `BindingsCapability` operations |
-| `DaprLockException` | `DistributedLockCapability` operations |
-| `ETagMismatchException` | `saveWithETag`, `deleteWithETag` (subtype of `DaprStateException`) |
-| `StateTransactionException` | failed state transactions (subtype of `DaprStateException`) |
-| `DaprConnectionException` | connectivity failures reaching the DAPR sidecar |
-| `JsonDecodeException` | `JsonCodec.decodeOrThrow` (subtype of `DaprException`) |
-| `DaprAppServerException` | `DaprRuntime.serve` HTTP server failures |
+| Exception | Thrown by | Why it is meaningful |
+|---|---|---|
+| `ETagMismatchException` | `StateCapability.saveWithETag`, `deleteWithETag` | Caller must fetch the new ETag and retry; no other exception requires this |
+| `JsonDecodeException` | `JsonCodec.decodeOrThrow` | Data in the store/response does not match the expected type; a data-contract violation the caller may want to log or handle separately |
 
-The library does not catch exceptions internally — callers use `Try` or `Either` adapters if they want explicit error handling. Under `import language.experimental.saferExceptions`, all `throws` clauses are checked by the compiler.
+All other failures — sidecar unreachable, component not configured, gRPC errors — propagate as unchecked `io.dapr.exceptions.DaprException` (from the Java SDK, a `RuntimeException` subclass). These are unexpected infrastructure failures that callers cannot meaningfully handle at the call site; they bubble up to a top-level error boundary. There is no per-capability exception hierarchy: such a hierarchy would be a lie of precision, implying callers need to handle `DaprStateException` differently from `DaprPubSubException` when they do not.
 
-All broad catch clauses in library internals use `scala.util.control.NonFatal` to ensure fatal JVM errors (`OutOfMemoryError`, `StackOverflowError`, `ThreadDeath`, `LinkageError`, `ControlThrowable`) propagate immediately rather than being wrapped in domain exceptions. `InterruptedException` is never silently swallowed: blocking bridges (see `MonoOps.awaitResult`) catch it explicitly to restore the interrupt flag before rethrowing; subscription callbacks use `NonFatal` which naturally excludes it. The canonical pattern in `*CapabilityImpl` files:
+`SecretsCapability.get` returns `Option[String]` rather than throwing for a missing key — absence is a normal case, not a failure.
 
-```scala
-try body
-catch
-  case e: DomainException => throw e              // already a typed error — rethrow as-is
-  case NonFatal(e: Exception) => throw DomainException(e.getMessage, e)  // wrap, let fatals through
-```
+Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM errors propagate immediately. `InterruptedException` is never silently swallowed (see `MonoOps.awaitResult`).
 
 ---
 
