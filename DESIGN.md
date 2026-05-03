@@ -546,14 +546,14 @@ Extend `Workflow` and implement `run()(using WorkflowContext): Unit`. `WorkflowC
 
 ```scala
 class OrderWorkflow extends Workflow:
-  def run()(using WorkflowContext): Unit =
+  def run(using WorkflowContext): Unit =
     val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
     val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
     val result = paymentTask.await()
     WorkflowContext.complete(result)
 ```
 
-`Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge constructs `given WorkflowContext = new WorkflowContextImpl(javaCtx)` and calls `w.run()`, so `WorkflowContext` never escapes the bridge's stack frame. The bridge is in `dapr.safe.internal` and never visible to users.
+`Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge constructs `given WorkflowContext = new WorkflowContextImpl(javaCtx)` and calls `w.run`, so `WorkflowContext` never escapes the bridge's stack frame. The bridge is in `dapr.safe.internal` and never visible to users.
 
 ### WorkflowActivity[I, O]
 

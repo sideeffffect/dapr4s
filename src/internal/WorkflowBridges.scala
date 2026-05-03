@@ -20,7 +20,7 @@ private[safe] final class WorkflowBridge(
       override def run(javaCtx: io.dapr.workflows.WorkflowContext | Null): Unit =
         if javaCtx != null then
           given WorkflowContext = new WorkflowContextImpl(javaCtx)
-          w.run()
+          w.run
 
 /** Internal bridge: wraps a [[WorkflowActivity]] instance for registration with the Dapr Java SDK.
   *

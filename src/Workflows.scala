@@ -172,7 +172,7 @@ private[safe] final class WorkflowContextImpl(
   *
   * {{{
   *   class OrderWorkflow extends Workflow:
-  *     def run()(using WorkflowContext): Unit =
+  *     def run(using WorkflowContext): Unit =
   *       val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
   *       val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
   *       val result = paymentTask.await()
@@ -224,7 +224,7 @@ object WorkflowContext:
   *
   * {{{
   *   class OrderWorkflow extends Workflow:
-  *     def run()(using WorkflowContext): Unit =
+  *     def run(using WorkflowContext): Unit =
   *       val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
   *       val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
   *       val result = paymentTask.await()
@@ -247,7 +247,7 @@ abstract class Workflow:
     * needed). Use `WorkflowContext.callActivity`, `WorkflowContext.createTimer`, and
     * `WorkflowContext.waitForExternalEvent` to schedule durable work; call `WorkflowContext.complete` when done.
     */
-  def run()(using WorkflowContext): Unit
+  def run(using WorkflowContext): Unit
 
 // ---------------------------------------------------------------------------
 // WorkflowActivity — user-facing base class for workflow activities

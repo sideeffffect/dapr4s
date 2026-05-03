@@ -12,7 +12,7 @@ class AddActivity extends WorkflowActivity[IncrRequest, CounterState]:
     CounterState(input.amount * 2) // doubles the input for test verification
 
 class AddingWorkflow extends Workflow:
-  def run()(using WorkflowContext): Unit =
+  def run(using WorkflowContext): Unit =
     val input = WorkflowContext.getInput[IncrRequest].getOrElse(IncrRequest(0))
     val task = WorkflowContext.callActivity(classOf[AddActivity], input)
     val result = task.await()
