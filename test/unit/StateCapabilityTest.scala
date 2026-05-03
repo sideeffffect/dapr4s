@@ -160,110 +160,110 @@ class StateCapabilityTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("publish records event in mock scope"):
-      val scope = MockDaprCapability()
-      val pubsub = scope.pubsub(PubSubName("my-pubsub"))
-      pubsub.publish(Topic("orders"), "order-payload")
-      val events = scope.publishedEvents
-      assertEquals(events.length, 1)
-      val (psName, topicName, _, meta) = events(0)
-      assertEquals(psName, "my-pubsub")
-      assertEquals(topicName, "orders")
-      assertEquals(meta, Map.empty[String, String])
+    val scope = MockDaprCapability()
+    val pubsub = scope.pubsub(PubSubName("my-pubsub"))
+    pubsub.publish(Topic("orders"), "order-payload")
+    val events = scope.publishedEvents
+    assertEquals(events.length, 1)
+    val (psName, topicName, _, meta) = events(0)
+    assertEquals(psName, "my-pubsub")
+    assertEquals(topicName, "orders")
+    assertEquals(meta, Map.empty[String, String])
 
   test("publishWithMetadata records event with metadata in mock scope"):
-      val scope = MockDaprCapability()
-      val pubsub = scope.pubsub(PubSubName("my-pubsub"))
-      pubsub.publishWithMetadata(Topic("orders"), "payload", Map("k" -> "v"))
-      val events = scope.publishedEvents
-      assertEquals(events.length, 1)
-      val (_, _, _, meta) = events(0)
-      assertEquals(meta, Map("k" -> "v"))
+    val scope = MockDaprCapability()
+    val pubsub = scope.pubsub(PubSubName("my-pubsub"))
+    pubsub.publishWithMetadata(Topic("orders"), "payload", Map("k" -> "v"))
+    val events = scope.publishedEvents
+    assertEquals(events.length, 1)
+    val (_, _, _, meta) = events(0)
+    assertEquals(meta, Map("k" -> "v"))
 
   test("bulkPublish records all entries in mock scope"):
-      val scope = MockDaprCapability()
-      val pubsub = scope.pubsub(PubSubName("my-pubsub"))
-      val entries = Seq(
-        BulkPublishEntry(BulkEntryId("1"), "event-a"),
-        BulkPublishEntry(BulkEntryId("2"), "event-b"),
-      )
-      val result = pubsub.bulkPublish(Topic("orders"), entries)
-      assertEquals(scope.publishedEvents.length, 2)
-      assertEquals(result.failedEntries, List.empty)
+    val scope = MockDaprCapability()
+    val pubsub = scope.pubsub(PubSubName("my-pubsub"))
+    val entries = Seq(
+      BulkPublishEntry(BulkEntryId("1"), "event-a"),
+      BulkPublishEntry(BulkEntryId("2"), "event-b"),
+    )
+    val result = pubsub.bulkPublish(Topic("orders"), entries)
+    assertEquals(scope.publishedEvents.length, 2)
+    assertEquals(result.failedEntries, List.empty)
 
   // -------------------------------------------------------------------------
   // Secrets through mock scope
   // -------------------------------------------------------------------------
 
   test("secrets get returns seeded value"):
-      val scope = MockDaprCapability()
-      scope.seedSecret("vault", "db-password", "s3cr3t")
-      val secrets = scope.secrets(SecretStoreName("vault"))
-      assertEquals(secrets.get(SecretKey("db-password")), Some("s3cr3t"))
+    val scope = MockDaprCapability()
+    scope.seedSecret("vault", "db-password", "s3cr3t")
+    val secrets = scope.secrets(SecretStoreName("vault"))
+    assertEquals(secrets.get(SecretKey("db-password")), Some("s3cr3t"))
 
   test("secrets get returns None for missing key"):
-      val scope = MockDaprCapability()
-      val secrets = scope.secrets(SecretStoreName("vault"))
-      assertEquals(secrets.get(SecretKey("nonexistent")), None)
+    val scope = MockDaprCapability()
+    val secrets = scope.secrets(SecretStoreName("vault"))
+    assertEquals(secrets.get(SecretKey("nonexistent")), None)
 
   test("secrets getBulk returns all seeded values"):
-      val scope = MockDaprCapability()
-      scope.seedSecret("vault", "a", "1")
-      scope.seedSecret("vault", "b", "2")
-      val secrets = scope.secrets(SecretStoreName("vault"))
-      assertEquals(secrets.getBulk(), Map(SecretKey("a") -> "1", SecretKey("b") -> "2"))
+    val scope = MockDaprCapability()
+    scope.seedSecret("vault", "a", "1")
+    scope.seedSecret("vault", "b", "2")
+    val secrets = scope.secrets(SecretStoreName("vault"))
+    assertEquals(secrets.getBulk(), Map(SecretKey("a") -> "1", SecretKey("b") -> "2"))
 
   // -------------------------------------------------------------------------
   // Configuration through mock scope
   // -------------------------------------------------------------------------
 
   test("config get returns seeded items"):
-      val scope = MockDaprCapability()
-      scope.seedConfig("app-config", "log-level", ConfigItem(ConfigKey("log-level"), "INFO", "1"))
-      val config = scope.config(ConfigStoreName("app-config"))
-      val result = config.get(Seq(ConfigKey("log-level")))
-      assertEquals(result(ConfigKey("log-level")).value, "INFO")
+    val scope = MockDaprCapability()
+    scope.seedConfig("app-config", "log-level", ConfigItem(ConfigKey("log-level"), "INFO", "1"))
+    val config = scope.config(ConfigStoreName("app-config"))
+    val result = config.get(Seq(ConfigKey("log-level")))
+    assertEquals(result(ConfigKey("log-level")).value, "INFO")
 
   test("config get returns empty map for unknown keys"):
-      val scope = MockDaprCapability()
-      val config = scope.config(ConfigStoreName("app-config"))
-      assert(config.get(Seq(ConfigKey("unknown"))).isEmpty)
+    val scope = MockDaprCapability()
+    val config = scope.config(ConfigStoreName("app-config"))
+    assert(config.get(Seq(ConfigKey("unknown"))).isEmpty)
 
   // -------------------------------------------------------------------------
   // Distributed lock through mock scope
   // -------------------------------------------------------------------------
 
   test("lock tryLock succeeds on first attempt"):
-      val scope = MockDaprCapability()
-      val lock = scope.lock(StoreName("lock-store"))
-      val acquired = lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
-      assert(acquired)
+    val scope = MockDaprCapability()
+    val lock = scope.lock(StoreName("lock-store"))
+    val acquired = lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
+    assert(acquired)
 
   test("lock tryLock fails if already held"):
-      val scope = MockDaprCapability()
-      val lock = scope.lock(StoreName("lock-store"))
-      lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
-      val acquired = lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-2"), 30)
-      assert(!acquired)
+    val scope = MockDaprCapability()
+    val lock = scope.lock(StoreName("lock-store"))
+    lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
+    val acquired = lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-2"), 30)
+    assert(!acquired)
 
   test("lock unlock releases the lock"):
-      val scope = MockDaprCapability()
-      val lock = scope.lock(StoreName("lock-store"))
-      lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
-      val status = lock.unlock(LockResourceId("resource-1"), LockOwner("owner-1"))
-      assertEquals(status, UnlockStatus.Success)
+    val scope = MockDaprCapability()
+    val lock = scope.lock(StoreName("lock-store"))
+    lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
+    val status = lock.unlock(LockResourceId("resource-1"), LockOwner("owner-1"))
+    assertEquals(status, UnlockStatus.Success)
 
   test("lock unlock on non-held resource returns LockNotFound"):
-      val scope = MockDaprCapability()
-      val lock = scope.lock(StoreName("lock-store"))
-      val status = lock.unlock(LockResourceId("no-such-resource"), LockOwner("owner-1"))
-      assertEquals(status, UnlockStatus.LockNotFound)
+    val scope = MockDaprCapability()
+    val lock = scope.lock(StoreName("lock-store"))
+    val status = lock.unlock(LockResourceId("no-such-resource"), LockOwner("owner-1"))
+    assertEquals(status, UnlockStatus.LockNotFound)
 
   test("lock unlock with wrong owner returns InternalError"):
-      val scope = MockDaprCapability()
-      val lock = scope.lock(StoreName("lock-store"))
-      lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
-      val status = lock.unlock(LockResourceId("resource-1"), LockOwner("owner-2"))
-      assertEquals(status, UnlockStatus.InternalError)
+    val scope = MockDaprCapability()
+    val lock = scope.lock(StoreName("lock-store"))
+    lock.tryLock(LockResourceId("resource-1"), LockOwner("owner-1"), 30)
+    val status = lock.unlock(LockResourceId("resource-1"), LockOwner("owner-2"))
+    assertEquals(status, UnlockStatus.InternalError)
 
   // -------------------------------------------------------------------------
   // DaprCapability via withScope helper
@@ -281,14 +281,14 @@ class StateCapabilityTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("state operation throws IllegalStateException after scope close"):
-      val scope = MockDaprCapability()
-      val state = scope.state(StoreName("test-store"))
-      state.save(StateKey("k"), "v")
-      scope.close()
-      var exOpt: Exception | Null = null
-      try state.get[String](StateKey("k"))
-      catch case e: IllegalStateException => exOpt = e
-      assert(exOpt != null)
+    val scope = MockDaprCapability()
+    val state = scope.state(StoreName("test-store"))
+    state.save(StateKey("k"), "v")
+    scope.close()
+    var exOpt: Exception | Null = null
+    try state.get[String](StateKey("k"))
+    catch case e: IllegalStateException => exOpt = e
+    assert(exOpt != null)
 
   test("scope factory throws IllegalStateException after close"):
     val scope = MockDaprCapability()
@@ -297,23 +297,23 @@ class StateCapabilityTest extends FunSuite:
       scope.state(StoreName("test-store"))
 
   test("pubsub operation throws IllegalStateException after scope close"):
-      val scope = MockDaprCapability()
-      val pubsub = scope.pubsub(PubSubName("ps"))
-      scope.close()
-      var exOpt: Exception | Null = null
-      try pubsub.publish(Topic("t"), "msg")
-      catch case e: IllegalStateException => exOpt = e
-      assert(exOpt != null)
+    val scope = MockDaprCapability()
+    val pubsub = scope.pubsub(PubSubName("ps"))
+    scope.close()
+    var exOpt: Exception | Null = null
+    try pubsub.publish(Topic("t"), "msg")
+    catch case e: IllegalStateException => exOpt = e
+    assert(exOpt != null)
 
   test("secrets operation throws IllegalStateException after scope close"):
-      val scope = MockDaprCapability()
-      scope.seedSecret("vault", "k", "v")
-      val secrets = scope.secrets(SecretStoreName("vault"))
-      scope.close()
-      var exOpt: Exception | Null = null
-      try secrets.get(SecretKey("k"))
-      catch case e: IllegalStateException => exOpt = e
-      assert(exOpt != null)
+    val scope = MockDaprCapability()
+    scope.seedSecret("vault", "k", "v")
+    val secrets = scope.secrets(SecretStoreName("vault"))
+    scope.close()
+    var exOpt: Exception | Null = null
+    try secrets.get(SecretKey("k"))
+    catch case e: IllegalStateException => exOpt = e
+    assert(exOpt != null)
 
   // -------------------------------------------------------------------------
   // Actor capability (mock)

@@ -129,7 +129,8 @@ private class MockStateCapability(
     checkOpen()
     if etag.value.nonEmpty then
       store.get(key.value) match
-        case None => return Some(ETagMismatchException(key, etag))
+        case None =>
+          return Some(ETagMismatchException(key, etag))
         case Some((_, currentEtag)) if currentEtag != etag.value =>
           return Some(ETagMismatchException(key, etag))
         case _ => // proceed

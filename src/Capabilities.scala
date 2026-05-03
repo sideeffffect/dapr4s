@@ -27,16 +27,15 @@ trait StateCapability:
   /** Save multiple key-value pairs in a single call. */
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit
 
-  /** Save a value only if the provided ETag matches the server-side ETag.
-    * Returns `None` on success, `Some(e)` if the ETag did not match.
+  /** Save a value only if the provided ETag matches the server-side ETag. Returns `None` on success, `Some(e)` if the
+    * ETag did not match.
     */
   def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Option[ETagMismatchException]
 
   /** Unconditionally delete a key (no-op if the key is absent). */
   def delete(key: StateKey): Unit
 
-  /** Delete a key only if the provided ETag matches.
-    * Returns `None` on success, `Some(e)` if the ETag did not match.
+  /** Delete a key only if the provided ETag matches. Returns `None` on success, `Some(e)` if the ETag did not match.
     */
   def deleteWithETag(key: StateKey, etag: ETag): Option[ETagMismatchException]
 
