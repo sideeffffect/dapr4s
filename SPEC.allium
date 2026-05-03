@@ -126,6 +126,7 @@ value TimerName        { value: String }   -- Name of a non-persistent actor tim
 -- Workflow opaque types
 value WorkflowName         { value: String }   -- Dapr workflow class / registration name (non-empty)
 value WorkflowInstanceId   { value: String }   -- Dapr workflow instance ID (may be empty)
+value EventName            { value: String }   -- External event name for workflow instances (non-empty)
 
 -- Query / filter value
 value StateQuery {
@@ -1006,8 +1007,8 @@ invariant ScopeLifetime {
 -- enforced by constructors at runtime):
 --   Non-empty: StoreName, PubSubName, Topic, AppId, MethodName, BindingName, SecretStoreName,
 --              ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
---              WorkflowName, ActorType, ReminderName, TimerName — all reject the empty string
---              at construction time via require().
+--              WorkflowName, ActorType, ReminderName, TimerName, EventName — all reject the
+--              empty string at construction time via require().
 --   Accept any string (including empty): StateKey, ETag, SecretKey, ConfigKey,
 --              BulkEntryId, WorkflowInstanceId, ActorId.
 
@@ -1258,10 +1259,10 @@ surface ActorContextSurface {
 
     exposes:
         -- State
-        get:    (key: String) -> Option<T>
+        get:    (key: StateKey) -> Option<T>
         -- None when key absent; Some(T) when present
-        set:    (key: String, value: T) -> Unit
-        remove: (key: String) -> Unit
+        set:    (key: StateKey, value: T) -> Unit
+        remove: (key: StateKey) -> Unit
 
         -- Reminders (persistent — survive actor deactivation/restart)
         register_reminder: (name: ReminderName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit

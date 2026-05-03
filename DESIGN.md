@@ -320,6 +320,7 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `ReminderName` | `String` | yes | Persistent actor reminder name |
 | `TimerName` | `String` | yes | Non-persistent actor timer name |
 | `WorkflowName` | `String` | yes | Dapr workflow class name |
+| `EventName` | `String` | yes | External event name for `WorkflowContext.waitForExternalEvent` and `WorkflowCapability.raiseEvent` |
 | `ETag` | `String` | no | Optimistic-concurrency tag |
 | `StateKey` | `String` | no | Key in a DAPR state store |
 | `StateQuery` | `String` | no | State store query expression (JSON filter) |
@@ -584,9 +585,9 @@ Dapr virtual actors are hosted server-side via `ActorDefinition` without extendi
 ```scala
 @assumeSafe trait ActorContext:
   // State
-  def get[T: JsonCodec](key: String): Option[T]
-  def set[T: JsonCodec](key: String, value: T): Unit
-  def remove(key: String): Unit
+  def get[T: JsonCodec](key: StateKey): Option[T]
+  def set[T: JsonCodec](key: StateKey, value: T): Unit
+  def remove(key: StateKey): Unit
   // Reminders (persistent — survive actor deactivation)
   def registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: Duration, period: Option[Duration] = None): Unit
   def unregisterReminder(name: ReminderName): Unit
