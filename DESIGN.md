@@ -132,7 +132,8 @@ classDiagram
         +invocations: List[InvocationRoute]
         +bindings: List[BindingRoute]
         +workflows: List[DaprWorkflow]
-        +activities: List[DaprActivity]
+        +activities: List[DaprActivity[?,?]]
+        +actors: List[ActorDefinition]
         +\+\+(other: DaprApp) DaprApp
     }
     class BindingsCapability {
@@ -532,8 +533,108 @@ scala-safe-dapr/
 
 ---
 
+## Workflows and Activities
+
+`DaprWorkflow` and `DaprActivity[I, O]` provide clean Scala abstractions over the Dapr workflow SDK, hiding all Java types.
+
+### DaprWorkflow
+
+Extend `DaprWorkflow` and implement `run(ctx: WorkflowContext): Unit`. The `WorkflowContext` is a pure Scala trait — no Java types leak into user code:
+
+```scala
+class OrderWorkflow extends DaprWorkflow:
+  def run(ctx: WorkflowContext): Unit =
+    val input = ctx.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
+    val paymentTask = ctx.callActivity(classOf[ProcessPaymentActivity], input)
+    val result = paymentTask.await()
+    ctx.complete(result)
+```
+
+`DaprWorkflow` is a pure Scala abstract class — no Java type in the public API. Internally, `DaprWorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge is in `dapr.safe.internal` and never visible to users.
+
+### DaprActivity[I, O]
+
+Extend `DaprActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]` in scope) and implement `execute(input: I): O`:
+
+```scala
+class ProcessPaymentActivity extends DaprActivity[OrderRequest, PaymentResult]:
+  def execute(input: OrderRequest): PaymentResult =
+    // can do I/O, call services, etc.
+    PaymentResult("confirmed")
+```
+
+`DaprActivity[I, O]` is a pure Scala abstract class. Internally, `DaprActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[safe]` on the abstract class.
+
+### WorkflowTask[O]
+
+`ctx.callActivity(...)`, `ctx.createTimer(...)`, and `ctx.waitForExternalEvent(...)` all return `WorkflowTask[O]`. Call `.await()` to block and get the result. This is replay-safe inside the workflow runtime.
+
+---
+
+## Actors (Server-side Hosting)
+
+Dapr virtual actors are hosted server-side via `ActorDefinition` without extending any Java class.
+
+### ActorContext
+
+`ActorContext` is a capability trait provided on every actor invocation. It bundles per-instance state access with reminder/timer scheduling:
+
+```scala
+@assumeSafe trait ActorContext:
+  // State
+  def get[T: JsonCodec](key: String): Option[T]
+  def set[T: JsonCodec](key: String, value: T): Unit
+  def remove(key: String): Unit
+  // Reminders (persistent — survive actor deactivation)
+  def registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: Duration, period: Option[Duration] = None): Unit
+  def unregisterReminder(name: ReminderName): Unit
+  // Timers (non-persistent — lost on deactivation)
+  def registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: Duration, period: Option[Duration] = None): Unit
+  def unregisterTimer(name: TimerName): Unit
+```
+
+Implemented by `HttpActorContext` which calls the Dapr actor state and reminder/timer HTTP APIs. A companion `object ActorContext` provides static forwarding methods so handlers can call `ActorContext.set(...)` without naming the context parameter.
+
+### ActorDefinition, ActorRoutes, and Route Types
+
+```scala
+ActorDefinition(ActorType("Counter")) { (id, ctx) =>
+  given ActorContext = ctx
+  val actor = new CounterActor   // plain Scala class, no special supertype
+  ActorRoutes(
+    methods = List(
+      ActorMethodRoute[IncrReq, Int](MethodName("increment"))(actor.increment),
+      ActorMethodRoute[Unit, Int](MethodName("get"))(actor.get),
+    ),
+    reminders = List(
+      ActorReminderRoute[String](ReminderName("reset-reminder"))(actor.onReminder),
+    ),
+    timers = List(
+      ActorTimerRoute[IncrReq](TimerName("auto-tick"))(actor.onTimer),
+    ),
+  )
+}
+```
+
+`build` is called on every incoming invocation. It receives a fresh `ActorContext` scoped to that `(actorType, actorId)` pair and returns an `ActorRoutes` value grouping all three route types.
+
+- `ActorMethodRoute[Req, Resp]` — handles `POST /actors/{type}/{id}/method/{name}`
+- `ActorReminderRoute[Payload]` — handles `PUT /actors/{type}/{id}/method/remind/{name}`
+- `ActorTimerRoute[Payload]` — handles `PUT /actors/{type}/{id}/method/timer/{name}`
+
+### HTTP Routes (DaprAppServer)
+
+`DaprAppServer` handles:
+- `GET /dapr/config` → returns `{"entities": [...registered actor types...], ...}` 
+- `POST /actors/{type}/{id}/method/{name}` → dispatches to the matching `ActorMethodRoute`
+- `PUT /actors/{type}/{id}/method/remind/{name}` → dispatches to the matching `ActorReminderRoute`; body `{"data":"base64","dueTime":"..."}` — `data` is base64(JSON)
+- `PUT /actors/{type}/{id}/method/timer/{name}` → dispatches to the matching `ActorTimerRoute`; same body format
+- `DELETE /actors/{type}/{id}` → actor deactivation (returns 200, no local cleanup needed)
+
+Actor state persists via `/v1.0/actors/{type}/{id}/state`. Reminders are registered at `/v1.0/actors/{type}/{id}/reminders/{name}` and timers at `/v1.0/actors/{type}/{id}/timers/{name}`. The app reads `DAPR_HTTP_PORT` (default 3500) for all sidecar callbacks.
+
+---
+
 ## Non-Goals (v1)
 
 - Reactive/async API (Mono/Flux exposed to users) — use blocking for simplicity.
-- Actor framework (DaprActor interface) — complex enough to warrant separate treatment.
-- Workflow orchestration — complex; requires special determinism constraints.

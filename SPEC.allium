@@ -6,12 +6,11 @@
 --           ServiceInvocationCapability, SecretsCapability,
 --           ConfigurationCapability (get + subscribe), BindingsCapability,
 --           DistributedLockCapability, DaprApp (inbound pub/sub, bindings,
---           service invocation), JsonCodec
+--           service invocation, actors with reminders/timers),
+--           DaprWorkflow, DaprActivity, WorkflowContext (server-side workflow orchestration)
+--           JsonCodec
 -- Excludes (not yet specified — separate specs):
---   - DAPR actor framework: ActorCapability + DaprCapability.actor() are implemented in the
---     codebase but not specified here.
---   - DAPR workflow orchestration: WorkflowCapability, DaprWorkflow, DaprActivity,
---     DaprCapability.workflow() are implemented but not specified here.
+--   - DAPR workflow orchestration detail: WorkflowCapability (client-side) spec deferred.
 --   - DAPR sidecar itself (external system)
 --   - Authentication and mTLS (managed by DAPR sidecar)
 -- Dependencies: DAPR sidecar must be running and reachable
@@ -32,13 +31,65 @@ external entity JavaDaprClient {
 }
 
 external entity DaprWorkflow {
-    -- Workflow implementation class; part of the Dapr workflow orchestration subsystem.
-    -- Specification deferred to a separate workflow spec.
+    -- Pure Scala abstract class. User extends and implements run(ctx: WorkflowContext).
+    -- WorkflowContext is a clean Scala trait; no Java types visible to users.
+    -- Internally, DaprWorkflowBridge extends io.dapr.workflows.Workflow and is registered
+    -- via registerWorkflow(name, bridge, "", false); bridge is in dapr.safe.internal.
 }
 
 external entity DaprActivity {
-    -- Activity implementation class; part of the Dapr workflow orchestration subsystem.
-    -- Specification deferred to a separate workflow spec.
+    -- Pure Scala abstract class: DaprActivity[I: JsonCodec, O: JsonCodec].
+    -- User implements execute(input: I): O — no context needed, no Java types visible.
+    -- Internally, DaprActivityBridge extends io.dapr.workflows.WorkflowActivity and is
+    -- registered via registerActivity(name, bridge); bridge is in dapr.safe.internal.
+    -- Codec fields are private[safe] so the bridge can access them.
+}
+
+external entity WorkflowContext {
+    -- Clean Scala trait provided to DaprWorkflow.run.
+    -- Wraps io.dapr.workflows.WorkflowContext; all methods use Scala types.
+    instance_id: WorkflowInstanceId
+    is_replaying: Boolean
+    -- get_input[I: JsonCodec]: Option[I]
+    -- call_activity[I, O](activityClass, input): WorkflowTask[O]
+    -- create_timer(duration): WorkflowTask[Unit]
+    -- wait_for_external_event[T](name, timeout?): WorkflowTask[T]
+    -- complete[O](output): Unit
+    -- continue_as_new[I](input): Unit
+}
+
+external entity WorkflowTask {
+    -- Handle to a scheduled durable operation. Call await() to get the result.
+    -- Replay-safe inside the workflow runtime.
+}
+
+external entity ActorContext {
+    -- Capability provided to every actor invocation. Bundles state, reminders, and timers.
+    -- Backed by HttpActorContext which calls the Dapr actor HTTP API.
+    -- State:
+    --   get[T: JsonCodec](key): Option[T]
+    --   set[T: JsonCodec](key, value): Unit
+    --   remove(key): Unit
+    -- Reminders (persistent — survive actor deactivation):
+    --   registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: Duration, period?): Unit
+    --   unregisterReminder(name: ReminderName): Unit
+    -- Timers (non-persistent — lost on actor deactivation):
+    --   registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: Duration, period?): Unit
+    --   unregisterTimer(name: TimerName): Unit
+}
+
+external entity ActorDefinition {
+    -- Server-side actor hosting descriptor.
+    actor_type:   ActorType
+    -- build: (ActorId, ActorContext) -> ActorRoutes
+    -- Called on every incoming invocation; returns methods + reminders + timers.
+}
+
+external entity ActorRoutes {
+    -- Returned by ActorDefinition.build on every invocation.
+    methods:   List<ActorMethodRoute>    -- method invocations
+    reminders: List<ActorReminderRoute>  -- reminder callbacks
+    timers:    List<ActorTimerRoute>     -- timer callbacks
 }
 
 ------------------------------------------------------------
@@ -219,7 +270,8 @@ value DaprApp {
     invocations:   List<InvocationRoute>
     bindings:      List<BindingRoute>
     workflows:     List<DaprWorkflow>
-    activities:    List<DaprActivity>
+    activities:    List<DaprActivity>  -- existential: DaprActivity[?, ?]
+    actors:        List<ActorDefinition>
     -- Two DaprApp values may be combined with ++ to compose service modules.
 }
 
@@ -867,7 +919,8 @@ invariant ScopeLifetime {
 -- enforced by constructors at runtime):
 --   Non-empty: StoreName, PubSubName, Topic, AppId, MethodName, BindingName, SecretStoreName,
 --              ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
---              WorkflowName, ActorType — all reject the empty string at construction time.
+--              WorkflowName, ActorType, ReminderName, TimerName — all reject the empty string
+--              at construction time.
 --   Accept any string (including empty): StateKey, ETag, SecretKey, ConfigKey,
 --              BulkEntryId, WorkflowInstanceId, ActorId.
 
@@ -1053,8 +1106,13 @@ surface DaprAppSurface {
         Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
         InvocationRoute: (method_name: MethodName, handler: Req -> Resp) -> InvocationRoute
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
-        DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<DaprWorkflow>, activities: List<DaprActivity>) -> DaprApp
+        DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<DaprWorkflow>, activities: List<DaprActivity>, actors: List<ActorDefinition>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp
+        ActorMethodRoute: (method_name: MethodName, handler: Req -> Resp) -> ActorMethodRoute
+        ActorReminderRoute: (reminder_name: ReminderName, handler: Payload -> Unit) -> ActorReminderRoute
+        ActorTimerRoute: (timer_name: TimerName, handler: Payload -> Unit) -> ActorTimerRoute
+        ActorRoutes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes
+        ActorDefinition: (actor_type: ActorType, build: (ActorId, ActorContext) -> ActorRoutes) -> ActorDefinition
         -- Handler lambdas may capture sub-capabilities from the enclosing DaprCapability
         -- transformer bodies.
         -- The recommended pattern is: business logic in explicit methods with
