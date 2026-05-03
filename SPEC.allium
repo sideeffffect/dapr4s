@@ -117,6 +117,16 @@ value LockOwner        { value: String }   -- Lock owner identifier (non-empty)
 value BindingOperation { value: String }   -- Operation name for an output binding (non-empty)
 value BulkEntryId      { value: String }   -- Caller-assigned ID for correlating bulk publish failures
 
+-- Actor opaque types
+value ActorType        { value: String }   -- Dapr virtual actor type name (non-empty)
+value ActorId          { value: String }   -- Dapr virtual actor instance ID (may be empty)
+value ReminderName     { value: String }   -- Name of a persistent actor reminder (non-empty)
+value TimerName        { value: String }   -- Name of a non-persistent actor timer (non-empty)
+
+-- Workflow opaque types
+value WorkflowName         { value: String }   -- Dapr workflow class / registration name (non-empty)
+value WorkflowInstanceId   { value: String }   -- Dapr workflow instance ID (may be empty)
+
 -- Query / filter value
 value StateQuery {
     -- Opaque query expression passed to the state store query API.
@@ -357,6 +367,23 @@ value DecodeResult {
     outcome: success | failure
     value: Any?                   -- present when outcome = success
     error: JsonDecodeException?   -- present when outcome = failure
+}
+
+value WorkflowStatus {
+    -- Runtime status of a Dapr workflow instance.
+    status: running | completed | continued_as_new | failed | canceled | terminated | pending | suspended
+}
+
+value WorkflowSnapshot {
+    -- A point-in-time snapshot of a workflow instance's state.
+    -- Returned by workflow management operations (start, get, terminate).
+    name: WorkflowName
+    instance_id: WorkflowInstanceId
+    status: WorkflowStatus
+    created_at: Timestamp
+    last_updated_at: Timestamp
+    serialized_input: String?
+    serialized_output: String?
 }
 
 ------------------------------------------------------------
@@ -876,6 +903,66 @@ rule JsonDecode {
         -- decode(null) returns Left(JsonDecodeException("null input"))
 }
 
+-- ---- Actor Inbound Dispatch ----
+
+rule ActorMethodInvoked {
+    when: SidecarDeliversActorMethod(actorType, actorId, methodName, request_body_json)
+    -- Sidecar POSTs to /actors/{type}/{id}/method/{name}
+
+    ensures:
+        let defn = DaprApp.actors where defn.actorType = actorType
+        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
+        let routes = defn.build(actorId, ctx)
+        let route = routes.methods where route.methodName = methodName
+        if request_body_json decodes and route.handler(request) completes:
+            SidecarResponded(body: route.respCodec.encode(result))
+        if request_body_json decode fails or route.handler throws:
+            SidecarErrorReturned()
+}
+
+rule ActorReminderDelivered {
+    when: SidecarDeliversActorReminder(actorType, actorId, reminderName, data_base64_json)
+    -- Sidecar PUTs /actors/{type}/{id}/method/remind/{name}
+    -- Body: {"data":"<base64>","dueTime":"...","period":"..."}
+    -- data is base64-encoded JSON of the reminder payload
+
+    ensures:
+        let defn = DaprApp.actors where defn.actorType = actorType
+        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
+        let routes = defn.build(actorId, ctx)
+        let route = routes.reminders where route.reminderName = reminderName
+        if data decodes and route.handler(payload) completes:
+            SidecarAcknowledged()
+        if data decode fails or route.handler throws:
+            SidecarErrorReturned()
+}
+
+rule ActorTimerDelivered {
+    when: SidecarDeliversActorTimer(actorType, actorId, timerName, data_base64_json)
+    -- Sidecar PUTs /actors/{type}/{id}/method/timer/{name}
+    -- Same body format as reminder; data is base64-encoded JSON of the timer payload
+
+    ensures:
+        let defn = DaprApp.actors where defn.actorType = actorType
+        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
+        let routes = defn.build(actorId, ctx)
+        let route = routes.timers where route.timerName = timerName
+        if data decodes and route.handler(payload) completes:
+            SidecarAcknowledged()
+        if data decode fails or route.handler throws:
+            SidecarErrorReturned()
+}
+
+rule ActorDeactivated {
+    when: SidecarDeactivatesActor(actorType, actorId)
+    -- Sidecar DELETEs /actors/{type}/{id}
+
+    ensures:
+        SidecarAcknowledged()
+        -- No local cleanup is needed; actor state is persisted in the Dapr state store
+        -- and will be reloaded by the ActorContext on the next invocation
+}
+
 ------------------------------------------------------------
 -- Invariants
 ------------------------------------------------------------
@@ -920,7 +1007,7 @@ invariant ScopeLifetime {
 --   Non-empty: StoreName, PubSubName, Topic, AppId, MethodName, BindingName, SecretStoreName,
 --              ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
 --              WorkflowName, ActorType, ReminderName, TimerName — all reject the empty string
---              at construction time.
+--              at construction time via require().
 --   Accept any string (including empty): StateKey, ETag, SecretKey, ConfigKey,
 --              BulkEntryId, WorkflowInstanceId, ActorId.
 
@@ -1158,6 +1245,50 @@ surface DistributedLockSurface {
         -- Attempts to acquire lock; returns true if acquired, false if already held
         unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
         -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
+}
+
+surface ActorContextSurface {
+    -- Capability injected into every actor invocation by the framework.
+    -- UserCode methods call ActorContext.get/set/etc. via companion-object forwarders
+    -- (static-dispatch pattern) rather than naming the capability value.
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        -- State
+        get:    (key: String) -> Option<T>
+        -- None when key absent; Some(T) when present
+        set:    (key: String, value: T) -> Unit
+        remove: (key: String) -> Unit
+
+        -- Reminders (persistent — survive actor deactivation/restart)
+        register_reminder: (name: ReminderName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit
+        -- Registers a persistent callback; sidecar reactivates the actor to deliver it.
+        -- period = None means fire once; period = Some(d) means fire repeatedly every d.
+        unregister_reminder: (name: ReminderName) -> Unit
+        -- No-op if no reminder with name exists.
+
+        -- Timers (non-persistent — lost on actor deactivation)
+        register_timer: (name: TimerName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit
+        -- Registers a non-persistent callback; silently dropped if actor deactivates before it fires.
+        unregister_timer: (name: TimerName) -> Unit
+
+    @guarantee ActorStateIsolation
+        -- State operations (get, set, remove) are scoped to the specific (actorType, actorId) pair.
+        -- No actor instance can read or write state belonging to a different actor ID.
+        -- Enforced at runtime: ActorContext is constructed with (actorType, actorId) and all
+        -- HTTP calls to the Dapr actor state API include those identifiers in the path.
+
+    @guarantee ReminderPersistence
+        -- Registered reminders survive actor deactivation and JVM restart.
+        -- The Dapr sidecar stores reminder metadata; upon dueTime the sidecar reactivates the
+        -- actor and delivers the reminder via PUT /actors/{type}/{id}/method/remind/{name}.
+
+    @guarantee TimerNonPersistence
+        -- Registered timers are NOT persisted across actor deactivation.
+        -- If the actor is deactivated before dueTime the timer is silently dropped.
 }
 
 ------------------------------------------------------------

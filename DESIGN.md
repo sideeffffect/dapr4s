@@ -317,6 +317,8 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `LockResourceId` | `String` | yes | Resource identifier for a distributed lock |
 | `LockOwner` | `String` | yes | Lock owner identifier |
 | `ActorType` | `String` | yes | Dapr virtual actor type name |
+| `ReminderName` | `String` | yes | Persistent actor reminder name |
+| `TimerName` | `String` | yes | Non-persistent actor timer name |
 | `WorkflowName` | `String` | yes | Dapr workflow class name |
 | `ETag` | `String` | no | Optimistic-concurrency tag |
 | `StateKey` | `String` | no | Key in a DAPR state store |

@@ -183,8 +183,11 @@ Format it manually (or leave it) until scalafmt gains nightly CC syntax support.
 
 ## Testing
 
-- **Unit tests** (no Docker required): `scala-cli test . --test-only "*unit*"`. Currently 119
-  tests across `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`.
+- **Unit tests** (no Docker required): `scala-cli test . --test-only "*unit*"`. Tests across
+  `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`.
+- **In-process integration tests** (no Docker required): `scala-cli test . --test-only
+  "*integration.ActorIntegrationTest"`. Tests actor business logic, state management, and
+  reminder/timer registration via `MockActorContext` (19 tests).
 - **Integration tests** (require Docker): use `testcontainers-scala-munit` with the
   `TestContainersForAll` pattern. `startContainers()` **must return an already-started container**
   — call `c.start()` before returning; the framework does NOT auto-start it. Tests use
@@ -274,5 +277,5 @@ probing class files whenever you need to verify an API.
 - No async/`Future`-based API — the library is synchronous and blocking, designed for virtual
   threads.
 - No exposing Reactor/Mono types to users — all Reactor is confined to `internal/`.
-- No actors or workflow building blocks yet — the core building blocks (state, pub/sub,
-  invocation, secrets, config, bindings, lock) are the current scope.
+- No client-side WorkflowCapability yet (starting/querying/terminating workflow instances) —
+  server-side hosting (`DaprWorkflow`, `DaprActivity`, `WorkflowContext`) is implemented.
