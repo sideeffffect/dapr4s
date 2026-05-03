@@ -18,7 +18,9 @@ private[safe] final class WorkflowBridge(
     val w = workflow
     new io.dapr.workflows.WorkflowStub:
       override def run(javaCtx: io.dapr.workflows.WorkflowContext | Null): Unit =
-        if javaCtx != null then w.run(new WorkflowContextImpl(javaCtx))
+        if javaCtx != null then
+          given WorkflowContext = new WorkflowContextImpl(javaCtx)
+          w.run()
 
 /** Internal bridge: wraps a [[WorkflowActivity]] instance for registration with the Dapr Java SDK.
   *

@@ -31,8 +31,10 @@ external entity JavaDaprClient {
 }
 
 external entity Workflow {
-    -- Pure Scala abstract class. User extends and implements run(ctx: WorkflowContext).
-    -- WorkflowContext is a clean Scala trait; no Java types visible to users.
+    -- Pure Scala abstract class. User extends and implements run()(using WorkflowContext): Unit.
+    -- WorkflowContext is injected as a given at call time — user code never names the value.
+    -- Companion object WorkflowContext provides forwarder methods so users call
+    --   WorkflowContext.getInput / callActivity / complete etc. without explicit ctx binding.
     -- Internally, WorkflowBridge extends io.dapr.workflows.Workflow and is registered
     -- via registerWorkflow(name, bridge, "", false); bridge is in dapr.safe.internal.
 }
@@ -46,16 +48,20 @@ external entity WorkflowActivity {
 }
 
 external entity WorkflowContext {
-    -- Clean Scala trait provided to Workflow.run.
+    -- Capability trait provided as a `given` to Workflow.run.
     -- Wraps io.dapr.workflows.WorkflowContext; all methods use Scala types.
+    -- Companion object WorkflowContext mirrors all methods as forwarders with (using WorkflowContext),
+    -- so user code need not bind the context value explicitly.
     instance_id: WorkflowInstanceId
     is_replaying: Boolean
     -- get_input[I: JsonCodec]: Option[I]
     -- call_activity[I, O](activityClass, input): WorkflowTask[O]
+    -- call_activity[O](activityClass): WorkflowTask[O]                -- Unit-input overload
     -- create_timer(duration): WorkflowTask[Unit]
     -- wait_for_external_event[T](name, timeout?): WorkflowTask[T]
     -- complete[O](output): Unit
     -- continue_as_new[I](input): Unit
+    -- new_uuid(): UUID
 }
 
 external entity WorkflowTask {

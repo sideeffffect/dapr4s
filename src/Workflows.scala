@@ -165,6 +165,56 @@ private[safe] final class WorkflowContextImpl(
     ctx.newUuid().nn
 
 // ---------------------------------------------------------------------------
+// WorkflowContext companion — forwarders for capability-style usage
+// ---------------------------------------------------------------------------
+
+/** Companion forwarders so user workflow code never names the [[WorkflowContext]] value.
+  *
+  * {{{
+  *   class OrderWorkflow extends Workflow:
+  *     def run()(using WorkflowContext): Unit =
+  *       val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
+  *       val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
+  *       val result = paymentTask.await()
+  *       WorkflowContext.complete(result)
+  * }}}
+  */
+@scala.caps.assumeSafe
+object WorkflowContext:
+
+  def instanceId(using ctx: WorkflowContext): WorkflowInstanceId = ctx.instanceId
+
+  def isReplaying(using ctx: WorkflowContext): Boolean = ctx.isReplaying
+
+  def getInput[I: JsonCodec](using ctx: WorkflowContext): Option[I] = ctx.getInput[I]
+
+  def callActivity[I: JsonCodec, O: JsonCodec](
+      activityClass: Class[? <: WorkflowActivity[I, O]],
+      input: I,
+  )(using ctx: WorkflowContext): WorkflowTask[O] = ctx.callActivity(activityClass, input)
+
+  def callActivity[O: JsonCodec](
+      activityClass: Class[? <: WorkflowActivity[Unit, O]],
+  )(using ctx: WorkflowContext): WorkflowTask[O] = ctx.callActivity(activityClass)
+
+  def createTimer(duration: java.time.Duration)(using ctx: WorkflowContext): WorkflowTask[Unit] =
+    ctx.createTimer(duration)
+
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration)(using
+      ctx: WorkflowContext,
+  ): WorkflowTask[T] =
+    ctx.waitForExternalEvent(name, timeout)
+
+  def waitForExternalEvent[T: JsonCodec](name: EventName)(using ctx: WorkflowContext): WorkflowTask[T] =
+    ctx.waitForExternalEvent(name)
+
+  def complete[O: JsonCodec](output: O)(using ctx: WorkflowContext): Unit = ctx.complete(output)
+
+  def continueAsNew[I: JsonCodec](input: I)(using ctx: WorkflowContext): Unit = ctx.continueAsNew(input)
+
+  def newUuid()(using ctx: WorkflowContext): java.util.UUID = ctx.newUuid()
+
+// ---------------------------------------------------------------------------
 // Workflow — user-facing base class for workflow orchestrations
 // ---------------------------------------------------------------------------
 
@@ -174,14 +224,14 @@ private[safe] final class WorkflowContextImpl(
   *
   * {{{
   *   class OrderWorkflow extends Workflow:
-  *     def run(ctx: WorkflowContext): Unit =
-  *       val input = ctx.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
-  *       val paymentTask = ctx.callActivity(classOf[ProcessPaymentActivity], input)
+  *     def run()(using WorkflowContext): Unit =
+  *       val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
+  *       val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
   *       val result = paymentTask.await()
-  *       ctx.complete(result)
+  *       WorkflowContext.complete(result)
   * }}}
   *
-  * Workflows **must be deterministic** — use only `ctx` APIs for scheduling side effects.
+  * Workflows **must be deterministic** — use only [[WorkflowContext]] APIs for scheduling side effects.
   *
   * The workflow is identified by its canonical class name when starting instances:
   * {{{
@@ -193,11 +243,11 @@ abstract class Workflow:
 
   /** Implement workflow orchestration logic here.
     *
-    * Called once per workflow instance start (and re-called during replay — use `ctx.isReplaying` if needed). Use
-    * `ctx.callActivity`, `ctx.createTimer`, and `ctx.waitForExternalEvent` to schedule durable work; call
-    * `ctx.complete` when done.
+    * Called once per workflow instance start (and re-called during replay — use `WorkflowContext.isReplaying` if
+    * needed). Use `WorkflowContext.callActivity`, `WorkflowContext.createTimer`, and
+    * `WorkflowContext.waitForExternalEvent` to schedule durable work; call `WorkflowContext.complete` when done.
     */
-  def run(ctx: WorkflowContext): Unit
+  def run()(using WorkflowContext): Unit
 
 // ---------------------------------------------------------------------------
 // WorkflowActivity — user-facing base class for workflow activities

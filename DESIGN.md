@@ -542,18 +542,18 @@ scala-safe-dapr/
 
 ### Workflow
 
-Extend `Workflow` and implement `run(ctx: WorkflowContext): Unit`. The `WorkflowContext` is a pure Scala trait — no Java types leak into user code:
+Extend `Workflow` and implement `run()(using WorkflowContext): Unit`. `WorkflowContext` is injected as a `given` — user code never binds a `ctx` value. The `WorkflowContext` companion object provides forwarder methods (`WorkflowContext.getInput`, `callActivity`, `complete`, etc.) mirroring the `ActorContext` companion pattern:
 
 ```scala
 class OrderWorkflow extends Workflow:
-  def run(ctx: WorkflowContext): Unit =
-    val input = ctx.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
-    val paymentTask = ctx.callActivity(classOf[ProcessPaymentActivity], input)
+  def run()(using WorkflowContext): Unit =
+    val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
+    val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
     val result = paymentTask.await()
-    ctx.complete(result)
+    WorkflowContext.complete(result)
 ```
 
-`Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge is in `dapr.safe.internal` and never visible to users.
+`Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge constructs `given WorkflowContext = new WorkflowContextImpl(javaCtx)` and calls `w.run()`, so `WorkflowContext` never escapes the bridge's stack frame. The bridge is in `dapr.safe.internal` and never visible to users.
 
 ### WorkflowActivity[I, O]
 
@@ -570,7 +570,7 @@ class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResul
 
 ### WorkflowTask[O]
 
-`ctx.callActivity(...)`, `ctx.createTimer(...)`, and `ctx.waitForExternalEvent(...)` all return `WorkflowTask[O]`. Call `.await()` to block and get the result. This is replay-safe inside the workflow runtime.
+`WorkflowContext.callActivity(...)`, `WorkflowContext.createTimer(...)`, and `WorkflowContext.waitForExternalEvent(...)` all return `WorkflowTask[O]`. Call `.await()` to block and get the result. This is replay-safe inside the workflow runtime.
 
 ---
 
