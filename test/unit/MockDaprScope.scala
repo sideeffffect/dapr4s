@@ -44,41 +44,47 @@ final class MockDaprCapability extends DaprCapability:
 
   // ---- DaprCapability implementation ------------------------------------------
 
-  def state(storeName: StoreName): StateCapability =
+  // WHY ^{this}: mirrors DaprCapabilityImpl — sub-capabilities extend ExclusiveCapability, so
+  // CC infers ^{fresh}. Explicit ^{this} satisfies the override check against the trait declaration.
+
+  def state(storeName: StoreName): StateCapability^{this} =
     checkOpen()
     new MockStateCapability(storeName, storeMap.getOrElseUpdate(storeName.value, mutable.Map.empty), this)
+      .asInstanceOf[StateCapability]
 
-  def pubsub(pubsubName: PubSubName): PubSubCapability =
+  def pubsub(pubsubName: PubSubName): PubSubCapability^{this} =
     checkOpen()
-    new MockPubSubCapability(pubsubName, pubsubEvents, this)
+    new MockPubSubCapability(pubsubName, pubsubEvents, this).asInstanceOf[PubSubCapability]
 
-  def invoker: ServiceInvocationCapability =
+  def invoker: ServiceInvocationCapability^{this} =
     checkOpen()
-    new MockServiceInvocationCapability(this)
+    new MockServiceInvocationCapability(this).asInstanceOf[ServiceInvocationCapability]
 
-  def secrets(storeName: SecretStoreName): SecretsCapability =
+  def secrets(storeName: SecretStoreName): SecretsCapability^{this} =
     checkOpen()
     new MockSecretsCapability(storeName, secretStores.getOrElseUpdate(storeName.value, mutable.Map.empty), this)
+      .asInstanceOf[SecretsCapability]
 
-  def config(storeName: ConfigStoreName): ConfigurationCapability =
+  def config(storeName: ConfigStoreName): ConfigurationCapability^{this} =
     checkOpen()
     new MockConfigurationCapability(storeName, configStores.getOrElseUpdate(storeName.value, mutable.Map.empty), this)
+      .asInstanceOf[ConfigurationCapability]
 
-  def binding(bindingName: BindingName): BindingsCapability =
+  def binding(bindingName: BindingName): BindingsCapability^{this} =
     checkOpen()
-    new MockBindingsCapability(bindingName, this)
+    new MockBindingsCapability(bindingName, this).asInstanceOf[BindingsCapability]
 
-  def lock(storeName: StoreName): DistributedLockCapability =
+  def lock(storeName: StoreName): DistributedLockCapability^{this} =
     checkOpen()
-    new MockDistributedLockCapability(storeName, this)
+    new MockDistributedLockCapability(storeName, this).asInstanceOf[DistributedLockCapability]
 
-  def actor(actorType: ActorType, actorId: ActorId): ActorCapability =
+  def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this} =
     checkOpen()
-    new MockActorCapability(actorType, actorId, this)
+    new MockActorCapability(actorType, actorId, this).asInstanceOf[ActorCapability]
 
-  def workflow: WorkflowCapability =
+  def workflow: WorkflowCapability^{this} =
     checkOpen()
-    new MockWorkflowCapability(this)
+    new MockWorkflowCapability(this).asInstanceOf[WorkflowCapability]
 
   def close(): Unit =
     _closed = true

@@ -27,28 +27,33 @@ private[safe] final class DaprCapabilityImpl(
     private val workflowClientRef: AtomicReference[DaprWorkflowClient],
 ) extends DaprCapability:
 
-  def state(storeName: StoreName): StateCapability =
-    new StateCapabilityImpl(this, storeName)
+  // WHY ^{this}: sub-capabilities extend ExclusiveCapability, so CC infers ^{fresh} for new
+  // instances. The trait declares ^{this} to prevent sub-capabilities from outliving `this`.
+  // Explicit ^{this} here overrides the ^{fresh} inference and satisfies the override check.
+  // The asInstanceOf cast then erases the capture set so internal Impl types stay package-private.
 
-  def pubsub(pubsubName: PubSubName): PubSubCapability =
-    new PubSubCapabilityImpl(this, pubsubName)
+  def state(storeName: StoreName): StateCapability^{this} =
+    new StateCapabilityImpl(this, storeName).asInstanceOf[StateCapability]
 
-  def invoker: ServiceInvocationCapability =
-    new InvokerCapabilityImpl(this)
+  def pubsub(pubsubName: PubSubName): PubSubCapability^{this} =
+    new PubSubCapabilityImpl(this, pubsubName).asInstanceOf[PubSubCapability]
 
-  def secrets(storeName: SecretStoreName): SecretsCapability =
-    new SecretsCapabilityImpl(this, storeName)
+  def invoker: ServiceInvocationCapability^{this} =
+    new InvokerCapabilityImpl(this).asInstanceOf[ServiceInvocationCapability]
 
-  def config(storeName: ConfigStoreName): ConfigurationCapability =
-    new ConfigCapabilityImpl(this, storeName)
+  def secrets(storeName: SecretStoreName): SecretsCapability^{this} =
+    new SecretsCapabilityImpl(this, storeName).asInstanceOf[SecretsCapability]
 
-  def binding(bindingName: BindingName): BindingsCapability =
-    new BindingsCapabilityImpl(this, bindingName)
+  def config(storeName: ConfigStoreName): ConfigurationCapability^{this} =
+    new ConfigCapabilityImpl(this, storeName).asInstanceOf[ConfigurationCapability]
 
-  def lock(storeName: StoreName): DistributedLockCapability =
-    new LockCapabilityImpl(this, storeName)
+  def binding(bindingName: BindingName): BindingsCapability^{this} =
+    new BindingsCapabilityImpl(this, bindingName).asInstanceOf[BindingsCapability]
 
-  def actor(actorType: ActorType, actorId: ActorId): ActorCapability =
+  def lock(storeName: StoreName): DistributedLockCapability^{this} =
+    new LockCapabilityImpl(this, storeName).asInstanceOf[DistributedLockCapability]
+
+  def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this} =
     val ac = actorClientRef.get() match
       case null =>
         val newAc = new ActorClient()
@@ -61,9 +66,9 @@ private[safe] final class DaprCapabilityImpl(
             case NonFatal(_)             => ()
           actorClientRef.get().nn
       case existing => existing
-    ActorCapabilityImpl.build(actorType, actorId, ac)
+    ActorCapabilityImpl.build(actorType, actorId, ac).asInstanceOf[ActorCapability]
 
-  def workflow: WorkflowCapability =
+  def workflow: WorkflowCapability^{this} =
     val wc = workflowClientRef.get() match
       case null =>
         val newWc = new DaprWorkflowClient()
@@ -76,4 +81,4 @@ private[safe] final class DaprCapabilityImpl(
             case NonFatal(_)             => ()
           workflowClientRef.get().nn
       case existing => existing
-    new WorkflowCapabilityImpl(wc)
+    new WorkflowCapabilityImpl(wc).asInstanceOf[WorkflowCapability]

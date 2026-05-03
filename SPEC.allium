@@ -274,6 +274,10 @@ entity DaprCapability {
     -- Sub-capabilities are acquired via transformer methods on the DaprCapability companion
     -- object (e.g. DaprCapability.state(storeName) { body }), which provide the
     -- sub-capability as an implicit context parameter to body rather than returning it directly.
+    -- Extends scala.caps.ExclusiveCapability: tracked by the Scala 3 CC framework as exclusive
+    -- (non-shareable), preventing escape and concurrent use. All sub-capability traits also
+    -- extend ExclusiveCapability. Factory methods carry ^{this} return types to bind
+    -- sub-capability lifetimes to this DaprCapability instance.
 }
 
 -- DaprApp and its components are immutable value objects (case class / sealed class).
@@ -979,6 +983,10 @@ invariant ScopeContainment {
     -- If DaprCapability.status = closed then all sub-capabilities derived from it
     -- are also closed. Enforced by the Scala capture checker:
     -- sub-capability types carry ^{capability}, preventing escape.
+    -- Mechanically: all capability traits extend scala.caps.ExclusiveCapability
+    -- (the exclusive — non-shareable — subtype of the sealed scala.caps.Capability).
+    -- DaprCapability factory methods declare return types as StateCapability^{this} etc.,
+    -- binding each sub-capability's lifetime to the parent via the CC ownership model.
     for cap in StateCapability where cap.status = open:
         cap.capability.status = open
     for cap in PubSubCapability where cap.status = open:

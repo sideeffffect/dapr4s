@@ -26,7 +26,7 @@ package dapr.safe
   * }}}
   */
 @scala.caps.assumeSafe
-trait DaprCapability:
+trait DaprCapability extends scala.caps.ExclusiveCapability:
 
   /** Obtain a [[StateCapability]] for the named state store. */
   def state(storeName: StoreName): StateCapability^{this}
@@ -93,28 +93,28 @@ trait DaprCapability:
 object DaprCapability:
 
   def state(storeName: StoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.state(storeName))
+    body(using cap.state(storeName).asInstanceOf[StateCapability])
 
   def pubsub(pubsubName: PubSubName)[T](body: PubSubCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.pubsub(pubsubName))
+    body(using cap.pubsub(pubsubName).asInstanceOf[PubSubCapability])
 
   def invoker[T](body: ServiceInvocationCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.invoker)
+    body(using cap.invoker.asInstanceOf[ServiceInvocationCapability])
 
   def secrets(storeName: SecretStoreName)[T](body: SecretsCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.secrets(storeName))
+    body(using cap.secrets(storeName).asInstanceOf[SecretsCapability])
 
   def config(storeName: ConfigStoreName)[T](body: ConfigurationCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.config(storeName))
+    body(using cap.config(storeName).asInstanceOf[ConfigurationCapability])
 
   def binding(bindingName: BindingName)[T](body: BindingsCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.binding(bindingName))
+    body(using cap.binding(bindingName).asInstanceOf[BindingsCapability])
 
   def lock(storeName: StoreName)[T](body: DistributedLockCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.lock(storeName))
+    body(using cap.lock(storeName).asInstanceOf[DistributedLockCapability])
 
   def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.actor(actorType, actorId))
+    body(using cap.actor(actorType, actorId).asInstanceOf[ActorCapability])
 
   def workflow[T](body: WorkflowCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.workflow)
+    body(using cap.workflow.asInstanceOf[WorkflowCapability])

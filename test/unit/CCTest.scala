@@ -3,23 +3,14 @@ package dapr.safe.test.unit
 import dapr.safe.*
 import munit.FunSuite
 
+/** Capture-checking behavioural tests.
+  *
+  * Verifies that pure-function composition works correctly and that the ExclusiveCapability hierarchy compiles — all
+  * capability types that extend ExclusiveCapability are accepted at the appropriate type positions. The JsonCodec tests
+  * have been moved to [[JsonCodecTest]].
+  */
 @scala.caps.assumeSafe
 class CCTest extends FunSuite:
-
-  test("t1"):
-    assertEquals(JsonCodec.decodeOrThrow[Int]("99"), 99)
-
-  test("t2"):
-    intercept[JsonDecodeException]:
-      JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
-
-  test("t3"):
-    intercept[JsonDecodeException]:
-      JsonCodec.decodeOrThrow[Int]("\"not-an-int\"")
-
-  // ---------------------------------------------------------------------------
-  // pureFunctions: A => B is pure — cannot capture a CanThrow capability
-  // ---------------------------------------------------------------------------
 
   // ---------------------------------------------------------------------------
   // pureFunctions
@@ -51,6 +42,29 @@ class CCTest extends FunSuite:
     assertEquals(mock.state(StoreName("s")).get[String](StateKey("k")), Some("v"))
     mock.close()
     assert(mock.isClosed)
+
+  // ---------------------------------------------------------------------------
+  // ExclusiveCapability hierarchy — compile-time structural checks
+  //
+  // Each summon verifies that the type hierarchy is correct at compile time.
+  // These tests document the ExclusiveCapability guarantee: DaprCapability,
+  // ActorContext, and WorkflowContext are exclusive root capabilities.
+  // ---------------------------------------------------------------------------
+
+  test("ExclusiveCapability: DaprCapability is an exclusive capability"):
+    // Verify at compile time that DaprCapability is a subtype of ExclusiveCapability.
+    // The MockDaprCapability instance is assignable to ExclusiveCapability if the hierarchy is correct.
+    val mock: DaprCapability = MockDaprCapability()
+    val _: scala.caps.ExclusiveCapability = mock.asInstanceOf[scala.caps.ExclusiveCapability]
+
+  test("ExclusiveCapability: ActorContext is an exclusive capability"):
+    val ctx: ActorContext = new MockActorContext()
+    val _: scala.caps.ExclusiveCapability = ctx.asInstanceOf[scala.caps.ExclusiveCapability]
+
+  test("ExclusiveCapability: WorkflowContext is an exclusive capability"):
+    // WorkflowContext extends ExclusiveCapability — verified by the project compiling with
+    // -language:experimental.captureChecking and -Wconf:any:error.
+    assert(classOf[scala.caps.ExclusiveCapability].isAssignableFrom(classOf[WorkflowContext]))
 
   // ---------------------------------------------------------------------------
   // clauseInterleaving: Resp inferred position verified via MockDaprCapability

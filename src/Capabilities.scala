@@ -9,7 +9,7 @@ package dapr.safe
   * Acquired via [[DaprCapability.state]].
   */
 @scala.caps.assumeSafe
-trait StateCapability:
+trait StateCapability extends scala.caps.ExclusiveCapability:
   val storeName: StoreName
 
   /** Fetch a value; returns `None` if the key does not exist. */
@@ -87,7 +87,7 @@ object StateCapability:
 
 /** Capability for DAPR pub/sub publish operations against a named component. */
 @scala.caps.assumeSafe
-trait PubSubCapability:
+trait PubSubCapability extends scala.caps.ExclusiveCapability:
   val pubsubName: PubSubName
 
   /** Publish `data` to `topic`. */
@@ -123,7 +123,7 @@ object PubSubCapability:
 
 /** Capability for synchronous service invocation (RPC) via DAPR. */
 @scala.caps.assumeSafe
-trait ServiceInvocationCapability:
+trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
 
   /** Invoke a remote method with a request body (HTTP POST). `Req` is inferred from `data`; `Resp` is specified at the
     * call site: {{{invoker.invoke(appId, method, requestData)[ResponseType]}}}
@@ -149,7 +149,7 @@ object ServiceInvocationCapability:
 
 /** Capability for reading secrets from a named DAPR secrets store. */
 @scala.caps.assumeSafe
-trait SecretsCapability:
+trait SecretsCapability extends scala.caps.ExclusiveCapability:
   val storeName: SecretStoreName
 
   /** Retrieve a single named secret value. Returns `None` if absent. */
@@ -170,7 +170,7 @@ object SecretsCapability:
 
 /** Capability for reading configuration items from a named DAPR config store. */
 @scala.caps.assumeSafe
-trait ConfigurationCapability:
+trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
   val storeName: ConfigStoreName
 
   /** Retrieve one or more configuration items by key. */
@@ -200,7 +200,7 @@ object ConfigurationCapability:
 
 /** Capability for invoking DAPR output bindings. */
 @scala.caps.assumeSafe
-trait BindingsCapability:
+trait BindingsCapability extends scala.caps.ExclusiveCapability:
   val bindingName: BindingName
 
   /** Invoke a binding operation that may return a response. `Req` is inferred from `data`; `Resp` is specified at the
@@ -227,7 +227,7 @@ object BindingsCapability:
 
 /** Capability for DAPR distributed locking against a named lock store. */
 @scala.caps.assumeSafe
-trait DistributedLockCapability:
+trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
   val storeName: StoreName
 
   /** Try to acquire a lock. Returns true if acquired, false if already held. */
@@ -252,7 +252,7 @@ object DistributedLockCapability:
 
 /** Capability for invoking methods on a specific Dapr virtual actor instance. */
 @scala.caps.assumeSafe
-trait ActorCapability:
+trait ActorCapability extends scala.caps.ExclusiveCapability:
   val actorType: ActorType
   val actorId: ActorId
 
@@ -286,7 +286,7 @@ object ActorCapability:
 
 /** Capability for managing Dapr workflow instances (client-side). */
 @scala.caps.assumeSafe
-trait WorkflowCapability:
+trait WorkflowCapability extends scala.caps.ExclusiveCapability:
 
   /** Start a new workflow instance. Returns the generated instance ID. */
   def start(name: WorkflowName): WorkflowInstanceId

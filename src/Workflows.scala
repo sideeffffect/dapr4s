@@ -29,7 +29,7 @@ final class WorkflowTask[+O] private[safe] (private val compute: () => O):
   * effects must be scheduled via the methods below and awaited via [[WorkflowTask.await]].
   */
 @scala.caps.assumeSafe
-trait WorkflowContext:
+trait WorkflowContext extends scala.caps.ExclusiveCapability:
 
   /** The instance ID of the currently running workflow. */
   def instanceId: WorkflowInstanceId

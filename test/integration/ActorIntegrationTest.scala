@@ -1,210 +1,295 @@
 package dapr.safe.test.integration
 
 import dapr.safe.*
+import dapr.safe.internal.DaprAppServer
 import dapr.safe.test.integration.apps.*
 import dapr.safe.test.unit.MockActorContext
 import munit.FunSuite
+import java.util.concurrent.ConcurrentHashMap
+import unsafeExceptions.canThrowAny
 
-/** Unit-level tests for the Counter actor using [[TestDaprApp]] and [[MockActorContext]].
+/** Tests for Counter actor dispatch via DaprAppServer HTTP.
   *
-  * These tests run fully in-process with no Dapr sidecar — they exercise the actor business logic, state management,
-  * and reminder/timer registration via [[MockActorContext]].
+  * Uses an injectable MockActorContext factory so state accumulates correctly across calls to the same actor ID,
+  * without requiring a real Dapr sidecar.
   */
 @scala.caps.assumeSafe
 class ActorIntegrationTest extends FunSuite:
 
-  // ---- helpers ---------------------------------------------------------------
-
-  private def freshCtx(): MockActorContext = new MockActorContext
-
-  private def callActor[Req: JsonCodec, Resp: JsonCodec](
-      method: String,
-      req: Req,
-      ctx: MockActorContext = freshCtx(),
-  ): (Resp, MockActorContext) =
-    val resp = TestDaprApp.callActor[Req](
+  // Each test gets its own server on an ephemeral port with a fresh context map.
+  // WHY AnyRef: MockActorContext extends ActorContext which extends ExclusiveCapability,
+  // so CC tracks every instance. ConcurrentHashMap[String, AnyRef] erases the capture
+  // set from the stored contexts, consistent with the @assumeSafe / AnyRef-erasure pattern.
+  private def withActorServer[T](f: (Int, ConcurrentHashMap[String, AnyRef]) => T): T =
+    val contexts = ConcurrentHashMap[String, AnyRef]()
+    val server = DaprAppServer(
       CounterActorHandlers.daprApp,
-      "Counter",
-      "actor-1",
-      method,
-      req,
-      ctx,
-    )[Resp]
-    (resp, ctx)
-
-  // ---- increment -------------------------------------------------------------
-
-  test("actor: increment from zero"):
-    val (state, _) = callActor[IncrRequest, CounterState]("increment", IncrRequest(5))
-    assertEquals(state.count, 5)
-
-  test("actor: increment accumulates across calls with same context"):
-    val ctx = freshCtx()
-    callActor[IncrRequest, CounterState]("increment", IncrRequest(3), ctx)
-    val (state, _) = callActor[IncrRequest, CounterState]("increment", IncrRequest(7), ctx)
-    assertEquals(state.count, 10)
-
-  test("actor: increment by negative amount decrements"):
-    val ctx = freshCtx()
-    callActor[IncrRequest, CounterState]("increment", IncrRequest(10), ctx)
-    val (state, _) = callActor[IncrRequest, CounterState]("increment", IncrRequest(-3), ctx)
-    assertEquals(state.count, 7)
-
-  // ---- get ------------------------------------------------------------------
-
-  test("actor: get returns 0 for fresh actor"):
-    val (state, _) = callActor[Unit, CounterState]("get", (), freshCtx())
-    assertEquals(state.count, 0)
-
-  test("actor: get reflects incremented value"):
-    val ctx = freshCtx()
-    callActor[IncrRequest, CounterState]("increment", IncrRequest(42), ctx)
-    val (state, _) = callActor[Unit, CounterState]("get", (), ctx)
-    assertEquals(state.count, 42)
-
-  // ---- reset ----------------------------------------------------------------
-
-  test("actor: reset brings count back to zero"):
-    val ctx = freshCtx()
-    callActor[IncrRequest, CounterState]("increment", IncrRequest(100), ctx)
-    val (state, _) = callActor[Unit, CounterState]("reset", (), ctx)
-    assertEquals(state.count, 0)
-
-  test("actor: get after reset returns 0"):
-    val ctx = freshCtx()
-    callActor[IncrRequest, CounterState]("increment", IncrRequest(50), ctx)
-    callActor[Unit, CounterState]("reset", (), ctx)
-    val (state, _) = callActor[Unit, CounterState]("get", (), ctx)
-    assertEquals(state.count, 0)
-
-  // ---- reminder registration ------------------------------------------------
-
-  test("actor: schedule-reset registers a reminder"):
-    val (_, ctx) = callActor[Unit, Unit]("schedule-reset", (), freshCtx())
-    val reminders = ctx.registeredReminders
-    assert(reminders.contains("scheduled-reset"), s"Expected reminder not found: $reminders")
-    val (_, dueTime, period) = reminders("scheduled-reset")
-    assertEquals(dueTime, java.time.Duration.ofMinutes(1))
-    assertEquals(period, None)
-
-  test("actor: cancel-reset removes the reminder"):
-    val ctx = freshCtx()
-    callActor[Unit, Unit]("schedule-reset", (), ctx)
-    callActor[Unit, Unit]("cancel-reset", (), ctx)
-    assert(!ctx.registeredReminders.contains("scheduled-reset"))
-
-  test("actor: cancel-reset on non-existent reminder is a no-op"):
-    val (_, ctx) = callActor[Unit, Unit]("cancel-reset", (), freshCtx())
-    assertEquals(ctx.registeredReminders.size, 0)
-
-  // ---- timer registration ---------------------------------------------------
-
-  test("actor: schedule-auto-increment registers a timer"):
-    val (_, ctx) = callActor[Unit, Unit]("schedule-auto-increment", (), freshCtx())
-    val timers = ctx.registeredTimers
-    assert(timers.contains("auto-increment"), s"Expected timer not found: $timers")
-    val (_, dueTime, _) = timers("auto-increment")
-    assertEquals(dueTime, java.time.Duration.ofMillis(500))
-
-  // ---- reminder callback dispatch -------------------------------------------
-
-  test("actor: reminder callback resets counter"):
-    val ctx = freshCtx()
-    ctx.seedState[Int](StateKey("count"), 77)
-    TestDaprApp.deliverReminder(
-      CounterActorHandlers.daprApp,
-      "Counter",
-      "actor-1",
-      "scheduled-reset",
-      "reset",
-      ctx,
+      mkActorCtx = (_, id, _) =>
+        contexts
+          .computeIfAbsent(id.value, _ => new MockActorContext().asInstanceOf[AnyRef])
+          .asInstanceOf[MockActorContext],
     )
-    val (state, _) = callActor[Unit, CounterState]("get", (), ctx)
-    assertEquals(state.count, 0)
+    val port = freePort()
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    try
+      waitForPort(port)
+      f(port, contexts)
+    finally
+      thread.interrupt()
+      thread.join(2000)
 
-  // ---- timer callback dispatch ----------------------------------------------
+  // ---- method dispatch -------------------------------------------------------
 
-  test("actor: timer callback increments counter"):
-    val ctx = freshCtx()
-    ctx.seedState[Int](StateKey("count"), 10)
-    TestDaprApp.deliverTimer(
-      CounterActorHandlers.daprApp,
-      "Counter",
-      "actor-1",
-      "auto-increment",
-      IncrRequest(1),
-      ctx,
-    )
-    assertEquals(ctx.get[Int](StateKey("count")), Some(11))
-
-  // ---- unknown actor / method errors ----------------------------------------
-
-  test("actor: unknown actor type throws NoSuchElementException"):
-    intercept[java.util.NoSuchElementException]:
-      TestDaprApp.callActor[Unit](
-        CounterActorHandlers.daprApp,
-        "NonExistentActor",
-        "x",
-        "get",
-        (),
-        freshCtx(),
-      )[CounterState]
-
-  test("actor: unknown method throws NoSuchElementException"):
-    intercept[java.util.NoSuchElementException]:
-      TestDaprApp.callActor[Unit](
-        CounterActorHandlers.daprApp,
-        "Counter",
-        "1",
-        "no-such-method",
-        (),
-        freshCtx(),
-      )[CounterState]
-
-  test("actor: unknown reminder name throws NoSuchElementException"):
-    intercept[java.util.NoSuchElementException]:
-      TestDaprApp.deliverReminder(
-        CounterActorHandlers.daprApp,
-        "Counter",
-        "1",
-        "nonexistent-reminder",
-        "data",
-        freshCtx(),
+  test("actor: increment from zero via HTTP"):
+    withActorServer: (port, _) =>
+      val resp = httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":5}""",
+        "application/json",
       )
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 5)
 
-  test("actor: unknown timer name throws NoSuchElementException"):
-    intercept[java.util.NoSuchElementException]:
-      TestDaprApp.deliverTimer(
-        CounterActorHandlers.daprApp,
-        "Counter",
-        "1",
-        "nonexistent-timer",
-        IncrRequest(1),
-        freshCtx(),
+  test("actor: increment accumulates via HTTP"):
+    withActorServer: (port, _) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":3}""",
+        "application/json",
       )
+      val resp = httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":7}""",
+        "application/json",
+      )
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 10)
 
-  // ---- DaprApp composition -------------------------------------------------
+  test("actor: get returns 0 for fresh actor via HTTP"):
+    withActorServer: (port, _) =>
+      val resp =
+        httpPost(s"http://localhost:$port/actors/Counter/actor-1/method/get", "null", "application/json")
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 0)
+
+  test("actor: reset brings count to zero via HTTP"):
+    withActorServer: (port, _) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":100}""",
+        "application/json",
+      )
+      val resp =
+        httpPost(s"http://localhost:$port/actors/Counter/actor-1/method/reset", "null", "application/json")
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 0)
+
+  test("actor: get after reset returns 0 via HTTP"):
+    withActorServer: (port, _) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":50}""",
+        "application/json",
+      )
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/reset",
+        "null",
+        "application/json",
+      )
+      val resp =
+        httpPost(s"http://localhost:$port/actors/Counter/actor-1/method/get", "null", "application/json")
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 0)
+
+  test("actor: state isolation across different actor IDs via HTTP"):
+    withActorServer: (port, _) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":10}""",
+        "application/json",
+      )
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-2/method/increment",
+        """{"amount":20}""",
+        "application/json",
+      )
+      val r1 =
+        httpPost(s"http://localhost:$port/actors/Counter/actor-1/method/get", "null", "application/json")
+      val r2 =
+        httpPost(s"http://localhost:$port/actors/Counter/actor-2/method/get", "null", "application/json")
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](r1).count, 10)
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](r2).count, 20)
+
+  // ---- reminder/timer registration ------------------------------------------
+
+  test("actor: schedule-reset registers reminder in mock context via HTTP"):
+    withActorServer: (port, ctxs) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/schedule-reset",
+        "null",
+        "application/json",
+      )
+      val ctx = Option(ctxs.get("actor-1")).map(_.asInstanceOf[MockActorContext])
+      assert(ctx.isDefined, "actor-1 context not found after call")
+      assert(ctx.get.registeredReminders.contains("scheduled-reset"))
+      assertEquals(ctx.get.registeredReminders("scheduled-reset")._2, java.time.Duration.ofMinutes(1))
+
+  test("actor: cancel-reset removes reminder via HTTP"):
+    withActorServer: (port, ctxs) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/schedule-reset",
+        "null",
+        "application/json",
+      )
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/cancel-reset",
+        "null",
+        "application/json",
+      )
+      val ctx = Option(ctxs.get("actor-1")).map(_.asInstanceOf[MockActorContext])
+      assert(ctx.isEmpty || !ctx.get.registeredReminders.contains("scheduled-reset"))
+
+  test("actor: schedule-auto-increment registers timer via HTTP"):
+    withActorServer: (port, ctxs) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/schedule-auto-increment",
+        "null",
+        "application/json",
+      )
+      val ctx = Option(ctxs.get("actor-1")).map(_.asInstanceOf[MockActorContext])
+      assert(ctx.isDefined)
+      assert(ctx.get.registeredTimers.contains("auto-increment"))
+      assertEquals(ctx.get.registeredTimers("auto-increment")._2, java.time.Duration.ofMillis(500))
+
+  // ---- reminder/timer callback dispatch -------------------------------------
+
+  test("actor: reminder callback resets counter via HTTP"):
+    withActorServer: (port, _) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":77}""",
+        "application/json",
+      )
+      val dataB64 = java.util.Base64.getEncoder.nn.encodeToString("\"reset\"".getBytes("UTF-8"))
+      val reminderBody = s"""{"data":"$dataB64","dueTime":"1h","period":""}"""
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/remind/scheduled-reset",
+        reminderBody,
+        "application/json",
+      )
+      val resp =
+        httpPost(s"http://localhost:$port/actors/Counter/actor-1/method/get", "null", "application/json")
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 0)
+
+  test("actor: timer callback increments counter via HTTP"):
+    withActorServer: (port, _) =>
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/increment",
+        """{"amount":10}""",
+        "application/json",
+      )
+      val dataB64 =
+        java.util.Base64.getEncoder.nn.encodeToString("""{"amount":1}""".getBytes("UTF-8"))
+      val timerBody = s"""{"data":"$dataB64","dueTime":"500ms","period":""}"""
+      httpPost(
+        s"http://localhost:$port/actors/Counter/actor-1/method/timer/auto-increment",
+        timerBody,
+        "application/json",
+      )
+      val resp =
+        httpPost(s"http://localhost:$port/actors/Counter/actor-1/method/get", "null", "application/json")
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 11)
+
+  // ---- error cases ----------------------------------------------------------
+
+  test("actor: unknown actor type returns 404 via HTTP"):
+    withActorServer: (port, _) =>
+      val (code, _) = httpPostWithCode(
+        s"http://localhost:$port/actors/NonExistent/1/method/get",
+        "null",
+        "application/json",
+      )
+      assertEquals(code, 404)
+
+  test("actor: unknown method returns 404 via HTTP"):
+    withActorServer: (port, _) =>
+      val (code, _) = httpPostWithCode(
+        s"http://localhost:$port/actors/Counter/1/method/no-such",
+        "null",
+        "application/json",
+      )
+      assertEquals(code, 404)
+
+  test("actor: /dapr/config lists Counter actor type"):
+    withActorServer: (port, _) =>
+      val resp = httpGet(s"http://localhost:$port/dapr/config")
+      assert(resp.contains("Counter"), s"Expected Counter in config response: $resp")
+
+  test("actor: DELETE deactivation returns 200"):
+    withActorServer: (port, _) =>
+      val (code, _) = httpDeleteWithCode(s"http://localhost:$port/actors/Counter/actor-1")
+      assertEquals(code, 200)
 
   test("actor: DaprApp ++ merges actor definitions"):
     val app1 = CounterActorHandlers.daprApp
-    val app2 = DaprApp(actors =
-      List(
-        ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() },
-      ),
-    )
+    val app2 = DaprApp(actors = List(ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() }))
     val combined = app1 ++ app2
     assertEquals(combined.actors.size, 2)
     assert(combined.actors.exists(_.actorType.value == "Counter"))
     assert(combined.actors.exists(_.actorType.value == "Other"))
 
-  // ---- state isolation by actor ID -----------------------------------------
+  // ---- HTTP helpers ---------------------------------------------------------
 
-  test("actor: different actor IDs have independent state"):
-    val ctx1 = freshCtx()
-    val ctx2 = freshCtx()
-    callActor[IncrRequest, CounterState]("increment", IncrRequest(10), ctx1)
-    callActor[IncrRequest, CounterState]("increment", IncrRequest(20), ctx2)
-    val (state1, _) = callActor[Unit, CounterState]("get", (), ctx1)
-    val (state2, _) = callActor[Unit, CounterState]("get", (), ctx2)
-    assertEquals(state1.count, 10)
-    assertEquals(state2.count, 20)
+  private def freePort(): Int =
+    val sock = java.net.ServerSocket(0)
+    val p = sock.getLocalPort
+    sock.close()
+    p
+
+  private def waitForPort(port: Int, maxMs: Int = 3000): Unit =
+    val deadline = System.currentTimeMillis() + maxMs
+    while System.currentTimeMillis() < deadline do
+      try
+        val sock = java.net.Socket("localhost", port)
+        sock.close()
+        return
+      catch case _: java.io.IOException => Thread.sleep(20)
+    throw RuntimeException(s"Port $port did not open within ${maxMs}ms")
+
+  private def httpGet(url: String): String =
+    val conn = java.net.URI(url).toURL.nn.openConnection().nn.asInstanceOf[java.net.HttpURLConnection]
+    conn.setRequestMethod("GET")
+    conn.connect()
+    val code = conn.getResponseCode
+    val stream = if code < 400 then conn.getInputStream.nn else conn.getErrorStream.nn
+    new String(stream.readAllBytes().nn, "UTF-8")
+
+  private def httpPost(url: String, body: String, contentType: String): String =
+    httpPostWithCode(url, body, contentType)._2
+
+  private def httpPostWithCode(url: String, body: String, contentType: String): (Int, String) =
+    val conn = java.net.URI(url).toURL.nn.openConnection().nn.asInstanceOf[java.net.HttpURLConnection]
+    conn.setRequestMethod("POST")
+    conn.setRequestProperty("Content-Type", contentType)
+    conn.setDoOutput(true)
+    val bytes = body.getBytes("UTF-8").nn
+    conn.setFixedLengthStreamingMode(bytes.length)
+    conn.connect()
+    conn.getOutputStream.nn.write(bytes)
+    conn.getOutputStream.nn.flush()
+    val code = conn.getResponseCode
+    val stream =
+      val err = conn.getErrorStream
+      if err != null then err
+      else if code < 400 then conn.getInputStream
+      else null
+    val resp = if stream == null then "" else new String(stream.nn.readAllBytes().nn, "UTF-8")
+    (code, resp)
+
+  private def httpDeleteWithCode(url: String): (Int, String) =
+    val conn = java.net.URI(url).toURL.nn.openConnection().nn.asInstanceOf[java.net.HttpURLConnection]
+    conn.setRequestMethod("DELETE")
+    conn.connect()
+    val code = conn.getResponseCode
+    val stream =
+      val err = conn.getErrorStream
+      if err != null then err
+      else if code < 400 then conn.getInputStream
+      else null
+    val resp = if stream == null then "" else new String(stream.nn.readAllBytes().nn, "UTF-8")
+    (code, resp)

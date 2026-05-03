@@ -21,7 +21,15 @@ import scala.util.control.NonFatal
   * graph.
   */
 @scala.caps.assumeSafe
-private[safe] final class DaprAppServer(app: DaprApp):
+private[safe] final class DaprAppServer(
+    app: DaprApp,
+    // WHY AnyRef: ActorContext extends ExclusiveCapability, so CC tracks every instance.
+    // Storing the factory as AnyRef erases the capture set on the returned ActorContext,
+    // consistent with the @assumeSafe / AnyRef-erasure pattern used throughout the library.
+    private val mkActorCtxRaw: AnyRef =
+      ((actorType: ActorType, actorId: ActorId, daprPort: Int) => HttpActorContext(actorType, actorId, daprPort))
+        .asInstanceOf[AnyRef],
+):
 
   def startAndBlock(port: Int): Unit =
 
@@ -303,7 +311,8 @@ private[safe] final class DaprAppServer(app: DaprApp):
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx = new HttpActorContext(ActorType(actorType), ActorId(actorId), daprHttpPort)
+      val ctx = mkActorCtxRaw
+        .asInstanceOf[(ActorType, ActorId, Int) => ActorContext](ActorType(actorType), ActorId(actorId), daprHttpPort)
       val routes = defn.build(ActorId(actorId), ctx)
       val route = routes.methods.find(_.methodName.value == methodName).orNull
       if route == null then
@@ -333,7 +342,8 @@ private[safe] final class DaprAppServer(app: DaprApp):
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx = new HttpActorContext(ActorType(actorType), ActorId(actorId), daprHttpPort)
+      val ctx = mkActorCtxRaw
+        .asInstanceOf[(ActorType, ActorId, Int) => ActorContext](ActorType(actorType), ActorId(actorId), daprHttpPort)
       val routes = defn.build(ActorId(actorId), ctx)
       val route = routes.reminders.find(_.reminderName.value == reminderName).orNull
       if route == null then
@@ -361,7 +371,8 @@ private[safe] final class DaprAppServer(app: DaprApp):
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx = new HttpActorContext(ActorType(actorType), ActorId(actorId), daprHttpPort)
+      val ctx = mkActorCtxRaw
+        .asInstanceOf[(ActorType, ActorId, Int) => ActorContext](ActorType(actorType), ActorId(actorId), daprHttpPort)
       val routes = defn.build(ActorId(actorId), ctx)
       val route = routes.timers.find(_.timerName.value == timerName).orNull
       if route == null then
@@ -434,3 +445,17 @@ private[safe] final class DaprAppServer(app: DaprApp):
             ),
           )
     catch case NonFatal(_) => SubscriptionResult.Retry
+
+/** Companion object providing a typed factory that accepts an injectable [[ActorContext]] factory.
+  *
+  * WHY: [[DaprAppServer]] stores the factory as `AnyRef` to erase CC capture sets (same pattern as [[Subscription]],
+  * [[InvocationRoute]], etc.). This `apply` gives callers a type-safe entry point with named-parameter ergonomics, then
+  * performs the `AnyRef`-cast internally.
+  */
+@scala.caps.assumeSafe
+private[safe] object DaprAppServer:
+  def apply(
+      app: DaprApp,
+      mkActorCtx: (ActorType, ActorId, Int) => ActorContext,
+  ): DaprAppServer =
+    new DaprAppServer(app, mkActorCtx.asInstanceOf[AnyRef])

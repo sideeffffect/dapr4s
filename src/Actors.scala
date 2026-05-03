@@ -18,7 +18,7 @@ package dapr.safe
   * }}}
   */
 @scala.caps.assumeSafe
-trait ActorContext:
+trait ActorContext extends scala.caps.ExclusiveCapability:
 
   // --- State ------------------------------------------------------------------
 
@@ -261,7 +261,10 @@ final class ActorDefinition(
     private[safe] val rawBuild: AnyRef,
 ):
   private[safe] def build(id: ActorId, ctx: ActorContext): ActorRoutes =
-    rawBuild.asInstanceOf[(ActorId, ActorContext) => ActorRoutes](id, ctx)
+    // WHY asInstanceOf chain: ActorContext now extends ExclusiveCapability,
+    // so the CC checker tracks ctx with a capture set. Casting via AnyRef
+    // erases the capture annotation before passing to the stored lambda.
+    rawBuild.asInstanceOf[(ActorId, AnyRef) => ActorRoutes](id, ctx.asInstanceOf[AnyRef])
 
 /** Factory for [[ActorDefinition]] values.
   *

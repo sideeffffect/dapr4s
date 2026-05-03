@@ -196,13 +196,17 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("e2e: DaprCapability is closed after run block — capabilities become unavailable"):
     withContainers { c =>
-      var capturedScope: DaprCapability | Null = null
+      // WHY AnyRef: DaprCapability now extends ExclusiveCapability, so the CC checker
+      // prevents it from escaping the run block. We use AnyRef to capture it for the
+      // post-block closed-scope assertion — this is intentionally unsafe (testing
+      // the runtime close() behaviour, not compile-time safety).
+      var capturedScope: AnyRef | Null = null
 
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        capturedScope = summon[DaprCapability]
+        capturedScope = summon[DaprCapability].asInstanceOf[AnyRef]
 
       // After the run block, the scope is closed
-      val closed = capturedScope
+      val closed = capturedScope.asInstanceOf[DaprCapability | Null]
       if closed != null then
         intercept[Exception]:
           closed.state(StoreName("statestore")).get[String](StateKey("k"))
