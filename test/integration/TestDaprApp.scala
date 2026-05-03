@@ -84,9 +84,9 @@ object TestDaprApp:
 
   /** Invoke an actor method directly in-process.
     *
-    * Finds the [[ActorDefinition]] for `actorType`, calls `build(actorId, ctx)` to get the route table, then
-    * dispatches to the matching [[ActorMethodRoute]] via the JSON codec round-trip. Pass a [[MockActorContext]] to
-    * capture state changes and reminder/timer registrations for assertion.
+    * Finds the [[ActorDefinition]] for `actorType`, calls `build(actorId, ctx)` to get the route table, then dispatches
+    * to the matching [[ActorMethodRoute]] via the JSON codec round-trip. Pass a [[MockActorContext]] to capture state
+    * changes and reminder/timer registrations for assertion.
     */
   def callActor[Req: JsonCodec](
       app: DaprApp,
@@ -102,15 +102,15 @@ object TestDaprApp:
         throw java.util.NoSuchElementException(s"TestDaprApp: no actor definition for '$actorType'"),
       )
     val routes = defn.build(ActorId(actorId), ctx)
-    val route  = routes.methods
+    val route = routes.methods
       .find(_.methodName.value == method)
       .getOrElse(
         throw java.util.NoSuchElementException(
           s"TestDaprApp: no method '$method' on actor '$actorType'",
         ),
       )
-    val handler  = route.rawHandler.asInstanceOf[route.Req => route.Resp]
-    val reqJson  = summon[JsonCodec[Req]].encode(request)
+    val handler = route.rawHandler.asInstanceOf[route.Req => route.Resp]
+    val reqJson = summon[JsonCodec[Req]].encode(request)
     val req: route.Req = route.reqCodec.decode(reqJson) match
       case Right(v) => v
       case Left(e)  => throw e
@@ -138,14 +138,14 @@ object TestDaprApp:
         throw java.util.NoSuchElementException(s"TestDaprApp: no actor definition for '$actorType'"),
       )
     val routes = defn.build(ActorId(actorId), ctx)
-    val route  = routes.reminders
+    val route = routes.reminders
       .find(_.reminderName.value == reminderName)
       .getOrElse(
         throw java.util.NoSuchElementException(
           s"TestDaprApp: no reminder '$reminderName' on actor '$actorType'",
         ),
       )
-    val handler  = route.rawHandler.asInstanceOf[route.Payload => Unit]
+    val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
     val dataJson = summon[JsonCodec[T]].encode(data)
     val payload: route.Payload = route.codec.decode(dataJson) match
       case Right(v) => v
@@ -170,14 +170,14 @@ object TestDaprApp:
         throw java.util.NoSuchElementException(s"TestDaprApp: no actor definition for '$actorType'"),
       )
     val routes = defn.build(ActorId(actorId), ctx)
-    val route  = routes.timers
+    val route = routes.timers
       .find(_.timerName.value == timerName)
       .getOrElse(
         throw java.util.NoSuchElementException(
           s"TestDaprApp: no timer '$timerName' on actor '$actorType'",
         ),
       )
-    val handler  = route.rawHandler.asInstanceOf[route.Payload => Unit]
+    val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
     val dataJson = summon[JsonCodec[T]].encode(data)
     val payload: route.Payload = route.codec.decode(dataJson) match
       case Right(v) => v

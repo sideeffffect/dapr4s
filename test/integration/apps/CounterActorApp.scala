@@ -23,13 +23,13 @@ import language.experimental.safe
 object CounterActorHandlers:
 
   val ActorTypeName = ActorType("Counter")
-  private val CountKey = "count"
+  private val CountKey = StateKey("count")
   private val ResetReminder = ReminderName("scheduled-reset")
   private val IncrTimer = TimerName("auto-increment")
 
   def increment(req: IncrRequest)(using ActorContext): CounterState =
     val current = ActorContext.get[Int](CountKey).getOrElse(0)
-    val next    = current + req.amount
+    val next = current + req.amount
     ActorContext.set(CountKey, next)
     CounterState(next)
 

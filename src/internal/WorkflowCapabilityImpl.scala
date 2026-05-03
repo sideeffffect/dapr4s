@@ -37,9 +37,9 @@ private[safe] final class WorkflowCapabilityImpl(
   def terminate(instanceId: WorkflowInstanceId): Unit =
     client.terminateWorkflow(instanceId.value, null)
 
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit =
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit =
     val jsonPayload: String = summon[JsonCodec[E]].encode(payload)
-    client.raiseEvent(instanceId.value, eventName, jsonPayload.asInstanceOf[Object])
+    client.raiseEvent(instanceId.value, eventName.value, jsonPayload.asInstanceOf[Object])
 
   def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] =
     val state = client.waitForWorkflowCompletion(instanceId.value, timeout, true)

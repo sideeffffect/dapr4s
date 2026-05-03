@@ -5,8 +5,7 @@ import upickle.default.{ReadWriter, macroRW}
 /** Domain types for the Counter actor integration tests.
   *
   * Defined separately from [[CounterActorApp]] so their [[upickle]] [[ReadWriter]] instances can be marked
-  * `@scala.caps.assumeSafe`, making them usable from safe-mode files that import
-  * `language.experimental.safe`.
+  * `@scala.caps.assumeSafe`, making them usable from safe-mode files that import `language.experimental.safe`.
   */
 
 final case class IncrRequest(amount: Int)

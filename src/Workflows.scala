@@ -60,10 +60,10 @@ trait WorkflowContext:
   /** Wait for an external event with the given name, up to `timeout`. The payload is deserialised with the provided
     * [[JsonCodec]].
     */
-  def waitForExternalEvent[T: JsonCodec](name: String, timeout: java.time.Duration): WorkflowTask[T]
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): WorkflowTask[T]
 
   /** Wait for an external event with the given name (no timeout). */
-  def waitForExternalEvent[T: JsonCodec](name: String): WorkflowTask[T]
+  def waitForExternalEvent[T: JsonCodec](name: EventName): WorkflowTask[T]
 
   /** Complete the workflow instance with a serialisable output value. */
   def complete[O: JsonCodec](output: O): Unit
@@ -129,8 +129,8 @@ private[safe] final class WorkflowContextImpl(
     val javaTask = ctx.createTimer(duration)
     new WorkflowTask(() => { javaTask.await(); () })
 
-  def waitForExternalEvent[T: JsonCodec](name: String, timeout: java.time.Duration): WorkflowTask[T] =
-    val javaTask = ctx.waitForExternalEvent(name, timeout, classOf[String])
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): WorkflowTask[T] =
+    val javaTask = ctx.waitForExternalEvent(name.value, timeout, classOf[String])
     val codec = summon[JsonCodec[T]]
     new WorkflowTask(() => {
       val result = javaTask.await()
@@ -138,12 +138,12 @@ private[safe] final class WorkflowContextImpl(
       codec
         .decode(json)
         .getOrElse(
-          throw RuntimeException(s"Failed to decode external event '$name'"),
+          throw RuntimeException(s"Failed to decode external event '${name.value}'"),
         )
     })
 
-  def waitForExternalEvent[T: JsonCodec](name: String): WorkflowTask[T] =
-    val javaTask = ctx.waitForExternalEvent(name, classOf[String])
+  def waitForExternalEvent[T: JsonCodec](name: EventName): WorkflowTask[T] =
+    val javaTask = ctx.waitForExternalEvent(name.value, classOf[String])
     val codec = summon[JsonCodec[T]]
     new WorkflowTask(() => {
       val result = javaTask.await()
@@ -151,7 +151,7 @@ private[safe] final class WorkflowContextImpl(
       codec
         .decode(json)
         .getOrElse(
-          throw RuntimeException(s"Failed to decode external event '$name'"),
+          throw RuntimeException(s"Failed to decode external event '${name.value}'"),
         )
     })
 

@@ -45,7 +45,7 @@ private[safe] final class DaprAppServer(app: DaprApp):
       val handler = sub.rawHandler.asInstanceOf[CloudEvent[sub.Payload] => SubscriptionResult]
       pubSubEntries.add(Array(sub.pubsubName.value, sub.topic.value, path))
       val fn: String => SubscriptionResult = bodyJson =>
-        parseCloudEvent(bodyJson, sub.codec, sub.pubsubName.value, sub.topic.value, handler)
+        parseCloudEvent(bodyJson, sub.codec, sub.pubsubName, sub.topic, handler)
       pubSubRoutes.put(path, fn.asInstanceOf[AnyRef])
 
     for inv <- app.invocations do
@@ -141,11 +141,11 @@ private[safe] final class DaprAppServer(app: DaprApp):
             val types = actorDefs.keySet().asScala.toList.sorted
             val json = ujson.write(
               ujson.Obj(
-                "entities"                -> ujson.Arr.from(types.map(ujson.Str(_))),
-                "actorIdleTimeout"        -> "1h",
-                "actorScanInterval"       -> "30s",
+                "entities" -> ujson.Arr.from(types.map(ujson.Str(_))),
+                "actorIdleTimeout" -> "1h",
+                "actorScanInterval" -> "30s",
                 "drainOngoingCallTimeout" -> "30s",
-                "drainRebalancedActors"   -> true,
+                "drainRebalancedActors" -> true,
               ),
             )
             sendJson(exchange, 200, json)
@@ -272,8 +272,7 @@ private[safe] final class DaprAppServer(app: DaprApp):
     //   DELETE {type}/{id}                     — deactivation (return 200)
     val parts = path.stripPrefix("/actors/").split("/", -1)
     parts match
-      case Array(actorType, actorId, "method", methodName)
-          if methodName != "remind" && methodName != "timer" =>
+      case Array(actorType, actorId, "method", methodName) if methodName != "remind" && methodName != "timer" =>
         dispatchActorMethod(exchange, actorType, actorId, methodName, actorDefs, daprHttpPort)
 
       case Array(actorType, actorId, "method", "remind", reminderName) =>
@@ -304,17 +303,17 @@ private[safe] final class DaprAppServer(app: DaprApp):
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx    = new HttpActorContext(actorType, actorId, daprHttpPort)
+      val ctx = new HttpActorContext(ActorType(actorType), ActorId(actorId), daprHttpPort)
       val routes = defn.build(ActorId(actorId), ctx)
-      val route  = routes.methods.find(_.methodName.value == methodName).orNull
+      val route = routes.methods.find(_.methodName.value == methodName).orNull
       if route == null then
         exchange.sendResponseHeaders(404, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body    = readBody(exchange)
+        val body = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Req => route.Resp]
         route.reqCodec.decode(if body.isEmpty then "null" else body) match
-          case Left(_)    =>
+          case Left(_) =>
             exchange.sendResponseHeaders(400, -1)
             exchange.getResponseBody.nn.close()
           case Right(req) =>
@@ -334,15 +333,15 @@ private[safe] final class DaprAppServer(app: DaprApp):
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx    = new HttpActorContext(actorType, actorId, daprHttpPort)
+      val ctx = new HttpActorContext(ActorType(actorType), ActorId(actorId), daprHttpPort)
       val routes = defn.build(ActorId(actorId), ctx)
-      val route  = routes.reminders.find(_.reminderName.value == reminderName).orNull
+      val route = routes.reminders.find(_.reminderName.value == reminderName).orNull
       if route == null then
         // Reminder delivered but no handler registered — acknowledge it silently
         exchange.sendResponseHeaders(200, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body    = readBody(exchange)
+        val body = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
         val payload = decodeCallbackPayload(body, route.codec)
         handler(payload)
@@ -362,14 +361,14 @@ private[safe] final class DaprAppServer(app: DaprApp):
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx    = new HttpActorContext(actorType, actorId, daprHttpPort)
+      val ctx = new HttpActorContext(ActorType(actorType), ActorId(actorId), daprHttpPort)
       val routes = defn.build(ActorId(actorId), ctx)
-      val route  = routes.timers.find(_.timerName.value == timerName).orNull
+      val route = routes.timers.find(_.timerName.value == timerName).orNull
       if route == null then
         exchange.sendResponseHeaders(200, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body    = readBody(exchange)
+        val body = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
         val payload = decodeCallbackPayload(body, route.codec)
         handler(payload)
@@ -393,31 +392,31 @@ private[safe] final class DaprAppServer(app: DaprApp):
 
   /** Decode the `data` field from a reminder/timer callback body.
     *
-    * The Dapr sidecar sends `{"data":"base64-encoded-json","dueTime":"...","period":"..."}`.
-    * We base64-decode the `data` field and then JSON-decode it with the route's codec.
+    * The Dapr sidecar sends `{"data":"base64-encoded-json","dueTime":"...","period":"..."}`. We base64-decode the
+    * `data` field and then JSON-decode it with the route's codec.
     */
   private def decodeCallbackPayload[T](body: String, codec: JsonCodec[T]): T =
     try
-      val env  = ujson.read(body).obj
+      val env = ujson.read(body).obj
       val data = env.get("data").map(_.str).getOrElse("")
       val json =
         if data.isEmpty then "null"
         else new String(java.util.Base64.getDecoder.nn.decode(data).nn, "UTF-8")
       codec.decode(json).getOrElse(throw RuntimeException("Failed to decode callback payload"))
     catch
-      case e: RuntimeException => throw e
+      case e: RuntimeException            => throw e
       case scala.util.control.NonFatal(e) =>
         throw RuntimeException("Failed to parse callback body", e)
 
   private def parseCloudEvent[T](
       bodyJson: String,
       codec: JsonCodec[T],
-      defaultPubsubName: String,
-      defaultTopic: String,
+      defaultPubsubName: PubSubName,
+      defaultTopic: Topic,
       handler: CloudEvent[T] => SubscriptionResult,
   ): SubscriptionResult =
     try
-      val env  = ujson.read(bodyJson).obj
+      val env = ujson.read(bodyJson).obj
       val data = env.get("data").map(v => ujson.write(v)).getOrElse("null")
       codec.decode(data) match
         case Left(_)  => SubscriptionResult.Drop
@@ -428,8 +427,8 @@ private[safe] final class DaprAppServer(app: DaprApp):
               source = env.get("source").map(_.str).getOrElse(""),
               specVersion = env.get("specversion").map(_.str).getOrElse("1.0"),
               eventType = env.get("type").map(_.str).getOrElse(""),
-              topic = Topic(env.get("topic").map(_.str).getOrElse(defaultTopic)),
-              pubSubName = PubSubName(env.get("pubsubname").map(_.str).getOrElse(defaultPubsubName)),
+              topic = env.get("topic").map(s => Topic(s.str)).getOrElse(defaultTopic),
+              pubSubName = env.get("pubsubname").map(s => PubSubName(s.str)).getOrElse(defaultPubsubName),
               dataContentType = env.get("datacontenttype").map(_.str).getOrElse("application/json"),
               data = v,
             ),

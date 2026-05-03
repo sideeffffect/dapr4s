@@ -13,28 +13,28 @@ import scala.util.control.NonFatal
   */
 @scala.caps.assumeSafe
 private[safe] final class HttpActorContext(
-    private val actorType: String,
-    private val actorId: String,
+    private val actorType: ActorType,
+    private val actorId: ActorId,
     private val daprHttpPort: Int,
 ) extends ActorContext:
 
   // ---- URL helpers -----------------------------------------------------------
 
-  private def stateUrl(key: String): String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/$actorType/$actorId/state/$key"
+  private def stateUrl(key: StateKey): String =
+    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/state/${key.value}"
 
   private def bulkStateUrl: String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/$actorType/$actorId/state"
+    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/state"
 
-  private def reminderUrl(name: String): String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/$actorType/$actorId/reminders/$name"
+  private def reminderUrl(name: ReminderName): String =
+    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/reminders/${name.value}"
 
-  private def timerUrl(name: String): String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/$actorType/$actorId/timers/$name"
+  private def timerUrl(name: TimerName): String =
+    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/timers/${name.value}"
 
   // ---- State -----------------------------------------------------------------
 
-  def get[T: JsonCodec](key: String): Option[T] =
+  def get[T: JsonCodec](key: StateKey): Option[T] =
     val conn = openConn(stateUrl(key))
     try
       conn.setRequestMethod("GET")
@@ -46,20 +46,20 @@ private[safe] final class HttpActorContext(
         summon[JsonCodec[T]].decode(json).toOption
     finally conn.disconnect()
 
-  def set[T: JsonCodec](key: String, value: T): Unit =
+  def set[T: JsonCodec](key: StateKey, value: T): Unit =
     val body = ujson.write(
       ujson.Arr(
         ujson.Obj(
           "operation" -> "upsert",
-          "request"   -> ujson.Obj("key" -> key, "value" -> ujson.read(summon[JsonCodec[T]].encode(value))),
+          "request" -> ujson.Obj("key" -> key.value, "value" -> ujson.read(summon[JsonCodec[T]].encode(value))),
         ),
       ),
     )
     postJson(bulkStateUrl, body)
 
-  def remove(key: String): Unit =
+  def remove(key: StateKey): Unit =
     val body = ujson.write(
-      ujson.Arr(ujson.Obj("operation" -> "delete", "request" -> ujson.Obj("key" -> key))),
+      ujson.Arr(ujson.Obj("operation" -> "delete", "request" -> ujson.Obj("key" -> key.value))),
     )
     postJson(bulkStateUrl, body)
 
@@ -71,18 +71,18 @@ private[safe] final class HttpActorContext(
       dueTime: java.time.Duration,
       period: Option[java.time.Duration] = None,
   ): Unit =
-    val dataJson   = summon[JsonCodec[T]].encode(data)
-    val dataBytes  = dataJson.getBytes("UTF-8").nn
+    val dataJson = summon[JsonCodec[T]].encode(data)
+    val dataBytes = dataJson.getBytes("UTF-8").nn
     val dataBase64 = java.util.Base64.getEncoder.nn.encodeToString(dataBytes).nn
-    val fields     = ujson.Obj(
+    val fields = ujson.Obj(
       "dueTime" -> dueTime.toString,
-      "data"    -> dataBase64,
+      "data" -> dataBase64,
     )
     period.foreach(p => fields("period") = p.toString)
-    postJson(reminderUrl(name.value), ujson.write(fields))
+    postJson(reminderUrl(name), ujson.write(fields))
 
   def unregisterReminder(name: ReminderName): Unit =
-    deleteRequest(reminderUrl(name.value))
+    deleteRequest(reminderUrl(name))
 
   // ---- Timers ----------------------------------------------------------------
 
@@ -92,18 +92,18 @@ private[safe] final class HttpActorContext(
       dueTime: java.time.Duration,
       period: Option[java.time.Duration] = None,
   ): Unit =
-    val dataJson   = summon[JsonCodec[T]].encode(data)
-    val dataBytes  = dataJson.getBytes("UTF-8").nn
+    val dataJson = summon[JsonCodec[T]].encode(data)
+    val dataBytes = dataJson.getBytes("UTF-8").nn
     val dataBase64 = java.util.Base64.getEncoder.nn.encodeToString(dataBytes).nn
-    val fields     = ujson.Obj(
+    val fields = ujson.Obj(
       "dueTime" -> dueTime.toString,
-      "data"    -> dataBase64,
+      "data" -> dataBase64,
     )
     period.foreach(p => fields("period") = p.toString)
-    postJson(timerUrl(name.value), ujson.write(fields))
+    postJson(timerUrl(name), ujson.write(fields))
 
   def unregisterTimer(name: TimerName): Unit =
-    deleteRequest(timerUrl(name.value))
+    deleteRequest(timerUrl(name))
 
   // ---- HTTP helpers ----------------------------------------------------------
 

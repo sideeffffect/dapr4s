@@ -158,6 +158,13 @@ object WorkflowInstanceId:
   def apply(s: String): WorkflowInstanceId = s
   extension (id: WorkflowInstanceId) def value: String = id
 
+opaque type EventName = String
+object EventName:
+  def apply(s: String): EventName =
+    require(s.nonEmpty, "EventName must not be empty")
+    s
+  extension (n: EventName) def value: String = n
+
 /** Standard HTTP methods for service invocation requests. */
 enum HttpMethod:
   case Get, Post, Put, Patch, Delete, Head, Options

@@ -23,20 +23,20 @@ trait ActorContext:
   // --- State ------------------------------------------------------------------
 
   /** Fetch a state value by key.  Returns `None` if the key has not been set. */
-  def get[T: JsonCodec](key: String): Option[T]
+  def get[T: JsonCodec](key: StateKey): Option[T]
 
   /** Store a state value under `key`. */
-  def set[T: JsonCodec](key: String, value: T): Unit
+  def set[T: JsonCodec](key: StateKey, value: T): Unit
 
   /** Remove a state key. */
-  def remove(key: String): Unit
+  def remove(key: StateKey): Unit
 
   // --- Reminders (persistent — survive actor deactivation/restart) ----------
 
   /** Schedule a persistent reminder that fires after `dueTime`.
     *
-    * The reminder survives actor deactivation; the sidecar will reactivate the actor to deliver it. Recurring
-    * reminders fire repeatedly every `period` after the first delivery.
+    * The reminder survives actor deactivation; the sidecar will reactivate the actor to deliver it. Recurring reminders
+    * fire repeatedly every `period` after the first delivery.
     *
     * `data` is serialised with its [[JsonCodec]] and stored in the Dapr reminder payload, then deserialised and passed
     * to the matching [[ActorReminderRoute]] handler when the reminder fires.
@@ -74,9 +74,9 @@ trait ActorContext:
 /** Companion-object API for [[ActorContext]]. */
 @scala.caps.assumeSafe
 object ActorContext:
-  def get[T: JsonCodec](key: String)(using ctx: ActorContext): Option[T] = ctx.get(key)
-  def set[T: JsonCodec](key: String, value: T)(using ctx: ActorContext): Unit = ctx.set(key, value)
-  def remove(key: String)(using ctx: ActorContext): Unit = ctx.remove(key)
+  def get[T: JsonCodec](key: StateKey)(using ctx: ActorContext): Option[T] = ctx.get(key)
+  def set[T: JsonCodec](key: StateKey, value: T)(using ctx: ActorContext): Unit = ctx.set(key, value)
+  def remove(key: StateKey)(using ctx: ActorContext): Unit = ctx.remove(key)
 
   def registerReminder[T: JsonCodec](
       name: ReminderName,

@@ -14,7 +14,7 @@ class AddActivity extends DaprActivity[IncrRequest, CounterState]:
 class AddingWorkflow extends DaprWorkflow:
   def run(ctx: WorkflowContext): Unit =
     val input = ctx.getInput[IncrRequest].getOrElse(IncrRequest(0))
-    val task  = ctx.callActivity(classOf[AddActivity], input)
+    val task = ctx.callActivity(classOf[AddActivity], input)
     val result = task.await()
     ctx.complete(result)
 
@@ -24,6 +24,6 @@ class AddingWorkflow extends DaprWorkflow:
 
 object WorkflowApp:
   def daprApp: DaprApp = DaprApp(
-    workflows  = List(new AddingWorkflow),
+    workflows = List(new AddingWorkflow),
     activities = List(new AddActivity),
   )

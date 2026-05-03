@@ -39,13 +39,13 @@ class ActorIntegrationTest extends FunSuite:
     assertEquals(state.count, 5)
 
   test("actor: increment accumulates across calls with same context"):
-    val ctx         = freshCtx()
+    val ctx = freshCtx()
     callActor[IncrRequest, CounterState]("increment", IncrRequest(3), ctx)
-    val (state, _)  = callActor[IncrRequest, CounterState]("increment", IncrRequest(7), ctx)
+    val (state, _) = callActor[IncrRequest, CounterState]("increment", IncrRequest(7), ctx)
     assertEquals(state.count, 10)
 
   test("actor: increment by negative amount decrements"):
-    val ctx        = freshCtx()
+    val ctx = freshCtx()
     callActor[IncrRequest, CounterState]("increment", IncrRequest(10), ctx)
     val (state, _) = callActor[IncrRequest, CounterState]("increment", IncrRequest(-3), ctx)
     assertEquals(state.count, 7)
@@ -110,7 +110,7 @@ class ActorIntegrationTest extends FunSuite:
 
   test("actor: reminder callback resets counter"):
     val ctx = freshCtx()
-    ctx.seedState[Int]("count", 77)
+    ctx.seedState[Int](StateKey("count"), 77)
     TestDaprApp.deliverReminder(
       CounterActorHandlers.daprApp,
       "Counter",
@@ -126,7 +126,7 @@ class ActorIntegrationTest extends FunSuite:
 
   test("actor: timer callback increments counter"):
     val ctx = freshCtx()
-    ctx.seedState[Int]("count", 10)
+    ctx.seedState[Int](StateKey("count"), 10)
     TestDaprApp.deliverTimer(
       CounterActorHandlers.daprApp,
       "Counter",
@@ -135,7 +135,7 @@ class ActorIntegrationTest extends FunSuite:
       IncrRequest(1),
       ctx,
     )
-    assertEquals(ctx.get[Int]("count"), Some(11))
+    assertEquals(ctx.get[Int](StateKey("count")), Some(11))
 
   // ---- unknown actor / method errors ----------------------------------------
 
@@ -187,9 +187,11 @@ class ActorIntegrationTest extends FunSuite:
 
   test("actor: DaprApp ++ merges actor definitions"):
     val app1 = CounterActorHandlers.daprApp
-    val app2 = DaprApp(actors = List(
-      ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() },
-    ))
+    val app2 = DaprApp(actors =
+      List(
+        ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() },
+      ),
+    )
     val combined = app1 ++ app2
     assertEquals(combined.actors.size, 2)
     assert(combined.actors.exists(_.actorType.value == "Counter"))

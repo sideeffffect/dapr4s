@@ -389,7 +389,7 @@ private class MockWorkflowCapability(scope: MockDaprCapability) extends Workflow
     checkOpen()
     updateStatus(instanceId, WorkflowStatus.Terminated)
 
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit =
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit =
     checkOpen()
     () // mock: no-op
 
@@ -430,8 +430,8 @@ final class MockActorContext extends ActorContext:
   private val timers: mutable.Map[String, (String, java.time.Duration, Option[java.time.Duration])] =
     mutable.Map.empty
 
-  def seedState[T: JsonCodec](key: String, value: T): Unit =
-    store(key) = summon[JsonCodec[T]].encode(value)
+  def seedState[T: JsonCodec](key: StateKey, value: T): Unit =
+    store(key.value) = summon[JsonCodec[T]].encode(value)
 
   def stateSnapshot: Map[String, String] = store.toMap
 
@@ -441,14 +441,14 @@ final class MockActorContext extends ActorContext:
   def registeredTimers: Map[String, (String, java.time.Duration, Option[java.time.Duration])] =
     timers.toMap
 
-  def get[T: JsonCodec](key: String): Option[T] =
-    store.get(key).flatMap(json => summon[JsonCodec[T]].decode(json).toOption)
+  def get[T: JsonCodec](key: StateKey): Option[T] =
+    store.get(key.value).flatMap(json => summon[JsonCodec[T]].decode(json).toOption)
 
-  def set[T: JsonCodec](key: String, value: T): Unit =
-    store(key) = summon[JsonCodec[T]].encode(value)
+  def set[T: JsonCodec](key: StateKey, value: T): Unit =
+    store(key.value) = summon[JsonCodec[T]].encode(value)
 
-  def remove(key: String): Unit =
-    store.remove(key)
+  def remove(key: StateKey): Unit =
+    store.remove(key.value)
     ()
 
   def registerReminder[T: JsonCodec](

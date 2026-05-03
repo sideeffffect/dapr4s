@@ -314,7 +314,7 @@ trait WorkflowCapability:
   def terminate(instanceId: WorkflowInstanceId): Unit
 
   /** Send an external event to a waiting workflow instance. */
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E): Unit
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit
 
   /** Block until the workflow instance completes (or the timeout expires). Returns the final snapshot, or `None` if the
     * instance was not found.
@@ -351,7 +351,7 @@ object WorkflowCapability:
     cap.resume(instanceId)
   def terminate(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Unit =
     cap.terminate(instanceId)
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: String, payload: E)(using
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E)(using
       cap: WorkflowCapability,
   ): Unit =
     cap.raiseEvent(instanceId, eventName, payload)

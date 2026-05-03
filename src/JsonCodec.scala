@@ -81,7 +81,7 @@ object JsonCodec:
       catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   given JsonCodec[Unit] with
-    def encode(value: Unit): String  = "null"
+    def encode(value: Unit): String = "null"
     def decode(json: String | Null): Either[JsonDecodeException, Unit] = Right(())
 
   // -------------------------------------------------------------------------
