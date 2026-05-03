@@ -131,8 +131,8 @@ classDiagram
         +subscriptions: List[Subscription]
         +invocations: List[InvocationRoute]
         +bindings: List[BindingRoute]
-        +workflows: List[DaprWorkflow]
-        +activities: List[DaprActivity[?,?]]
+        +workflows: List[Workflow]
+        +activities: List[WorkflowActivity[?,?]]
         +actors: List[ActorDefinition]
         +\+\+(other: DaprApp) DaprApp
     }
@@ -538,14 +538,14 @@ scala-safe-dapr/
 
 ## Workflows and Activities
 
-`DaprWorkflow` and `DaprActivity[I, O]` provide clean Scala abstractions over the Dapr workflow SDK, hiding all Java types.
+`Workflow` and `WorkflowActivity[I, O]` provide clean Scala abstractions over the Dapr workflow SDK, hiding all Java types.
 
-### DaprWorkflow
+### Workflow
 
-Extend `DaprWorkflow` and implement `run(ctx: WorkflowContext): Unit`. The `WorkflowContext` is a pure Scala trait — no Java types leak into user code:
+Extend `Workflow` and implement `run(ctx: WorkflowContext): Unit`. The `WorkflowContext` is a pure Scala trait — no Java types leak into user code:
 
 ```scala
-class OrderWorkflow extends DaprWorkflow:
+class OrderWorkflow extends Workflow:
   def run(ctx: WorkflowContext): Unit =
     val input = ctx.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
     val paymentTask = ctx.callActivity(classOf[ProcessPaymentActivity], input)
@@ -553,20 +553,20 @@ class OrderWorkflow extends DaprWorkflow:
     ctx.complete(result)
 ```
 
-`DaprWorkflow` is a pure Scala abstract class — no Java type in the public API. Internally, `DaprWorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge is in `dapr.safe.internal` and never visible to users.
+`Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge is in `dapr.safe.internal` and never visible to users.
 
-### DaprActivity[I, O]
+### WorkflowActivity[I, O]
 
-Extend `DaprActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]` in scope) and implement `execute(input: I): O`:
+Extend `WorkflowActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]` in scope) and implement `execute(input: I): O`:
 
 ```scala
-class ProcessPaymentActivity extends DaprActivity[OrderRequest, PaymentResult]:
+class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
   def execute(input: OrderRequest): PaymentResult =
     // can do I/O, call services, etc.
     PaymentResult("confirmed")
 ```
 
-`DaprActivity[I, O]` is a pure Scala abstract class. Internally, `DaprActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[safe]` on the abstract class.
+`WorkflowActivity[I, O]` is a pure Scala abstract class. Internally, `WorkflowActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[safe]` on the abstract class.
 
 ### WorkflowTask[O]
 

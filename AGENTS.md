@@ -278,4 +278,4 @@ probing class files whenever you need to verify an API.
   threads.
 - No exposing Reactor/Mono types to users — all Reactor is confined to `internal/`.
 - No client-side WorkflowCapability yet (starting/querying/terminating workflow instances) —
-  server-side hosting (`DaprWorkflow`, `DaprActivity`, `WorkflowContext`) is implemented.
+  server-side hosting (`Workflow`, `WorkflowActivity`, `WorkflowContext`) is implemented.

@@ -7,7 +7,7 @@
 --           ConfigurationCapability (get + subscribe), BindingsCapability,
 --           DistributedLockCapability, DaprApp (inbound pub/sub, bindings,
 --           service invocation, actors with reminders/timers),
---           DaprWorkflow, DaprActivity, WorkflowContext (server-side workflow orchestration)
+--           Workflow, WorkflowActivity, WorkflowContext (server-side workflow orchestration)
 --           JsonCodec
 -- Excludes (not yet specified — separate specs):
 --   - DAPR workflow orchestration detail: WorkflowCapability (client-side) spec deferred.
@@ -30,23 +30,23 @@ external entity JavaDaprClient {
     -- Managed entirely inside @assumeSafe boundaries; opaque to user code
 }
 
-external entity DaprWorkflow {
+external entity Workflow {
     -- Pure Scala abstract class. User extends and implements run(ctx: WorkflowContext).
     -- WorkflowContext is a clean Scala trait; no Java types visible to users.
-    -- Internally, DaprWorkflowBridge extends io.dapr.workflows.Workflow and is registered
+    -- Internally, WorkflowBridge extends io.dapr.workflows.Workflow and is registered
     -- via registerWorkflow(name, bridge, "", false); bridge is in dapr.safe.internal.
 }
 
-external entity DaprActivity {
-    -- Pure Scala abstract class: DaprActivity[I: JsonCodec, O: JsonCodec].
+external entity WorkflowActivity {
+    -- Pure Scala abstract class: WorkflowActivity[I: JsonCodec, O: JsonCodec].
     -- User implements execute(input: I): O — no context needed, no Java types visible.
-    -- Internally, DaprActivityBridge extends io.dapr.workflows.WorkflowActivity and is
+    -- Internally, WorkflowActivityBridge extends io.dapr.workflows.WorkflowActivity and is
     -- registered via registerActivity(name, bridge); bridge is in dapr.safe.internal.
     -- Codec fields are private[safe] so the bridge can access them.
 }
 
 external entity WorkflowContext {
-    -- Clean Scala trait provided to DaprWorkflow.run.
+    -- Clean Scala trait provided to Workflow.run.
     -- Wraps io.dapr.workflows.WorkflowContext; all methods use Scala types.
     instance_id: WorkflowInstanceId
     is_replaying: Boolean
@@ -280,8 +280,8 @@ value DaprApp {
     subscriptions: List<Subscription>
     invocations:   List<InvocationRoute>
     bindings:      List<BindingRoute>
-    workflows:     List<DaprWorkflow>
-    activities:    List<DaprActivity>  -- existential: DaprActivity[?, ?]
+    workflows:     List<Workflow>
+    activities:    List<WorkflowActivity>  -- existential: WorkflowActivity[?, ?]
     actors:        List<ActorDefinition>
     -- Two DaprApp values may be combined with ++ to compose service modules.
 }
@@ -1194,7 +1194,7 @@ surface DaprAppSurface {
         Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
         InvocationRoute: (method_name: MethodName, handler: Req -> Resp) -> InvocationRoute
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
-        DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<DaprWorkflow>, activities: List<DaprActivity>, actors: List<ActorDefinition>) -> DaprApp
+        DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp
         ActorMethodRoute: (method_name: MethodName, handler: Req -> Resp) -> ActorMethodRoute
         ActorReminderRoute: (reminder_name: ReminderName, handler: Payload -> Unit) -> ActorReminderRoute

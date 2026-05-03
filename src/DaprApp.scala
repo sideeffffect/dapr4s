@@ -33,8 +33,8 @@ final case class DaprApp(
     subscriptions: List[Subscription] = Nil,
     invocations: List[InvocationRoute] = Nil,
     bindings: List[BindingRoute] = Nil,
-    workflows: List[DaprWorkflow] = Nil,
-    activities: List[DaprActivity[?, ?]] = Nil,
+    workflows: List[Workflow] = Nil,
+    activities: List[WorkflowActivity[?, ?]] = Nil,
     actors: List[ActorDefinition] = Nil,
 ):
   def ++(other: DaprApp): DaprApp = DaprApp(

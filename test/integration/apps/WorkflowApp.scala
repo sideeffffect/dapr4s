@@ -7,11 +7,11 @@ import language.experimental.safe
 // Simple workflow that adds two numbers via an activity
 // ---------------------------------------------------------------------------
 
-class AddActivity extends DaprActivity[IncrRequest, CounterState]:
+class AddActivity extends WorkflowActivity[IncrRequest, CounterState]:
   def execute(input: IncrRequest): CounterState =
     CounterState(input.amount * 2) // doubles the input for test verification
 
-class AddingWorkflow extends DaprWorkflow:
+class AddingWorkflow extends Workflow:
   def run(ctx: WorkflowContext): Unit =
     val input = ctx.getInput[IncrRequest].getOrElse(IncrRequest(0))
     val task = ctx.callActivity(classOf[AddActivity], input)

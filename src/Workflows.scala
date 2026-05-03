@@ -6,7 +6,7 @@ import unsafeExceptions.canThrowAny
 // WorkflowTask — a handle to a scheduled durable operation
 // ---------------------------------------------------------------------------
 
-/** A handle to a durable operation scheduled inside a [[DaprWorkflow]].
+/** A handle to a durable operation scheduled inside a [[Workflow]].
   *
   * Obtain instances from [[WorkflowContext]] methods (`callActivity`, `createTimer`, `waitForExternalEvent`). Call
   * `await()` to block until the operation completes and get its result. This is safe inside a workflow because the
@@ -20,7 +20,7 @@ final class WorkflowTask[+O] private[safe] (private val compute: () => O):
 // WorkflowContext — clean Scala wrapper over the Java workflow context
 // ---------------------------------------------------------------------------
 
-/** Context object provided to [[DaprWorkflow.run]].
+/** Context object provided to [[Workflow.run]].
   *
   * Mirrors the key methods of `io.dapr.workflows.WorkflowContext` but uses Scala types throughout — no Java types leak
   * into user code.
@@ -42,17 +42,17 @@ trait WorkflowContext:
 
   /** Schedule an activity and return a [[WorkflowTask]] that resolves to its output.
     *
-    * `activityClass` must be the concrete class of a [[DaprActivity]] subclass registered in the same [[DaprApp]]. The
-    * input is serialised with the activity's [[JsonCodec]] and the output is deserialised from the activity's return
-    * value.
+    * `activityClass` must be the concrete class of a [[WorkflowActivity]] subclass registered in the same [[DaprApp]].
+    * The input is serialised with the activity's [[JsonCodec]] and the output is deserialised from the activity's
+    * return value.
     */
   def callActivity[I: JsonCodec, O: JsonCodec](
-      activityClass: Class[? <: DaprActivity[I, O]],
+      activityClass: Class[? <: WorkflowActivity[I, O]],
       input: I,
   ): WorkflowTask[O]
 
   /** Overload for activities that take no input. */
-  def callActivity[O: JsonCodec](activityClass: Class[? <: DaprActivity[Unit, O]]): WorkflowTask[O]
+  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): WorkflowTask[O]
 
   /** Create a durable timer that fires after `duration`. */
   def createTimer(duration: java.time.Duration): WorkflowTask[Unit]
@@ -94,7 +94,7 @@ private[safe] final class WorkflowContextImpl(
     }
 
   def callActivity[I: JsonCodec, O: JsonCodec](
-      activityClass: Class[? <: DaprActivity[I, O]],
+      activityClass: Class[? <: WorkflowActivity[I, O]],
       input: I,
   ): WorkflowTask[O] =
     val inputJson = summon[JsonCodec[I]].encode(input)
@@ -111,7 +111,7 @@ private[safe] final class WorkflowContextImpl(
         )
     })
 
-  def callActivity[O: JsonCodec](activityClass: Class[? <: DaprActivity[Unit, O]]): WorkflowTask[O] =
+  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): WorkflowTask[O] =
     val name = activityClass.getCanonicalName.nn
     val javaTask = ctx.callActivity(name, "null", classOf[String])
     val codec = summon[JsonCodec[O]]
@@ -165,7 +165,7 @@ private[safe] final class WorkflowContextImpl(
     ctx.newUuid().nn
 
 // ---------------------------------------------------------------------------
-// DaprWorkflow — user-facing base class for workflow orchestrations
+// Workflow — user-facing base class for workflow orchestrations
 // ---------------------------------------------------------------------------
 
 /** Base class for Dapr workflow orchestrations.
@@ -173,22 +173,7 @@ private[safe] final class WorkflowContextImpl(
   * Extend this class, implement [[run]], and register the instance in [[DaprApp.workflows]].
   *
   * {{{
-  *   class OrderWorkflow extends DaprWorkflow:
-  *     def run(ctx: WorkflowContext): Unit =
-  *       val input = ctx.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
-  *       val paymentTask = ctx.callActivity(classOf[ProcessPaymentActivity], input)
-  *       val result = paymentTask.await()
-  *       ctx.complete(result)
-  * }}}
-  *
-  * Workflows **must be deterministic** — use only `ctx` APIs for scheduling side effects.
-  */
-/** Base class for Dapr workflow orchestrations.
-  *
-  * Extend this class, implement [[run]], and register the instance in [[DaprApp.workflows]].
-  *
-  * {{{
-  *   class OrderWorkflow extends DaprWorkflow:
+  *   class OrderWorkflow extends Workflow:
   *     def run(ctx: WorkflowContext): Unit =
   *       val input = ctx.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
   *       val paymentTask = ctx.callActivity(classOf[ProcessPaymentActivity], input)
@@ -204,7 +189,7 @@ private[safe] final class WorkflowContextImpl(
   * }}}
   */
 @scala.caps.assumeSafe
-abstract class DaprWorkflow:
+abstract class Workflow:
 
   /** Implement workflow orchestration logic here.
     *
@@ -215,7 +200,7 @@ abstract class DaprWorkflow:
   def run(ctx: WorkflowContext): Unit
 
 // ---------------------------------------------------------------------------
-// DaprActivity — user-facing base class for workflow activities
+// WorkflowActivity — user-facing base class for workflow activities
 // ---------------------------------------------------------------------------
 
 /** Base class for Dapr workflow activities.
@@ -226,14 +211,14 @@ abstract class DaprWorkflow:
   * Register instances in [[DaprApp.activities]]; reference the concrete class in [[WorkflowContext.callActivity]].
   *
   * {{{
-  *   class ProcessPaymentActivity extends DaprActivity[OrderRequest, PaymentResult]:
+  *   class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
   *     def execute(input: OrderRequest): PaymentResult =
   *       // call payment gateway...
   *       PaymentResult("confirmed")
   * }}}
   */
 @scala.caps.assumeSafe
-abstract class DaprActivity[I, O](using
+abstract class WorkflowActivity[I, O](using
     private[safe] val inputCodec: JsonCodec[I],
     private[safe] val outputCodec: JsonCodec[O],
 ):
