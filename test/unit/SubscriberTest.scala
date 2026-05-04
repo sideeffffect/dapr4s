@@ -29,19 +29,22 @@ class SubscriberTest extends FunSuite:
 
   test("unit: CloudEvent stores all fields"):
     val event = CloudEvent[String](
-      id = "abc",
-      source = "test",
-      specVersion = "1.0",
-      eventType = "com.example.event",
+      id = CloudEventId("abc"),
+      source = CloudEventSource("test"),
+      specVersion = CloudEventSpecVersion("1.0"),
+      eventType = CloudEventType("com.example.event"),
       topic = Topic("orders"),
       pubSubName = PubSubName("pubsub"),
-      dataContentType = "application/json",
+      dataContentType = ContentType("application/json"),
       data = "hello",
     )
-    assertEquals(event.id, "abc")
-    assertEquals(event.source, "test")
+    assertEquals(event.id, CloudEventId("abc"))
+    assertEquals(event.source, CloudEventSource("test"))
+    assertEquals(event.specVersion, CloudEventSpecVersion("1.0"))
+    assertEquals(event.eventType, CloudEventType("com.example.event"))
     assertEquals(event.topic, Topic("orders"))
     assertEquals(event.pubSubName, PubSubName("pubsub"))
+    assertEquals(event.dataContentType, ContentType("application/json"))
     assertEquals(event.data, "hello")
 
   // -------------------------------------------------------------------------

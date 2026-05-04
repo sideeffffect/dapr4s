@@ -169,12 +169,12 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   private def mkOrderEvent(orderId: String, item: String, qty: Int): CloudEvent[OrderEvent] =
     CloudEvent(
-      id = orderId,
-      source = "order-service",
-      specVersion = "1.0",
-      eventType = "order.placed",
+      id = CloudEventId(orderId),
+      source = CloudEventSource("order-service"),
+      specVersion = CloudEventSpecVersion("1.0"),
+      eventType = CloudEventType("order.placed"),
       topic = Topic("orders"),
       pubSubName = PubSubName("pubsub"),
-      dataContentType = "application/json",
+      dataContentType = ContentType("application/json"),
       data = OrderEvent(orderId, item, qty),
     )

@@ -49,7 +49,7 @@ object InventoryServiceHandlers:
     val item = event.data.item
     val qty = event.data.quantity
     val key = StateKey(s"stock-$item")
-    val owner = LockOwner(s"inv-${event.id}")
+    val owner = LockOwner(s"inv-${event.id.value}")
 
     if DistributedLockCapability.tryLock(LockResourceId(item), owner, 10) then
       try

@@ -434,13 +434,15 @@ private[safe] final class DaprAppServer(
         case Right(v) =>
           handler(
             CloudEvent[T](
-              id = env.get("id").map(_.str).getOrElse(""),
-              source = env.get("source").map(_.str).getOrElse(""),
-              specVersion = env.get("specversion").map(_.str).getOrElse("1.0"),
-              eventType = env.get("type").map(_.str).getOrElse(""),
+              id = CloudEventId(env.get("id").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
+              source = CloudEventSource(env.get("source").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
+              specVersion =
+                CloudEventSpecVersion(env.get("specversion").map(_.str).filter(_.nonEmpty).getOrElse("1.0")),
+              eventType = CloudEventType(env.get("type").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
               topic = env.get("topic").map(s => Topic(s.str)).getOrElse(defaultTopic),
               pubSubName = env.get("pubsubname").map(s => PubSubName(s.str)).getOrElse(defaultPubsubName),
-              dataContentType = env.get("datacontenttype").map(_.str).getOrElse("application/json"),
+              dataContentType =
+                ContentType(env.get("datacontenttype").map(_.str).filter(_.nonEmpty).getOrElse("application/json")),
               data = v,
             ),
           )

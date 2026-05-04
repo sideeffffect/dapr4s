@@ -250,13 +250,13 @@ enum SubscriptionResult:
 
 /** An incoming pub/sub CloudEvent delivered by the Dapr sidecar. */
 final case class CloudEvent[T](
-    id: String,
-    source: String,
-    specVersion: String,
-    eventType: String,
+    id: CloudEventId,
+    source: CloudEventSource,
+    specVersion: CloudEventSpecVersion,
+    eventType: CloudEventType,
     topic: Topic,
     pubSubName: PubSubName,
-    dataContentType: String,
+    dataContentType: ContentType,
     data: T,
 )
 

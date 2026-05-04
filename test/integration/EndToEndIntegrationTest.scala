@@ -89,13 +89,13 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
 
         // Simulate event delivery from order-service to inventory-service
         val event = CloudEvent(
-          id = resp.orderId,
-          source = "order-service",
-          specVersion = "1.0",
-          eventType = "order.placed",
+          id = CloudEventId(resp.orderId),
+          source = CloudEventSource("order-service"),
+          specVersion = CloudEventSpecVersion("1.0"),
+          eventType = CloudEventType("order.placed"),
           topic = Topic("orders"),
           pubSubName = PubSubName("pubsub"),
-          dataContentType = "application/json",
+          dataContentType = ContentType("application/json"),
           data = OrderEvent(resp.orderId, "tablet", 4),
         )
         val subResult = TestDaprApp.deliver(inventoryApp, "orders", event)
@@ -230,12 +230,12 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll:
 
   private def mkEvent(orderId: String, item: String, qty: Int): CloudEvent[OrderEvent] =
     CloudEvent(
-      id = orderId,
-      source = "order-service",
-      specVersion = "1.0",
-      eventType = "order.placed",
+      id = CloudEventId(orderId),
+      source = CloudEventSource("order-service"),
+      specVersion = CloudEventSpecVersion("1.0"),
+      eventType = CloudEventType("order.placed"),
       topic = Topic("orders"),
       pubSubName = PubSubName("pubsub"),
-      dataContentType = "application/json",
+      dataContentType = ContentType("application/json"),
       data = OrderEvent(orderId, item, qty),
     )
