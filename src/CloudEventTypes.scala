@@ -2,11 +2,11 @@ package dapr.safe
 
 import language.experimental.safe
 
-// CloudEvent field opaque types — in a separate file from Models.scala to
-// avoid the CC compile-time exponential blowup that occurs when too many
-// opaque String types with `.value` extension methods accumulate in a single
-// safe-mode file. Having 25 types in Models.scala and 5 here keeps both
-// within the compile-fast range.
+// CloudEvent field opaque types — kept in a separate file from OpaqueTypes.scala
+// because the CC compiler exhibits exponential compile-time growth once a
+// safe-mode file exceeds ~25 opaque String types with `.value` extensions.
+// OpaqueTypes.scala holds the other 25; adding more to either file risks
+// crossing that threshold.
 
 opaque type CloudEventId = String
 object CloudEventId:
