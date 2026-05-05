@@ -20,9 +20,10 @@ import dapr.safe.*
   * }}}
   */
 @main def inventoryServiceMain(): Unit =
-  val port = sys.env.getOrElse("APP_PORT", "8081").toInt
+  val port   = sys.env.getOrElse("APP_PORT", "8081").toInt
+  val config = DaprRuntimeConfig(appServer = AppServerConfig(port = DaprPort(port)))
   println(s"[inventory-service] starting on port $port")
-  DaprRuntime.serve(appPort = port):
+  DaprRuntime.serve(config):
     val app = InventoryServiceHandlers.daprApp
     println("[inventory-service] handlers declared, serving...")
     app

@@ -28,13 +28,19 @@ private[safe] final class DaprAppServer(
     // Storing the factory as AnyRef erases the capture set on the returned ActorContext,
     // consistent with the @assumeSafe / AnyRef-erasure pattern used throughout the library.
     private val mkActorCtxRaw: AnyRef =
-      ((actorType: ActorType, actorId: ActorId, daprPort: Int) => HttpActorContext(actorType, actorId, daprPort))
+      ((actorType: ActorType, actorId: ActorId, endpoint: String) => HttpActorContext(actorType, actorId, endpoint))
         .asInstanceOf[AnyRef],
 ):
 
   private val log = Logger.getLogger("dapr.safe.internal.DaprAppServer")
 
-  def startAndBlock(port: Int, daprPort: Int = 0): Unit =
+  def startAndBlock(
+      port: Int,
+      sidecarHttpEndpoint: String = "http://localhost:3500",
+      shutdownGraceSeconds: Int = 2,
+      httpBacklog: Int = 0,
+      actorConfig: ActorRuntimeConfig = ActorRuntimeConfig(),
+  ): Unit =
 
     // -----------------------------------------------------------------------
     // Build dispatch tables from DaprApp
@@ -109,18 +115,10 @@ private[safe] final class DaprAppServer(
       else null
 
     // -----------------------------------------------------------------------
-    // Dapr HTTP port (for actor state API calls back to sidecar)
-    // -----------------------------------------------------------------------
-
-    val daprHttpPort: Int =
-      if daprPort > 0 then daprPort
-      else Option(System.getenv("DAPR_HTTP_PORT")).flatMap(_.toIntOption).getOrElse(3500)
-
-    // -----------------------------------------------------------------------
     // HTTP server
     // -----------------------------------------------------------------------
 
-    val server = HttpServer.create(new InetSocketAddress(port), /*backlog=*/ 0)
+    val server = HttpServer.create(new InetSocketAddress(port), httpBacklog)
     server.setExecutor(java.util.concurrent.Executors.newVirtualThreadPerTaskExecutor())
 
     // Dapr sidecar calls GET /dapr/subscribe to discover pub/sub subscriptions.
@@ -149,16 +147,34 @@ private[safe] final class DaprAppServer(
         try
           if exchange.getRequestMethod.nn == "GET" then
             val types = actorDefs.keySet().asScala.toList.sorted
-            val json = ujson.write(
-              ujson.Obj(
-                "entities" -> ujson.Arr.from(types.map(ujson.Str(_))),
-                "actorIdleTimeout" -> "1h",
-                "actorScanInterval" -> "30s",
-                "drainOngoingCallTimeout" -> "30s",
-                "drainRebalancedActors" -> true,
+            val obj = ujson.Obj(
+              "entities"               -> ujson.Arr.from(types.map(ujson.Str(_))),
+              "actorIdleTimeout"       -> actorConfig.actorIdleTimeout.value,
+              "actorScanInterval"      -> actorConfig.actorScanInterval.value,
+              "drainOngoingCallTimeout" -> actorConfig.drainOngoingCallTimeout.value,
+              "drainRebalancedActors"  -> actorConfig.drainRebalancedActors,
+              "reentrancy" -> ujson.Obj(
+                "enabled"       -> actorConfig.reentrancy.enabled,
+                "maxStackDepth" -> actorConfig.reentrancy.maxStackDepth,
               ),
+              "remindersStoragePartitions" -> actorConfig.remindersStoragePartitions,
             )
-            sendJson(exchange, 200, json)
+            if actorConfig.entitiesConfig.nonEmpty then
+              obj("entitiesConfig") = ujson.Arr.from(
+                actorConfig.entitiesConfig.map { ec =>
+                  val entry = ujson.Obj("entities" -> ujson.Arr.from(ec.entities.map(e => ujson.Str(e.value))))
+                  ec.actorIdleTimeout.foreach(v => entry("actorIdleTimeout") = v.value)
+                  ec.actorScanInterval.foreach(v => entry("actorScanInterval") = v.value)
+                  ec.drainOngoingCallTimeout.foreach(v => entry("drainOngoingCallTimeout") = v.value)
+                  ec.drainRebalancedActors.foreach(v => entry("drainRebalancedActors") = v)
+                  ec.reentrancy.foreach { r =>
+                    entry("reentrancy") = ujson.Obj("enabled" -> r.enabled, "maxStackDepth" -> r.maxStackDepth)
+                  }
+                  ec.remindersStoragePartitions.foreach(v => entry("remindersStoragePartitions") = v)
+                  entry
+                },
+              )
+            sendJson(exchange, 200, ujson.write(obj))
           else
             exchange.sendResponseHeaders(405, -1)
             exchange.getResponseBody.nn.close()
@@ -177,7 +193,7 @@ private[safe] final class DaprAppServer(
         "/actors",
         exchange =>
           val path = exchange.getRequestURI.nn.getPath.nn
-          try handleActorRequest(exchange, path, actorDefs, daprHttpPort)
+          try handleActorRequest(exchange, path, actorDefs, sidecarHttpEndpoint)
           catch
             case NonFatal(e) =>
               try sendJson(exchange, 500, errorJson(e))
@@ -241,7 +257,7 @@ private[safe] final class DaprAppServer(
       Thread
         .ofVirtual()
         .unstarted(() =>
-          server.stop( /*seconds grace=*/ 2)
+          server.stop(shutdownGraceSeconds)
           if workflowRuntime != null then workflowRuntime.close(),
         ),
     )
@@ -257,7 +273,7 @@ private[safe] final class DaprAppServer(
         // interrupt flag when it throws InterruptedException.  We restore it
         // immediately and then stop the server cleanly.
         Thread.currentThread().interrupt()
-        server.stop(2)
+        server.stop(shutdownGraceSeconds)
 
   // -------------------------------------------------------------------------
   // Actor request dispatch
@@ -267,7 +283,7 @@ private[safe] final class DaprAppServer(
       exchange: HttpExchange,
       path: String,
       actorDefs: JHashMap[String, ActorDefinition],
-      daprHttpPort: Int,
+      sidecarHttpEndpoint: String,
   ): Unit =
     // Path patterns (after stripping leading /actors/):
     //   {type}/{id}/method/{name}              — method invocation
@@ -277,13 +293,13 @@ private[safe] final class DaprAppServer(
     val parts = path.stripPrefix("/actors/").split("/", -1)
     parts match
       case Array(actorType, actorId, "method", methodName) if methodName != "remind" && methodName != "timer" =>
-        dispatchActorMethod(exchange, actorType, actorId, methodName, actorDefs, daprHttpPort)
+        dispatchActorMethod(exchange, actorType, actorId, methodName, actorDefs, sidecarHttpEndpoint)
 
       case Array(actorType, actorId, "method", "remind", reminderName) =>
-        dispatchActorReminder(exchange, actorType, actorId, reminderName, actorDefs, daprHttpPort)
+        dispatchActorReminder(exchange, actorType, actorId, reminderName, actorDefs, sidecarHttpEndpoint)
 
       case Array(actorType, actorId, "method", "timer", timerName) =>
-        dispatchActorTimer(exchange, actorType, actorId, timerName, actorDefs, daprHttpPort)
+        dispatchActorTimer(exchange, actorType, actorId, timerName, actorDefs, sidecarHttpEndpoint)
 
       case Array(actorType, actorId) if exchange.getRequestMethod.nn == "DELETE" =>
         // Actor deactivation — no cleanup needed in our model
@@ -300,7 +316,7 @@ private[safe] final class DaprAppServer(
       actorId: String,
       methodName: String,
       actorDefs: JHashMap[String, ActorDefinition],
-      daprHttpPort: Int,
+      sidecarHttpEndpoint: String,
   ): Unit =
     val defn = actorDefs.get(actorType)
     if defn == null then
@@ -308,14 +324,18 @@ private[safe] final class DaprAppServer(
       exchange.getResponseBody.nn.close()
     else
       val ctx = mkActorCtxRaw
-        .asInstanceOf[(ActorType, ActorId, Int) => ActorContext](ActorType(actorType), ActorId(actorId), daprHttpPort)
+        .asInstanceOf[(ActorType, ActorId, String) => ActorContext](
+          ActorType(actorType),
+          ActorId(actorId),
+          sidecarHttpEndpoint,
+        )
       val routes = defn.build(ActorId(actorId), ctx)
-      val route = routes.methods.find(_.methodName.value == methodName).orNull
+      val route  = routes.methods.find(_.methodName.value == methodName).orNull
       if route == null then
         exchange.sendResponseHeaders(404, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body = readBody(exchange)
+        val body    = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Req => route.Resp]
         route.reqCodec.decode(if body.isEmpty then "null" else body) match
           case Left(_) =>
@@ -331,7 +351,7 @@ private[safe] final class DaprAppServer(
       actorId: String,
       reminderName: String,
       actorDefs: JHashMap[String, ActorDefinition],
-      daprHttpPort: Int,
+      sidecarHttpEndpoint: String,
   ): Unit =
     val defn = actorDefs.get(actorType)
     if defn == null then
@@ -339,15 +359,19 @@ private[safe] final class DaprAppServer(
       exchange.getResponseBody.nn.close()
     else
       val ctx = mkActorCtxRaw
-        .asInstanceOf[(ActorType, ActorId, Int) => ActorContext](ActorType(actorType), ActorId(actorId), daprHttpPort)
+        .asInstanceOf[(ActorType, ActorId, String) => ActorContext](
+          ActorType(actorType),
+          ActorId(actorId),
+          sidecarHttpEndpoint,
+        )
       val routes = defn.build(ActorId(actorId), ctx)
-      val route = routes.reminders.find(_.reminderName.value == reminderName).orNull
+      val route  = routes.reminders.find(_.reminderName.value == reminderName).orNull
       if route == null then
         // Reminder delivered but no handler registered — acknowledge it silently
         exchange.sendResponseHeaders(200, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body = readBody(exchange)
+        val body    = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
         val payload = decodeCallbackPayload(body, route.codec)
         handler(payload)
@@ -360,7 +384,7 @@ private[safe] final class DaprAppServer(
       actorId: String,
       timerName: String,
       actorDefs: JHashMap[String, ActorDefinition],
-      daprHttpPort: Int,
+      sidecarHttpEndpoint: String,
   ): Unit =
     val defn = actorDefs.get(actorType)
     if defn == null then
@@ -368,14 +392,18 @@ private[safe] final class DaprAppServer(
       exchange.getResponseBody.nn.close()
     else
       val ctx = mkActorCtxRaw
-        .asInstanceOf[(ActorType, ActorId, Int) => ActorContext](ActorType(actorType), ActorId(actorId), daprHttpPort)
+        .asInstanceOf[(ActorType, ActorId, String) => ActorContext](
+          ActorType(actorType),
+          ActorId(actorId),
+          sidecarHttpEndpoint,
+        )
       val routes = defn.build(ActorId(actorId), ctx)
-      val route = routes.timers.find(_.timerName.value == timerName).orNull
+      val route  = routes.timers.find(_.timerName.value == timerName).orNull
       if route == null then
         exchange.sendResponseHeaders(200, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body = readBody(exchange)
+        val body    = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
         val payload = decodeCallbackPayload(body, route.codec)
         handler(payload)
@@ -459,6 +487,6 @@ private[safe] final class DaprAppServer(
 private[safe] object DaprAppServer:
   def apply(
       app: DaprApp,
-      mkActorCtx: (ActorType, ActorId, Int) => ActorContext,
+      mkActorCtx: (ActorType, ActorId, String) => ActorContext,
   ): DaprAppServer =
     new DaprAppServer(app, mkActorCtx.asInstanceOf[AnyRef])

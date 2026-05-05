@@ -66,7 +66,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     val server = DaprAppServer(
       CounterActorHandlers.daprApp,
       mkActorCtx = (actorType, actorId, _) =>
-        new HttpActorContext(actorType, actorId, sidecarPortRef.get()).asInstanceOf[ActorContext],
+        new HttpActorContext(actorType, actorId, s"http://localhost:${sidecarPortRef.get()}").asInstanceOf[ActorContext],
     )
     appServerThread = Some(Thread.ofVirtual().start(() => server.startAndBlock(appPort)))
     waitForPort(appPort, 5000)

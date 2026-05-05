@@ -2,6 +2,7 @@ package dapr.safe
 
 import scala.util.control.NonFatal
 import io.dapr.client.{DaprClient, DaprClientBuilder}
+import io.dapr.config.Properties
 import io.dapr.actors.client.ActorClient
 import io.dapr.workflows.client.DaprWorkflowClient
 import java.util.concurrent.atomic.AtomicReference
@@ -33,23 +34,53 @@ object DaprRuntime:
     *
     * {{{
     *   // Plain Scala / Java main():
-    *   Thread.ofVirtual().start(() => DaprRuntime.run { ... }).join()
+    *   Thread.ofVirtual().start(() => DaprRuntime.run() { ... }).join()
     *
     *   // Spring Boot 3.2+:  spring.threads.virtual.enabled=true
     *   // Quarkus:            @RunOnVirtualThread on the endpoint method
     *   // Helidon 4:          virtual threads by default — no annotation needed
     * }}}
     *
+    * @param config
+    *   Runtime configuration (sidecar endpoints, retries, TLS, …). Defaults to [[DaprRuntimeConfig]] with sensible
+    *   defaults pointing at the standard local sidecar ports.
     * @param body
     *   a pure context function that receives a `DaprCapability`
     * @return
     *   the value returned by `body`
     */
-  def run[T](body: DaprCapability ?=> T): T =
-    val client = new DaprClientBuilder().build()
-    val actorClientRef = new AtomicReference[ActorClient](null)
+  def run[T](config: DaprRuntimeConfig = DaprRuntimeConfig())(body: DaprCapability ?=> T): T =
+    val sc      = config.sidecar
+    val builder = new DaprClientBuilder()
+    builder
+      .withPropertyOverride(Properties.HTTP_ENDPOINT, sc.httpEndpoint)
+      .withPropertyOverride(Properties.GRPC_ENDPOINT, sc.grpcEndpoint)
+      .withPropertyOverride(Properties.HTTP_CLIENT_READ_TIMEOUT_SECONDS, sc.httpClientReadTimeoutSeconds.toString)
+      .withPropertyOverride(Properties.HTTP_CLIENT_MAX_REQUESTS, sc.httpClientMaxRequests.toString)
+      .withPropertyOverride(Properties.HTTP_CLIENT_MAX_IDLE_CONNECTIONS, sc.httpClientMaxIdleConnections.toString)
+      .withPropertyOverride(
+        Properties.GRPC_MAX_INBOUND_MESSAGE_SIZE_BYTES,
+        sc.grpcMaxInboundMessageSizeBytes.toString,
+      )
+      .withPropertyOverride(
+        Properties.GRPC_MAX_INBOUND_METADATA_SIZE_BYTES,
+        sc.grpcMaxInboundMetadataSizeBytes.toString,
+      )
+      .withPropertyOverride(Properties.GRPC_ENABLE_KEEP_ALIVE, sc.grpcEnableKeepAlive.toString)
+      .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_TIME_SECONDS, sc.grpcKeepAliveTimeSeconds.toString)
+      .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_TIMEOUT_SECONDS, sc.grpcKeepAliveTimeoutSeconds.toString)
+      .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_WITHOUT_CALLS, sc.grpcKeepAliveWithoutCalls.toString)
+      .withPropertyOverride(Properties.GRPC_TLS_INSECURE, sc.grpcTlsInsecure.toString)
+      .withPropertyOverride(Properties.MAX_RETRIES, sc.maxRetries.toString)
+      .withPropertyOverride(Properties.TIMEOUT, sc.timeoutSeconds.toString)
+    sc.apiToken.foreach(t => builder.withPropertyOverride(Properties.API_TOKEN, t.value))
+    sc.grpcTlsCertPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CERT_PATH, p))
+    sc.grpcTlsKeyPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_KEY_PATH, p))
+    sc.grpcTlsCaPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CA_PATH, p))
+    val client            = builder.build()
+    val actorClientRef    = new AtomicReference[ActorClient](null)
     val workflowClientRef = new AtomicReference[DaprWorkflowClient](null)
-    val impl = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef)
+    val impl              = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef)
     var primary: Throwable | Null = null
     try body(using impl)
     catch
@@ -76,15 +107,15 @@ object DaprRuntime:
         if p != null then p.addSuppressed(ce)
         else throw ce
 
-  /** Start an HTTP server on `appPort`, build the inbound handler set from the [[DaprApp]] returned by `body`, then
-    * block until the JVM shuts down or the calling thread is interrupted.
+  /** Start an HTTP server on `config.appServer.port`, build the inbound handler set from the [[DaprApp]] returned by
+    * `body`, then block until the JVM shuts down or the calling thread is interrupted.
     *
     * The Dapr sidecar discovers pub/sub subscriptions via `GET /dapr/subscribe` and delivers messages / binding events
     * / invocations via `POST /<route>`. All request handling runs on virtual threads.
     *
     * ==Usage==
     * {{{
-    *   DaprRuntime.serve(appPort = 8080):
+    *   DaprRuntime.serve():
     *     val scope = summon[DaprCapability]
     *     given StateCapability  = scope.state(StoreName("statestore"))
     *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
@@ -109,38 +140,31 @@ object DaprRuntime:
     * `GET /dapr/subscribe` after connecting to the app port. With Testcontainers, use `DaprContainer.withAppPort` and
     * `withAppChannelAddress` to point the sidecar at the running server.
     *
-    * @param appPort
-    *   the HTTP port on which the app listens (default 8080)
+    * @param config
+    *   Runtime configuration. `config.appServer.port` determines the listening port (default 8080).
+    *   `config.sidecar.httpEndpoint` is used for actor state API calls back to the sidecar.
     * @param body
     *   a pure context function that receives a `DaprCapability` and returns a [[DaprApp]] describing all inbound
     *   handlers
     */
-  def serve(appPort: Int = 8080)(body: DaprCapability ?=> DaprApp): Unit =
-    run:
-      new internal.DaprAppServer(body).startAndBlock(appPort)
+  def serve(config: DaprRuntimeConfig = DaprRuntimeConfig())(body: DaprCapability ?=> DaprApp): Unit =
+    run(config):
+      new internal.DaprAppServer(body).startAndBlock(
+        port = config.appServer.port.value,
+        sidecarHttpEndpoint = config.sidecar.httpEndpoint,
+        shutdownGraceSeconds = config.appServer.shutdownGraceSeconds,
+        httpBacklog = config.appServer.httpBacklog,
+        actorConfig = config.actors,
+      )
 
   /** Run `body` with a [[DaprCapability]] pointing to a specific sidecar endpoint.
     *
-    * Useful in tests (e.g. Testcontainers) where the sidecar runs on a non-default port. This avoids importing Java SDK
-    * types directly.
+    * Convenience wrapper for tests and local development where the sidecar runs on a non-default port.
+    * Equivalent to `run(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...)))`.
     *
-    * System properties are reset to their original values after the block completes (whether normally or
-    * exceptionally).
-    *
-    * See [[run]] for virtual-thread usage guidance.
+    * See [[run]] for the full configuration API.
     */
   def runWithEndpoints[T](httpEndpoint: String, grpcEndpoint: String)(
       body: DaprCapability ?=> T,
   ): T =
-    val prevHttp = Option(System.getProperty("dapr.http.endpoint"))
-    val prevGrpc = Option(System.getProperty("dapr.grpc.endpoint"))
-    System.setProperty("dapr.http.endpoint", httpEndpoint)
-    System.setProperty("dapr.grpc.endpoint", grpcEndpoint)
-    try run(body)
-    finally
-      prevHttp match
-        case Some(v) => System.setProperty("dapr.http.endpoint", v)
-        case None    => System.clearProperty("dapr.http.endpoint")
-      prevGrpc match
-        case Some(v) => System.setProperty("dapr.grpc.endpoint", v)
-        case None    => System.clearProperty("dapr.grpc.endpoint")
+    run(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = httpEndpoint, grpcEndpoint = grpcEndpoint)))(body)

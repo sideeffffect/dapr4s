@@ -10,27 +10,30 @@ import scala.util.control.NonFatal
   * the matching `/v1.0/actors/{type}/{id}/reminders/{name}` and `/v1.0/actors/{type}/{id}/timers/{name}` endpoints.
   *
   * Instantiated per actor invocation; immutable once constructed.
+  *
+  * @param sidecarHttpEndpoint
+  *   Base URL of the Dapr sidecar HTTP API (e.g. `"http://localhost:3500"`).
   */
 @scala.caps.assumeSafe
 private[safe] final class HttpActorContext(
     private val actorType: ActorType,
     private val actorId: ActorId,
-    private val daprHttpPort: Int,
+    private val sidecarHttpEndpoint: String,
 ) extends ActorContext:
 
   // ---- URL helpers -----------------------------------------------------------
 
   private def stateUrl(key: StateKey): String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/state/${key.value}"
+    s"$sidecarHttpEndpoint/v1.0/actors/${actorType.value}/${actorId.value}/state/${key.value}"
 
   private def bulkStateUrl: String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/state"
+    s"$sidecarHttpEndpoint/v1.0/actors/${actorType.value}/${actorId.value}/state"
 
   private def reminderUrl(name: ReminderName): String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/reminders/${name.value}"
+    s"$sidecarHttpEndpoint/v1.0/actors/${actorType.value}/${actorId.value}/reminders/${name.value}"
 
   private def timerUrl(name: TimerName): String =
-    s"http://localhost:$daprHttpPort/v1.0/actors/${actorType.value}/${actorId.value}/timers/${name.value}"
+    s"$sidecarHttpEndpoint/v1.0/actors/${actorType.value}/${actorId.value}/timers/${name.value}"
 
   // ---- State -----------------------------------------------------------------
 
