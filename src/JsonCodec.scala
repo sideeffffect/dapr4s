@@ -30,55 +30,29 @@ object JsonCodec:
 
   // -------------------------------------------------------------------------
   // Primitive instances
+  //
+  // Each primitive needs its own given rather than deferring to the generic
+  // ReadWriter-based instance below.  The generic instance exposes ReadWriter
+  // as an implicit parameter that callers must satisfy; in safe mode (import
+  // language.experimental.safe) upickle's ReadWriter is not @assumedSafe, so
+  // the compiler rejects it.  These specific givens call upickle directly
+  // inside the @assumeSafe boundary, hiding the dependency from callers.
   // -------------------------------------------------------------------------
 
-  given JsonCodec[String] with
-    def encode(value: String): String =
-      upickle.default.write(value)
-    def decode(json: String | Null): Either[JsonDecodeException, String] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try Right(upickle.default.read[String](json.nn))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
+  private def upickleCodec[T: upickle.default.ReadWriter]: JsonCodec[T] = new JsonCodec[T]:
+    def encode(value: T): String = upickle.default.write(value)
+    def decode(json: String | Null): Either[JsonDecodeException, T] =
+      if json == null then Left(JsonDecodeException("null input"))
+      else
+        try Right(upickle.default.read[T](json.nn))
+        catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
-  given JsonCodec[Int] with
-    def encode(value: Int): String =
-      upickle.default.write(value)
-    def decode(json: String | Null): Either[JsonDecodeException, Int] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try Right(upickle.default.read[Int](json.nn))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
-
-  given JsonCodec[Long] with
-    def encode(value: Long): String =
-      upickle.default.write(value)
-    def decode(json: String | Null): Either[JsonDecodeException, Long] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try Right(upickle.default.read[Long](json.nn))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
-
-  given JsonCodec[Float] with
-    def encode(value: Float): String =
-      upickle.default.write(value)
-    def decode(json: String | Null): Either[JsonDecodeException, Float] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try Right(upickle.default.read[Float](json.nn))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
-
-  given JsonCodec[Boolean] with
-    def encode(value: Boolean): String =
-      upickle.default.write(value)
-    def decode(json: String | Null): Either[JsonDecodeException, Boolean] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try Right(upickle.default.read[Boolean](json.nn))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
-
-  given JsonCodec[Double] with
-    def encode(value: Double): String =
-      upickle.default.write(value)
-    def decode(json: String | Null): Either[JsonDecodeException, Double] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try Right(upickle.default.read[Double](json.nn))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
+  given JsonCodec[String] = upickleCodec[String]
+  given JsonCodec[Int] = upickleCodec[Int]
+  given JsonCodec[Long] = upickleCodec[Long]
+  given JsonCodec[Float] = upickleCodec[Float]
+  given JsonCodec[Boolean] = upickleCodec[Boolean]
+  given JsonCodec[Double] = upickleCodec[Double]
 
   given JsonCodec[Unit] with
     def encode(value: Unit): String = "null"
@@ -102,19 +76,20 @@ object JsonCodec:
       val codec = summon[JsonCodec[T]]
       value.map(codec.encode).mkString("[", ",", "]")
     def decode(json: String | Null): Either[JsonDecodeException, List[T]] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try
-        // Use upickle to parse the JSON array, then decode each element
-        val arr = upickle.default.read[ujson.Value](json.nn)
-        arr match
-          case ujson.Arr(items) =>
-            val codec = summon[JsonCodec[T]]
-            val results = items.map(item => codec.decode(ujson.write(item)))
-            val errors = results.collect { case Left(e) => e }
-            if errors.nonEmpty then Left(JsonDecodeException(errors.map(_.getMessage).mkString("; ")))
-            else Right(results.collect { case Right(v) => v }.toList)
-          case _ => Left(JsonDecodeException(s"Expected JSON array, got: $json"))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
+      if json == null then Left(JsonDecodeException("null input"))
+      else
+        try
+          // Use upickle to parse the JSON array, then decode each element
+          val arr = upickle.default.read[ujson.Value](json.nn)
+          arr match
+            case ujson.Arr(items) =>
+              val codec = summon[JsonCodec[T]]
+              val results = items.map(item => codec.decode(ujson.write(item)))
+              val errors = results.collect { case Left(e) => e }
+              if errors.nonEmpty then Left(JsonDecodeException(errors.map(_.getMessage).mkString("; ")))
+              else Right(results.collect { case Right(v) => v }.toList)
+            case _ => Left(JsonDecodeException(s"Expected JSON array, got: $json"))
+        catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
 
   // -------------------------------------------------------------------------
   // Generic instance via upickle ReadWriter derivation
@@ -123,6 +98,7 @@ object JsonCodec:
   given [T](using rw: upickle.default.ReadWriter[T]): JsonCodec[T] with
     def encode(value: T): String = upickle.default.write(value)
     def decode(json: String | Null): Either[JsonDecodeException, T] =
-      if json == null then return Left(JsonDecodeException("null input"))
-      try Right(upickle.default.read[T](json.nn))
-      catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))
+      if json == null then Left(JsonDecodeException("null input"))
+      else
+        try Right(upickle.default.read[T](json.nn))
+        catch case NonFatal(e: Exception) => Left(JsonDecodeException(e.getMessage, e))

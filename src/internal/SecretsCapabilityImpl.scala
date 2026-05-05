@@ -4,6 +4,7 @@ import dapr.safe.*
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*
+import NullOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class SecretsCapabilityImpl(
@@ -12,25 +13,25 @@ private[safe] final class SecretsCapabilityImpl(
 ) extends SecretsCapability:
 
   def get(key: SecretKey): Option[String] =
-    val result: java.util.Map[String, String] | Null =
-      scope.client.getSecret(storeName.value, key.value).awaitResult()
-    if result == null || result.isEmpty then return None
-    val scalaMap = result.asScala
-    scalaMap.get(key.value) match
-      case Some(v) => Some(v)
-      case None    =>
-        scalaMap.valuesIterator.nextOption() match
-          case Some(v) if scalaMap.sizeIs == 1 => Some(v)
-          case _                               => None
+    scope.client
+      .getSecret(storeName.value, key.value)
+      .awaitResult()
+      .toOption
+      .filterNot(_.isEmpty)
+      .flatMap { m =>
+        val sm = m.asScala
+        sm.get(key.value).orElse(if sm.sizeIs == 1 then sm.valuesIterator.nextOption() else None)
+      }
 
   def getBulk(): Map[SecretKey, String] =
-    val result: java.util.Map[String, java.util.Map[String, String]] | Null =
-      scope.client.getBulkSecret(storeName.value).awaitResult()
-    if result == null then return Map.empty
-    result.asScala.flatMap { case (secretKey, subMap) =>
-      if subMap == null then Map.empty
-      else
-        subMap.asScala.map { case (subKey, v) =>
-          SecretKey(s"$secretKey/$subKey") -> v
+    scope.client
+      .getBulkSecret(storeName.value)
+      .awaitResult()
+      .toOption
+      .fold(Map.empty) { result =>
+        result.asScala.flatMap { case (secretKey, subMap) =>
+          subMap.toOption.fold(Map.empty[SecretKey, String]) { sm =>
+            sm.asScala.map { case (subKey, v) => SecretKey(s"$secretKey/$subKey") -> v }.toMap
+          }
         }.toMap
-    }.toMap
+      }

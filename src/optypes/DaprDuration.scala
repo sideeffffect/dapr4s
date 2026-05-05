@@ -30,11 +30,6 @@ object DaprDuration:
         val ms = r3 / 1_000_000L
         val us = r3 % 1_000_000L / 1_000L
         val ns = r3 % 1_000L
-        val sb = new StringBuilder
-        if h > 0 then sb.append(h).append('h')
-        if m > 0 then sb.append(m).append('m')
-        if s > 0 then sb.append(s).append('s')
-        if ms > 0 then sb.append(ms).append("ms")
-        if us > 0 then sb.append(us).append("us")
-        if ns > 0 then sb.append(ns).append("ns")
-        sb.toString
+        List(h -> "h", m -> "m", s -> "s", ms -> "ms", us -> "us", ns -> "ns").collect {
+          case (v, unit) if v > 0 => s"$v$unit"
+        }.mkString

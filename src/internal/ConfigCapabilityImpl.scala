@@ -7,6 +7,7 @@ import java.util.logging.{Level, Logger}
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
 import MonoOps.*
+import NullOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class ConfigCapabilityImpl(
@@ -19,41 +20,31 @@ private[safe] final class ConfigCapabilityImpl(
   def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
     val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
-    val result: java.util.Map[String, JConfigItem] | Null =
-      scope.client.getConfiguration(storeName.value, javaKeys, emptyMeta).awaitResult()
-    if result == null then return Map.empty
-    result.asScala.map { case (k, item) =>
-      val v: String | Null = item.getValue
-      val ver: String | Null = item.getVersion
-      val meta: java.util.Map[String, String] | Null = item.getMetadata
-      ConfigKey(k) -> ConfigItem(
-        key = ConfigKey(k),
-        value = if v == null then "" else v,
-        version = if ver == null then "" else ver,
-        metadata = if meta == null then Map.empty else meta.asScala.toMap,
-      )
-    }.toMap
+    scope.client
+      .getConfiguration(storeName.value, javaKeys, emptyMeta)
+      .awaitResult()
+      .toOption
+      .fold(Map.empty)(_.asScala.map { case (k, item) => ConfigKey(k) -> toConfigItem(k, item) }.toMap)
 
   def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
     val storeNameStr = storeName.value
     val flux = scope.client.subscribeConfiguration(storeNameStr, javaKeys, java.util.Collections.emptyMap())
     val sub = flux.subscribe { (response: SubscribeConfigurationResponse | Null) =>
-      if response != null then
-        val jItems: java.util.Map[String, JConfigItem] | Null = response.getItems
-        if jItems != null then
-          val items = jItems.asScala.map { case (k, item) =>
-            val v: String | Null = item.getValue
-            val ver: String | Null = item.getVersion
-            val meta: java.util.Map[String, String] | Null = item.getMetadata
-            ConfigKey(k) -> ConfigItem(
-              key = ConfigKey(k),
-              value = if v == null then "" else v,
-              version = if ver == null then "" else ver,
-              metadata = if meta == null then Map.empty else meta.asScala.toMap,
-            )
-          }.toMap
+      response.toOption.foreach { r =>
+        r.getItems.toOption.foreach { jItems =>
+          val items = jItems.asScala.map { case (k, item) => ConfigKey(k) -> toConfigItem(k, item) }.toMap
           try onChange(ConfigUpdate(ConfigStoreName(storeNameStr), items))
           catch case NonFatal(e) => log.log(Level.WARNING, "Config subscription onChange callback threw", e)
+        }
+      }
     }
     () => sub.dispose()
+
+  private def toConfigItem(k: String, item: JConfigItem): ConfigItem =
+    ConfigItem(
+      key = ConfigKey(k),
+      value = item.getValue.toOption.getOrElse(""),
+      version = item.getVersion.toOption.getOrElse(""),
+      metadata = item.getMetadata.toOption.fold(Map.empty)(_.asScala.toMap),
+    )

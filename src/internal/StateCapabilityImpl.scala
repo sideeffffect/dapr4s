@@ -6,6 +6,7 @@ import io.dapr.client.domain.TransactionalStateOperation.OperationType
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*
+import NullOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class StateCapabilityImpl(
@@ -14,53 +15,52 @@ private[safe] final class StateCapabilityImpl(
 ) extends StateCapability:
 
   def get[T: JsonCodec](key: StateKey): Option[T] =
-    val state: DaprState[String] | Null =
-      scope.client.getState(storeName.value, key.value, classOf[String]).awaitResult()
-    if state == null then return None
-    val raw: String | Null = state.getValue
-    if raw == null || raw.isEmpty then None
-    else Some(decode[T](raw))
+    scope.client
+      .getState(storeName.value, key.value, classOf[String])
+      .awaitResult()
+      .toOption
+      .flatMap(s => s.getValue.toOption.filterNot(_.isEmpty))
+      .map(decode[T])
 
   def getWithETag[T: JsonCodec](key: StateKey): StateEntry[T] =
-    val state: DaprState[String] | Null =
-      scope.client.getState(storeName.value, key.value, classOf[String]).awaitResult()
-    if state == null then return StateEntry(None, None)
-    val raw: String | Null = state.getValue
-    val etag: String | Null = state.getEtag
-    if raw == null || raw.isEmpty then StateEntry(None, Option(etag.asInstanceOf[String]).map(ETag(_)))
-    else
-      val decoded = Some(decode[T](raw))
-      StateEntry(decoded, Option(etag.asInstanceOf[String]).map(ETag(_)))
+    scope.client
+      .getState(storeName.value, key.value, classOf[String])
+      .awaitResult()
+      .toOption
+      .fold(StateEntry[T](None, None)) { state =>
+        val raw = state.getValue.toOption.filterNot(_.isEmpty)
+        val etag = state.getEtag.toOption.map(ETag(_))
+        StateEntry(raw.map(decode[T]), etag)
+      }
 
   def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]] =
-    if keys.isEmpty then return Map.empty
-    val javaKeys: java.util.List[String] = keys.map(_.value).asJava
-    val results: java.util.List[DaprState[String]] | Null =
-      scope.client.getBulkState(storeName.value, javaKeys, classOf[String]).awaitResult()
-    if results == null then return keys.map(k => k -> StateEntry[T](None, None)).toMap
-    results.asScala.map { state =>
-      val key = StateKey(state.getKey.nn)
-      val raw: String | Null = state.getValue
-      val etag: String | Null = state.getEtag
-      val entry: StateEntry[T] =
-        if raw == null || raw.isEmpty then StateEntry(None, Option(etag.asInstanceOf[String]).map(ETag(_)))
-        else
-          val decoded = Some(decode[T](raw))
-          StateEntry(decoded, Option(etag.asInstanceOf[String]).map(ETag(_)))
-      key -> entry
-    }.toMap
+    if keys.isEmpty then Map.empty
+    else
+      val javaKeys: java.util.List[String] = keys.map(_.value).asJava
+      scope.client
+        .getBulkState(storeName.value, javaKeys, classOf[String])
+        .awaitResult()
+        .toOption
+        .fold(keys.map(k => k -> StateEntry[T](None, None)).toMap) { results =>
+          results.asScala.map { state =>
+            val key = StateKey(state.getKey.nn)
+            val raw = state.getValue.toOption.filterNot(_.isEmpty)
+            val etag = state.getEtag.toOption.map(ETag(_))
+            key -> StateEntry(raw.map(decode[T]), etag)
+          }.toMap
+        }
 
   def save[T: JsonCodec](key: StateKey, value: T): Unit =
     val json = summon[JsonCodec[T]].encode(value)
     scope.client.saveState(storeName.value, key.value, json).awaitResult(): Unit
 
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit =
-    if entries.isEmpty then return
-    val states: java.util.List[DaprState[?]] = entries.map { case (key, value) =>
-      val json = summon[JsonCodec[T]].encode(value)
-      new DaprState[String](key.value, json, null, null)
-    }.asJava
-    scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
+    if entries.nonEmpty then
+      val states: java.util.List[DaprState[?]] = entries.map { case (key, value) =>
+        val json = summon[JsonCodec[T]].encode(value)
+        new DaprState[String](key.value, json, null, null)
+      }.asJava
+      scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
 
   def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Option[ETagMismatchException] =
     val json = summon[JsonCodec[T]].encode(value)
@@ -89,19 +89,18 @@ private[safe] final class StateCapabilityImpl(
 
   def queryState[T: JsonCodec](query: StateQuery): List[StateEntry[T]] =
     val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
-    val result: io.dapr.client.domain.QueryStateResponse[String] | Null =
-      previewClient.queryState(storeName.value, query.value, classOf[String]).awaitResult()
-    if result == null then return List.empty
-    val items = result.getResults
-    if items == null then return List.empty
-    items.asScala.toList.map { item =>
-      val raw: String | Null = item.getValue
-      val etag: String | Null = item.getEtag
-      if raw == null || raw.isEmpty then StateEntry[T](None, Option(etag.asInstanceOf[String]).map(ETag(_)))
-      else
-        val decoded = Some(decode[T](raw))
-        StateEntry(decoded, Option(etag.asInstanceOf[String]).map(ETag(_)))
-    }
+    previewClient
+      .queryState(storeName.value, query.value, classOf[String])
+      .awaitResult()
+      .toOption
+      .flatMap(r => r.getResults.toOption)
+      .fold(List.empty[StateEntry[T]]) { items =>
+        items.asScala.toList.map { item =>
+          val raw = item.getValue.toOption.filterNot(_.isEmpty)
+          val etag = item.getEtag.toOption.map(ETag(_))
+          StateEntry(raw.map(decode[T]), etag)
+        }
+      }
 
   // -------------------------------------------------------------------------
   // Helpers
@@ -125,5 +124,4 @@ private[safe] final class StateCapabilityImpl(
         new TransactionalStateOperation[String](OperationType.DELETE, daprState)
 
   private def isETagConflict(e: io.dapr.exceptions.DaprException): Boolean =
-    val msg: String | Null = e.getMessage
-    e.getHttpStatusCode == 409 || (msg != null && msg.contains("ABORTED"))
+    e.getHttpStatusCode == 409 || e.getMessage.toOption.exists(_.contains("ABORTED"))
