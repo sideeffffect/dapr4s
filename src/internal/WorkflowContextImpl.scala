@@ -3,22 +3,44 @@ package dapr.safe.internal
 import dapr.safe.*
 import unsafeExceptions.canThrowAny
 
-/** Internal implementation wrapping an `io.dapr.durabletask.Task` and a deferred compute function.
-  *
-  * The `javaTask` reference is kept solely to delegate [[Task.isDone]] and [[Task.isCancelled]]. The actual value is
-  * produced by `compute`, which calls `javaTask.await()` internally and then decodes or transforms the result.
-  */
 @scala.caps.assumeSafe
-private[safe] final class TaskImpl[+O](
-    private val javaTask: io.dapr.durabletask.Task[?],
-    private val compute: () => O,
-) extends Task[O]:
+private[safe] final class TaskJson[+O](
+    private val javaTask: io.dapr.durabletask.Task[String],
+    private val error: String,
+)(using codec: JsonCodec[O])
+    extends Task[O]:
   def isDone: Boolean = javaTask.isDone()
   def isCancelled: Boolean = javaTask.isCancelled()
-  def await(): O = compute()
-  // asInstanceOf: f's captures flow into the lambda inside TaskImpl, but Task[U] is @assumeSafe
-  // and always has an empty external capture set — the cast erases the capture annotation.
-  def map[U](f: O => U): Task[U] = new TaskImpl(javaTask, () => f(compute())).asInstanceOf[Task[U]]
+  def await(): O = {
+    val result = javaTask.await()
+    val json = if result == null then "null" else result
+    codec
+      .decode(json)
+      .getOrElse(throw RuntimeException(error))
+  }
+  // Task[U] is @assumeSafe (empty capture set); cast erases f's captures from TaskMap.
+  def map[U](f: O => U): Task[U] = new TaskMap(this, f).asInstanceOf[Task[U]]
+
+@scala.caps.assumeSafe
+private[safe] final class TaskUnit(
+    private val javaTask: io.dapr.durabletask.Task[Void],
+) extends Task[Unit]:
+  def isDone: Boolean = javaTask.isDone()
+  def isCancelled: Boolean = javaTask.isCancelled()
+  def await(): Unit = javaTask.await()
+  // Task[U] is @assumeSafe (empty capture set); cast erases f's captures from TaskMap.
+  def map[U](f: Unit => U): Task[U] = new TaskMap(this, f).asInstanceOf[Task[U]]
+
+@scala.caps.assumeSafe
+private[safe] final class TaskMap[O1, +O](
+    private val task: Task[O1],
+    private val f: O1 => O,
+) extends Task[O]:
+  def isDone: Boolean = task.isDone
+  def isCancelled: Boolean = task.isCancelled
+  def await(): O = f(task.await())
+  // this.f is in this's capture set; both casts erase captures so Task[U]'s empty set is satisfied.
+  def map[U](f: O => U): Task[U] = new TaskMap[O, U](this.asInstanceOf[Task[O]], f).asInstanceOf[Task[U]]
 
 /** Wraps `io.dapr.workflows.WorkflowContext` (Java SDK) and exposes the Scala [[WorkflowContext]] trait. */
 @scala.caps.assumeSafe
@@ -44,63 +66,24 @@ private[safe] final class WorkflowContextImpl(
     val name = activityClass.getCanonicalName.nn
     val javaTask = ctx.callActivity(name, inputJson, classOf[String])
     val codec = summon[JsonCodec[O]]
-    new TaskImpl(
-      javaTask,
-      () => {
-        val result = javaTask.await()
-        val json = if result == null then "null" else result.asInstanceOf[String]
-        codec
-          .decode(json)
-          .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
-      },
-    )
+    new TaskJson[O](javaTask, s"Failed to decode result of activity '$name'")
 
   def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): Task[O] =
     val name = activityClass.getCanonicalName.nn
     val javaTask = ctx.callActivity(name, "null", classOf[String])
-    val codec = summon[JsonCodec[O]]
-    new TaskImpl(
-      javaTask,
-      () => {
-        val result = javaTask.await()
-        val json = if result == null then "null" else result.asInstanceOf[String]
-        codec
-          .decode(json)
-          .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
-      },
-    )
+    new TaskJson[O](javaTask, s"Failed to decode result of activity '$name'")
 
   def createTimer(duration: java.time.Duration): Task[Unit] =
     val javaTask = ctx.createTimer(duration)
-    new TaskImpl(javaTask, () => { javaTask.await(); () })
+    new TaskUnit(javaTask)
 
   def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): Task[T] =
     val javaTask = ctx.waitForExternalEvent(name.value, timeout, classOf[String])
-    val codec = summon[JsonCodec[T]]
-    new TaskImpl(
-      javaTask,
-      () => {
-        val result = javaTask.await()
-        val json = if result == null then "null" else result.asInstanceOf[String]
-        codec
-          .decode(json)
-          .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
-      },
-    )
+    new TaskJson[T](javaTask, s"Failed to decode external event '${name.value}'")
 
   def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T] =
     val javaTask = ctx.waitForExternalEvent(name.value, classOf[String])
-    val codec = summon[JsonCodec[T]]
-    new TaskImpl(
-      javaTask,
-      () => {
-        val result = javaTask.await()
-        val json = if result == null then "null" else result.asInstanceOf[String]
-        codec
-          .decode(json)
-          .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
-      },
-    )
+    new TaskJson[T](javaTask, s"Failed to decode external event '${name.value}'")
 
   def complete[O: JsonCodec](output: O): Unit =
     ctx.complete(summon[JsonCodec[O]].encode(output))
