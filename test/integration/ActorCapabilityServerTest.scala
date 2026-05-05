@@ -221,6 +221,19 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
       waitForCount(id, 0)
     }
 
+  test("actor: cancel-reset stops reminder from firing — unregisterReminder via real sidecar"):
+    withContainers { _ =>
+      val id = uniqueActorId()
+      httpPost(sidecarActorUrl(id, "increment"), """{"amount":42}""")
+      // Register a 1-second reminder, then immediately cancel it.
+      httpPost(sidecarActorUrl(id, "schedule-quick-reset"), "null")
+      httpPost(sidecarActorUrl(id, "cancel-reset"), "null")
+      // Wait longer than the reminder dueTime to confirm it never fired.
+      Thread.sleep(3000)
+      val resp = httpPost(sidecarActorUrl(id, "get"), "null")
+      assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 42)
+    }
+
   test("actor: timer fires and increments counter — real sidecar timer loop"):
     withContainers { _ =>
       val id = uniqueActorId()
