@@ -2,6 +2,7 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import java.net.URI
+import scala.concurrent.duration.FiniteDuration
 import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal
 
@@ -72,17 +73,17 @@ private[safe] final class HttpActorContext(
   def registerReminder[T: JsonCodec](
       name: ReminderName,
       data: T,
-      dueTime: java.time.Duration,
-      period: Option[java.time.Duration] = None,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration] = None,
   ): Unit =
     val dataJson = summon[JsonCodec[T]].encode(data)
     val dataBytes = dataJson.getBytes("UTF-8").nn
     val dataBase64 = java.util.Base64.getEncoder.nn.encodeToString(dataBytes).nn
     val fields = ujson.Obj(
-      "dueTime" -> dueTime.toString,
+      "dueTime" -> toIso(dueTime),
       "data" -> dataBase64,
     )
-    period.foreach(p => fields("period") = p.toString)
+    period.foreach(p => fields("period") = toIso(p))
     postJson(reminderUrl(name), ujson.write(fields))
 
   def unregisterReminder(name: ReminderName): Unit =
@@ -93,17 +94,17 @@ private[safe] final class HttpActorContext(
   def registerTimer[T: JsonCodec](
       name: TimerName,
       data: T,
-      dueTime: java.time.Duration,
-      period: Option[java.time.Duration] = None,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration] = None,
   ): Unit =
     val dataJson = summon[JsonCodec[T]].encode(data)
     val dataBytes = dataJson.getBytes("UTF-8").nn
     val dataBase64 = java.util.Base64.getEncoder.nn.encodeToString(dataBytes).nn
     val fields = ujson.Obj(
-      "dueTime" -> dueTime.toString,
+      "dueTime" -> toIso(dueTime),
       "data" -> dataBase64,
     )
-    period.foreach(p => fields("period") = p.toString)
+    period.foreach(p => fields("period") = toIso(p))
     postJson(timerUrl(name), ujson.write(fields))
 
   def unregisterTimer(name: TimerName): Unit =
@@ -137,6 +138,9 @@ private[safe] final class HttpActorContext(
         val errBody = if errStream != null then new String(errStream.nn.readAllBytes().nn, "UTF-8") else ""
         throw RuntimeException(s"Dapr API error $code at $url: $errBody")
     finally conn.disconnect()
+
+  private def toIso(d: FiniteDuration): String =
+    java.time.Duration.ofNanos(d.toNanos).toString
 
   private def deleteRequest(url: String): Unit =
     val conn = openConn(url)

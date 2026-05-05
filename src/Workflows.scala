@@ -1,5 +1,6 @@
 package dapr.safe
 
+import scala.concurrent.duration.FiniteDuration
 import scala.reflect.ClassTag
 import scala.caps
 
@@ -88,12 +89,12 @@ trait WorkflowContext extends scala.caps.ExclusiveCapability:
   def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output]
 
   /** Create a durable timer that fires after `duration`. */
-  def createTimer(duration: java.time.Duration): Task[Unit]
+  def createTimer(duration: FiniteDuration): Task[Unit]
 
   /** Wait for an external event with the given name, up to `timeout`. The payload is deserialised with the provided
     * [[JsonCodec]].
     */
-  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): Task[T]
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration): Task[T]
 
   /** Wait for an external event with the given name (no timeout). */
   def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T]
@@ -140,10 +141,10 @@ object WorkflowContext:
   def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit)(using ctx: WorkflowContext): Task[d.Output] =
     ctx.callActivity
 
-  def createTimer(duration: java.time.Duration)(using ctx: WorkflowContext): Task[Unit] =
+  def createTimer(duration: FiniteDuration)(using ctx: WorkflowContext): Task[Unit] =
     ctx.createTimer(duration)
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration)(using
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration)(using
       ctx: WorkflowContext,
   ): Task[T] =
     ctx.waitForExternalEvent(name, timeout)

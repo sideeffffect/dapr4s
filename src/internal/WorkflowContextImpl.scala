@@ -1,6 +1,7 @@
 package dapr.safe.internal
 
 import dapr.safe.*
+import scala.concurrent.duration.FiniteDuration
 import unsafeExceptions.canThrowAny
 
 @scala.caps.assumeSafe
@@ -68,12 +69,12 @@ private[safe] final class WorkflowContextImpl(
     val javaTask = ctx.callActivity(name, "null", classOf[String])
     new TaskJson(javaTask, s"Failed to decode result of activity '$name'")(using d.outputCodec)
 
-  def createTimer(duration: java.time.Duration): Task[Unit] =
-    val javaTask = ctx.createTimer(duration)
+  def createTimer(duration: FiniteDuration): Task[Unit] =
+    val javaTask = ctx.createTimer(java.time.Duration.ofNanos(duration.toNanos))
     new TaskUnit(javaTask)
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): Task[T] =
-    val javaTask = ctx.waitForExternalEvent(name.value, timeout, classOf[String])
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration): Task[T] =
+    val javaTask = ctx.waitForExternalEvent(name.value, java.time.Duration.ofNanos(timeout.toNanos), classOf[String])
     new TaskJson[T](javaTask, s"Failed to decode external event '${name.value}'")
 
   def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T] =

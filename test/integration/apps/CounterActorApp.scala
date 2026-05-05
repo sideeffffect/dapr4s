@@ -2,6 +2,7 @@ package dapr.safe.test.integration.apps
 
 import dapr.safe.*
 import language.experimental.safe
+import scala.concurrent.duration.FiniteDuration
 
 // ---------------------------------------------------------------------------
 // Counter actor — stateful virtual actor with reminders and timers
@@ -44,14 +45,14 @@ object CounterActorHandlers:
     ActorContext.registerReminder(
       ResetReminder,
       "reset",
-      java.time.Duration.ofMinutes(1),
+      Dur.OneMinute,
     )
 
   def scheduleQuickReset(ignored: Unit)(using ActorContext): Unit =
     ActorContext.registerReminder(
       ResetReminder,
       "reset",
-      java.time.Duration.ofSeconds(1),
+      Dur.OneSecond,
     )
 
   def cancelReset(ignored: Unit)(using ActorContext): Unit =
@@ -64,7 +65,7 @@ object CounterActorHandlers:
     ActorContext.registerTimer(
       IncrTimer,
       IncrRequest(1),
-      java.time.Duration.ofSeconds(1),
+      Dur.OneSecond,
     )
 
   def onAutoIncrement(req: IncrRequest)(using ActorContext): Unit =

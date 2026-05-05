@@ -1,5 +1,7 @@
 package dapr.safe
 
+import scala.concurrent.duration.FiniteDuration
+
 // ---------------------------------------------------------------------------
 // Individual capability traits
 // ---------------------------------------------------------------------------
@@ -319,7 +321,7 @@ trait WorkflowCapability extends scala.caps.ExclusiveCapability:
   /** Block until the workflow instance completes (or the timeout expires). Returns the final snapshot, or `None` if the
     * instance was not found.
     */
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot]
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot]
 
   /** Purge the workflow instance state from the state store. Returns `true` if purged. */
   def purge(instanceId: WorkflowInstanceId): Boolean
@@ -355,7 +357,7 @@ object WorkflowCapability:
       cap: WorkflowCapability,
   ): Unit =
     cap.raiseEvent(instanceId, eventName, payload)
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration)(using
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration)(using
       cap: WorkflowCapability,
   ): Option[WorkflowSnapshot] =
     cap.waitForCompletion(instanceId, timeout)

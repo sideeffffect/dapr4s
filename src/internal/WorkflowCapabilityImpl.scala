@@ -2,6 +2,7 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import io.dapr.workflows.client.{DaprWorkflowClient, NewWorkflowOptions, WorkflowRuntimeStatus, WorkflowState}
+import scala.concurrent.duration.FiniteDuration
 
 @scala.caps.assumeSafe
 private[safe] final class WorkflowCapabilityImpl(
@@ -41,8 +42,8 @@ private[safe] final class WorkflowCapabilityImpl(
     val jsonPayload: String = summon[JsonCodec[E]].encode(payload)
     client.raiseEvent(instanceId.value, eventName.value, jsonPayload.asInstanceOf[Object])
 
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: java.time.Duration): Option[WorkflowSnapshot] =
-    val state = client.waitForWorkflowCompletion(instanceId.value, timeout, true)
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot] =
+    val state = client.waitForWorkflowCompletion(instanceId.value, java.time.Duration.ofNanos(timeout.toNanos), true)
     if state == null then None else Some(toSnapshot(state))
 
   def purge(instanceId: WorkflowInstanceId): Boolean =

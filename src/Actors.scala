@@ -1,5 +1,7 @@
 package dapr.safe
 
+import scala.concurrent.duration.FiniteDuration
+
 // ---------------------------------------------------------------------------
 // ActorContext — capability for actor state and reminder/timer management
 // ---------------------------------------------------------------------------
@@ -44,8 +46,8 @@ trait ActorContext extends scala.caps.ExclusiveCapability:
   def registerReminder[T: JsonCodec](
       name: ReminderName,
       data: T,
-      dueTime: java.time.Duration,
-      period: Option[java.time.Duration] = None,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration] = None,
   ): Unit
 
   /** Cancel a previously registered reminder.  No-op if no reminder with `name` exists. */
@@ -64,8 +66,8 @@ trait ActorContext extends scala.caps.ExclusiveCapability:
   def registerTimer[T: JsonCodec](
       name: TimerName,
       data: T,
-      dueTime: java.time.Duration,
-      period: Option[java.time.Duration] = None,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration] = None,
   ): Unit
 
   /** Cancel a previously registered timer.  No-op if no timer with `name` exists. */
@@ -81,8 +83,8 @@ object ActorContext:
   def registerReminder[T: JsonCodec](
       name: ReminderName,
       data: T,
-      dueTime: java.time.Duration,
-      period: Option[java.time.Duration] = None,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration] = None,
   )(using ctx: ActorContext): Unit =
     ctx.registerReminder(name, data, dueTime, period)
 
@@ -92,8 +94,8 @@ object ActorContext:
   def registerTimer[T: JsonCodec](
       name: TimerName,
       data: T,
-      dueTime: java.time.Duration,
-      period: Option[java.time.Duration] = None,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration] = None,
   )(using ctx: ActorContext): Unit =
     ctx.registerTimer(name, data, dueTime, period)
 
