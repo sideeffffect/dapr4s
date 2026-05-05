@@ -3,18 +3,68 @@ package dapr.safe
 import unsafeExceptions.canThrowAny
 
 // ---------------------------------------------------------------------------
-// WorkflowTask — a handle to a scheduled durable operation
+// Task — a handle to a scheduled durable operation
 // ---------------------------------------------------------------------------
 
 /** A handle to a durable operation scheduled inside a [[Workflow]].
   *
   * Obtain instances from [[WorkflowContext]] methods (`callActivity`, `createTimer`, `waitForExternalEvent`). Call
-  * `await()` to block until the operation completes and get its result. This is safe inside a workflow because the
-  * workflow runtime replays the history and skips already-completed tasks.
+  * [[await]] to block until the operation completes and get its result. Because the workflow runtime replays history
+  * on restart, calling [[await]] during replay returns the cached result immediately without re-executing the work.
+  *
+  * The interface mirrors `io.dapr.durabletask.Task` but replaces the Java-style `thenApply`/`thenAccept` combinators
+  * with the idiomatic Scala [[map]].
+  *
+  * '''Control-flow exceptions''' — never catch these inside workflow logic; they are runtime signals that must
+  * propagate freely:
+  *   - `io.dapr.durabletask.interruption.OrchestratorBlockedException` — suspends the orchestrator while it awaits an
+  *     incomplete task
+  *   - `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — unwinds the call stack when
+  *     [[WorkflowContext.continueAsNew]] restarts the workflow
   */
 @scala.caps.assumeSafe
-final class WorkflowTask[+O] private[safe] (private val compute: () => O):
-  def await(): O = compute()
+trait Task[+O]:
+
+  /** True if the underlying durable operation has already completed. */
+  def isDone: Boolean
+
+  /** True if the underlying durable operation was cancelled. */
+  def isCancelled: Boolean
+
+  /** Block until the operation completes and return its result.
+    *
+    * Safe to call inside [[Workflow.run]] — the runtime replays history so a call during re-execution returns the
+    * cached result without re-scheduling any work.
+    */
+  def await(): O
+
+  /** Transform the result of this task without scheduling a new durable operation.
+    *
+    * `f` runs synchronously in the calling thread when [[await]] is called on the returned task.
+    */
+  def map[U](f: O => U): Task[U]
+
+// ---------------------------------------------------------------------------
+// TaskImpl — internal implementation of Task
+// ---------------------------------------------------------------------------
+
+/** Internal implementation wrapping an `io.dapr.durabletask.Task` and a deferred compute function.
+  *
+  * The `javaTask` reference is kept solely to delegate [[isDone]] and [[isCancelled]]. The actual value is produced by
+  * `compute`, which calls `javaTask.await()` internally and then decodes or transforms the result.
+  */
+@scala.caps.assumeSafe
+private[safe] final class TaskImpl[+O](
+    private val javaTask: io.dapr.durabletask.Task[?],
+    private val compute: () => O,
+) extends Task[O]:
+  def isDone: Boolean      = javaTask.isDone()
+  def isCancelled: Boolean = javaTask.isCancelled()
+  def await(): O           = compute()
+  // @assumeSafe on the method body because `f`'s captures flow into the new TaskImpl, but
+  // Task[U] (and TaskImpl, being @assumeSafe) is always treated as pure from the outside.
+  @scala.caps.assumeSafe
+  def map[U](f: O => U): Task[U] = new TaskImpl(javaTask, () => f(compute()))
 
 // ---------------------------------------------------------------------------
 // WorkflowContext — clean Scala wrapper over the Java workflow context
@@ -26,7 +76,13 @@ final class WorkflowTask[+O] private[safe] (private val compute: () => O):
   * into user code.
   *
   * Key design constraint: workflow logic **must be deterministic** (no I/O, random, or wall-clock time). All side
-  * effects must be scheduled via the methods below and awaited via [[WorkflowTask.await]].
+  * effects must be scheduled via the methods below and awaited via [[Task.await]].
+  *
+  * '''Control-flow exceptions''' — never catch inside workflow logic:
+  *   - `io.dapr.durabletask.interruption.OrchestratorBlockedException` — emitted by [[Task.await]] when a task has
+  *     not yet completed; the runtime catches it to suspend execution
+  *   - `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — thrown by [[continueAsNew]]; must reach the
+  *     runtime to trigger the restart
   */
 @scala.caps.assumeSafe
 trait WorkflowContext extends scala.caps.ExclusiveCapability:
@@ -40,7 +96,7 @@ trait WorkflowContext extends scala.caps.ExclusiveCapability:
   /** Deserialise the workflow input payload.  Returns `None` if no input was provided. */
   def getInput[I: JsonCodec]: Option[I]
 
-  /** Schedule an activity and return a [[WorkflowTask]] that resolves to its output.
+  /** Schedule an activity and return a [[Task]] that resolves to its output.
     *
     * `activityClass` must be the concrete class of a [[WorkflowActivity]] subclass registered in the same [[DaprApp]].
     * The input is serialised with the activity's [[JsonCodec]] and the output is deserialised from the activity's
@@ -49,26 +105,29 @@ trait WorkflowContext extends scala.caps.ExclusiveCapability:
   def callActivity[I: JsonCodec, O: JsonCodec](
       activityClass: Class[? <: WorkflowActivity[I, O]],
       input: I,
-  ): WorkflowTask[O]
+  ): Task[O]
 
   /** Overload for activities that take no input. */
-  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): WorkflowTask[O]
+  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): Task[O]
 
   /** Create a durable timer that fires after `duration`. */
-  def createTimer(duration: java.time.Duration): WorkflowTask[Unit]
+  def createTimer(duration: java.time.Duration): Task[Unit]
 
   /** Wait for an external event with the given name, up to `timeout`. The payload is deserialised with the provided
     * [[JsonCodec]].
     */
-  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): WorkflowTask[T]
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): Task[T]
 
   /** Wait for an external event with the given name (no timeout). */
-  def waitForExternalEvent[T: JsonCodec](name: EventName): WorkflowTask[T]
+  def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T]
 
   /** Complete the workflow instance with a serialisable output value. */
   def complete[O: JsonCodec](output: O): Unit
 
-  /** Restart the workflow with new input, clearing its history. */
+  /** Restart the workflow with new input, clearing its history.
+    *
+    * Throws `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — do not catch it.
+    */
   def continueAsNew[I: JsonCodec](input: I): Unit
 
   /** Generate a UUID that is stable across replays (deterministic). */
@@ -96,68 +155,61 @@ private[safe] final class WorkflowContextImpl(
   def callActivity[I: JsonCodec, O: JsonCodec](
       activityClass: Class[? <: WorkflowActivity[I, O]],
       input: I,
-  ): WorkflowTask[O] =
+  ): Task[O] =
     val inputJson = summon[JsonCodec[I]].encode(input)
-    val name = activityClass.getCanonicalName.nn
-    val javaTask = ctx.callActivity(name, inputJson, classOf[String])
-    val codec = summon[JsonCodec[O]]
-    new WorkflowTask(() => {
+    val name      = activityClass.getCanonicalName.nn
+    val javaTask  = ctx.callActivity(name, inputJson, classOf[String])
+    val codec     = summon[JsonCodec[O]]
+    new TaskImpl(javaTask, () => {
       val result = javaTask.await()
-      val json = if result == null then "null" else result.asInstanceOf[String]
+      val json   = if result == null then "null" else result.asInstanceOf[String]
       codec
         .decode(json)
-        .getOrElse(
-          throw RuntimeException(s"Failed to decode result of activity '$name'"),
-        )
+        .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
     })
 
-  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): WorkflowTask[O] =
-    val name = activityClass.getCanonicalName.nn
+  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): Task[O] =
+    val name     = activityClass.getCanonicalName.nn
     val javaTask = ctx.callActivity(name, "null", classOf[String])
-    val codec = summon[JsonCodec[O]]
-    new WorkflowTask(() => {
+    val codec    = summon[JsonCodec[O]]
+    new TaskImpl(javaTask, () => {
       val result = javaTask.await()
-      val json = if result == null then "null" else result.asInstanceOf[String]
+      val json   = if result == null then "null" else result.asInstanceOf[String]
       codec
         .decode(json)
-        .getOrElse(
-          throw RuntimeException(s"Failed to decode result of activity '$name'"),
-        )
+        .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
     })
 
-  def createTimer(duration: java.time.Duration): WorkflowTask[Unit] =
+  def createTimer(duration: java.time.Duration): Task[Unit] =
     val javaTask = ctx.createTimer(duration)
-    new WorkflowTask(() => { javaTask.await(); () })
+    new TaskImpl(javaTask, () => { javaTask.await(); () })
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): WorkflowTask[T] =
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): Task[T] =
     val javaTask = ctx.waitForExternalEvent(name.value, timeout, classOf[String])
-    val codec = summon[JsonCodec[T]]
-    new WorkflowTask(() => {
+    val codec    = summon[JsonCodec[T]]
+    new TaskImpl(javaTask, () => {
       val result = javaTask.await()
-      val json = if result == null then "null" else result.asInstanceOf[String]
+      val json   = if result == null then "null" else result.asInstanceOf[String]
       codec
         .decode(json)
-        .getOrElse(
-          throw RuntimeException(s"Failed to decode external event '${name.value}'"),
-        )
+        .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
     })
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName): WorkflowTask[T] =
+  def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T] =
     val javaTask = ctx.waitForExternalEvent(name.value, classOf[String])
-    val codec = summon[JsonCodec[T]]
-    new WorkflowTask(() => {
+    val codec    = summon[JsonCodec[T]]
+    new TaskImpl(javaTask, () => {
       val result = javaTask.await()
-      val json = if result == null then "null" else result.asInstanceOf[String]
+      val json   = if result == null then "null" else result.asInstanceOf[String]
       codec
         .decode(json)
-        .getOrElse(
-          throw RuntimeException(s"Failed to decode external event '${name.value}'"),
-        )
+        .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
     })
 
   def complete[O: JsonCodec](output: O): Unit =
     ctx.complete(summon[JsonCodec[O]].encode(output))
 
+  // ContinueAsNewInterruption thrown here must reach the runtime — do not catch it.
   def continueAsNew[I: JsonCodec](input: I): Unit =
     ctx.continueAsNew(summon[JsonCodec[I]].encode(input))
 
@@ -191,21 +243,21 @@ object WorkflowContext:
   def callActivity[I: JsonCodec, O: JsonCodec](
       activityClass: Class[? <: WorkflowActivity[I, O]],
       input: I,
-  )(using ctx: WorkflowContext): WorkflowTask[O] = ctx.callActivity(activityClass, input)
+  )(using ctx: WorkflowContext): Task[O] = ctx.callActivity(activityClass, input)
 
   def callActivity[O: JsonCodec](
       activityClass: Class[? <: WorkflowActivity[Unit, O]],
-  )(using ctx: WorkflowContext): WorkflowTask[O] = ctx.callActivity(activityClass)
+  )(using ctx: WorkflowContext): Task[O] = ctx.callActivity(activityClass)
 
-  def createTimer(duration: java.time.Duration)(using ctx: WorkflowContext): WorkflowTask[Unit] =
+  def createTimer(duration: java.time.Duration)(using ctx: WorkflowContext): Task[Unit] =
     ctx.createTimer(duration)
 
   def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration)(using
       ctx: WorkflowContext,
-  ): WorkflowTask[T] =
+  ): Task[T] =
     ctx.waitForExternalEvent(name, timeout)
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName)(using ctx: WorkflowContext): WorkflowTask[T] =
+  def waitForExternalEvent[T: JsonCodec](name: EventName)(using ctx: WorkflowContext): Task[T] =
     ctx.waitForExternalEvent(name)
 
   def complete[O: JsonCodec](output: O)(using ctx: WorkflowContext): Unit = ctx.complete(output)
@@ -246,6 +298,10 @@ abstract class Workflow:
     * Called once per workflow instance start (and re-called during replay — use `WorkflowContext.isReplaying` if
     * needed). Use `WorkflowContext.callActivity`, `WorkflowContext.createTimer`, and
     * `WorkflowContext.waitForExternalEvent` to schedule durable work; call `WorkflowContext.complete` when done.
+    *
+    * Never catch `io.dapr.durabletask.interruption.OrchestratorBlockedException` or
+    * `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — both are control-flow signals used by the
+    * workflow runtime and must propagate out of `run`.
     */
   def run(using WorkflowContext): Unit
 

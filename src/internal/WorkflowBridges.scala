@@ -8,6 +8,11 @@ import unsafeExceptions.canThrowAny
   * The SDK's instance-based `registerWorkflow(T)` overload uses the canonical class name of the registered object.
   * Since all bridges share the same class, we use the named overload `registerWorkflow(name, instance, ...)` with the
   * user workflow's canonical class name as the name, so that `WorkflowCapability.start(WorkflowName(...))` matches.
+  *
+  * '''Invariant''': `w.run` must never be wrapped in a try/catch that intercepts
+  * `io.dapr.durabletask.interruption.OrchestratorBlockedException` or
+  * `io.dapr.durabletask.interruption.ContinueAsNewInterruption`. Both are control-flow signals thrown by the
+  * durabletask runtime itself; swallowing either corrupts the orchestration state.
   */
 @scala.caps.assumeSafe
 private[safe] final class WorkflowBridge(
@@ -17,6 +22,7 @@ private[safe] final class WorkflowBridge(
   final override def create(): io.dapr.workflows.WorkflowStub | Null =
     val w = workflow
     new io.dapr.workflows.WorkflowStub:
+      // OrchestratorBlockedException and ContinueAsNewInterruption must not be caught here.
       override def run(javaCtx: io.dapr.workflows.WorkflowContext | Null): Unit =
         if javaCtx != null then
           given WorkflowContext = new WorkflowContextImpl(javaCtx)
