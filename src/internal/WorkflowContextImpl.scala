@@ -18,8 +18,7 @@ private[safe] final class TaskJson[+O](
       .decode(json)
       .getOrElse(throw RuntimeException(error))
   }
-  // Task[U] is @assumeSafe (empty capture set); cast erases f's captures from TaskMap.
-  def map[U](f: O => U): Task[U] = new TaskMap(this, f).asInstanceOf[Task[U]]
+  def map[U](f: O => U): Task[U]^{f} = new TaskMap(this, f)
 
 @scala.caps.assumeSafe
 private[safe] final class TaskUnit(
@@ -28,8 +27,7 @@ private[safe] final class TaskUnit(
   def isDone: Boolean = javaTask.isDone()
   def isCancelled: Boolean = javaTask.isCancelled()
   def await(): Unit = javaTask.await()
-  // Task[U] is @assumeSafe (empty capture set); cast erases f's captures from TaskMap.
-  def map[U](f: Unit => U): Task[U] = new TaskMap(this, f).asInstanceOf[Task[U]]
+  def map[U](f: Unit => U): Task[U]^{f} = new TaskMap(this, f)
 
 @scala.caps.assumeSafe
 private[safe] final class TaskMap[O1, +O](
@@ -39,8 +37,9 @@ private[safe] final class TaskMap[O1, +O](
   def isDone: Boolean = task.isDone
   def isCancelled: Boolean = task.isCancelled
   def await(): O = f(task.await())
-  // this.f is in this's capture set; both casts erase captures so Task[U]'s empty set is satisfied.
-  def map[U](f: O => U): Task[U] = new TaskMap[O, U](this.asInstanceOf[Task[O]], f).asInstanceOf[Task[U]]
+  // CC can't express that Task[O1] holds a TaskMap^{this.f}; cast this to Task[O] to pass it
+  // as the recursive task arg. Return type is still honest: callers see ^{this, g}.
+  def map[U](g: O => U): Task[U]^{this, g} = new TaskMap(this.asInstanceOf[Task[O]], g)
 
 /** Wraps `io.dapr.workflows.WorkflowContext` (Java SDK) and exposes the Scala [[WorkflowContext]] trait. */
 @scala.caps.assumeSafe

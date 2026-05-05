@@ -20,7 +20,6 @@ package dapr.safe
   *   - `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — unwinds the call stack when
   *     [[WorkflowContext.continueAsNew]] restarts the workflow
   */
-@scala.caps.assumeSafe
 trait Task[+O]:
 
   /** True if the underlying durable operation has already completed. */
@@ -39,8 +38,10 @@ trait Task[+O]:
   /** Transform the result of this task without scheduling a new durable operation.
     *
     * `f` runs synchronously in the calling thread when [[await]] is called on the returned task.
+    * The returned task captures both this task and `f` — if both have empty capture sets (the typical
+    * case for activities from [[WorkflowContext]] and pure lambdas), the result is also empty.
     */
-  def map[U](f: O => U): Task[U]
+  def map[U](f: O => U): Task[U]^{this, f}
 
 // ---------------------------------------------------------------------------
 // WorkflowContext — clean Scala wrapper over the Java workflow context
