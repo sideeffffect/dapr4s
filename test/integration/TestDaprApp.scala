@@ -1,7 +1,6 @@
 package dapr.safe.test.integration
 
 import dapr.safe.*
-import dapr.safe.test.unit.MockActorContext
 import unsafeExceptions.canThrowAny
 
 /** Test helper for exercising [[DaprApp]] handler logic in-process.
@@ -15,9 +14,8 @@ import unsafeExceptions.canThrowAny
   *     val scope = summon[DaprCapability]
   *     val app   = MyServiceHandlers.daprApp(using scope)
   *
-  *     val resp    = TestDaprApp.call[MyRequest](app, "my-method", MyRequest(...))[MyResponse]
-  *     val res     = TestDaprApp.deliver(app, "my-topic", cloudEvent)
-  *     val actorCtx = new MockActorContext
+  *     val resp      = TestDaprApp.call[MyRequest](app, "my-method", MyRequest(...))[MyResponse]
+  *     val res       = TestDaprApp.deliver(app, "my-topic", cloudEvent)
   *     val actorResp = TestDaprApp.callActor[IncrReq](app, "Counter", "1", "increment", IncrReq(5), actorCtx)[Int]
   * }}}
   *
@@ -85,8 +83,7 @@ object TestDaprApp:
   /** Invoke an actor method directly in-process.
     *
     * Finds the [[ActorDefinition]] for `actorType`, calls `build(actorId, ctx)` to get the route table, then dispatches
-    * to the matching [[ActorMethodRoute]] via the JSON codec round-trip. Pass a [[MockActorContext]] to capture state
-    * changes and reminder/timer registrations for assertion.
+    * to the matching [[ActorMethodRoute]] via the JSON codec round-trip.
     */
   def callActor[Req: JsonCodec](
       app: DaprApp,

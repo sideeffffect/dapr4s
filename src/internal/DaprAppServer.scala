@@ -31,7 +31,7 @@ private[safe] final class DaprAppServer(
         .asInstanceOf[AnyRef],
 ):
 
-  def startAndBlock(port: Int): Unit =
+  def startAndBlock(port: Int, daprPort: Int = 0): Unit =
 
     // -----------------------------------------------------------------------
     // Build dispatch tables from DaprApp
@@ -110,7 +110,8 @@ private[safe] final class DaprAppServer(
     // -----------------------------------------------------------------------
 
     val daprHttpPort: Int =
-      Option(System.getenv("DAPR_HTTP_PORT")).flatMap(_.toIntOption).getOrElse(3500)
+      if daprPort > 0 then daprPort
+      else Option(System.getenv("DAPR_HTTP_PORT")).flatMap(_.toIntOption).getOrElse(3500)
 
     // -----------------------------------------------------------------------
     // HTTP server
