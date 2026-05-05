@@ -5,6 +5,7 @@ import io.dapr.client.DaprClient
 import io.dapr.actors.client.ActorClient
 import io.dapr.workflows.client.DaprWorkflowClient
 import java.util.concurrent.atomic.AtomicReference
+import java.util.logging.{Level, Logger}
 import scala.util.control.NonFatal
 
 /** Concrete implementation of [[dapr.safe.DaprCapability]] backed by a real [[DaprClient]].
@@ -26,6 +27,8 @@ private[safe] final class DaprCapabilityImpl(
     private val actorClientRef: AtomicReference[ActorClient],
     private val workflowClientRef: AtomicReference[DaprWorkflowClient],
 ) extends DaprCapability:
+
+  private val log = Logger.getLogger("dapr.safe.internal.DaprCapabilityImpl")
 
   // WHY ^{this}: sub-capabilities extend ExclusiveCapability, so CC infers ^{fresh} for new
   // instances. The trait declares ^{this} to prevent sub-capabilities from outliving `this`.
@@ -63,7 +66,7 @@ private[safe] final class DaprCapabilityImpl(
           try newAc.close()
           catch
             case _: InterruptedException => Thread.currentThread().interrupt()
-            case NonFatal(e)             => e.printStackTrace()
+            case NonFatal(e)             => log.log(Level.WARNING, "Failed to close redundant Dapr client after CAS loss", e)
           actorClientRef.get().nn
       case existing => existing
     ActorCapabilityImpl.build(actorType, actorId, ac).asInstanceOf[ActorCapability]
@@ -78,7 +81,7 @@ private[safe] final class DaprCapabilityImpl(
           try newWc.close()
           catch
             case _: InterruptedException => Thread.currentThread().interrupt()
-            case NonFatal(e)             => e.printStackTrace()
+            case NonFatal(e)             => log.log(Level.WARNING, "Failed to close redundant Dapr client after CAS loss", e)
           workflowClientRef.get().nn
       case existing => existing
     new WorkflowCapabilityImpl(wc).asInstanceOf[WorkflowCapability]

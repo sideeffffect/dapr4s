@@ -2,6 +2,7 @@ package dapr.safe.internal
 
 import dapr.safe.*
 import io.dapr.client.domain.{ConfigurationItem as JConfigItem, SubscribeConfigurationResponse}
+import java.util.logging.{Level, Logger}
 
 import scala.jdk.CollectionConverters.*
 import scala.util.control.NonFatal
@@ -12,6 +13,8 @@ private[safe] final class ConfigCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: ConfigStoreName,
 ) extends ConfigurationCapability:
+
+  private val log = Logger.getLogger("dapr.safe.internal.ConfigCapabilityImpl")
 
   def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
@@ -51,6 +54,6 @@ private[safe] final class ConfigCapabilityImpl(
             )
           }.toMap
           try onChange(ConfigUpdate(ConfigStoreName(storeNameStr), items))
-          catch case NonFatal(e) => e.printStackTrace()
+          catch case NonFatal(e) => log.log(Level.WARNING, "Config subscription onChange callback threw", e)
     }
     () => sub.dispose()

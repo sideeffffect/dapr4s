@@ -5,6 +5,7 @@ import com.sun.net.httpserver.{HttpExchange, HttpServer}
 import io.dapr.workflows.runtime.WorkflowRuntimeBuilder
 import java.net.InetSocketAddress
 import java.util.{ArrayList, HashMap as JHashMap}
+import java.util.logging.{Level, Logger}
 import scala.jdk.CollectionConverters.*
 import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal
@@ -30,6 +31,8 @@ private[safe] final class DaprAppServer(
       ((actorType: ActorType, actorId: ActorId, daprPort: Int) => HttpActorContext(actorType, actorId, daprPort))
         .asInstanceOf[AnyRef],
 ):
+
+  private val log = Logger.getLogger("dapr.safe.internal.DaprAppServer")
 
   def startAndBlock(port: Int, daprPort: Int = 0): Unit =
 
@@ -136,7 +139,7 @@ private[safe] final class DaprAppServer(
         catch
           case NonFatal(e) =>
             try sendJson(exchange, 500, errorJson(e))
-            catch case NonFatal(e2) => e2.printStackTrace(),
+            catch case NonFatal(e2) => log.log(Level.WARNING, "Failed to send error response for /dapr/subscribe", e2),
     )
 
     // Dapr sidecar calls GET /dapr/config to discover hosted actor types.
@@ -162,7 +165,7 @@ private[safe] final class DaprAppServer(
         catch
           case NonFatal(e) =>
             try sendJson(exchange, 500, errorJson(e))
-            catch case NonFatal(e2) => e2.printStackTrace(),
+            catch case NonFatal(e2) => log.log(Level.WARNING, "Failed to send error response for /dapr/config", e2),
     )
 
     // Actor routes: /actors/{type}/{id}/method/{name}
@@ -178,7 +181,7 @@ private[safe] final class DaprAppServer(
           catch
             case NonFatal(e) =>
               try sendJson(exchange, 500, errorJson(e))
-              catch case NonFatal(e2) => e2.printStackTrace(),
+              catch case NonFatal(e2) => log.log(Level.WARNING, s"Failed to send error response for $path", e2),
       )
 
     // Catch-all: pub/sub delivery, input bindings, service invocation.
@@ -193,12 +196,9 @@ private[safe] final class DaprAppServer(
           if psFn != null then
             val fn = psFn.asInstanceOf[String => SubscriptionResult]
             val body = readBody(exchange)
-            val result =
-              try fn(body)
-              catch
-                case NonFatal(e) =>
-                  e.printStackTrace()
-                  SubscriptionResult.Retry
+            // Exceptions from fn propagate to the outer catch below, which sends a 500 response.
+            // Dapr retries the message on any non-2xx response, equivalent to SubscriptionResult.Retry.
+            val result = fn(body)
             val status = result match
               case SubscriptionResult.Success => "SUCCESS"
               case SubscriptionResult.Retry   => "RETRY"
@@ -216,7 +216,7 @@ private[safe] final class DaprAppServer(
               catch
                 case NonFatal(e) =>
                   try sendJson(exchange, 500, errorJson(e))
-                  catch case NonFatal(e2) => e2.printStackTrace()
+                  catch case NonFatal(e2) => log.log(Level.WARNING, s"Failed to send error response for $path", e2)
             else
               val ivFn = invokeRoutes.get(path)
               if ivFn != null then
@@ -230,7 +230,7 @@ private[safe] final class DaprAppServer(
         catch
           case NonFatal(e) =>
             try sendJson(exchange, 500, errorJson(e))
-            catch case NonFatal(e2) => e2.printStackTrace(),
+            catch case NonFatal(e2) => log.log(Level.WARNING, s"Failed to send error response for $path", e2),
     )
 
     server.start()

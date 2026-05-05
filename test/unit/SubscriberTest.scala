@@ -85,7 +85,7 @@ class SubscriberTest extends FunSuite:
       thread.interrupt()
       thread.join(2000)
 
-  test("unit: DaprAppServer dispatch returns RETRY on handler exception"):
+  test("unit: DaprAppServer returns 500 on handler exception — Dapr retries on non-2xx"):
     val app = DaprApp(
       subscriptions = List(
         Subscription[String](PubSubName("ps"), Topic("boom")) { _ =>
@@ -102,8 +102,11 @@ class SubscriberTest extends FunSuite:
         """{"specversion":"1.0","type":"x","source":"x","id":"1",
           |"topic":"boom","pubsubname":"ps",
           |"datacontenttype":"application/json","data":"data"}""".stripMargin
-      val resp = httpPost(s"http://localhost:$port/boom", cloudEvent, "application/json")
-      assert(resp.contains("RETRY"), s"expected RETRY, got: $resp")
+      val (code, body) = httpPostWithCode(s"http://localhost:$port/boom", cloudEvent, "application/json")
+      assertEquals(code, 500)
+      val json = ujson.read(body)
+      assertEquals(json("error").str, "RuntimeException")
+      assert(json("error_description").str.contains("deliberate failure"))
     finally
       thread.interrupt()
       thread.join(2000)
