@@ -30,8 +30,8 @@ class CCTest extends FunSuite:
   test("pureFunctions: pure lambda with no external captures composes correctly"):
     // Demonstrates that pure A => B functions work and compose cleanly.
     val normalise: String => String = s => s.trim.toLowerCase
-    val exclaim: String => String   = s => s + "!"
-    val pipeline                    = normalise andThen exclaim
+    val exclaim: String => String = s => s + "!"
+    val pipeline = normalise andThen exclaim
     assertEquals(pipeline("  Hello World  "), "hello world!")
 
   // ---------------------------------------------------------------------------

@@ -51,7 +51,7 @@ object DaprRuntime:
     *   the value returned by `body`
     */
   def run[T](config: DaprRuntimeConfig = DaprRuntimeConfig())(body: DaprCapability ?=> T): T =
-    val sc      = config.sidecar
+    val sc = config.sidecar
     val builder = new DaprClientBuilder()
     builder
       .withPropertyOverride(Properties.HTTP_ENDPOINT, sc.httpEndpoint.toString)
@@ -78,10 +78,10 @@ object DaprRuntime:
     sc.grpcTlsCertPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CERT_PATH, p))
     sc.grpcTlsKeyPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_KEY_PATH, p))
     sc.grpcTlsCaPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CA_PATH, p))
-    val client            = builder.build()
-    val actorClientRef    = new AtomicReference[ActorClient](null)
+    val client = builder.build()
+    val actorClientRef = new AtomicReference[ActorClient](null)
     val workflowClientRef = new AtomicReference[DaprWorkflowClient](null)
-    val impl              = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef)
+    val impl = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef)
     var primary: Throwable | Null = null
     try body(using impl)
     catch
@@ -160,8 +160,8 @@ object DaprRuntime:
 
   /** Run `body` with a [[DaprCapability]] pointing to a specific sidecar endpoint.
     *
-    * Convenience wrapper for tests and local development where the sidecar runs on a non-default port.
-    * Equivalent to `run(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...)))`.
+    * Convenience wrapper for tests and local development where the sidecar runs on a non-default port. Equivalent to
+    * `run(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...)))`.
     *
     * See [[run]] for the full configuration API.
     */

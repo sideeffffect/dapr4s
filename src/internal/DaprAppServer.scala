@@ -149,13 +149,13 @@ private[safe] final class DaprAppServer(
           if exchange.getRequestMethod.nn == "GET" then
             val types = actorDefs.keySet().asScala.toList.sorted
             val obj = ujson.Obj(
-              "entities"               -> ujson.Arr.from(types.map(ujson.Str(_))),
-              "actorIdleTimeout"       -> actorConfig.actorIdleTimeout.toGoString,
-              "actorScanInterval"      -> actorConfig.actorScanInterval.toGoString,
+              "entities" -> ujson.Arr.from(types.map(ujson.Str(_))),
+              "actorIdleTimeout" -> actorConfig.actorIdleTimeout.toGoString,
+              "actorScanInterval" -> actorConfig.actorScanInterval.toGoString,
               "drainOngoingCallTimeout" -> actorConfig.drainOngoingCallTimeout.toGoString,
-              "drainRebalancedActors"  -> actorConfig.drainRebalancedActors,
+              "drainRebalancedActors" -> actorConfig.drainRebalancedActors,
               "reentrancy" -> ujson.Obj(
-                "enabled"       -> actorConfig.reentrancy.enabled,
+                "enabled" -> actorConfig.reentrancy.enabled,
                 "maxStackDepth" -> actorConfig.reentrancy.maxStackDepth,
               ),
               "remindersStoragePartitions" -> actorConfig.remindersStoragePartitions,
@@ -331,12 +331,12 @@ private[safe] final class DaprAppServer(
           sidecarHttpEndpoint,
         )
       val routes = defn.build(ActorId(actorId), ctx)
-      val route  = routes.methods.find(_.methodName.value == methodName).orNull
+      val route = routes.methods.find(_.methodName.value == methodName).orNull
       if route == null then
         exchange.sendResponseHeaders(404, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body    = readBody(exchange)
+        val body = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Req => route.Resp]
         route.reqCodec.decode(if body.isEmpty then "null" else body) match
           case Left(_) =>
@@ -366,13 +366,13 @@ private[safe] final class DaprAppServer(
           sidecarHttpEndpoint,
         )
       val routes = defn.build(ActorId(actorId), ctx)
-      val route  = routes.reminders.find(_.reminderName.value == reminderName).orNull
+      val route = routes.reminders.find(_.reminderName.value == reminderName).orNull
       if route == null then
         // Reminder delivered but no handler registered — acknowledge it silently
         exchange.sendResponseHeaders(200, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body    = readBody(exchange)
+        val body = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
         val payload = decodeCallbackPayload(body, route.codec)
         handler(payload)
@@ -399,12 +399,12 @@ private[safe] final class DaprAppServer(
           sidecarHttpEndpoint,
         )
       val routes = defn.build(ActorId(actorId), ctx)
-      val route  = routes.timers.find(_.timerName.value == timerName).orNull
+      val route = routes.timers.find(_.timerName.value == timerName).orNull
       if route == null then
         exchange.sendResponseHeaders(200, -1)
         exchange.getResponseBody.nn.close()
       else
-        val body    = readBody(exchange)
+        val body = readBody(exchange)
         val handler = route.rawHandler.asInstanceOf[route.Payload => Unit]
         val payload = decodeCallbackPayload(body, route.codec)
         handler(payload)
@@ -467,8 +467,7 @@ private[safe] final class DaprAppServer(
           CloudEvent[T](
             id = CloudEventId(env.get("id").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
             source = CloudEventSource(env.get("source").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
-            specVersion =
-              CloudEventSpecVersion(env.get("specversion").map(_.str).filter(_.nonEmpty).getOrElse("1.0")),
+            specVersion = CloudEventSpecVersion(env.get("specversion").map(_.str).filter(_.nonEmpty).getOrElse("1.0")),
             eventType = CloudEventType(env.get("type").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
             topic = env.get("topic").map(s => Topic(s.str)).getOrElse(defaultTopic),
             pubSubName = env.get("pubsubname").map(s => PubSubName(s.str)).getOrElse(defaultPubsubName),

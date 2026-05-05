@@ -20,7 +20,7 @@ import dapr.safe.*
   * }}}
   */
 @main def orderServiceMain(): Unit =
-  val port   = sys.env.getOrElse("APP_PORT", "8080").toInt
+  val port = sys.env.getOrElse("APP_PORT", "8080").toInt
   val config = DaprRuntimeConfig(appServer = AppServerConfig(port = DaprPort(port)))
   println(s"[order-service] starting on port $port")
   DaprRuntime.serve(config):

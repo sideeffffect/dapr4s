@@ -6,9 +6,8 @@ import unsafeExceptions.canThrowAny
 
 /** Shared HTTP helpers and server lifecycle for DaprAppServer-based unit tests.
   *
-  * Mix into a [[munit.FunSuite]] subclass. Each `withServer` call starts a real
-  * [[DaprAppServer]] on an ephemeral port, waits for it to accept connections, runs the
-  * test body, then interrupts the server thread.
+  * Mix into a [[munit.FunSuite]] subclass. Each `withServer` call starts a real [[DaprAppServer]] on an ephemeral port,
+  * waits for it to accept connections, runs the test body, then interrupts the server thread.
   */
 @scala.caps.assumeSafe
 trait DaprServerTestBase:
@@ -26,7 +25,7 @@ trait DaprServerTestBase:
 
   protected def freePort(): Int =
     val sock = java.net.ServerSocket(0)
-    val p    = sock.getLocalPort
+    val p = sock.getLocalPort
     sock.close()
     p
 
@@ -44,7 +43,7 @@ trait DaprServerTestBase:
     val conn = java.net.URI(url).toURL.nn.openConnection().nn.asInstanceOf[java.net.HttpURLConnection]
     conn.setRequestMethod("GET")
     conn.connect()
-    val code   = conn.getResponseCode
+    val code = conn.getResponseCode
     val stream = if code < 400 then conn.getInputStream.nn else conn.getErrorStream.nn
     new String(stream.readAllBytes().nn, "UTF-8")
 
@@ -91,7 +90,7 @@ trait DaprServerTestBase:
     conn.connect()
     conn.getOutputStream.nn.write(bytes)
     conn.getOutputStream.nn.flush()
-    val code   = conn.getResponseCode
+    val code = conn.getResponseCode
     val stream =
       val err = conn.getErrorStream
       if err != null then err

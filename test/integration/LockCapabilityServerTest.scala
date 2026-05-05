@@ -12,7 +12,6 @@ import org.testcontainers.containers.wait.strategy.Wait
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-
 /** Tests for every [[DistributedLockCapability]] method through real [[dapr.safe.internal.DaprAppServer]] HTTP
   * dispatch, backed by a real `lock.redis` component via Testcontainers.
   *
@@ -47,7 +46,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
     redis and c
 
   private def uniqueResource() = LockResourceId(s"res-${java.util.UUID.randomUUID()}")
-  private def uniqueOwner()    = LockOwner(s"owner-${java.util.UUID.randomUUID()}")
+  private def uniqueOwner() = LockOwner(s"owner-${java.util.UUID.randomUUID()}")
 
   // ---- tryLock ---------------------------------------------------------------
 
@@ -57,12 +56,16 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[Unit, Boolean](MethodName("lock")) { _ =>
-              try DistributedLockCapability.tryLock(res, own, 30)
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[Unit, Boolean](MethodName("lock")) { _ =>
+                  try DistributedLockCapability.tryLock(res, own, 30)
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             val result = JsonCodec.decodeOrThrow[Boolean](httpPost(s"http://localhost:$port/lock", "null"))
             assert(result, "Expected tryLock to succeed on free resource")
           }
@@ -74,12 +77,16 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         DaprCapability.lock(StoreName("lockstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[String, Boolean](MethodName("lock")) { ownerStr =>
-              try DistributedLockCapability.tryLock(res, LockOwner(ownerStr), 30)
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[String, Boolean](MethodName("lock")) { ownerStr =>
+                  try DistributedLockCapability.tryLock(res, LockOwner(ownerStr), 30)
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             val r1 = JsonCodec.decodeOrThrow[Boolean](httpPost(s"http://localhost:$port/lock", "\"owner-1\""))
             val r2 = JsonCodec.decodeOrThrow[Boolean](httpPost(s"http://localhost:$port/lock", "\"owner-2\""))
             assert(r1, "First tryLock should succeed")
@@ -96,16 +103,20 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[Unit, Boolean](MethodName("acquire")) { _ =>
-              try DistributedLockCapability.tryLock(res, own, 30)
-              catch case e: Exception => throw e
-            },
-            InvocationRoute[Unit, String](MethodName("release")) { _ =>
-              try DistributedLockCapability.unlock(res, own).toString
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[Unit, Boolean](MethodName("acquire")) { _ =>
+                  try DistributedLockCapability.tryLock(res, own, 30)
+                  catch case e: Exception => throw e
+                },
+                InvocationRoute[Unit, String](MethodName("release")) { _ =>
+                  try DistributedLockCapability.unlock(res, own).toString
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             httpPost(s"http://localhost:$port/acquire", "null")
             val status = JsonCodec.decodeOrThrow[String](httpPost(s"http://localhost:$port/release", "null"))
             assertEquals(status, "Success")
@@ -119,12 +130,16 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[Unit, String](MethodName("release")) { _ =>
-              try DistributedLockCapability.unlock(res, own).toString
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[Unit, String](MethodName("release")) { _ =>
+                  try DistributedLockCapability.unlock(res, own).toString
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             val status = JsonCodec.decodeOrThrow[String](httpPost(s"http://localhost:$port/release", "null"))
             assertEquals(status, "LockNotFound")
           }
@@ -137,16 +152,20 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val res = uniqueResource()
         val realOwner = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[Unit, Boolean](MethodName("acquire")) { _ =>
-              try DistributedLockCapability.tryLock(res, realOwner, 30)
-              catch case e: Exception => throw e
-            },
-            InvocationRoute[Unit, String](MethodName("release-wrong")) { _ =>
-              try DistributedLockCapability.unlock(res, LockOwner("intruder")).toString
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[Unit, Boolean](MethodName("acquire")) { _ =>
+                  try DistributedLockCapability.tryLock(res, realOwner, 30)
+                  catch case e: Exception => throw e
+                },
+                InvocationRoute[Unit, String](MethodName("release-wrong")) { _ =>
+                  try DistributedLockCapability.unlock(res, LockOwner("intruder")).toString
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             httpPost(s"http://localhost:$port/acquire", "null")
             val status = JsonCodec.decodeOrThrow[String](httpPost(s"http://localhost:$port/release-wrong", "null"))
             assertEquals(status, "InternalError")
@@ -162,16 +181,20 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[Unit, Boolean](MethodName("lock")) { _ =>
-              try DistributedLockCapability.tryLock(res, own, 30)
-              catch case e: Exception => throw e
-            },
-            InvocationRoute[Unit, String](MethodName("unlock")) { _ =>
-              try DistributedLockCapability.unlock(res, own).toString
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[Unit, Boolean](MethodName("lock")) { _ =>
+                  try DistributedLockCapability.tryLock(res, own, 30)
+                  catch case e: Exception => throw e
+                },
+                InvocationRoute[Unit, String](MethodName("unlock")) { _ =>
+                  try DistributedLockCapability.unlock(res, own).toString
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             val r1 = JsonCodec.decodeOrThrow[Boolean](httpPost(s"http://localhost:$port/lock", "null"))
             assert(r1)
             httpPost(s"http://localhost:$port/unlock", "null")

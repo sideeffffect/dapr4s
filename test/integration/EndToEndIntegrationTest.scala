@@ -125,8 +125,9 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
             invokeMethod[StockLevel, StockLevel](invPort, "seed-stock", StockLevel("pen", 50))
             invokeMethod[StockLevel, StockLevel](invPort, "seed-stock", StockLevel("pencil", 80))
 
-            val penResp    = invokeMethod[OrderRequest, OrderResponse](orderPort, "place-order", OrderRequest("pen", 6))
-            val pencilResp = invokeMethod[OrderRequest, OrderResponse](orderPort, "place-order", OrderRequest("pencil", 4))
+            val penResp = invokeMethod[OrderRequest, OrderResponse](orderPort, "place-order", OrderRequest("pen", 6))
+            val pencilResp =
+              invokeMethod[OrderRequest, OrderResponse](orderPort, "place-order", OrderRequest("pencil", 4))
 
             deliverCloudEvent(invPort, "orders", "pubsub", OrderEvent(penResp.orderId, "pen", 6))
             deliverCloudEvent(invPort, "orders", "pubsub", OrderEvent(pencilResp.orderId, "pencil", 4))

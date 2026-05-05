@@ -21,19 +21,19 @@ object DaprDuration:
       val nanos = d.toNanos
       if nanos == 0L then "0s"
       else
-        val h  = nanos / 3_600_000_000_000L
+        val h = nanos / 3_600_000_000_000L
         val r1 = nanos % 3_600_000_000_000L
-        val m  = r1   / 60_000_000_000L
-        val r2 = r1   % 60_000_000_000L
-        val s  = r2   / 1_000_000_000L
-        val r3 = r2   % 1_000_000_000L
-        val ms = r3   / 1_000_000L
-        val us = r3   % 1_000_000L / 1_000L
-        val ns = r3   % 1_000L
+        val m = r1 / 60_000_000_000L
+        val r2 = r1 % 60_000_000_000L
+        val s = r2 / 1_000_000_000L
+        val r3 = r2 % 1_000_000_000L
+        val ms = r3 / 1_000_000L
+        val us = r3 % 1_000_000L / 1_000L
+        val ns = r3 % 1_000L
         val sb = new StringBuilder
-        if h  > 0 then sb.append(h).append('h')
-        if m  > 0 then sb.append(m).append('m')
-        if s  > 0 then sb.append(s).append('s')
+        if h > 0 then sb.append(h).append('h')
+        if m > 0 then sb.append(m).append('m')
+        if s > 0 then sb.append(s).append('s')
         if ms > 0 then sb.append(ms).append("ms")
         if us > 0 then sb.append(us).append("us")
         if ns > 0 then sb.append(ns).append("ns")

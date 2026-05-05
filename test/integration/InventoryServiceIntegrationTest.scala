@@ -17,8 +17,8 @@ import java.util.Collections
 /** Integration tests for [[InventoryServiceHandlers]] against a real Dapr sidecar, dispatched through a real
   * [[dapr.safe.internal.DaprAppServer]] HTTP server.
   *
-  * Each test starts a real HTTP server wrapping the handler app. Pub/sub delivery is simulated by POSTing a
-  * CloudEvent JSON envelope directly to the subscription route — the same format Dapr would use in production.
+  * Each test starts a real HTTP server wrapping the handler app. Pub/sub delivery is simulated by POSTing a CloudEvent
+  * JSON envelope directly to the subscription route — the same format Dapr would use in production.
   *
   * Uses `lock.redis` (backed by a Redis Testcontainer) because `lock.in-memory` does not exist in Dapr 1.17 — the only
   * supported distributed-lock component is Redis. Redis and daprd are placed on a shared Docker network so the sidecar
@@ -147,7 +147,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
           deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o2", "beta", 7))
 
           val alpha = invokeMethod[String, StockLevel](port, "get-stock", "alpha")
-          val beta  = invokeMethod[String, StockLevel](port, "get-stock", "beta")
+          val beta = invokeMethod[String, StockLevel](port, "get-stock", "beta")
 
           assertEquals(alpha.available, 7)
           assertEquals(beta.available, 13)

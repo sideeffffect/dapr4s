@@ -25,9 +25,9 @@ import java.util.concurrent.atomic.AtomicInteger
   *
   * Two test tracks:
   *
-  *   - **State-persistence tests** call the sidecar's actor invocation API
-  *     (`POST http://sidecar/v1.0/actors/Counter/{id}/method/{name}`). The sidecar routes to the app, activates the
-  *     actor instance, and permits state reads/writes on its behalf. This is the production call path.
+  *   - **State-persistence tests** call the sidecar's actor invocation API (`POST
+  *     http://sidecar/v1.0/actors/Counter/{id}/method/{name}`). The sidecar routes to the app, activates the actor
+  *     instance, and permits state reads/writes on its behalf. This is the production call path.
   *   - **Routing tests** (404 cases, `/dapr/config`, DELETE) call the [[DaprAppServer]] HTTP endpoints directly to
   *     verify that the server's dispatch logic is correct, independent of the sidecar.
   *
@@ -130,7 +130,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("actor: increment from zero — state stored in real Dapr sidecar"):
     withContainers { _ =>
-      val id   = uniqueActorId()
+      val id = uniqueActorId()
       val resp = httpPost(sidecarActorUrl(id, "increment"), """{"amount":5}""")
       assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 5)
     }
@@ -145,7 +145,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("actor: get returns 0 for actor with no prior state"):
     withContainers { _ =>
-      val id   = uniqueActorId()
+      val id = uniqueActorId()
       val resp = httpPost(sidecarActorUrl(id, "get"), "null")
       assertEquals(JsonCodec.decodeOrThrow[CounterState](resp).count, 0)
     }
@@ -192,7 +192,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("actor: unknown method returns 404"):
     withContainers { _ =>
-      val id        = uniqueActorId()
+      val id = uniqueActorId()
       val (code, _) = httpPostWithCode(appActorUrl(id, "no-such"), "null")
       assertEquals(code, 404)
     }
@@ -205,7 +205,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("actor: DELETE deactivation returns 200"):
     withContainers { _ =>
-      val id        = uniqueActorId()
+      val id = uniqueActorId()
       val (code, _) = httpDeleteWithCode(s"http://localhost:$appPort/actors/Counter/$id")
       assertEquals(code, 200)
     }
@@ -251,8 +251,8 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("actor: DaprApp ++ merges actor definitions"):
     withContainers { _ =>
-      val app1     = CounterActorHandlers.daprApp
-      val app2     = DaprApp(actors = List(ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() }))
+      val app1 = CounterActorHandlers.daprApp
+      val app2 = DaprApp(actors = List(ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() }))
       val combined = app1 ++ app2
       assertEquals(combined.actors.size, 2)
       assert(combined.actors.exists(_.actorType.value == "Counter"))
@@ -263,9 +263,9 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   /** Poll the sidecar's actor state API until it stops returning 5xx.
     *
-    * The Dapr placement service table exchange happens asynchronously after the sidecar's health check passes.
-    * Until placement is complete, actor state reads return 500.  This polls until 204 (no state for probe actor)
-    * which confirms the actor type is registered and state API is usable.
+    * The Dapr placement service table exchange happens asynchronously after the sidecar's health check passes. Until
+    * placement is complete, actor state reads return 500. This polls until 204 (no state for probe actor) which
+    * confirms the actor type is registered and state API is usable.
     */
   private def waitForActorRegistration(
       sidecarPort: Int,
@@ -273,7 +273,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
       probeActorId: String,
       maxMs: Int = 30000,
   ): Unit =
-    val url      = s"http://localhost:$sidecarPort/v1.0/actors/$actorType/$probeActorId/state/probe"
+    val url = s"http://localhost:$sidecarPort/v1.0/actors/$actorType/$probeActorId/state/probe"
     val deadline = System.currentTimeMillis() + maxMs
     var lastMsg = ""
     while System.currentTimeMillis() < deadline do
@@ -307,7 +307,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     val conn = java.net.URI(url).toURL.nn.openConnection().nn.asInstanceOf[java.net.HttpURLConnection]
     conn.setRequestMethod("DELETE")
     conn.connect()
-    val code   = conn.getResponseCode
+    val code = conn.getResponseCode
     val stream =
       val err = conn.getErrorStream
       if err != null then err

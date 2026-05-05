@@ -9,8 +9,8 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Tests for every [[SecretsCapability]] method through real [[dapr.safe.internal.DaprAppServer]] HTTP dispatch,
-  * backed by a real `secretstores.local.env` component that reads from the Dapr container's environment variables.
+/** Tests for every [[SecretsCapability]] method through real [[dapr.safe.internal.DaprAppServer]] HTTP dispatch, backed
+  * by a real `secretstores.local.env` component that reads from the Dapr container's environment variables.
   *
   * Two secrets are pre-seeded via `addEnv` when the container is created.
   */
@@ -19,9 +19,9 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
 
   type Containers = DaprTestContainer
 
-  private val SeededKey   = "SSDAPR_TEST_SECRET_A"
+  private val SeededKey = "SSDAPR_TEST_SECRET_A"
   private val SeededValue = "secret-value-alpha"
-  private val SeededKey2  = "SSDAPR_TEST_SECRET_B"
+  private val SeededKey2 = "SSDAPR_TEST_SECRET_B"
   private val SeededValue2 = "secret-value-beta"
 
   override def startContainers(): DaprTestContainer =
@@ -41,12 +41,16 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[String, Option[String]](MethodName("get")) { key =>
-              try SecretsCapability.get(SecretKey(key))
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[String, Option[String]](MethodName("get")) { key =>
+                  try SecretsCapability.get(SecretKey(key))
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             val resp = JsonCodec.decodeOrThrow[Option[String]](
               httpPost(s"http://localhost:$port/get", s""""$SeededKey""""),
             )
@@ -59,14 +63,20 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[String, Option[String]](MethodName("get")) { key =>
-              try SecretsCapability.get(SecretKey(key))
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
-            val r1 = JsonCodec.decodeOrThrow[Option[String]](httpPost(s"http://localhost:$port/get", s""""$SeededKey""""))
-            val r2 = JsonCodec.decodeOrThrow[Option[String]](httpPost(s"http://localhost:$port/get", s""""$SeededKey2""""))
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[String, Option[String]](MethodName("get")) { key =>
+                  try SecretsCapability.get(SecretKey(key))
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
+            val r1 =
+              JsonCodec.decodeOrThrow[Option[String]](httpPost(s"http://localhost:$port/get", s""""$SeededKey""""))
+            val r2 =
+              JsonCodec.decodeOrThrow[Option[String]](httpPost(s"http://localhost:$port/get", s""""$SeededKey2""""))
             assertEquals(r1, Some(SeededValue))
             assertEquals(r2, Some(SeededValue2))
           }
@@ -79,12 +89,16 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
-          withServer(DaprApp(invocations = List(
-            InvocationRoute[Unit, Map[String, String]](MethodName("bulk")) { _ =>
-              try SecretsCapability.getBulk().map { case (k, v) => k.value -> v }
-              catch case e: Exception => throw e
-            },
-          ))) { port =>
+          withServer(
+            DaprApp(invocations =
+              List(
+                InvocationRoute[Unit, Map[String, String]](MethodName("bulk")) { _ =>
+                  try SecretsCapability.getBulk().map { case (k, v) => k.value -> v }
+                  catch case e: Exception => throw e
+                },
+              ),
+            ),
+          ) { port =>
             val bulk = JsonCodec.decodeOrThrow[Map[String, String]](
               httpPost(s"http://localhost:$port/bulk", "null"),
             )

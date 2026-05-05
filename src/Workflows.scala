@@ -7,8 +7,8 @@ package dapr.safe
 /** A handle to a durable operation scheduled inside a [[Workflow]].
   *
   * Obtain instances from [[WorkflowContext]] methods (`callActivity`, `createTimer`, `waitForExternalEvent`). Call
-  * [[await]] to block until the operation completes and get its result. Because the workflow runtime replays history
-  * on restart, calling [[await]] during replay returns the cached result immediately without re-executing the work.
+  * [[await]] to block until the operation completes and get its result. Because the workflow runtime replays history on
+  * restart, calling [[await]] during replay returns the cached result immediately without re-executing the work.
   *
   * The interface mirrors `io.dapr.durabletask.Task` but replaces the Java-style `thenApply`/`thenAccept` combinators
   * with the idiomatic Scala [[map]].
@@ -55,8 +55,8 @@ trait Task[+O]:
   * effects must be scheduled via the methods below and awaited via [[Task.await]].
   *
   * '''Control-flow exceptions''' — never catch inside workflow logic:
-  *   - `io.dapr.durabletask.interruption.OrchestratorBlockedException` — emitted by [[Task.await]] when a task has
-  *     not yet completed; the runtime catches it to suspend execution
+  *   - `io.dapr.durabletask.interruption.OrchestratorBlockedException` — emitted by [[Task.await]] when a task has not
+  *     yet completed; the runtime catches it to suspend execution
   *   - `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — thrown by [[continueAsNew]]; must reach the
   *     runtime to trigger the restart
   */
@@ -193,8 +193,8 @@ abstract class Workflow:
     * `WorkflowContext.waitForExternalEvent` to schedule durable work; call `WorkflowContext.complete` when done.
     *
     * Never catch `io.dapr.durabletask.interruption.OrchestratorBlockedException` or
-    * `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — both are control-flow signals used by the
-    * workflow runtime and must propagate out of `run`.
+    * `io.dapr.durabletask.interruption.ContinueAsNewInterruption` — both are control-flow signals used by the workflow
+    * runtime and must propagate out of `run`.
     */
   def run(using WorkflowContext): Unit
 

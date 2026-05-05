@@ -13,9 +13,9 @@ private[safe] final class TaskImpl[+O](
     private val javaTask: io.dapr.durabletask.Task[?],
     private val compute: () => O,
 ) extends Task[O]:
-  def isDone: Boolean      = javaTask.isDone()
+  def isDone: Boolean = javaTask.isDone()
   def isCancelled: Boolean = javaTask.isCancelled()
-  def await(): O           = compute()
+  def await(): O = compute()
   // asInstanceOf: f's captures flow into the lambda inside TaskImpl, but Task[U] is @assumeSafe
   // and always has an empty external capture set — the cast erases the capture annotation.
   def map[U](f: O => U): Task[U] = new TaskImpl(javaTask, () => f(compute())).asInstanceOf[Task[U]]
@@ -41,28 +41,34 @@ private[safe] final class WorkflowContextImpl(
       input: I,
   ): Task[O] =
     val inputJson = summon[JsonCodec[I]].encode(input)
-    val name      = activityClass.getCanonicalName.nn
-    val javaTask  = ctx.callActivity(name, inputJson, classOf[String])
-    val codec     = summon[JsonCodec[O]]
-    new TaskImpl(javaTask, () => {
-      val result = javaTask.await()
-      val json   = if result == null then "null" else result.asInstanceOf[String]
-      codec
-        .decode(json)
-        .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
-    })
+    val name = activityClass.getCanonicalName.nn
+    val javaTask = ctx.callActivity(name, inputJson, classOf[String])
+    val codec = summon[JsonCodec[O]]
+    new TaskImpl(
+      javaTask,
+      () => {
+        val result = javaTask.await()
+        val json = if result == null then "null" else result.asInstanceOf[String]
+        codec
+          .decode(json)
+          .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
+      },
+    )
 
   def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): Task[O] =
-    val name     = activityClass.getCanonicalName.nn
+    val name = activityClass.getCanonicalName.nn
     val javaTask = ctx.callActivity(name, "null", classOf[String])
-    val codec    = summon[JsonCodec[O]]
-    new TaskImpl(javaTask, () => {
-      val result = javaTask.await()
-      val json   = if result == null then "null" else result.asInstanceOf[String]
-      codec
-        .decode(json)
-        .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
-    })
+    val codec = summon[JsonCodec[O]]
+    new TaskImpl(
+      javaTask,
+      () => {
+        val result = javaTask.await()
+        val json = if result == null then "null" else result.asInstanceOf[String]
+        codec
+          .decode(json)
+          .getOrElse(throw RuntimeException(s"Failed to decode result of activity '$name'"))
+      },
+    )
 
   def createTimer(duration: java.time.Duration): Task[Unit] =
     val javaTask = ctx.createTimer(duration)
@@ -70,25 +76,31 @@ private[safe] final class WorkflowContextImpl(
 
   def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: java.time.Duration): Task[T] =
     val javaTask = ctx.waitForExternalEvent(name.value, timeout, classOf[String])
-    val codec    = summon[JsonCodec[T]]
-    new TaskImpl(javaTask, () => {
-      val result = javaTask.await()
-      val json   = if result == null then "null" else result.asInstanceOf[String]
-      codec
-        .decode(json)
-        .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
-    })
+    val codec = summon[JsonCodec[T]]
+    new TaskImpl(
+      javaTask,
+      () => {
+        val result = javaTask.await()
+        val json = if result == null then "null" else result.asInstanceOf[String]
+        codec
+          .decode(json)
+          .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
+      },
+    )
 
   def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T] =
     val javaTask = ctx.waitForExternalEvent(name.value, classOf[String])
-    val codec    = summon[JsonCodec[T]]
-    new TaskImpl(javaTask, () => {
-      val result = javaTask.await()
-      val json   = if result == null then "null" else result.asInstanceOf[String]
-      codec
-        .decode(json)
-        .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
-    })
+    val codec = summon[JsonCodec[T]]
+    new TaskImpl(
+      javaTask,
+      () => {
+        val result = javaTask.await()
+        val json = if result == null then "null" else result.asInstanceOf[String]
+        codec
+          .decode(json)
+          .getOrElse(throw RuntimeException(s"Failed to decode external event '${name.value}'"))
+      },
+    )
 
   def complete[O: JsonCodec](output: O): Unit =
     ctx.complete(summon[JsonCodec[O]].encode(output))

@@ -12,8 +12,8 @@ import java.util.Collections
 /** Integration tests for [[OrderServiceHandlers]] against a real Dapr sidecar, dispatched through a real
   * [[dapr.safe.internal.DaprAppServer]] HTTP server.
   *
-  * Each test starts a real HTTP server wrapping the handler app and exercises it via HTTP POST — the full
-  * encode → HTTP → decode path is tested, with state persisted in the real in-memory Dapr sidecar.
+  * Each test starts a real HTTP server wrapping the handler app and exercises it via HTTP POST — the full encode → HTTP
+  * → decode path is tested, with state persisted in the real in-memory Dapr sidecar.
   */
 @scala.caps.assumeSafe
 class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
