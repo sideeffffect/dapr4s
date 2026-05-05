@@ -32,14 +32,14 @@ private[safe] final class TaskUnit(
 @scala.caps.assumeSafe
 private[safe] final class TaskMap[O1, +O](
     private val task: Task[O1],
-    private val f: O1 => O,
+    private val g: O1 => O,
 ) extends Task[O]:
   def isDone: Boolean = task.isDone
   def isCancelled: Boolean = task.isCancelled
-  def await(): O = f(task.await())
-  // CC can't express that Task[O1] holds a TaskMap^{this.f}; cast this to Task[O] to pass it
-  // as the recursive task arg. Return type is still honest: callers see ^{this, g}.
-  def map[U](g: O => U): Task[U]^{this, g} = new TaskMap(this.asInstanceOf[Task[O]], g)
+  def await(): O = g(task.await())
+  // CC can't express that Task[O1] holds a TaskMap^{this.g}; cast this to Task[O] to pass it
+  // as the recursive task arg. Return type is still honest: callers see ^{this, f}.
+  def map[U](f: O => U): Task[U]^{this, f} = new TaskMap(this.asInstanceOf[Task[O]], f)
 
 /** Wraps `io.dapr.workflows.WorkflowContext` (Java SDK) and exposes the Scala [[WorkflowContext]] trait. */
 @scala.caps.assumeSafe
