@@ -1,5 +1,17 @@
 # Wiki Log
 
+## [2026-05-05] lint | 0 issues found, 0 auto-fixed
+- All internal links valid (51 wiki articles checked)
+- All Raw field references valid
+- Index complete — all articles indexed
+- Heuristic finding: `kubernetes/local-kubernetes-stacks.md` could cross-reference `testing/testcontainers-overview.md` as a lighter alternative to k8s for Dapr integration testing (not auto-fixed)
+
+## [2026-05-05] ingest | Testcontainers Overview and Testcontainers-Scala
+- Raw sources: testcontainers.com; java.testcontainers.org (wait strategies, networking, reuse, configuration); testcontainers/testcontainers-scala GitHub + usage/setup docs; yadukrishnan.live; jasondl.ee inter-container networking; deepwiki Ryuk docs; testcontainers.com/modules/dapr; docs.dapr.io Spring Boot integration
+- Created: testing/testcontainers-overview.md (Ryuk, wait strategies, startup strategies, port mapping, networking, reuse, configuration)
+- Created: testing/testcontainers-scala.md (SBT setup, lifecycle traits, ContainerDef/Container, GenericContainer, MUnit, DockerComposeContainer, 40+ modules, networking)
+- Updated: dapr/dapr-testcontainers.md (added multi-language support section, Spring Boot @ServiceConnection pattern, cross-references to testing articles)
+
 ## [2026-05-02] ingest | k3d v5.x Changes and Dapr Dev-Mode Redis Hostname
 - Updated: kubernetes/local-kubernetes-stacks.md (k3d v5.8.3 version, v5.x breaking changes, dev-mode Redis hostname)
 - Updated: kubernetes/dapr-on-kubernetes.md (corrected Redis hostname dapr-dev-redis-master, added lock.redis component example)

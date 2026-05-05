@@ -1,8 +1,8 @@
 # Dapr Testcontainers
 
-> Sources: Dapr Java SDK GitHub, 2026-05-01; diagridio/testcontainers-dapr source, 2026-05-01
+> Sources: Dapr Java SDK GitHub, 2026-05-01; diagridio/testcontainers-dapr source, 2026-05-01; Dapr Spring Boot docs (docs.dapr.io), 2026-05-05; testcontainers.com/modules/dapr, 2026-05-05
 > Raw: [dapr-testcontainers](../../raw/dapr/2026-05-01-dapr-testcontainers.md); [testcontainers-dapr javadoc](../../raw/dapr/2026-05-01-testcontainers-dapr-javadoc.md)
-> Updated: 2026-05-01
+> Updated: 2026-05-05
 
 ## Overview
 
@@ -283,9 +283,49 @@ Understanding what `configure()` does helps when troubleshooting:
 - When the app runs on the host (not in Docker), use `withAppChannelAddress("host.testcontainers.internal")` and `Testcontainers.exposeHostPorts(port)`
 - `QuotedBoolean` is required for metadata values that must appear as quoted strings in YAML (e.g., `actorStateStore: "true"`)
 
+## Multi-Language Support
+
+The Testcontainers Dapr module is officially certified and maintained by Diagrid. Available for:
+- **Java**: `io.dapr:testcontainers-dapr` (covered in this article)
+- **Node.js**: `@dapr/testcontainer-node` — `new DaprContainer("daprio/daprd:1.16.4").start()`
+- **.NET**: `Dapr.Testcontainers` — uses `DaprRuntimeOptions` and `DaprHarnessBuilder`
+
+## Spring Boot Integration
+
+For Spring Boot apps using `@ServiceConnection`, DaprContainer integrates with the Spring Boot test slice:
+
+```java
+@TestConfiguration(proxyBeanMethods = false)
+public class DaprTestContainersConfig {
+
+  @Bean
+  @ServiceConnection
+  public DaprContainer daprContainer(Network network, PostgreSQLContainer<?> pg) {
+    return new DaprContainer("daprio/daprd:1.16.0")
+        .withAppName("producer-app")
+        .withNetwork(network)
+        .withComponent(new Component("kvstore", "state.postgresql", "v1", STATE_STORE_PROPERTIES))
+        .withComponent(new Component("kvbinding", "bindings.postgresql", "v1", BINDING_PROPERTIES))
+        .dependsOn(pg);
+  }
+}
+```
+
+Run with `mvn spring-boot:test-run` — Spring Boot automatically connects to the container.
+
+For pub/sub subscriber testing, expose the app port before tests:
+```java
+@BeforeAll
+public static void setup() {
+  org.testcontainers.Testcontainers.exposeHostPorts(8080);
+}
+```
+
 ## See Also
 
 - [Dapr Java SDK](dapr-java-sdk.md)
 - [Dapr Overview](dapr-overview.md)
 - [Dapr Actors](dapr-actors.md)
 - [Dapr Workflows](dapr-workflows.md)
+- [Testcontainers Overview](../testing/testcontainers-overview.md)
+- [Testcontainers-Scala](../testing/testcontainers-scala.md)

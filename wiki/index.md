@@ -1,5 +1,14 @@
 # Knowledge Base Index
 
+## testing
+
+Docker-based integration testing with Testcontainers — general architecture, Scala-specific wrappers, and Dapr integration.
+
+| Article | Summary | Updated |
+|---|---|---|
+| [Testcontainers Overview](testing/testcontainers-overview.md) | Core architecture, Ryuk cleanup, wait strategies, port mapping, networking (container-to-container, container-to-host), reuse, configuration | 2026-05-05 |
+| [Testcontainers-Scala](testing/testcontainers-scala.md) | Scala wrapper: TestContainerForAll/ForEach, TestContainersForAll/ForEach, ContainerDef vs Container, GenericContainer, MUnit fixtures, 40+ modules, SBT setup | 2026-05-05 |
+
 ## effect-systems
 
 Effect tracking, direct-style programming, capabilities, and related Scala 3 mechanisms.
@@ -88,7 +97,7 @@ Dapr (Distributed Application Runtime) — portable, event-driven runtime for bu
 | [Dapr Actors](dapr/dapr-actors.md) | Virtual actor pattern, turn-based access, placement service, timers vs reminders | 2026-05-01 |
 | [Dapr Workflows](dapr/dapr-workflows.md) | Durable workflow orchestration, event sourcing, determinism requirement, activities | 2026-05-01 |
 | [Dapr Java SDK](dapr/dapr-java-sdk.md) | Java SDK structure, DaprClient API, actors SDK, workflows SDK, key usage patterns | 2026-05-01 |
-| [Dapr Testcontainers](dapr/dapr-testcontainers.md) | Integration testing with DaprContainer, component/subscription setup, host app channel, QuotedBoolean, placement container, JUnit patterns | 2026-05-01 |
+| [Dapr Testcontainers](dapr/dapr-testcontainers.md) | Integration testing with DaprContainer, component/subscription setup, host app channel, QuotedBoolean, placement container, JUnit patterns, Spring Boot @ServiceConnection, multi-language | 2026-05-05 |
 | [Dapr Other Building Blocks](dapr/dapr-other-building-blocks.md) | Bindings, secrets, configuration, distributed lock, cryptography, jobs | 2026-05-01 |
 | [Dapr Resiliency](dapr/dapr-resiliency.md) | Timeout, retry (constant/exponential), and circuit breaker policies; per-app, per-actor, per-component binding via named policy specs | 2026-05-01 |
 | [Dapr Workflow Patterns](dapr/dapr-workflow-patterns.md) | Task chaining, fan-out/fan-in, async HTTP APIs, monitor (eternal) pattern, external event / human approval, child workflows, compensation | 2026-05-01 |
