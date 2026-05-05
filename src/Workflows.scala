@@ -1,5 +1,8 @@
 package dapr.safe
 
+import scala.reflect.ClassTag
+import scala.caps
+
 // ---------------------------------------------------------------------------
 // Task — a handle to a scheduled durable operation
 // ---------------------------------------------------------------------------
@@ -75,17 +78,14 @@ trait WorkflowContext extends scala.caps.ExclusiveCapability:
 
   /** Schedule an activity and return a [[Task]] that resolves to its output.
     *
-    * `activityClass` must be the concrete class of a [[WorkflowActivity]] subclass registered in the same [[DaprApp]].
+    * `A` must be the concrete type of a [[WorkflowActivity]] subclass registered in the same [[DaprApp]].
     * The input is serialised with the activity's [[JsonCodec]] and the output is deserialised from the activity's
     * return value.
     */
-  def callActivity[I: JsonCodec, O: JsonCodec](
-      activityClass: Class[? <: WorkflowActivity[I, O]],
-      input: I,
-  ): Task[O]
+  def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output]
 
   /** Overload for activities that take no input. */
-  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): Task[O]
+  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output]
 
   /** Create a durable timer that fires after `duration`. */
   def createTimer(duration: java.time.Duration): Task[Unit]
@@ -120,7 +120,7 @@ trait WorkflowContext extends scala.caps.ExclusiveCapability:
   *   class OrderWorkflow extends Workflow:
   *     def run(using WorkflowContext): Unit =
   *       val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
-  *       val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
+  *       val paymentTask = WorkflowContext.callActivity[ProcessPaymentActivity](input)
   *       val result = paymentTask.await()
   *       WorkflowContext.complete(result)
   * }}}
@@ -134,14 +134,11 @@ object WorkflowContext:
 
   def getInput[I: JsonCodec](using ctx: WorkflowContext): Option[I] = ctx.getInput[I]
 
-  def callActivity[I: JsonCodec, O: JsonCodec](
-      activityClass: Class[? <: WorkflowActivity[I, O]],
-      input: I,
-  )(using ctx: WorkflowContext): Task[O] = ctx.callActivity(activityClass, input)
+  def callActivity[A](using d: ActivityDef[A])(input: d.Input)(using ctx: WorkflowContext): Task[d.Output] =
+    ctx.callActivity(input)
 
-  def callActivity[O: JsonCodec](
-      activityClass: Class[? <: WorkflowActivity[Unit, O]],
-  )(using ctx: WorkflowContext): Task[O] = ctx.callActivity(activityClass)
+  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit)(using ctx: WorkflowContext): Task[d.Output] =
+    ctx.callActivity
 
   def createTimer(duration: java.time.Duration)(using ctx: WorkflowContext): Task[Unit] =
     ctx.createTimer(duration)
@@ -172,7 +169,7 @@ object WorkflowContext:
   *   class OrderWorkflow extends Workflow:
   *     def run(using WorkflowContext): Unit =
   *       val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
-  *       val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
+  *       val paymentTask = WorkflowContext.callActivity[ProcessPaymentActivity](input)
   *       val result = paymentTask.await()
   *       WorkflowContext.complete(result)
   * }}}
@@ -225,3 +222,34 @@ abstract class WorkflowActivity[I, O](using
 
   /** Implement activity logic here.  May perform I/O; need not be deterministic. */
   def execute(input: I): O
+
+// ---------------------------------------------------------------------------
+// ActivityDef — typeclass linking an activity class to its I/O types
+// ---------------------------------------------------------------------------
+
+/** Typeclass that links an activity class `A` to its input/output types.
+  *
+  * Instances are derived automatically for every [[WorkflowActivity]] subclass that has `JsonCodec` instances in scope.
+  * Users never construct or name this type directly — the compiler resolves it when calling
+  * [[WorkflowContext.callActivity]].
+  */
+@scala.caps.assumeSafe
+sealed abstract class ActivityDef[A]:
+  type Input
+  type Output
+  private[safe] def activityName: String
+  private[safe] def inputCodec: JsonCodec[Input]
+  private[safe] def outputCodec: JsonCodec[Output]
+
+@scala.caps.assumeSafe
+object ActivityDef:
+  given derived[I, O, A <: WorkflowActivity[I, O]](using
+      ct: ClassTag[A],
+      ic: JsonCodec[I],
+      oc: JsonCodec[O],
+  ): ActivityDef[A] with
+    type Input  = I
+    type Output = O
+    def activityName = ct.runtimeClass.getCanonicalName.nn
+    def inputCodec   = ic
+    def outputCodec  = oc

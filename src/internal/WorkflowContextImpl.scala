@@ -57,20 +57,16 @@ private[safe] final class WorkflowContextImpl(
       summon[JsonCodec[I]].decode(json).toOption
     }
 
-  def callActivity[I: JsonCodec, O: JsonCodec](
-      activityClass: Class[? <: WorkflowActivity[I, O]],
-      input: I,
-  ): Task[O] =
-    val inputJson = summon[JsonCodec[I]].encode(input)
-    val name = activityClass.getCanonicalName.nn
-    val javaTask = ctx.callActivity(name, inputJson, classOf[String])
-    val codec = summon[JsonCodec[O]]
-    new TaskJson[O](javaTask, s"Failed to decode result of activity '$name'")
+  def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output] =
+    val inputJson = d.inputCodec.encode(input)
+    val name      = d.activityName
+    val javaTask  = ctx.callActivity(name, inputJson, classOf[String])
+    new TaskJson(javaTask, s"Failed to decode result of activity '$name'")(using d.outputCodec)
 
-  def callActivity[O: JsonCodec](activityClass: Class[? <: WorkflowActivity[Unit, O]]): Task[O] =
-    val name = activityClass.getCanonicalName.nn
+  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output] =
+    val name     = d.activityName
     val javaTask = ctx.callActivity(name, "null", classOf[String])
-    new TaskJson[O](javaTask, s"Failed to decode result of activity '$name'")
+    new TaskJson(javaTask, s"Failed to decode result of activity '$name'")(using d.outputCodec)
 
   def createTimer(duration: java.time.Duration): Task[Unit] =
     val javaTask = ctx.createTimer(duration)
