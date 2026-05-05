@@ -2,6 +2,7 @@ package dapr.safe.test.integration
 
 import dapr.safe.*
 import dapr.safe.test.integration.apps.*
+import dapr.safe.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.GenericContainer
 import com.dimafeng.testcontainers.munit.TestContainersForAll
@@ -10,23 +11,21 @@ import munit.FunSuite
 
 import java.util.Collections
 
-/** Integration tests for [[InventoryServiceHandlers]] against a real Dapr sidecar.
+/** Integration tests for [[InventoryServiceHandlers]] against a real Dapr sidecar, dispatched through a real
+  * [[dapr.safe.internal.DaprAppServer]] HTTP server.
   *
-  * Demonstrates:
-  *   - State management (get/save) via [[StateCapability]]
-  *   - Pub/sub subscription handler via [[TestDaprApp.deliver]]
-  *   - Default stock fallback logic
+  * Each test starts a real HTTP server wrapping the handler app. Pub/sub delivery is simulated by POSTing a
+  * CloudEvent JSON envelope directly to the subscription route — the same format Dapr would use in production.
   *
   * Uses `lock.redis` (backed by a Redis Testcontainer) because `lock.in-memory` does not exist in Dapr 1.17 — the only
   * supported distributed-lock component is Redis. Redis and daprd are placed on a shared Docker network so the sidecar
   * can reach Redis via the `redis` network alias.
   */
 @scala.caps.assumeSafe
-class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll:
+class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
 
   type Containers = DaprTestContainer
 
-  // Redis and network are managed here; DaprTestContainer lifecycle is managed by TestContainersForAll.
   private var extraRedis: GenericContainer | Null = null
   private var extraNetwork: Network | Null = null
 
@@ -66,10 +65,11 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
-
-        val stock = TestDaprApp.call[String](app, "get-stock", "widget")[StockLevel]
-        assertEquals(stock.item, "widget")
-        assertEquals(stock.available, InventoryServiceHandlers.DefaultStock)
+        withServer(app) { port =>
+          val stock = invokeMethod[String, StockLevel](port, "get-stock", "widget")
+          assertEquals(stock.item, "widget")
+          assertEquals(stock.available, InventoryServiceHandlers.DefaultStock)
+        }
     }
 
   test("inventory service: seed-stock sets explicit level"):
@@ -77,10 +77,11 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
-
-        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("gadget", 42))[StockLevel]
-        val stock = TestDaprApp.call[String](app, "get-stock", "gadget")[StockLevel]
-        assertEquals(stock.available, 42)
+        withServer(app) { port =>
+          invokeMethod[StockLevel, StockLevel](port, "seed-stock", StockLevel("gadget", 42))
+          val stock = invokeMethod[String, StockLevel](port, "get-stock", "gadget")
+          assertEquals(stock.available, 42)
+        }
     }
 
   test("inventory service: order event decrements stock"):
@@ -88,18 +89,20 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
+        withServer(app) { port =>
+          invokeMethod[StockLevel, StockLevel](port, "seed-stock", StockLevel("monitor", 20))
 
-        // Seed 20 units
-        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("monitor", 20))[StockLevel]
+          val result = deliverCloudEvent[OrderEvent](
+            port,
+            topic = "orders",
+            pubsubName = "pubsub",
+            data = OrderEvent("order-1", "monitor", 5),
+          )
+          assert(result.contains("SUCCESS"), s"expected SUCCESS, got: $result")
 
-        // Deliver order event for 5 monitors
-        val event = mkOrderEvent(orderId = "order-1", item = "monitor", qty = 5)
-        val result = TestDaprApp.deliver(app, "orders", event)
-
-        assertEquals(result, SubscriptionResult.Success)
-
-        val stock = TestDaprApp.call[String](app, "get-stock", "monitor")[StockLevel]
-        assertEquals(stock.available, 15)
+          val stock = invokeMethod[String, StockLevel](port, "get-stock", "monitor")
+          assertEquals(stock.available, 15)
+        }
     }
 
   test("inventory service: multiple order events accumulate correctly"):
@@ -107,15 +110,16 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
+        withServer(app) { port =>
+          invokeMethod[StockLevel, StockLevel](port, "seed-stock", StockLevel("widget", 50))
 
-        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("widget", 50))[StockLevel]
+          deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o1", "widget", 10))
+          deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o2", "widget", 15))
+          deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o3", "widget", 5))
 
-        TestDaprApp.deliver(app, "orders", mkOrderEvent("o1", "widget", 10))
-        TestDaprApp.deliver(app, "orders", mkOrderEvent("o2", "widget", 15))
-        TestDaprApp.deliver(app, "orders", mkOrderEvent("o3", "widget", 5))
-
-        val stock = TestDaprApp.call[String](app, "get-stock", "widget")[StockLevel]
-        assertEquals(stock.available, 20)
+          val stock = invokeMethod[String, StockLevel](port, "get-stock", "widget")
+          assertEquals(stock.available, 20)
+        }
     }
 
   test("inventory service: stock never goes below zero"):
@@ -123,14 +127,15 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
+        withServer(app) { port =>
+          invokeMethod[StockLevel, StockLevel](port, "seed-stock", StockLevel("rare-item", 3))
 
-        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("rare-item", 3))[StockLevel]
+          deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o1", "rare-item", 2))
+          deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o2", "rare-item", 5))
 
-        TestDaprApp.deliver(app, "orders", mkOrderEvent("o1", "rare-item", 2))
-        TestDaprApp.deliver(app, "orders", mkOrderEvent("o2", "rare-item", 5)) // oversell
-
-        val stock = TestDaprApp.call[String](app, "get-stock", "rare-item")[StockLevel]
-        assertEquals(stock.available, 0)
+          val stock = invokeMethod[String, StockLevel](port, "get-stock", "rare-item")
+          assertEquals(stock.available, 0)
+        }
     }
 
   test("inventory service: independent items do not interfere"):
@@ -138,18 +143,19 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
+        withServer(app) { port =>
+          invokeMethod[StockLevel, StockLevel](port, "seed-stock", StockLevel("alpha", 10))
+          invokeMethod[StockLevel, StockLevel](port, "seed-stock", StockLevel("beta", 20))
 
-        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("alpha", 10))[StockLevel]
-        TestDaprApp.call[StockLevel](app, "seed-stock", StockLevel("beta", 20))[StockLevel]
+          deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o1", "alpha", 3))
+          deliverCloudEvent(port, "orders", "pubsub", OrderEvent("o2", "beta", 7))
 
-        TestDaprApp.deliver(app, "orders", mkOrderEvent("o1", "alpha", 3))
-        TestDaprApp.deliver(app, "orders", mkOrderEvent("o2", "beta", 7))
+          val alpha = invokeMethod[String, StockLevel](port, "get-stock", "alpha")
+          val beta  = invokeMethod[String, StockLevel](port, "get-stock", "beta")
 
-        val alpha = TestDaprApp.call[String](app, "get-stock", "alpha")[StockLevel]
-        val beta = TestDaprApp.call[String](app, "get-stock", "beta")[StockLevel]
-
-        assertEquals(alpha.available, 7)
-        assertEquals(beta.available, 13)
+          assertEquals(alpha.available, 7)
+          assertEquals(beta.available, 13)
+        }
     }
 
   test("inventory service: all routes are declared in the app"):
@@ -162,19 +168,3 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
         assert(app.invocations.exists(_.methodName.value == "get-stock"))
         assert(app.invocations.exists(_.methodName.value == "seed-stock"))
     }
-
-  // -------------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------------
-
-  private def mkOrderEvent(orderId: String, item: String, qty: Int): CloudEvent[OrderEvent] =
-    CloudEvent(
-      id = CloudEventId(orderId),
-      source = CloudEventSource("order-service"),
-      specVersion = CloudEventSpecVersion("1.0"),
-      eventType = CloudEventType("order.placed"),
-      topic = Topic("orders"),
-      pubSubName = PubSubName("pubsub"),
-      dataContentType = ContentType("application/json"),
-      data = OrderEvent(orderId, item, qty),
-    )

@@ -1,0 +1,167 @@
+package dapr.safe.test.integration
+
+import dapr.safe.*
+import dapr.safe.test.unit.DaprServerTestBase
+import io.dapr.testcontainers.{DaprContainer, Component}
+import com.dimafeng.testcontainers.munit.TestContainersForAll
+import munit.FunSuite
+import unsafeExceptions.canThrowAny
+
+import java.util.Collections
+
+/** Tests for every [[PubSubCapability]] method through real [[dapr.safe.internal.DaprAppServer]] HTTP dispatch,
+  * backed by real Dapr pub/sub and state-store components via Testcontainers.
+  *
+  * Publish operations fire at the real Dapr sidecar and verify the handler returns without error. Subscription
+  * dispatch is exercised by POSTing a CloudEvent JSON envelope directly to the subscription route — the same format
+  * Dapr uses in production.
+  */
+@scala.caps.assumeSafe
+class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
+
+  type Containers = DaprTestContainer
+
+  override def startContainers(): DaprTestContainer =
+    val c = DaprTestContainer(
+      DaprContainer("daprio/daprd:1.17.0")
+        .withAppName("pubsub-server-test")
+        .withAppPort(0)
+        .withComponent(Component("pubsub", "pubsub.in-memory", "v1", Collections.emptyMap()))
+        .withComponent(Component("statestore", "state.in-memory", "v1", Collections.emptyMap())),
+    )
+    c.start()
+    c
+
+  private def uniqueTopic() = s"topic-${java.util.UUID.randomUUID()}"
+
+  // ---- publish ---------------------------------------------------------------
+
+  test("pubsub: publish fires without error"):
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        DaprCapability.pubsub(PubSubName("pubsub")) {
+          withServer(DaprApp(invocations = List(
+            InvocationRoute[String, String](MethodName("pub")) { msg =>
+              try { PubSubCapability.publish(Topic("orders"), msg); "ok" }
+              catch case e: Exception => throw e
+            },
+          ))) { port =>
+            val result = JsonCodec.decodeOrThrow[String](httpPost(s"http://localhost:$port/pub", "\"hello\""))
+            assertEquals(result, "ok")
+          }
+        }
+    }
+
+  test("pubsub: publishWithMetadata fires without error"):
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        DaprCapability.pubsub(PubSubName("pubsub")) {
+          withServer(DaprApp(invocations = List(
+            InvocationRoute[String, String](MethodName("pub-meta")) { msg =>
+              try
+                PubSubCapability.publishWithMetadata(
+                  Topic("orders"),
+                  msg,
+                  Map("traceId" -> "abc123"),
+                )
+                "ok"
+              catch case e: Exception => throw e
+            },
+          ))) { port =>
+            val result = JsonCodec.decodeOrThrow[String](httpPost(s"http://localhost:$port/pub-meta", "\"event\""))
+            assertEquals(result, "ok")
+          }
+        }
+    }
+
+  // ---- bulkPublish -----------------------------------------------------------
+
+  test("pubsub: bulkPublish returns empty failedEntries"):
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        DaprCapability.pubsub(PubSubName("pubsub")) {
+          withServer(DaprApp(invocations = List(
+            InvocationRoute[List[String], Int](MethodName("bulk")) { msgs =>
+              try
+                val entries = msgs.zipWithIndex.map { case (m, i) =>
+                  BulkPublishEntry(BulkEntryId(i.toString), m)
+                }
+                val result = PubSubCapability.bulkPublish(Topic("orders"), entries)
+                result.failedEntries.length
+              catch case e: Exception => throw e
+            },
+          ))) { port =>
+            val resp = httpPost(s"http://localhost:$port/bulk", """["a","b","c"]""")
+            assertEquals(JsonCodec.decodeOrThrow[Int](resp), 0)
+          }
+        }
+    }
+
+  test("pubsub: bulkPublish with empty list returns 0 failures"):
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        DaprCapability.pubsub(PubSubName("pubsub")) {
+          withServer(DaprApp(invocations = List(
+            InvocationRoute[List[String], Int](MethodName("bulk")) { msgs =>
+              try
+                val result = PubSubCapability.bulkPublish(Topic("orders"), msgs.map(m => BulkPublishEntry(BulkEntryId("0"), m)))
+                result.failedEntries.length
+              catch case e: Exception => throw e
+            },
+          ))) { port =>
+            assertEquals(JsonCodec.decodeOrThrow[Int](httpPost(s"http://localhost:$port/bulk", "[]")), 0)
+          }
+        }
+    }
+
+  // ---- subscription dispatch -------------------------------------------------
+
+  test("pubsub: subscription handler receives and processes event"):
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        val topic = uniqueTopic()
+        val stateKey = s"recv-${java.util.UUID.randomUUID()}"
+        DaprCapability.state(StoreName("statestore")) {
+          DaprCapability.pubsub(PubSubName("pubsub")) {
+            withServer(DaprApp(
+              subscriptions = List(
+                Subscription[String](PubSubName("pubsub"), Topic(topic)) { event =>
+                  try { StateCapability.save(StateKey(stateKey), event.data); SubscriptionResult.Success }
+                  catch case e: Exception => throw e
+                },
+              ),
+              invocations = List(
+                InvocationRoute[Unit, Option[String]](MethodName("get-recv")) { _ =>
+                  try StateCapability.get[String](StateKey(stateKey))
+                  catch case e: Exception => throw e
+                },
+              ),
+            )) { port =>
+              deliverCloudEvent(port, topic, "pubsub", "payload-value")
+              val result = JsonCodec.decodeOrThrow[Option[String]](
+                httpPost(s"http://localhost:$port/get-recv", "null"),
+              )
+              assertEquals(result, Some("payload-value"))
+            }
+          }
+        }
+    }
+
+  test("pubsub: multiple publishes all fire without error"):
+    withContainers { c =>
+      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        DaprCapability.pubsub(PubSubName("pubsub")) {
+          withServer(DaprApp(invocations = List(
+            InvocationRoute[String, String](MethodName("pub")) { msg =>
+              try { PubSubCapability.publish(Topic("t"), msg); "ok" }
+              catch case e: Exception => throw e
+            },
+          ))) { port =>
+            for msg <- List("first", "second", "third") do
+              assertEquals(
+                JsonCodec.decodeOrThrow[String](httpPost(s"http://localhost:$port/pub", s""""$msg"""")),
+                "ok",
+              )
+          }
+        }
+    }
