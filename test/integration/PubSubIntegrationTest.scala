@@ -22,7 +22,7 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
       Collections.emptyMap[String, String](),
     )
     val c = DaprTestContainer(
-      DaprContainer("daprio/daprd:1.17.0")
+      DaprContainer(DaprTestContainer.DefaultImage)
         .withAppName("pubsub-test-app")
         .withAppPort(0)
         .withComponent(component),

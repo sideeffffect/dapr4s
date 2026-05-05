@@ -22,7 +22,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   override def startContainers(): DaprTestContainer =
     val c = DaprTestContainer(
-      DaprContainer("daprio/daprd:1.17.0")
+      DaprContainer(DaprTestContainer.DefaultImage)
         .withAppName("state-server-test")
         .withAppPort(0)
         .withComponent(Component("statestore", "state.in-memory", "v1", Collections.emptyMap())),

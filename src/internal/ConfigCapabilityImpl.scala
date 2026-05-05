@@ -51,6 +51,6 @@ private[safe] final class ConfigCapabilityImpl(
             )
           }.toMap
           try onChange(ConfigUpdate(ConfigStoreName(storeNameStr), items))
-          catch case NonFatal(_) => ()
+          catch case NonFatal(e) => e.printStackTrace()
     }
     () => sub.dispose()

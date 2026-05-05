@@ -50,14 +50,11 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
   // HttpActorContext reads this at creation time (per request), not at server startup.
   private val sidecarPortRef = new AtomicInteger(0)
 
-  private var appServerThread: Thread | Null = null
+  private var appServerThread: Option[Thread] = None
 
   override def afterAll(): Unit =
     super.afterAll()
-    val t = appServerThread
-    if t != null then
-      t.interrupt()
-      t.join(2000)
+    appServerThread.foreach { t => t.interrupt(); t.join(2000) }
 
   override def startContainers(): DaprTestContainer =
     // Make the host-side app server reachable from inside Docker containers.
@@ -71,7 +68,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
       mkActorCtx = (actorType, actorId, _) =>
         new HttpActorContext(actorType, actorId, sidecarPortRef.get()).asInstanceOf[ActorContext],
     )
-    appServerThread = Thread.ofVirtual().start(() => server.startAndBlock(appPort))
+    appServerThread = Some(Thread.ofVirtual().start(() => server.startAndBlock(appPort)))
     waitForPort(appPort, 5000)
 
     // Use Network.SHARED so the sidecar is on the same network as the Socat relay created by
@@ -79,7 +76,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     // network; host.testcontainers.internal inside that network points to a different gateway
     // than the Socat relay — making the app server unreachable from the sidecar.
     val c = DaprTestContainer(
-      DaprContainer("daprio/daprd:1.17.0")
+      DaprContainer(DaprTestContainer.DefaultImage)
         .withNetwork(org.testcontainers.containers.Network.SHARED)
         .withAppName("actor-server-test")
         .withAppPort(appPort)

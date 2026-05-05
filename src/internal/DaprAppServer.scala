@@ -134,11 +134,9 @@ private[safe] final class DaprAppServer(
             exchange.sendResponseHeaders(405, -1)
             exchange.getResponseBody.nn.close()
         catch
-          case NonFatal(_) =>
-            try
-              exchange.sendResponseHeaders(500, -1)
-              exchange.getResponseBody.nn.close()
-            catch case NonFatal(_) => (),
+          case NonFatal(e) =>
+            try sendJson(exchange, 500, errorJson(e))
+            catch case NonFatal(e2) => e2.printStackTrace(),
     )
 
     // Dapr sidecar calls GET /dapr/config to discover hosted actor types.
@@ -162,11 +160,9 @@ private[safe] final class DaprAppServer(
             exchange.sendResponseHeaders(405, -1)
             exchange.getResponseBody.nn.close()
         catch
-          case NonFatal(_) =>
-            try
-              exchange.sendResponseHeaders(500, -1)
-              exchange.getResponseBody.nn.close()
-            catch case NonFatal(_) => (),
+          case NonFatal(e) =>
+            try sendJson(exchange, 500, errorJson(e))
+            catch case NonFatal(e2) => e2.printStackTrace(),
     )
 
     // Actor routes: /actors/{type}/{id}/method/{name}
@@ -180,11 +176,9 @@ private[safe] final class DaprAppServer(
           val path = exchange.getRequestURI.nn.getPath.nn
           try handleActorRequest(exchange, path, actorDefs, daprHttpPort)
           catch
-            case NonFatal(_) =>
-              try
-                exchange.sendResponseHeaders(500, -1)
-                exchange.getResponseBody.nn.close()
-              catch case NonFatal(_) => (),
+            case NonFatal(e) =>
+              try sendJson(exchange, 500, errorJson(e))
+              catch case NonFatal(e2) => e2.printStackTrace(),
       )
 
     // Catch-all: pub/sub delivery, input bindings, service invocation.
@@ -201,7 +195,10 @@ private[safe] final class DaprAppServer(
             val body = readBody(exchange)
             val result =
               try fn(body)
-              catch case NonFatal(_) => SubscriptionResult.Retry
+              catch
+                case NonFatal(e) =>
+                  e.printStackTrace()
+                  SubscriptionResult.Retry
             val status = result match
               case SubscriptionResult.Success => "SUCCESS"
               case SubscriptionResult.Retry   => "RETRY"
@@ -217,9 +214,9 @@ private[safe] final class DaprAppServer(
                 exchange.sendResponseHeaders(200, -1)
                 exchange.getResponseBody.nn.close()
               catch
-                case NonFatal(_) =>
-                  exchange.sendResponseHeaders(500, -1)
-                  exchange.getResponseBody.nn.close()
+                case NonFatal(e) =>
+                  try sendJson(exchange, 500, errorJson(e))
+                  catch case NonFatal(e2) => e2.printStackTrace()
             else
               val ivFn = invokeRoutes.get(path)
               if ivFn != null then
@@ -231,11 +228,9 @@ private[safe] final class DaprAppServer(
                 exchange.sendResponseHeaders(404, -1)
                 exchange.getResponseBody.nn.close()
         catch
-          case NonFatal(_) =>
-            try
-              exchange.sendResponseHeaders(500, -1)
-              exchange.getResponseBody.nn.close()
-            catch case NonFatal(_) => (),
+          case NonFatal(e) =>
+            try sendJson(exchange, 500, errorJson(e))
+            catch case NonFatal(e2) => e2.printStackTrace(),
     )
 
     server.start()
@@ -402,6 +397,13 @@ private[safe] final class DaprAppServer(
     out.write(bytes)
     out.close()
 
+  private def errorJson(e: Throwable): String =
+    val name = e.getClass.getSimpleName.nn
+    val error = if name.nonEmpty then name else e.getClass.getName.nn
+    Option(e.getMessage) match
+      case Some(msg) => ujson.write(ujson.Obj("error" -> error, "error_description" -> msg))
+      case None      => ujson.write(ujson.Obj("error" -> error))
+
   /** Decode the `data` field from a reminder/timer callback body.
     *
     * The Dapr sidecar sends `{"data":"base64-encoded-json","dueTime":"...","period":"..."}`. We base64-decode the
@@ -414,7 +416,7 @@ private[safe] final class DaprAppServer(
       val json =
         if data.isEmpty then "null"
         else new String(java.util.Base64.getDecoder.nn.decode(data).nn, "UTF-8")
-      codec.decode(json).getOrElse(throw RuntimeException("Failed to decode callback payload"))
+      codec.decode(json).fold(err => throw RuntimeException("Failed to decode callback payload", err), identity)
     catch
       case e: RuntimeException            => throw e
       case scala.util.control.NonFatal(e) =>
@@ -427,27 +429,25 @@ private[safe] final class DaprAppServer(
       defaultTopic: Topic,
       handler: CloudEvent[T] => SubscriptionResult,
   ): SubscriptionResult =
-    try
-      val env = ujson.read(bodyJson).obj
-      val data = env.get("data").map(v => ujson.write(v)).getOrElse("null")
-      codec.decode(data) match
-        case Left(_)  => SubscriptionResult.Drop
-        case Right(v) =>
-          handler(
-            CloudEvent[T](
-              id = CloudEventId(env.get("id").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
-              source = CloudEventSource(env.get("source").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
-              specVersion =
-                CloudEventSpecVersion(env.get("specversion").map(_.str).filter(_.nonEmpty).getOrElse("1.0")),
-              eventType = CloudEventType(env.get("type").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
-              topic = env.get("topic").map(s => Topic(s.str)).getOrElse(defaultTopic),
-              pubSubName = env.get("pubsubname").map(s => PubSubName(s.str)).getOrElse(defaultPubsubName),
-              dataContentType =
-                ContentType(env.get("datacontenttype").map(_.str).filter(_.nonEmpty).getOrElse("application/json")),
-              data = v,
-            ),
-          )
-    catch case NonFatal(_) => SubscriptionResult.Retry
+    val env = ujson.read(bodyJson).obj
+    val data = env.get("data").map(v => ujson.write(v)).getOrElse("null")
+    codec.decode(data) match
+      case Left(_)  => SubscriptionResult.Drop
+      case Right(v) =>
+        handler(
+          CloudEvent[T](
+            id = CloudEventId(env.get("id").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
+            source = CloudEventSource(env.get("source").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
+            specVersion =
+              CloudEventSpecVersion(env.get("specversion").map(_.str).filter(_.nonEmpty).getOrElse("1.0")),
+            eventType = CloudEventType(env.get("type").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
+            topic = env.get("topic").map(s => Topic(s.str)).getOrElse(defaultTopic),
+            pubSubName = env.get("pubsubname").map(s => PubSubName(s.str)).getOrElse(defaultPubsubName),
+            dataContentType =
+              ContentType(env.get("datacontenttype").map(_.str).filter(_.nonEmpty).getOrElse("application/json")),
+            data = v,
+          ),
+        )
 
 /** Companion object providing a typed factory that accepts an injectable [[ActorContext]] factory.
   *

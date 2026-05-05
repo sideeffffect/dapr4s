@@ -63,7 +63,7 @@ private[safe] final class DaprCapabilityImpl(
           try newAc.close()
           catch
             case _: InterruptedException => Thread.currentThread().interrupt()
-            case NonFatal(_)             => ()
+            case NonFatal(e)             => e.printStackTrace()
           actorClientRef.get().nn
       case existing => existing
     ActorCapabilityImpl.build(actorType, actorId, ac).asInstanceOf[ActorCapability]
@@ -78,7 +78,7 @@ private[safe] final class DaprCapabilityImpl(
           try newWc.close()
           catch
             case _: InterruptedException => Thread.currentThread().interrupt()
-            case NonFatal(_)             => ()
+            case NonFatal(e)             => e.printStackTrace()
           workflowClientRef.get().nn
       case existing => existing
     new WorkflowCapabilityImpl(wc).asInstanceOf[WorkflowCapability]

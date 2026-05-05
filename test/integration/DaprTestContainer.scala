@@ -14,4 +14,13 @@ final class DaprTestContainer(override val container: JDaprContainer) extends Si
   def grpcEndpoint: String = s"http://${container.getHost}:${container.getGrpcPort}"
 
 object DaprTestContainer:
-  def apply(container: JDaprContainer): DaprTestContainer = new DaprTestContainer(container)
+  val DefaultImage = "daprio/daprd:1.17.0"
+
+  def apply(container: JDaprContainer): DaprTestContainer =
+    container.waitingFor(
+      org.testcontainers.containers.wait.strategy.Wait
+        .forHttp("/v1.0/healthz")
+        .forPort(3500)
+        .forStatusCode(204),
+    )
+    new DaprTestContainer(container)

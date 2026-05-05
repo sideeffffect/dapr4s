@@ -16,7 +16,7 @@ class SecretsIntegrationTest extends FunSuite with TestContainersForAll:
 
   override def startContainers(): DaprTestContainer =
     val c = DaprTestContainer(
-      DaprContainer("daprio/daprd:1.17.0")
+      DaprContainer(DaprTestContainer.DefaultImage)
         .withAppName("secrets-test-app")
         .withAppPort(0),
     )

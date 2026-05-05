@@ -5,8 +5,11 @@ import dapr.safe.test.integration.apps.*
 import dapr.safe.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.GenericContainer
+import com.dimafeng.testcontainers.lifecycle.and
+import com.dimafeng.testcontainers.lifecycle.Andable.AndableOps
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import org.testcontainers.containers.Network
+import org.testcontainers.containers.wait.strategy.Wait
 import munit.FunSuite
 
 import java.util.Collections
@@ -24,44 +27,37 @@ import java.util.Collections
 @scala.caps.assumeSafe
 class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
 
-  type Containers = DaprTestContainer
+  type Containers = GenericContainer and DaprTestContainer
 
-  private var extraRedis: GenericContainer | Null = null
-  private var extraNetwork: Network | Null = null
-
-  override def afterAll(): Unit =
-    super.afterAll()
-    val r = extraRedis
-    if r != null then r.stop()
-    val n = extraNetwork
-    if n != null then n.close()
-
-  override def startContainers(): DaprTestContainer =
+  override def startContainers(): GenericContainer and DaprTestContainer =
     val network = Network.newNetwork()
-    extraNetwork = network
 
-    val redis = GenericContainer(dockerImage = "redis:7-alpine", exposedPorts = Seq(6379))
+    val redis = GenericContainer(
+      dockerImage = "redis:7-alpine",
+      exposedPorts = Seq(6379),
+      waitStrategy = Wait.forLogMessage(".*Ready to accept connections.*", 1),
+    )
     redis.container.withNetwork(network)
     redis.container.withNetworkAliases("redis")
     redis.start()
-    extraRedis = redis
 
     val c = DaprTestContainer(
-      DaprContainer("daprio/daprd:1.17.0")
+      DaprContainer(DaprTestContainer.DefaultImage)
         .withNetwork(network)
         .withAppName("inventory-service-test")
         .withAppPort(0)
         .withComponent(Component("statestore", "state.in-memory", "v1", Collections.emptyMap()))
         .withComponent(Component("pubsub", "pubsub.in-memory", "v1", Collections.emptyMap()))
-        .withComponent(Component("lockstore", "lock.redis", "v1", java.util.Map.of("redisHost", "redis:6379"))),
+        .withComponent(Component("lockstore", "lock.redis", "v1", java.util.Map.of("redisHost", "redis:6379")))
+        .dependsOn(redis.container),
     )
     c.start()
-    c
+    redis and c
 
   // -------------------------------------------------------------------------
 
   test("inventory service: get-stock returns default when no stock seeded"):
-    withContainers { c =>
+    withContainers { case _ and c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
@@ -73,7 +69,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     }
 
   test("inventory service: seed-stock sets explicit level"):
-    withContainers { c =>
+    withContainers { case _ and c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
@@ -85,7 +81,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     }
 
   test("inventory service: order event decrements stock"):
-    withContainers { c =>
+    withContainers { case _ and c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
@@ -106,7 +102,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     }
 
   test("inventory service: multiple order events accumulate correctly"):
-    withContainers { c =>
+    withContainers { case _ and c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
@@ -123,7 +119,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     }
 
   test("inventory service: stock never goes below zero"):
-    withContainers { c =>
+    withContainers { case _ and c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
@@ -139,7 +135,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     }
 
   test("inventory service: independent items do not interfere"):
-    withContainers { c =>
+    withContainers { case _ and c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
@@ -159,7 +155,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
     }
 
   test("inventory service: all routes are declared in the app"):
-    withContainers { c =>
+    withContainers { case _ and c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)

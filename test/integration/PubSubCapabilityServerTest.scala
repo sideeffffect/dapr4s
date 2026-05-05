@@ -23,7 +23,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
 
   override def startContainers(): DaprTestContainer =
     val c = DaprTestContainer(
-      DaprContainer("daprio/daprd:1.17.0")
+      DaprContainer(DaprTestContainer.DefaultImage)
         .withAppName("pubsub-server-test")
         .withAppPort(0)
         .withComponent(Component("pubsub", "pubsub.in-memory", "v1", Collections.emptyMap()))
@@ -97,7 +97,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
         }
     }
 
-  test("pubsub: bulkPublish with empty list returns 0 failures"):
+  test("pubsub: bulkPublish with empty list propagates SDK error"):
     withContainers { c =>
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.pubsub(PubSubName("pubsub")) {
@@ -109,7 +109,11 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
               catch case e: Exception => throw e
             },
           ))) { port =>
-            assertEquals(JsonCodec.decodeOrThrow[Int](httpPost(s"http://localhost:$port/bulk", "[]")), 0)
+            val (code, body) = httpPostWithCode(s"http://localhost:$port/bulk", "[]")
+            assertEquals(code, 500)
+            val json = ujson.read(body)
+            assertEquals(json("error").str, "IllegalArgumentException")
+            assert(json("error_description").str.nonEmpty)
           }
         }
     }

@@ -25,7 +25,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
   private val SeededValue2 = "secret-value-beta"
 
   override def startContainers(): DaprTestContainer =
-    val dc = DaprContainer("daprio/daprd:1.17.0")
+    val dc = DaprContainer(DaprTestContainer.DefaultImage)
       .withAppName("secrets-server-test")
       .withAppPort(0)
       .withComponent(Component("envstore", "secretstores.local.env", "v1", Collections.emptyMap()))
