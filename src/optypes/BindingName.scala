@@ -2,6 +2,11 @@ package dapr.safe
 
 import language.experimental.safe
 
+/** Name of a Dapr input or output binding component.
+  *
+  * Must not be empty. Must match the `name` field in the binding component's metadata YAML so that the sidecar can
+  * locate the correct binding at runtime.
+  */
 opaque type BindingName = String
 object BindingName:
   def apply(s: String): BindingName =

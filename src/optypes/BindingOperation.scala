@@ -2,6 +2,12 @@ package dapr.safe
 
 import language.experimental.safe
 
+/** The operation name passed to an output binding.
+  *
+  * Must not be empty. The set of valid operations depends on the binding type; common values include `"create"`,
+  * `"post"`, and `"delete"`. Consult the Dapr binding component documentation for the exact operations supported by a
+  * given component.
+  */
 opaque type BindingOperation = String
 object BindingOperation:
   def apply(s: String): BindingOperation =

@@ -13,7 +13,17 @@ enum HttpMethod:
 /** Result of a state fetch that also exposes the server-side ETag. */
 final case class StateEntry[T](value: Option[T], etag: Option[ETag])
 
-/** A single item returned by the configuration API. */
+/** A single configuration item returned by [[ConfigurationCapability.get]] or delivered via subscription.
+  *
+  * @param key
+  *   The [[ConfigKey]] identifying this item.
+  * @param value
+  *   The current configuration value as a string.
+  * @param version
+  *   The store-assigned version token (empty string if the store does not support versioning).
+  * @param metadata
+  *   Additional key-value metadata attached to the item by the configuration store.
+  */
 final case class ConfigItem(
     key: ConfigKey,
     value: String,
@@ -25,6 +35,11 @@ final case class ConfigItem(
 // State transaction operations
 // ---------------------------------------------------------------------------
 
+/** Base type for operations in a [[StateCapability.transaction]] call.
+  *
+  * All-or-nothing: if any operation fails the transaction the entire batch is rolled back. Use the smart constructors
+  * [[StateOp.UpsertOp]] and [[StateOp.DeleteOp]].
+  */
 sealed abstract class StateOp
 
 object StateOp:
@@ -85,7 +100,28 @@ enum SubscriptionResult:
   /** Silently discard — do not redeliver, do not report an error. */
   case Drop
 
-/** An incoming pub/sub CloudEvent delivered by the Dapr sidecar. */
+/** A CloudEvent envelope wrapping an inbound pub/sub message delivered by the Dapr sidecar.
+  *
+  * The sidecar deserialises the raw message from the broker into this structure before calling the subscription
+  * handler. `data` is the typed payload; all other fields come from the CloudEvents envelope.
+  *
+  * @param id
+  *   Unique event identifier (UUID).
+  * @param source
+  *   URI-reference identifying the event producer (e.g. `"/orders/service"`).
+  * @param specVersion
+  *   CloudEvents specification version (e.g. `"1.0"`).
+  * @param eventType
+  *   Reverse-DNS event type (e.g. `"com.example.OrderCreated"`).
+  * @param topic
+  *   The pub/sub topic on which the event arrived.
+  * @param pubSubName
+  *   The Dapr pub/sub component that delivered the event.
+  * @param dataContentType
+  *   MIME type of the raw payload (e.g. `"application/json"`).
+  * @param data
+  *   The deserialised event payload.
+  */
 final case class CloudEvent[T](
     id: CloudEventId,
     source: CloudEventSource,
@@ -114,7 +150,17 @@ final case class InvocationRequest[T](
 // Workflow
 // ---------------------------------------------------------------------------
 
-/** Runtime status of a Dapr workflow instance. */
+/** Runtime status of a Dapr workflow instance.
+  *
+  *   - [[Running]] — executing normally; may be waiting for an activity, timer, or external event.
+  *   - [[Completed]] — finished successfully; output is available via [[WorkflowSnapshot.serializedOutput]].
+  *   - [[ContinuedAsNew]] — restarted with new input via [[WorkflowContext.continueAsNew]]; history cleared.
+  *   - [[Failed]] — terminated due to an unhandled exception in workflow logic.
+  *   - [[Canceled]] — cancelled by the runtime or via an explicit API call.
+  *   - [[Terminated]] — forcibly stopped via [[WorkflowCapability.terminate]].
+  *   - [[Pending]] — scheduled but not yet started (placement in progress).
+  *   - [[Suspended]] — paused via [[WorkflowCapability.suspend]]; resumes via [[WorkflowCapability.resume]].
+  */
 enum WorkflowStatus:
   case Running
   case Completed
@@ -125,7 +171,25 @@ enum WorkflowStatus:
   case Pending
   case Suspended
 
-/** A snapshot of a workflow instance's current state. */
+/** A point-in-time snapshot of a workflow instance's state.
+  *
+  * Returned by [[WorkflowCapability.getStatus]] and [[WorkflowCapability.waitForCompletion]].
+  *
+  * @param name
+  *   The [[WorkflowName]] (canonical class name) that identifies the workflow type.
+  * @param instanceId
+  *   The unique [[WorkflowInstanceId]] of this instance.
+  * @param status
+  *   Current [[WorkflowStatus]] of the instance.
+  * @param createdAt
+  *   When the instance was created (UTC).
+  * @param lastUpdatedAt
+  *   When the instance last changed state (UTC).
+  * @param serializedInput
+  *   The JSON-encoded workflow input, if one was provided at start.
+  * @param serializedOutput
+  *   The JSON-encoded workflow output set by [[WorkflowContext.complete]], if completed.
+  */
 final case class WorkflowSnapshot(
     name: WorkflowName,
     instanceId: WorkflowInstanceId,

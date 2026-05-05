@@ -2,6 +2,12 @@ package dapr.safe
 
 import language.experimental.safe
 
+/** The registered type name of a virtual actor class.
+  *
+  * Must not be empty. Must match the name used in the [[DaprApp]] actor registration and in any `ActorDefinition`
+  * annotation or equivalent configuration so that the Dapr runtime can route invocations to the correct actor
+  * implementation.
+  */
 opaque type ActorType = String
 object ActorType:
   def apply(s: String): ActorType =

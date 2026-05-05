@@ -105,7 +105,14 @@ trait PubSubCapability extends scala.caps.ExclusiveCapability:
   /** Publish multiple entries to `topic` in a single call. */
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult
 
-/** Companion-object API for [[PubSubCapability]]. */
+/** Companion-object API for [[PubSubCapability]].
+  *
+  * Forwards to the `PubSubCapability` in the enclosing `using` context:
+  * {{{
+  *   def placeOrder(order: Order)(using PubSubCapability): Unit =
+  *     PubSubCapability.publish(Topic("orders"), order)
+  * }}}
+  */
 @scala.caps.assumeSafe
 object PubSubCapability:
   def publish[T: JsonCodec](topic: Topic, data: T)(using cap: PubSubCapability): Unit =
@@ -135,7 +142,14 @@ trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
   /** Invoke a remote method with no request body (HTTP GET). */
   def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName): Resp
 
-/** Companion-object API for [[ServiceInvocationCapability]]. */
+/** Companion-object API for [[ServiceInvocationCapability]].
+  *
+  * Forwards to the `ServiceInvocationCapability` in the enclosing `using` context:
+  * {{{
+  *   def getUser(id: String)(using ServiceInvocationCapability): User =
+  *     ServiceInvocationCapability.invoke(AppId("user-service"), MethodName("get"), id)[User]
+  * }}}
+  */
 @scala.caps.assumeSafe
 object ServiceInvocationCapability:
   def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec](using
@@ -160,7 +174,14 @@ trait SecretsCapability extends scala.caps.ExclusiveCapability:
   /** Retrieve all secrets in the store as a flat key→value map. */
   def getBulk(): Map[SecretKey, String]
 
-/** Companion-object API for [[SecretsCapability]]. */
+/** Companion-object API for [[SecretsCapability]].
+  *
+  * Forwards to the `SecretsCapability` in the enclosing `using` context:
+  * {{{
+  *   def dbPassword()(using SecretsCapability): String =
+  *     SecretsCapability.get(SecretKey("db-password")).getOrElse("default")
+  * }}}
+  */
 @scala.caps.assumeSafe
 object SecretsCapability:
   def get(key: SecretKey)(using cap: SecretsCapability): Option[String] =
@@ -186,7 +207,15 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
     */
   def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable
 
-/** Companion-object API for [[ConfigurationCapability]]. */
+/** Companion-object API for [[ConfigurationCapability]].
+  *
+  * Forwards to the `ConfigurationCapability` in the enclosing `using` context:
+  * {{{
+  *   def featureFlag()(using ConfigurationCapability): Boolean =
+  *     ConfigurationCapability.get(Seq(ConfigKey("feature-x")))
+  *       .get(ConfigKey("feature-x")).exists(_.value == "true")
+  * }}}
+  */
 @scala.caps.assumeSafe
 object ConfigurationCapability:
   def get(keys: Seq[ConfigKey])(using
@@ -213,7 +242,14 @@ trait BindingsCapability extends scala.caps.ExclusiveCapability:
   /** Fire-and-forget binding invocation (no response expected). */
   def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req): Unit
 
-/** Companion-object API for [[BindingsCapability]]. */
+/** Companion-object API for [[BindingsCapability]].
+  *
+  * Forwards to the `BindingsCapability` in the enclosing `using` context:
+  * {{{
+  *   def sendEmail(msg: EmailRequest)(using BindingsCapability): Unit =
+  *     BindingsCapability.invokeOneWay(BindingOperation("create"), msg)
+  * }}}
+  */
 @scala.caps.assumeSafe
 object BindingsCapability:
   def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec](using
@@ -238,7 +274,17 @@ trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
   /** Release a previously acquired lock. */
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus
 
-/** Companion-object API for [[DistributedLockCapability]]. */
+/** Companion-object API for [[DistributedLockCapability]].
+  *
+  * Forwards to the `DistributedLockCapability` in the enclosing `using` context:
+  * {{{
+  *   def withLock(resource: LockResourceId, owner: LockOwner)(using DistributedLockCapability): Boolean =
+  *     if DistributedLockCapability.tryLock(resource, owner, expirySeconds = 30) then
+  *       try doWork(); true
+  *       finally DistributedLockCapability.unlock(resource, owner)
+  *     else false
+  * }}}
+  */
 @scala.caps.assumeSafe
 object DistributedLockCapability:
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int)(using
@@ -272,7 +318,14 @@ trait ActorCapability extends scala.caps.ExclusiveCapability:
   /** Invoke an actor method that returns no value. */
   def invokeVoid(method: MethodName): Unit
 
-/** Companion-object API for [[ActorCapability]]. */
+/** Companion-object API for [[ActorCapability]].
+  *
+  * Forwards to the `ActorCapability` in the enclosing `using` context:
+  * {{{
+  *   def getBalance(id: ActorId)(using cap: ActorCapability): Balance =
+  *     ActorCapability.invoke(MethodName("GetBalance"), BalanceRequest(id))[Balance]
+  * }}}
+  */
 @scala.caps.assumeSafe
 object ActorCapability:
   def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec](using
@@ -326,7 +379,17 @@ trait WorkflowCapability extends scala.caps.ExclusiveCapability:
   /** Purge the workflow instance state from the state store. Returns `true` if purged. */
   def purge(instanceId: WorkflowInstanceId): Boolean
 
-/** Companion-object API for [[WorkflowCapability]]. */
+/** Companion-object API for [[WorkflowCapability]].
+  *
+  * Forwards to the `WorkflowCapability` in the enclosing `using` context:
+  * {{{
+  *   def processOrder(order: Order)(using WorkflowCapability): WorkflowInstanceId =
+  *     WorkflowCapability.start[Order](
+  *       WorkflowName(classOf[OrderWorkflow].getCanonicalName),
+  *       order,
+  *     )
+  * }}}
+  */
 @scala.caps.assumeSafe
 object WorkflowCapability:
   def start(name: WorkflowName)(using cap: WorkflowCapability): WorkflowInstanceId =

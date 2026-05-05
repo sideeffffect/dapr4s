@@ -228,11 +228,17 @@ abstract class WorkflowActivity[I, O](using
 // ActivityDef — typeclass linking an activity class to its I/O types
 // ---------------------------------------------------------------------------
 
-/** Typeclass that links an activity class `A` to its input/output types.
+/** Typeclass that links a [[WorkflowActivity]] subclass `A` to its input/output types.
   *
-  * Instances are derived automatically for every [[WorkflowActivity]] subclass that has `JsonCodec` instances in scope.
-  * Users never construct or name this type directly — the compiler resolves it when calling
-  * [[WorkflowContext.callActivity]].
+  * Instances are synthesised automatically by the compiler for every [[WorkflowActivity]] subclass
+  * that has `ClassTag[A]`, `JsonCodec[Input]`, and `JsonCodec[Output]` in scope. Users never
+  * construct or name this type — the compiler resolves it when calling
+  * [[WorkflowContext.callActivity]]:
+  * {{{
+  *   // The compiler finds ActivityDef[ProcessPaymentActivity] and resolves
+  *   // d.Input = OrderRequest and d.Output = PaymentResult automatically.
+  *   val task = WorkflowContext.callActivity[ProcessPaymentActivity](input)
+  * }}}
   */
 @scala.caps.assumeSafe
 sealed abstract class ActivityDef[A]:
@@ -244,6 +250,7 @@ sealed abstract class ActivityDef[A]:
 
 @scala.caps.assumeSafe
 object ActivityDef:
+  /** Auto-derives an [[ActivityDef]] for any `WorkflowActivity[I, O]` subclass with a `ClassTag`. */
   given derived[I, O, A <: WorkflowActivity[I, O]](using
       ct: ClassTag[A],
       ic: JsonCodec[I],
