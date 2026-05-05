@@ -127,7 +127,11 @@ private[safe] final class HttpActorContext(
       val bytes = body.getBytes("UTF-8").nn
       conn.getOutputStream.nn.write(bytes)
       conn.getOutputStream.nn.close()
-      val _ = conn.getResponseCode
+      val code = conn.getResponseCode
+      if code >= 400 then
+        val errStream = conn.getErrorStream
+        val errBody = if errStream != null then new String(errStream.nn.readAllBytes().nn, "UTF-8") else ""
+        throw RuntimeException(s"Dapr API error $code at $url: $errBody")
     finally conn.disconnect()
 
   private def deleteRequest(url: String): Unit =

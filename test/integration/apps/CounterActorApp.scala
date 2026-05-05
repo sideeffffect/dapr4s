@@ -47,6 +47,13 @@ object CounterActorHandlers:
       java.time.Duration.ofMinutes(1),
     )
 
+  def scheduleQuickReset(ignored: Unit)(using ActorContext): Unit =
+    ActorContext.registerReminder(
+      ResetReminder,
+      "reset",
+      java.time.Duration.ofSeconds(1),
+    )
+
   def cancelReset(ignored: Unit)(using ActorContext): Unit =
     ActorContext.unregisterReminder(ResetReminder)
 
@@ -57,7 +64,7 @@ object CounterActorHandlers:
     ActorContext.registerTimer(
       IncrTimer,
       IncrRequest(1),
-      java.time.Duration.ofMillis(500),
+      java.time.Duration.ofSeconds(1),
     )
 
   def onAutoIncrement(req: IncrRequest)(using ActorContext): Unit =
@@ -76,6 +83,7 @@ object CounterActorHandlers:
               ActorMethodRoute[Unit, CounterState](MethodName("reset"))(reset),
               ActorMethodRoute[Unit, Unit](MethodName("schedule-reset"))(scheduleReset),
               ActorMethodRoute[Unit, Unit](MethodName("cancel-reset"))(cancelReset),
+              ActorMethodRoute[Unit, Unit](MethodName("schedule-quick-reset"))(scheduleQuickReset),
               ActorMethodRoute[Unit, Unit](MethodName("schedule-auto-increment"))(scheduleAutoIncrement),
             ),
             reminders = List(
