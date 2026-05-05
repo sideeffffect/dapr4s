@@ -1,6 +1,7 @@
 package dapr.safe.internal
 
 import dapr.safe.*
+import java.net.URI
 import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal
 
@@ -18,7 +19,7 @@ import scala.util.control.NonFatal
 private[safe] final class HttpActorContext(
     private val actorType: ActorType,
     private val actorId: ActorId,
-    private val sidecarHttpEndpoint: String,
+    private val sidecarHttpEndpoint: URI,
 ) extends ActorContext:
 
   // ---- URL helpers -----------------------------------------------------------

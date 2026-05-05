@@ -2,6 +2,7 @@ package dapr.safe.test.integration
 
 import dapr.safe.*
 import dapr.safe.internal.{DaprAppServer, HttpActorContext}
+import java.net.URI
 import dapr.safe.test.unit.DaprServerTestBase
 import dapr.safe.test.integration.apps.*
 import io.dapr.testcontainers.{DaprContainer, Component}
@@ -66,7 +67,11 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     val server = DaprAppServer(
       CounterActorHandlers.daprApp,
       mkActorCtx = (actorType, actorId, _) =>
-        new HttpActorContext(actorType, actorId, s"http://localhost:${sidecarPortRef.get()}").asInstanceOf[ActorContext],
+        new HttpActorContext(
+          actorType,
+          actorId,
+          URI.create(s"http://localhost:${sidecarPortRef.get()}"),
+        ).asInstanceOf[ActorContext],
     )
     appServerThread = Some(Thread.ofVirtual().start(() => server.startAndBlock(appPort)))
     waitForPort(appPort, 5000)
@@ -89,7 +94,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
     // Sidecar is now running.  Point HttpActorContext at the actual sidecar port so that
     // actor state reads/writes go to the real Dapr state store.
-    val sidecarPort = java.net.URI.create(c.httpEndpoint).getPort
+    val sidecarPort = c.httpEndpoint.getPort
     sidecarPortRef.set(sidecarPort)
 
     // Wait for actor type to be registered with the placement service.

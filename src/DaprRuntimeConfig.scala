@@ -1,6 +1,7 @@
 package dapr.safe
 
-import language.experimental.safe
+import java.net.URI
+import scala.concurrent.duration.{FiniteDuration, Duration, DurationInt}
 
 /** Top-level configuration for [[DaprRuntime]].
   *
@@ -23,13 +24,13 @@ case class DaprRuntimeConfig(
 /** Sidecar connection configuration, mapping to [[io.dapr.config.Properties]] constants.
   *
   * @param httpEndpoint
-  *   Base URL of the Dapr sidecar HTTP API (e.g. `"http://localhost:3500"`).
+  *   URI of the Dapr sidecar HTTP API (default `http://localhost:3500`).
   * @param grpcEndpoint
-  *   Base URL of the Dapr sidecar gRPC API (e.g. `"http://localhost:50001"`).
+  *   URI of the Dapr sidecar gRPC API (default `http://localhost:50001`).
   * @param apiToken
   *   Optional API token for authenticating requests to the sidecar (Dapr `DAPR_API_TOKEN`).
-  * @param httpClientReadTimeoutSeconds
-  *   Read timeout for the underlying OkHttp client in seconds (default 60).
+  * @param httpClientReadTimeout
+  *   Read timeout for the underlying OkHttp client (default 60 seconds).
   * @param httpClientMaxRequests
   *   Maximum number of concurrent HTTP requests (default 1024).
   * @param httpClientMaxIdleConnections
@@ -40,10 +41,10 @@ case class DaprRuntimeConfig(
   *   Maximum inbound gRPC metadata size in bytes (default 8 KiB).
   * @param grpcEnableKeepAlive
   *   Whether to enable gRPC keep-alive pings (default false).
-  * @param grpcKeepAliveTimeSeconds
-  *   Interval between keep-alive pings in seconds (default 10, only used when keep-alive is enabled).
-  * @param grpcKeepAliveTimeoutSeconds
-  *   Timeout for keep-alive ping responses in seconds (default 5).
+  * @param grpcKeepAliveTime
+  *   Interval between keep-alive pings (default 10 seconds, only used when keep-alive is enabled).
+  * @param grpcKeepAliveTimeout
+  *   Timeout for keep-alive ping responses (default 5 seconds).
   * @param grpcKeepAliveWithoutCalls
   *   Whether to send keep-alive pings even when there are no active calls (default true).
   * @param grpcTlsInsecure
@@ -56,28 +57,28 @@ case class DaprRuntimeConfig(
   *   Path to the CA certificate file (PEM) for server verification. Required when TLS is enabled.
   * @param maxRetries
   *   Number of times to retry failed SDK calls (default 0 = no retries).
-  * @param timeoutSeconds
-  *   Global call timeout in seconds; 0 means no timeout (default 0).
+  * @param timeout
+  *   Global call timeout; [[Duration.Zero]] means no timeout (default no timeout).
   */
 case class SidecarConfig(
-    httpEndpoint: String = "http://localhost:3500",
-    grpcEndpoint: String = "http://localhost:50001",
+    httpEndpoint: URI = URI.create("http://localhost:3500"),
+    grpcEndpoint: URI = URI.create("http://localhost:50001"),
     apiToken: Option[ApiToken] = None,
-    httpClientReadTimeoutSeconds: Int = 60,
+    httpClientReadTimeout: FiniteDuration = 60.seconds,
     httpClientMaxRequests: Int = 1024,
     httpClientMaxIdleConnections: Int = 128,
     grpcMaxInboundMessageSizeBytes: Int = 4194304,
     grpcMaxInboundMetadataSizeBytes: Int = 8192,
     grpcEnableKeepAlive: Boolean = false,
-    grpcKeepAliveTimeSeconds: Int = 10,
-    grpcKeepAliveTimeoutSeconds: Int = 5,
+    grpcKeepAliveTime: FiniteDuration = 10.seconds,
+    grpcKeepAliveTimeout: FiniteDuration = 5.seconds,
     grpcKeepAliveWithoutCalls: Boolean = true,
     grpcTlsInsecure: Boolean = true,
     grpcTlsCertPath: Option[String] = None,
     grpcTlsKeyPath: Option[String] = None,
     grpcTlsCaPath: Option[String] = None,
     maxRetries: Int = 0,
-    timeoutSeconds: Int = 0,
+    timeout: FiniteDuration = Duration.Zero,
 )
 
 /** Inbound HTTP app-server configuration.
@@ -86,23 +87,23 @@ case class SidecarConfig(
   *   Port on which [[dapr.safe.internal.DaprAppServer]] listens (default 8080).
   * @param httpBacklog
   *   TCP accept backlog for [[com.sun.net.httpserver.HttpServer]] (0 = OS default).
-  * @param shutdownGraceSeconds
-  *   Seconds to allow in-flight requests to complete on JVM shutdown (default 2).
+  * @param shutdownGrace
+  *   Time to allow in-flight requests to complete on JVM shutdown (default 2 seconds).
   */
 case class AppServerConfig(
     port: DaprPort = DaprPort(8080),
     httpBacklog: Int = 0,
-    shutdownGraceSeconds: Int = 2,
+    shutdownGrace: FiniteDuration = 2.seconds,
 )
 
 /** Actor runtime configuration reported by the app to the Dapr sidecar via `GET /dapr/config`.
   *
   * @param actorIdleTimeout
-  *   How long an actor instance is kept idle before being deactivated (default "1h").
+  *   How long an actor instance is kept idle before being deactivated (default 1 hour).
   * @param actorScanInterval
-  *   How often the sidecar scans for idle actors to deactivate (default "30s").
+  *   How often the sidecar scans for idle actors to deactivate (default 30 seconds).
   * @param drainOngoingCallTimeout
-  *   How long to wait for an in-flight actor call to complete during rebalancing (default "30s").
+  *   How long to wait for an in-flight actor call to complete during rebalancing (default 30 seconds).
   * @param drainRebalancedActors
   *   Whether to wait for in-flight calls to finish before deactivating a rebalanced actor (default true).
   * @param reentrancy
@@ -113,9 +114,9 @@ case class AppServerConfig(
   *   Per-actor-type overrides for timeouts and reentrancy settings (default empty).
   */
 case class ActorRuntimeConfig(
-    actorIdleTimeout: DaprDuration = DaprDuration("1h"),
-    actorScanInterval: DaprDuration = DaprDuration("30s"),
-    drainOngoingCallTimeout: DaprDuration = DaprDuration("30s"),
+    actorIdleTimeout: DaprDuration = DaprDuration(1.hour),
+    actorScanInterval: DaprDuration = DaprDuration(30.seconds),
+    drainOngoingCallTimeout: DaprDuration = DaprDuration(30.seconds),
     drainRebalancedActors: Boolean = true,
     reentrancy: ActorReentrancyConfig = ActorReentrancyConfig(),
     remindersStoragePartitions: Int = 0,

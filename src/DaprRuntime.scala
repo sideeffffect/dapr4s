@@ -5,6 +5,7 @@ import io.dapr.client.{DaprClient, DaprClientBuilder}
 import io.dapr.config.Properties
 import io.dapr.actors.client.ActorClient
 import io.dapr.workflows.client.DaprWorkflowClient
+import java.net.URI
 import java.util.concurrent.atomic.AtomicReference
 
 /** Entry-point singleton that manages the [[DaprCapability]] lifecycle.
@@ -53,9 +54,9 @@ object DaprRuntime:
     val sc      = config.sidecar
     val builder = new DaprClientBuilder()
     builder
-      .withPropertyOverride(Properties.HTTP_ENDPOINT, sc.httpEndpoint)
-      .withPropertyOverride(Properties.GRPC_ENDPOINT, sc.grpcEndpoint)
-      .withPropertyOverride(Properties.HTTP_CLIENT_READ_TIMEOUT_SECONDS, sc.httpClientReadTimeoutSeconds.toString)
+      .withPropertyOverride(Properties.HTTP_ENDPOINT, sc.httpEndpoint.toString)
+      .withPropertyOverride(Properties.GRPC_ENDPOINT, sc.grpcEndpoint.toString)
+      .withPropertyOverride(Properties.HTTP_CLIENT_READ_TIMEOUT_SECONDS, sc.httpClientReadTimeout.toSeconds.toString)
       .withPropertyOverride(Properties.HTTP_CLIENT_MAX_REQUESTS, sc.httpClientMaxRequests.toString)
       .withPropertyOverride(Properties.HTTP_CLIENT_MAX_IDLE_CONNECTIONS, sc.httpClientMaxIdleConnections.toString)
       .withPropertyOverride(
@@ -67,12 +68,12 @@ object DaprRuntime:
         sc.grpcMaxInboundMetadataSizeBytes.toString,
       )
       .withPropertyOverride(Properties.GRPC_ENABLE_KEEP_ALIVE, sc.grpcEnableKeepAlive.toString)
-      .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_TIME_SECONDS, sc.grpcKeepAliveTimeSeconds.toString)
-      .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_TIMEOUT_SECONDS, sc.grpcKeepAliveTimeoutSeconds.toString)
+      .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_TIME_SECONDS, sc.grpcKeepAliveTime.toSeconds.toString)
+      .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_TIMEOUT_SECONDS, sc.grpcKeepAliveTimeout.toSeconds.toString)
       .withPropertyOverride(Properties.GRPC_KEEP_ALIVE_WITHOUT_CALLS, sc.grpcKeepAliveWithoutCalls.toString)
       .withPropertyOverride(Properties.GRPC_TLS_INSECURE, sc.grpcTlsInsecure.toString)
       .withPropertyOverride(Properties.MAX_RETRIES, sc.maxRetries.toString)
-      .withPropertyOverride(Properties.TIMEOUT, sc.timeoutSeconds.toString)
+      .withPropertyOverride(Properties.TIMEOUT, sc.timeout.toSeconds.toString)
     sc.apiToken.foreach(t => builder.withPropertyOverride(Properties.API_TOKEN, t.value))
     sc.grpcTlsCertPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CERT_PATH, p))
     sc.grpcTlsKeyPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_KEY_PATH, p))
@@ -152,7 +153,7 @@ object DaprRuntime:
       new internal.DaprAppServer(body).startAndBlock(
         port = config.appServer.port.value,
         sidecarHttpEndpoint = config.sidecar.httpEndpoint,
-        shutdownGraceSeconds = config.appServer.shutdownGraceSeconds,
+        shutdownGrace = config.appServer.shutdownGrace,
         httpBacklog = config.appServer.httpBacklog,
         actorConfig = config.actors,
       )
@@ -164,7 +165,7 @@ object DaprRuntime:
     *
     * See [[run]] for the full configuration API.
     */
-  def runWithEndpoints[T](httpEndpoint: String, grpcEndpoint: String)(
+  def runWithEndpoints[T](httpEndpoint: URI, grpcEndpoint: URI)(
       body: DaprCapability ?=> T,
   ): T =
     run(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = httpEndpoint, grpcEndpoint = grpcEndpoint)))(body)

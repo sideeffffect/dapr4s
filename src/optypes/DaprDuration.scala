@@ -1,19 +1,40 @@
 package dapr.safe
 
-import language.experimental.safe
+import scala.concurrent.duration.{FiniteDuration, Duration}
 
-/** Go-style duration string used by the Dapr actor runtime (e.g. "1h", "30s", "500ms").
+/** A non-negative duration used in Dapr actor runtime configuration.
   *
-  * Dapr accepts durations in Go format: one or more `<number><unit>` pairs where unit is one of
-  * `ns`, `us`, `µs`, `ms`, `s`, `m`, `h`.
+  * Backed by [[FiniteDuration]] for type-safe arithmetic and interoperability. Serialized to Go duration format (e.g.
+  * `"1h"`, `"30s"`, `"500ms"`) when sent to the Dapr sidecar via `GET /dapr/config`.
   */
-opaque type DaprDuration = String
+opaque type DaprDuration = FiniteDuration
 object DaprDuration:
-  private val pattern = raw"(\d+(\.\d+)?(ns|us|µs|ms|s|m|h))+".r
-  def apply(s: String): DaprDuration =
-    require(
-      pattern.matches(s),
-      s"Invalid Dapr duration: '$s' (expected Go duration like '1h', '30s', '500ms', '1h30m')",
-    )
-    s
-  extension (d: DaprDuration) def value: String = d
+  def apply(d: FiniteDuration): DaprDuration =
+    require(d.length >= 0, s"DaprDuration must be non-negative, got $d")
+    d
+
+  extension (d: DaprDuration)
+    def value: FiniteDuration = d
+
+    /** Serialize to Go duration format as expected by the Dapr sidecar `GET /dapr/config` response. */
+    def toGoString: String =
+      val nanos = d.toNanos
+      if nanos == 0L then "0s"
+      else
+        val h  = nanos / 3_600_000_000_000L
+        val r1 = nanos % 3_600_000_000_000L
+        val m  = r1   / 60_000_000_000L
+        val r2 = r1   % 60_000_000_000L
+        val s  = r2   / 1_000_000_000L
+        val r3 = r2   % 1_000_000_000L
+        val ms = r3   / 1_000_000L
+        val us = r3   % 1_000_000L / 1_000L
+        val ns = r3   % 1_000L
+        val sb = new StringBuilder
+        if h  > 0 then sb.append(h).append('h')
+        if m  > 0 then sb.append(m).append('m')
+        if s  > 0 then sb.append(s).append('s')
+        if ms > 0 then sb.append(ms).append("ms")
+        if us > 0 then sb.append(us).append("us")
+        if ns > 0 then sb.append(ns).append("ns")
+        sb.toString
