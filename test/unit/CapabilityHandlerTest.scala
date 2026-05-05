@@ -7,10 +7,10 @@ import munit.FunSuite
 import unsafeExceptions.canThrowAny
 import java.util.concurrent.ConcurrentHashMap
 
-/** Tests capability usage through real DaprAppServer HTTP dispatch.
+/** Tests DaprAppServer HTTP dispatch for actors and workflow structural properties.
   *
-  * Uses MockDaprCapability as the backend but exercises the full HTTP → DaprAppServer → handler → capability call
-  * chain.
+  * Actor tests use [[MockActorContext]] as the in-process actor state backend — there is no real Dapr actor
+  * runtime involved, so no sidecar is needed.
   */
 @scala.caps.assumeSafe
 class CapabilityHandlerTest extends FunSuite:
@@ -52,152 +52,6 @@ class CapabilityHandlerTest extends FunSuite:
       else null
     val resp = if stream == null then "" else new String(stream.nn.readAllBytes().nn, "UTF-8")
     (code, resp)
-
-  // -------------------------------------------------------------------------
-  // State capability through server dispatch
-  // -------------------------------------------------------------------------
-
-  test("unit: state save+get through DaprAppServer handler"):
-    val mock = MockDaprCapability()
-    given DaprCapability = mock
-    given StateCapability = mock.state(StoreName("store"))
-    val app = DaprApp(
-      invocations = List(
-        InvocationRoute[String, String](MethodName("save-item")) { v =>
-          try
-            StateCapability.save(StateKey("item"), v)
-            "saved"
-          catch case e: Exception => throw e
-        },
-        InvocationRoute[Unit, Option[String]](MethodName("get-item")) { _ =>
-          try StateCapability.get[String](StateKey("item"))
-          catch case e: Exception => throw e
-        },
-      ),
-    )
-    val server = new DaprAppServer(app)
-    val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
-    try
-      waitForPort(port)
-      httpPost(s"http://localhost:$port/save-item", "\"hello\"", "application/json")
-      val resp = httpPost(s"http://localhost:$port/get-item", "null", "application/json")
-      assert(resp.contains("hello"), s"Expected hello in response, got: $resp")
-    finally
-      thread.interrupt()
-      thread.join(2000)
-
-  test("unit: state missing key returns null through DaprAppServer handler"):
-    val mock = MockDaprCapability()
-    given DaprCapability = mock
-    given StateCapability = mock.state(StoreName("store"))
-    val app = DaprApp(
-      invocations = List(
-        InvocationRoute[Unit, Option[String]](MethodName("get-missing")) { _ =>
-          try StateCapability.get[String](StateKey("no-such-key"))
-          catch case e: Exception => throw e
-        },
-      ),
-    )
-    val server = new DaprAppServer(app)
-    val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
-    try
-      waitForPort(port)
-      val resp = httpPost(s"http://localhost:$port/get-missing", "null", "application/json")
-      assert(resp == "null", s"Expected null for missing key, got: $resp")
-    finally
-      thread.interrupt()
-      thread.join(2000)
-
-  test("unit: state overwrite returns updated value through DaprAppServer handler"):
-    val mock = MockDaprCapability()
-    given DaprCapability = mock
-    given StateCapability = mock.state(StoreName("store"))
-    val app = DaprApp(
-      invocations = List(
-        InvocationRoute[String, String](MethodName("upsert")) { v =>
-          try
-            StateCapability.save(StateKey("k"), v)
-            StateCapability.get[String](StateKey("k")).getOrElse("none")
-          catch case e: Exception => throw e
-        },
-      ),
-    )
-    val server = new DaprAppServer(app)
-    val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
-    try
-      waitForPort(port)
-      httpPost(s"http://localhost:$port/upsert", "\"first\"", "application/json")
-      val resp = httpPost(s"http://localhost:$port/upsert", "\"second\"", "application/json")
-      assert(resp.contains("second"), s"Expected second, got: $resp")
-    finally
-      thread.interrupt()
-      thread.join(2000)
-
-  // -------------------------------------------------------------------------
-  // PubSub through subscription handler
-  // -------------------------------------------------------------------------
-
-  test("unit: subscription handler can publish via PubSubCapability"):
-    val mock = MockDaprCapability()
-    given DaprCapability = mock
-    given PubSubCapability = mock.pubsub(PubSubName("ps"))
-    val app = DaprApp(
-      subscriptions = List(
-        Subscription[String](PubSubName("ps"), Topic("in-topic")) { event =>
-          try
-            PubSubCapability.publish(Topic("out-topic"), event.data + "-processed")
-            SubscriptionResult.Success
-          catch case e: Exception => throw e
-        },
-      ),
-    )
-    val server = new DaprAppServer(app)
-    val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
-    try
-      waitForPort(port)
-      val cloudEvent =
-        """{"specversion":"1.0","type":"x","source":"x","id":"1","topic":"in-topic",""" +
-          """"pubsubname":"ps","datacontenttype":"application/json","data":"msg"}"""
-      httpPost(s"http://localhost:$port/in-topic", cloudEvent, "application/json")
-      assertEquals(mock.publishedEvents.length, 1)
-      val (_, topic, payload, _) = mock.publishedEvents.head
-      assertEquals(topic, "out-topic")
-      assert(payload.contains("msg-processed"), s"Expected msg-processed in payload: $payload")
-    finally
-      thread.interrupt()
-      thread.join(2000)
-
-  // -------------------------------------------------------------------------
-  // Closed scope through server
-  // -------------------------------------------------------------------------
-
-  test("unit: handler using closed capability returns 500"):
-    val mock = MockDaprCapability()
-    given DaprCapability = mock
-    given StateCapability = mock.state(StoreName("store"))
-    val app = DaprApp(
-      invocations = List(
-        InvocationRoute[Unit, Option[String]](MethodName("get-after-close")) { _ =>
-          try StateCapability.get[String](StateKey("k"))
-          catch case e: Exception => throw e
-        },
-      ),
-    )
-    mock.close() // close before server processes any request
-    val server = new DaprAppServer(app)
-    val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
-    try
-      waitForPort(port)
-      val (code, _) = httpPostWithCode(s"http://localhost:$port/get-after-close", "null", "application/json")
-      assertEquals(code, 500)
-    finally
-      thread.interrupt()
-      thread.join(2000)
 
   // -------------------------------------------------------------------------
   // Actor dispatch through HTTP

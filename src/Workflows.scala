@@ -61,10 +61,9 @@ private[safe] final class TaskImpl[+O](
   def isDone: Boolean      = javaTask.isDone()
   def isCancelled: Boolean = javaTask.isCancelled()
   def await(): O           = compute()
-  // @assumeSafe on the method body because `f`'s captures flow into the new TaskImpl, but
-  // Task[U] (and TaskImpl, being @assumeSafe) is always treated as pure from the outside.
-  @scala.caps.assumeSafe
-  def map[U](f: O => U): Task[U] = new TaskImpl(javaTask, () => f(compute()))
+  // asInstanceOf: f's captures flow into the lambda inside TaskImpl, but Task[U] is @assumeSafe
+  // and always has an empty external capture set — the cast erases the capture annotation.
+  def map[U](f: O => U): Task[U] = new TaskImpl(javaTask, () => f(compute())).asInstanceOf[Task[U]]
 
 // ---------------------------------------------------------------------------
 // WorkflowContext — clean Scala wrapper over the Java workflow context
