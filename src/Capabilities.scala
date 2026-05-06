@@ -51,7 +51,7 @@ trait StateCapability extends scala.caps.ExclusiveCapability:
       key: StateKey,
       value: T,
       etag: ETag,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
       consistency: StateConsistency = StateConsistency.Default,
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,
   ): Option[ETagMismatchException]
@@ -112,7 +112,7 @@ object StateCapability:
       key: StateKey,
       value: T,
       etag: ETag,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
       consistency: StateConsistency = StateConsistency.Default,
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,
   )(using cap: StateCapability): Option[ETagMismatchException] =
@@ -147,7 +147,7 @@ trait PubSubCapability extends scala.caps.ExclusiveCapability:
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
       data: T,
-      metadata: Metadata,
+      metadata: Map[MetadataKey, MetadataValue],
   ): Unit
 
   /** Publish multiple entries to `topic` in a single call. */
@@ -168,7 +168,7 @@ object PubSubCapability:
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
       data: T,
-      metadata: Metadata,
+      metadata: Map[MetadataKey, MetadataValue],
   )(using cap: PubSubCapability): Unit =
     cap.publishWithMetadata(topic, data, metadata)
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]])(using
@@ -195,22 +195,14 @@ trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
       method: MethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec]: Resp
 
-  /** Invoke a remote method with no request body.
+  /** Invoke a remote method with no request body (GET, no metadata).
     *
-    * @param httpMethod
-    *   HTTP verb to use; defaults to [[HttpMethod.Get]]
-    * @param metadata
-    *   optional gRPC/HTTP metadata headers forwarded to the target service
+    * Use the body-bearing overload to pass a non-default HTTP verb or metadata headers.
     */
-  def invokeGet[Resp: JsonCodec](
-      appId: AppId,
-      method: MethodName,
-      httpMethod: HttpMethod = HttpMethod.Get,
-      metadata: Metadata = Metadata.empty,
-  ): Resp
+  def invoke[Resp: JsonCodec](appId: AppId, method: MethodName): Resp
 
 /** Companion-object API for [[ServiceInvocationCapability]].
   *
@@ -227,16 +219,11 @@ object ServiceInvocationCapability:
       method: MethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec](using cap: ServiceInvocationCapability): Resp =
     cap.invoke(appId, method, data, httpMethod, metadata)[Resp]
-  def invokeGet[Resp: JsonCodec](
-      appId: AppId,
-      method: MethodName,
-      httpMethod: HttpMethod = HttpMethod.Get,
-      metadata: Metadata = Metadata.empty,
-  )(using cap: ServiceInvocationCapability): Resp =
-    cap.invokeGet(appId, method, httpMethod, metadata)
+  def invoke[Resp: JsonCodec](appId: AppId, method: MethodName)(using cap: ServiceInvocationCapability): Resp =
+    cap.invoke(appId, method)
 
 // ---------------------------------------------------------------------------
 
@@ -250,14 +237,14 @@ trait SecretsCapability extends scala.caps.ExclusiveCapability:
     * @param metadata
     *   optional metadata passed to the secrets backend
     */
-  def get(key: SecretKey, metadata: Metadata = Metadata.empty): Option[SecretValue]
+  def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue] = Map.empty): Option[SecretValue]
 
   /** Retrieve all secrets in the store as a flat key→value map.
     *
     * @param metadata
     *   optional metadata passed to the secrets backend
     */
-  def getBulk(metadata: Metadata = Metadata.empty): Map[SecretKey, SecretValue]
+  def getBulk(metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[SecretKey, SecretValue]
 
 /** Companion-object API for [[SecretsCapability]].
   *
@@ -269,9 +256,13 @@ trait SecretsCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object SecretsCapability:
-  def get(key: SecretKey, metadata: Metadata = Metadata.empty)(using cap: SecretsCapability): Option[SecretValue] =
+  def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue] = Map.empty)(using
+      cap: SecretsCapability,
+  ): Option[SecretValue] =
     cap.get(key, metadata)
-  def getBulk(metadata: Metadata = Metadata.empty)(using cap: SecretsCapability): Map[SecretKey, SecretValue] =
+  def getBulk(metadata: Map[MetadataKey, MetadataValue] = Map.empty)(using
+      cap: SecretsCapability,
+  ): Map[SecretKey, SecretValue] =
     cap.getBulk(metadata)
 
 // ---------------------------------------------------------------------------
@@ -286,7 +277,7 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
     * @param metadata
     *   optional metadata passed to the configuration backend
     */
-  def get(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty): Map[ConfigKey, ConfigItem]
+  def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigKey, ConfigItem]
 
   /** Subscribe to live configuration changes for the given keys.
     *
@@ -297,7 +288,7 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
     * @param metadata
     *   optional metadata passed to the configuration backend
     */
-  def subscribe(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty)(
+  def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
       onChange: ConfigUpdate => Unit,
   ): AutoCloseable
 
@@ -312,11 +303,11 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object ConfigurationCapability:
-  def get(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty)(using
+  def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(using
       cap: ConfigurationCapability,
   ): Map[ConfigKey, ConfigItem] =
     cap.get(keys, metadata)
-  def subscribe(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty)(
+  def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
       onChange: ConfigUpdate => Unit,
   )(using cap: ConfigurationCapability): AutoCloseable =
     cap.subscribe(keys, metadata)(onChange)
@@ -337,7 +328,7 @@ trait BindingsCapability extends scala.caps.ExclusiveCapability:
   def invoke[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec]: Option[Resp]
 
   /** Fire-and-forget binding invocation (no response expected).
@@ -348,7 +339,7 @@ trait BindingsCapability extends scala.caps.ExclusiveCapability:
   def invokeOneWay[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   ): Unit
 
 /** Companion-object API for [[BindingsCapability]].
@@ -364,13 +355,13 @@ object BindingsCapability:
   def invoke[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec](using cap: BindingsCapability): Option[Resp] =
     cap.invoke(operation, data, metadata)[Resp]
   def invokeOneWay[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )(using cap: BindingsCapability): Unit =
     cap.invokeOneWay(operation, data, metadata)
 
@@ -426,7 +417,7 @@ trait ActorCapability extends scala.caps.ExclusiveCapability:
   def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp
 
   /** Invoke an actor method with no request body. */
-  def invokeGet[Resp: JsonCodec](method: MethodName): Resp
+  def invoke[Resp: JsonCodec](method: MethodName): Resp
 
   /** Invoke an actor method that returns no value. */
   def invokeVoid(method: MethodName): Unit
@@ -445,8 +436,8 @@ object ActorCapability:
       cap: ActorCapability,
   ): Resp =
     cap.invoke(method, data)[Resp]
-  def invokeGet[Resp: JsonCodec](method: MethodName)(using cap: ActorCapability): Resp =
-    cap.invokeGet(method)
+  def invoke[Resp: JsonCodec](method: MethodName)(using cap: ActorCapability): Resp =
+    cap.invoke(method)
   def invokeVoid(method: MethodName)(using cap: ActorCapability): Unit =
     cap.invokeVoid(method)
 

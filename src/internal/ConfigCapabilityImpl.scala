@@ -17,20 +17,20 @@ private[safe] final class ConfigCapabilityImpl(
 
   private val log = Logger.getLogger("dapr.safe.internal.ConfigCapabilityImpl")
 
-  def get(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty): Map[ConfigKey, ConfigItem] =
+  def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigKey, ConfigItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
-    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
+    val javaMeta = toJavaMeta(metadata)
     scope.client
       .getConfiguration(storeName.value, javaKeys, javaMeta)
       .awaitResult()
       .toOption
       .fold(Map.empty)(_.asScala.map { case (k, item) => ConfigKey(k) -> toConfigItem(k, item) }.toMap)
 
-  def subscribe(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty)(
+  def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
       onChange: ConfigUpdate => Unit,
   ): AutoCloseable =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
-    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
+    val javaMeta = toJavaMeta(metadata)
     val storeNameStr = storeName.value
     val flux = scope.client.subscribeConfiguration(storeNameStr, javaKeys, javaMeta)
     val sub = flux.subscribe { (response: SubscribeConfigurationResponse | Null) =>
@@ -49,5 +49,10 @@ private[safe] final class ConfigCapabilityImpl(
       key = ConfigKey(k),
       value = item.getValue.toOption.getOrElse(""),
       version = ConfigVersion(item.getVersion.toOption.getOrElse("")),
-      metadata = Metadata.from(item.getMetadata.toOption.fold(Map.empty)(_.asScala.toMap)),
+      metadata = item.getMetadata.toOption.fold(Map.empty[MetadataKey, MetadataValue]) { jm =>
+        jm.asScala.map { case (mk, mv) => MetadataKey(mk) -> MetadataValue(mv) }.toMap
+      },
     )
+
+  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+    m.map { case (k, v) => k.value -> v.value }.asJava

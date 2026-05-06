@@ -12,8 +12,8 @@ private[safe] final class SecretsCapabilityImpl(
     val storeName: SecretStoreName,
 ) extends SecretsCapability:
 
-  def get(key: SecretKey, metadata: Metadata = Metadata.empty): Option[SecretValue] =
-    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
+  def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue] = Map.empty): Option[SecretValue] =
+    val javaMeta = toJavaMeta(metadata)
     scope.client
       .getSecret(storeName.value, key.value, javaMeta)
       .awaitResult()
@@ -26,8 +26,8 @@ private[safe] final class SecretsCapabilityImpl(
           .map(SecretValue(_))
       }
 
-  def getBulk(metadata: Metadata = Metadata.empty): Map[SecretKey, SecretValue] =
-    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
+  def getBulk(metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[SecretKey, SecretValue] =
+    val javaMeta = toJavaMeta(metadata)
     scope.client
       .getBulkSecret(storeName.value, javaMeta)
       .awaitResult()
@@ -39,3 +39,6 @@ private[safe] final class SecretsCapabilityImpl(
           }
         }.toMap
       }
+
+  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+    m.map { case (k, v) => k.value -> v.value }.asJava

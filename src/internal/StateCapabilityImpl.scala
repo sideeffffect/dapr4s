@@ -96,13 +96,13 @@ private[safe] final class StateCapabilityImpl(
       key: StateKey,
       value: T,
       etag: ETag,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
       consistency: StateConsistency = StateConsistency.Default,
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,
   ): Option[ETagMismatchException] =
     val json = summon[JsonCodec[T]].encode(value)
     val opts = new StateOptions(toJavaConsistency(consistency), toJavaConcurrency(concurrency))
-    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.map { case (k, v) => k.value -> v.value }.asJava
     try
       scope.client.saveState(storeName.value, key.value, etag.value, json, javaMeta, opts).awaitResult(): Unit
       None

@@ -39,5 +39,5 @@ class InvokerIntegrationTest extends FunSuite with TestContainersForAll:
       DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val invoker = summon[DaprCapability].invoker
         intercept[io.dapr.exceptions.DaprException]:
-          invoker.invokeGet[String](AppId("no-such-app"), MethodName("method"))
+          invoker.invoke[String](AppId("no-such-app"), MethodName("method"))
     }

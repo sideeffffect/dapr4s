@@ -46,7 +46,7 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
         ps.publishWithMetadata(
           Topic("test-topic"),
           "with-metadata",
-          Metadata("traceparent" -> "00-abc-def-01"),
+          Map(MetadataKey("traceparent") -> MetadataValue("00-abc-def-01")),
         )
     }
 

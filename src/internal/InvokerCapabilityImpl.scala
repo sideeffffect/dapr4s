@@ -28,26 +28,22 @@ private[safe] final class InvokerCapabilityImpl(
       method: MethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
-      metadata: Metadata = Metadata.empty,
+      metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec]: Resp =
     val reqJson = summon[JsonCodec[Req]].encode(data)
-    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
-    val rawResp: String | Null = scope.client
-      .invokeMethod(appId.value, method.value, reqJson, toJava(httpMethod), javaMeta, classOf[String])
-      .awaitResult()
-    decodeResp[Resp](rawResp)
+    val javaMeta = toJavaMeta(metadata)
+    JsonCodec.decodeOrThrow[Resp](
+      scope.client
+        .invokeMethod(appId.value, method.value, reqJson, toJava(httpMethod), javaMeta, classOf[String])
+        .awaitResult(),
+    )
 
-  def invokeGet[Resp: JsonCodec](
-      appId: AppId,
-      method: MethodName,
-      httpMethod: HttpMethod = HttpMethod.Get,
-      metadata: Metadata = Metadata.empty,
-  ): Resp =
-    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
-    val rawResp: String | Null = scope.client
-      .invokeMethod(appId.value, method.value, toJava(httpMethod), javaMeta, classOf[String])
-      .awaitResult()
-    decodeResp[Resp](rawResp)
+  def invoke[Resp: JsonCodec](appId: AppId, method: MethodName): Resp =
+    JsonCodec.decodeOrThrow[Resp](
+      scope.client
+        .invokeMethod(appId.value, method.value, HttpExtension.GET, java.util.Collections.emptyMap(), classOf[String])
+        .awaitResult(),
+    )
 
-  private def decodeResp[T: JsonCodec](raw: String | Null): T =
-    JsonCodec.decodeOrThrow[T](raw)
+  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+    m.map { case (k, v) => k.value -> v.value }.asJava

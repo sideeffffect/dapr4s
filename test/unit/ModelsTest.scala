@@ -72,11 +72,11 @@ class ModelsTest extends FunSuite:
 
   test("ConfigItem default metadata is empty"):
     val item = ConfigItem(ConfigKey("key"), "value", ConfigVersion("1"))
-    assertEquals(item.metadata, Metadata.empty)
+    assertEquals(item.metadata, Map.empty)
 
   test("ConfigItem with metadata"):
-    val item = ConfigItem(ConfigKey("key"), "value", ConfigVersion("2"), Metadata("a" -> "b"))
-    assertEquals(item.metadata.toMap("a"), "b")
+    val item = ConfigItem(ConfigKey("key"), "value", ConfigVersion("2"), Map(MetadataKey("a") -> MetadataValue("b")))
+    assertEquals(item.metadata(MetadataKey("a")), MetadataValue("b"))
 
   // -------------------------------------------------------------------------
   // StateOp

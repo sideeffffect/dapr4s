@@ -31,7 +31,7 @@ private[safe] final class ActorCapabilityImpl(
     val rawResult = proxy.invokeMethod(method.value, requestBytes, classOf[Array[Byte]]).awaitResult()
     decodeResponse[Resp](method, rawResult)
 
-  def invokeGet[Resp: JsonCodec](method: MethodName): Resp =
+  def invoke[Resp: JsonCodec](method: MethodName): Resp =
     val rawResult = proxy.invokeMethod(method.value, classOf[Array[Byte]]).awaitResult()
     decodeResponse[Resp](method, rawResult)
 

@@ -28,7 +28,7 @@ final case class ConfigItem(
     key: ConfigKey,
     value: String,
     version: ConfigVersion,
-    metadata: Metadata = Metadata.empty,
+    metadata: Map[MetadataKey, MetadataValue] = Map.empty,
 )
 
 // ---------------------------------------------------------------------------
