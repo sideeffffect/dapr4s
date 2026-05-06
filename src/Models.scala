@@ -27,8 +27,8 @@ final case class StateEntry[T](value: Option[T], etag: Option[ETag])
 final case class ConfigItem(
     key: ConfigKey,
     value: String,
-    version: String,
-    metadata: Map[String, String] = Map.empty,
+    version: ConfigVersion,
+    metadata: Metadata = Metadata.empty,
 )
 
 // ---------------------------------------------------------------------------
@@ -48,12 +48,12 @@ object StateOp:
     * Values are encoded at construction time to avoid type erasure issues when the operation is processed in
     * [[StateCapability.transaction]]. Use the companion `apply[T]` smart constructor to encode a typed value.
     */
-  final case class UpsertOp(key: StateKey, encodedValue: String, etag: Option[ETag]) extends StateOp
+  final case class UpsertOp(key: StateKey, encodedValue: SerializedJson, etag: Option[ETag]) extends StateOp
 
   object UpsertOp:
     /** Smart constructor that encodes `value` immediately using its [[JsonCodec]]. */
     def apply[T: JsonCodec](key: StateKey, value: T, etag: Option[ETag] = None): UpsertOp =
-      new UpsertOp(key, summon[JsonCodec[T]].encode(value), etag)
+      new UpsertOp(key, SerializedJson(summon[JsonCodec[T]].encode(value)), etag)
 
   /** Delete a key with an optional ETag for optimistic concurrency. */
   final case class DeleteOp(key: StateKey, etag: Option[ETag] = None) extends StateOp
@@ -196,6 +196,6 @@ final case class WorkflowSnapshot(
     status: WorkflowStatus,
     createdAt: java.time.Instant,
     lastUpdatedAt: java.time.Instant,
-    serializedInput: Option[String],
-    serializedOutput: Option[String],
+    serializedInput: Option[SerializedJson],
+    serializedOutput: Option[SerializedJson],
 )

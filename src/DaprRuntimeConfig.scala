@@ -74,9 +74,9 @@ case class SidecarConfig(
     grpcKeepAliveTimeout: FiniteDuration = 5.seconds,
     grpcKeepAliveWithoutCalls: Boolean = true,
     grpcTlsInsecure: Boolean = true,
-    grpcTlsCertPath: Option[String] = None,
-    grpcTlsKeyPath: Option[String] = None,
-    grpcTlsCaPath: Option[String] = None,
+    grpcTlsCertPath: Option[FilePath] = None,
+    grpcTlsKeyPath: Option[FilePath] = None,
+    grpcTlsCaPath: Option[FilePath] = None,
     maxRetries: Int = 0,
     timeout: FiniteDuration = Duration.Zero,
 )

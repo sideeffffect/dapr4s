@@ -18,10 +18,10 @@ private[safe] final class PubSubCapabilityImpl(
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
       data: T,
-      metadata: Map[String, String],
+      metadata: Metadata,
   ): Unit =
     val json = summon[JsonCodec[T]].encode(data)
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     scope.client
       .publishEvent(pubsubName.value, topic.value, json, javaMeta)
       .awaitResult(): Unit

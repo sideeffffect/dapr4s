@@ -122,7 +122,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
         assertEquals(snap.status, WorkflowStatus.Completed)
         val output = snap.serializedOutput
         assert(output.isDefined, "completed workflow should have serialized output")
-        val result = JsonCodec.decodeOrThrow[CounterState](output.get)
+        val result = output.get.decodeOrThrow[CounterState]
         assertEquals(result, CounterState(10)) // AddActivity doubles input: 5 * 2 = 10
     }
 

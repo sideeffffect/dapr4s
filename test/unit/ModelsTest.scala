@@ -71,12 +71,12 @@ class ModelsTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("ConfigItem default metadata is empty"):
-    val item = ConfigItem(ConfigKey("key"), "value", "1")
-    assertEquals(item.metadata, Map.empty)
+    val item = ConfigItem(ConfigKey("key"), "value", ConfigVersion("1"))
+    assertEquals(item.metadata, Metadata.empty)
 
   test("ConfigItem with metadata"):
-    val item = ConfigItem(ConfigKey("key"), "value", "2", Map("a" -> "b"))
-    assertEquals(item.metadata("a"), "b")
+    val item = ConfigItem(ConfigKey("key"), "value", ConfigVersion("2"), Metadata("a" -> "b"))
+    assertEquals(item.metadata.toMap("a"), "b")
 
   // -------------------------------------------------------------------------
   // StateOp
@@ -85,7 +85,7 @@ class ModelsTest extends FunSuite:
   test("UpsertOp stores key and pre-encoded value"):
     val op = StateOp.UpsertOp[String](StateKey("k"), "v")
     assertEquals(op.key, StateKey("k"))
-    assert(op.encodedValue.nonEmpty)
+    assert(op.encodedValue.value.nonEmpty)
     assertEquals(op.etag, None)
 
   test("UpsertOp with etag"):
@@ -216,11 +216,11 @@ class ModelsTest extends FunSuite:
       status = WorkflowStatus.Running,
       createdAt = now,
       lastUpdatedAt = now,
-      serializedInput = Some("{\"x\":1}"),
+      serializedInput = Some(SerializedJson("{\"x\":1}")),
       serializedOutput = None,
     )
     assertEquals(snap.name.value, "MyWorkflow")
     assertEquals(snap.instanceId.value, "inst-1")
     assertEquals(snap.status, WorkflowStatus.Running)
-    assertEquals(snap.serializedInput, Some("{\"x\":1}"))
+    assertEquals(snap.serializedInput, Some(SerializedJson("{\"x\":1}")))
     assertEquals(snap.serializedOutput, None)

@@ -28,10 +28,10 @@ private[safe] final class InvokerCapabilityImpl(
       method: MethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
-      metadata: Map[String, String] = Map.empty,
+      metadata: Metadata = Metadata.empty,
   )[Resp: JsonCodec]: Resp =
     val reqJson = summon[JsonCodec[Req]].encode(data)
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     val rawResp: String | Null = scope.client
       .invokeMethod(appId.value, method.value, reqJson, toJava(httpMethod), javaMeta, classOf[String])
       .awaitResult()
@@ -41,9 +41,9 @@ private[safe] final class InvokerCapabilityImpl(
       appId: AppId,
       method: MethodName,
       httpMethod: HttpMethod = HttpMethod.Get,
-      metadata: Map[String, String] = Map.empty,
+      metadata: Metadata = Metadata.empty,
   ): Resp =
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     val rawResp: String | Null = scope.client
       .invokeMethod(appId.value, method.value, toJava(httpMethod), javaMeta, classOf[String])
       .awaitResult()

@@ -13,10 +13,10 @@ private[safe] final class BindingsCapabilityImpl(
   def invoke[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
-      metadata: Map[String, String] = Map.empty,
+      metadata: Metadata = Metadata.empty,
   )[Resp: JsonCodec]: Option[Resp] =
     val reqJson = summon[JsonCodec[Req]].encode(data)
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     val rawResp: String | Null = scope.client
       .invokeBinding(bindingName.value, operation.value, reqJson, javaMeta, classOf[String])
       .awaitResult()
@@ -26,10 +26,10 @@ private[safe] final class BindingsCapabilityImpl(
   def invokeOneWay[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
-      metadata: Map[String, String] = Map.empty,
+      metadata: Metadata = Metadata.empty,
   ): Unit =
     val reqJson = summon[JsonCodec[Req]].encode(data)
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     // No Void+metadata overload exists; use the typed overload and discard the result.
     scope.client
       .invokeBinding(bindingName.value, operation.value, reqJson, javaMeta, classOf[String])

@@ -17,20 +17,20 @@ private[safe] final class ConfigCapabilityImpl(
 
   private val log = Logger.getLogger("dapr.safe.internal.ConfigCapabilityImpl")
 
-  def get(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty): Map[ConfigKey, ConfigItem] =
+  def get(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty): Map[ConfigKey, ConfigItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     scope.client
       .getConfiguration(storeName.value, javaKeys, javaMeta)
       .awaitResult()
       .toOption
       .fold(Map.empty)(_.asScala.map { case (k, item) => ConfigKey(k) -> toConfigItem(k, item) }.toMap)
 
-  def subscribe(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty)(
+  def subscribe(keys: Seq[ConfigKey], metadata: Metadata = Metadata.empty)(
       onChange: ConfigUpdate => Unit,
   ): AutoCloseable =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     val storeNameStr = storeName.value
     val flux = scope.client.subscribeConfiguration(storeNameStr, javaKeys, javaMeta)
     val sub = flux.subscribe { (response: SubscribeConfigurationResponse | Null) =>
@@ -48,6 +48,6 @@ private[safe] final class ConfigCapabilityImpl(
     ConfigItem(
       key = ConfigKey(k),
       value = item.getValue.toOption.getOrElse(""),
-      version = item.getVersion.toOption.getOrElse(""),
-      metadata = item.getMetadata.toOption.fold(Map.empty)(_.asScala.toMap),
+      version = ConfigVersion(item.getVersion.toOption.getOrElse("")),
+      metadata = Metadata.from(item.getMetadata.toOption.fold(Map.empty)(_.asScala.toMap)),
     )

@@ -96,13 +96,13 @@ private[safe] final class StateCapabilityImpl(
       key: StateKey,
       value: T,
       etag: ETag,
-      metadata: Map[String, String] = Map.empty,
+      metadata: Metadata = Metadata.empty,
       consistency: StateConsistency = StateConsistency.Default,
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,
   ): Option[ETagMismatchException] =
     val json = summon[JsonCodec[T]].encode(value)
     val opts = new StateOptions(toJavaConsistency(consistency), toJavaConcurrency(concurrency))
-    val javaMeta: java.util.Map[String, String] = metadata.asJava
+    val javaMeta: java.util.Map[String, String] = metadata.toMap.asJava
     try
       scope.client.saveState(storeName.value, key.value, etag.value, json, javaMeta, opts).awaitResult(): Unit
       None
@@ -156,8 +156,8 @@ private[safe] final class StateCapabilityImpl(
     op match
       case StateOp.UpsertOp(key, encodedValue, etag) =>
         val daprState = etag match
-          case Some(e) => new DaprState[String](key.value, encodedValue, e.value, null)
-          case None    => new DaprState[String](key.value, encodedValue, null, null)
+          case Some(e) => new DaprState[String](key.value, encodedValue.value, e.value, null)
+          case None    => new DaprState[String](key.value, encodedValue.value, null, null)
         new TransactionalStateOperation[String](OperationType.UPSERT, daprState)
 
       case StateOp.DeleteOp(key, etag) =>

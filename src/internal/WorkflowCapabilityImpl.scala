@@ -3,6 +3,7 @@ package dapr.safe.internal
 import dapr.safe.*
 import io.dapr.workflows.client.{DaprWorkflowClient, NewWorkflowOptions, WorkflowRuntimeStatus, WorkflowState}
 import scala.concurrent.duration.FiniteDuration
+import NullOps.*
 
 @scala.caps.assumeSafe
 private[safe] final class WorkflowCapabilityImpl(
@@ -56,8 +57,8 @@ private[safe] final class WorkflowCapabilityImpl(
       status = toStatus(state.getRuntimeStatus),
       createdAt = state.getCreatedAt.nn,
       lastUpdatedAt = state.getLastUpdatedAt.nn,
-      serializedInput = Option(state.getSerializedInput),
-      serializedOutput = Option(state.getSerializedOutput),
+      serializedInput = state.getSerializedInput.toOption.map(SerializedJson(_)),
+      serializedOutput = state.getSerializedOutput.toOption.map(SerializedJson(_)),
     )
 
   private def toStatus(rs: WorkflowRuntimeStatus | Null): WorkflowStatus =

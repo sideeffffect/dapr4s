@@ -44,17 +44,17 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, Option[String]](MethodName("get")) { key =>
+                InvocationRoute[String, Option[SecretValue]](MethodName("get")) { key =>
                   try SecretsCapability.get(SecretKey(key))
                   catch case e: Exception => throw e
                 },
               ),
             ),
           ) { port =>
-            val resp = JsonCodec.decodeOrThrow[Option[String]](
+            val resp = JsonCodec.decodeOrThrow[Option[SecretValue]](
               httpPost(s"http://localhost:$port/get", s""""$SeededKey""""),
             )
-            assertEquals(resp, Some(SeededValue))
+            assertEquals(resp, Some(SecretValue(SeededValue)))
           }
         }
     }
@@ -66,7 +66,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, Option[String]](MethodName("get")) { key =>
+                InvocationRoute[String, Option[SecretValue]](MethodName("get")) { key =>
                   try SecretsCapability.get(SecretKey(key))
                   catch case e: Exception => throw e
                 },
@@ -74,11 +74,13 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
             ),
           ) { port =>
             val r1 =
-              JsonCodec.decodeOrThrow[Option[String]](httpPost(s"http://localhost:$port/get", s""""$SeededKey""""))
+              JsonCodec.decodeOrThrow[Option[SecretValue]](httpPost(s"http://localhost:$port/get", s""""$SeededKey""""))
             val r2 =
-              JsonCodec.decodeOrThrow[Option[String]](httpPost(s"http://localhost:$port/get", s""""$SeededKey2""""))
-            assertEquals(r1, Some(SeededValue))
-            assertEquals(r2, Some(SeededValue2))
+              JsonCodec.decodeOrThrow[Option[SecretValue]](
+                httpPost(s"http://localhost:$port/get", s""""$SeededKey2""""),
+              )
+            assertEquals(r1, Some(SecretValue(SeededValue)))
+            assertEquals(r2, Some(SecretValue(SeededValue2)))
           }
         }
     }
@@ -93,7 +95,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
             DaprApp(invocations =
               List(
                 InvocationRoute[Unit, Map[String, String]](MethodName("bulk")) { _ =>
-                  try SecretsCapability.getBulk().map { case (k, v) => k.value -> v }
+                  try SecretsCapability.getBulk().map { case (k, v) => k.value -> v.value }
                   catch case e: Exception => throw e
                 },
               ),

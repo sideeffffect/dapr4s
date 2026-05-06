@@ -68,7 +68,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
                     PubSubCapability.publishWithMetadata(
                       Topic("orders"),
                       msg,
-                      Map("traceId" -> "abc123"),
+                      Metadata("traceId" -> "abc123"),
                     )
                     "ok"
                   catch case e: Exception => throw e
