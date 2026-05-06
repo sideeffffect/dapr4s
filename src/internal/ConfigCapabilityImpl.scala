@@ -17,19 +17,22 @@ private[safe] final class ConfigCapabilityImpl(
 
   private val log = Logger.getLogger("dapr.safe.internal.ConfigCapabilityImpl")
 
-  def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem] =
+  def get(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty): Map[ConfigKey, ConfigItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
-    val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
+    val javaMeta: java.util.Map[String, String] = metadata.asJava
     scope.client
-      .getConfiguration(storeName.value, javaKeys, emptyMeta)
+      .getConfiguration(storeName.value, javaKeys, javaMeta)
       .awaitResult()
       .toOption
       .fold(Map.empty)(_.asScala.map { case (k, item) => ConfigKey(k) -> toConfigItem(k, item) }.toMap)
 
-  def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable =
+  def subscribe(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty)(
+      onChange: ConfigUpdate => Unit,
+  ): AutoCloseable =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
+    val javaMeta: java.util.Map[String, String] = metadata.asJava
     val storeNameStr = storeName.value
-    val flux = scope.client.subscribeConfiguration(storeNameStr, javaKeys, java.util.Collections.emptyMap())
+    val flux = scope.client.subscribeConfiguration(storeNameStr, javaKeys, javaMeta)
     val sub = flux.subscribe { (response: SubscribeConfigurationResponse | Null) =>
       response.toOption.foreach { r =>
         r.getItems.toOption.foreach { jItems =>

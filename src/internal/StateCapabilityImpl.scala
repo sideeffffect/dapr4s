@@ -8,23 +8,53 @@ import scala.jdk.CollectionConverters.*
 import MonoOps.*
 import NullOps.*
 
+private object StateOpsConversions:
+  def toJavaConsistency(c: StateConsistency): StateOptions.Consistency | Null =
+    c match
+      case StateConsistency.Default  => null
+      case StateConsistency.Eventual => StateOptions.Consistency.EVENTUAL
+      case StateConsistency.Strong   => StateOptions.Consistency.STRONG
+
+  def toJavaConcurrency(c: StateConcurrency): StateOptions.Concurrency | Null =
+    c match
+      case StateConcurrency.Default    => null
+      case StateConcurrency.FirstWrite => StateOptions.Concurrency.FIRST_WRITE
+      case StateConcurrency.LastWrite  => StateOptions.Concurrency.LAST_WRITE
+
 @scala.caps.assumeSafe
 private[safe] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StoreName,
 ) extends StateCapability:
 
-  def get[T: JsonCodec](key: StateKey): Option[T] =
-    scope.client
-      .getState(storeName.value, key.value, classOf[String])
-      .awaitResult()
-      .toOption
-      .flatMap(s => s.getValue.toOption.filterNot(_.isEmpty))
-      .map(decode[T])
+  import StateOpsConversions.*
 
-  def getWithETag[T: JsonCodec](key: StateKey): StateEntry[T] =
-    scope.client
-      .getState(storeName.value, key.value, classOf[String])
+  def get[T: JsonCodec](key: StateKey, consistency: StateConsistency = StateConsistency.Default): Option[T] =
+    val mono =
+      if consistency == StateConsistency.Default then scope.client.getState(storeName.value, key.value, classOf[String])
+      else
+        scope.client.getState(
+          storeName.value,
+          key.value,
+          new StateOptions(toJavaConsistency(consistency), null),
+          classOf[String],
+        )
+    mono.awaitResult().toOption.flatMap(s => s.getValue.toOption.filterNot(_.isEmpty)).map(decode[T])
+
+  def getWithETag[T: JsonCodec](
+      key: StateKey,
+      consistency: StateConsistency = StateConsistency.Default,
+  ): StateEntry[T] =
+    val mono =
+      if consistency == StateConsistency.Default then scope.client.getState(storeName.value, key.value, classOf[String])
+      else
+        scope.client.getState(
+          storeName.value,
+          key.value,
+          new StateOptions(toJavaConsistency(consistency), null),
+          classOf[String],
+        )
+    mono
       .awaitResult()
       .toOption
       .fold(StateEntry[T](None, None)) { state =>
@@ -62,19 +92,32 @@ private[safe] final class StateCapabilityImpl(
       }.asJava
       scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
 
-  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Option[ETagMismatchException] =
+  def saveWithETag[T: JsonCodec](
+      key: StateKey,
+      value: T,
+      etag: ETag,
+      metadata: Map[String, String] = Map.empty,
+      consistency: StateConsistency = StateConsistency.Default,
+      concurrency: StateConcurrency = StateConcurrency.FirstWrite,
+  ): Option[ETagMismatchException] =
     val json = summon[JsonCodec[T]].encode(value)
-    val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
+    val opts = new StateOptions(toJavaConsistency(consistency), toJavaConcurrency(concurrency))
+    val javaMeta: java.util.Map[String, String] = metadata.asJava
     try
-      scope.client.saveState(storeName.value, key.value, etag.value, json, opts).awaitResult(): Unit
+      scope.client.saveState(storeName.value, key.value, etag.value, json, javaMeta, opts).awaitResult(): Unit
       None
     catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
 
   def delete(key: StateKey): Unit =
     scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
 
-  def deleteWithETag(key: StateKey, etag: ETag): Option[ETagMismatchException] =
-    val opts = new StateOptions(null, StateOptions.Concurrency.FIRST_WRITE)
+  def deleteWithETag(
+      key: StateKey,
+      etag: ETag,
+      consistency: StateConsistency = StateConsistency.Default,
+      concurrency: StateConcurrency = StateConcurrency.FirstWrite,
+  ): Option[ETagMismatchException] =
+    val opts = new StateOptions(toJavaConsistency(consistency), toJavaConcurrency(concurrency))
     try
       scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(): Unit
       None

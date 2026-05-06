@@ -14,11 +14,19 @@ import scala.concurrent.duration.FiniteDuration
 trait StateCapability extends scala.caps.ExclusiveCapability:
   val storeName: StoreName
 
-  /** Fetch a value; returns `None` if the key does not exist. */
-  def get[T: JsonCodec](key: StateKey): Option[T]
+  /** Fetch a value; returns `None` if the key does not exist.
+    *
+    * @param consistency
+    *   read consistency level; [[StateConsistency.Default]] uses the store's own default
+    */
+  def get[T: JsonCodec](key: StateKey, consistency: StateConsistency = StateConsistency.Default): Option[T]
 
-  /** Fetch a value together with the current server-side ETag. */
-  def getWithETag[T: JsonCodec](key: StateKey): StateEntry[T]
+  /** Fetch a value together with the current server-side ETag.
+    *
+    * @param consistency
+    *   read consistency level; [[StateConsistency.Default]] uses the store's own default
+    */
+  def getWithETag[T: JsonCodec](key: StateKey, consistency: StateConsistency = StateConsistency.Default): StateEntry[T]
 
   /** Fetch multiple values by key in a single call. */
   def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]]
@@ -31,15 +39,39 @@ trait StateCapability extends scala.caps.ExclusiveCapability:
 
   /** Save a value only if the provided ETag matches the server-side ETag. Returns `None` on success, `Some(e)` if the
     * ETag did not match.
+    *
+    * @param metadata
+    *   optional metadata forwarded to the state store
+    * @param consistency
+    *   write consistency level; [[StateConsistency.Default]] uses the store's own default
+    * @param concurrency
+    *   concurrency control; [[StateConcurrency.FirstWrite]] is the typical safe default for optimistic locking
     */
-  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag): Option[ETagMismatchException]
+  def saveWithETag[T: JsonCodec](
+      key: StateKey,
+      value: T,
+      etag: ETag,
+      metadata: Map[String, String] = Map.empty,
+      consistency: StateConsistency = StateConsistency.Default,
+      concurrency: StateConcurrency = StateConcurrency.FirstWrite,
+  ): Option[ETagMismatchException]
 
   /** Unconditionally delete a key (no-op if the key is absent). */
   def delete(key: StateKey): Unit
 
   /** Delete a key only if the provided ETag matches. Returns `None` on success, `Some(e)` if the ETag did not match.
+    *
+    * @param consistency
+    *   write consistency level; [[StateConsistency.Default]] uses the store's own default
+    * @param concurrency
+    *   concurrency control; [[StateConcurrency.FirstWrite]] is the typical safe default for optimistic locking
     */
-  def deleteWithETag(key: StateKey, etag: ETag): Option[ETagMismatchException]
+  def deleteWithETag(
+      key: StateKey,
+      etag: ETag,
+      consistency: StateConsistency = StateConsistency.Default,
+      concurrency: StateConcurrency = StateConcurrency.FirstWrite,
+  ): Option[ETagMismatchException]
 
   /** Execute multiple state operations atomically (all-or-nothing). */
   def transaction(ops: Seq[StateOp]): Unit
@@ -58,10 +90,16 @@ trait StateCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object StateCapability:
-  def get[T: JsonCodec](key: StateKey)(using cap: StateCapability): Option[T] =
-    cap.get(key)
-  def getWithETag[T: JsonCodec](key: StateKey)(using cap: StateCapability): StateEntry[T] =
-    cap.getWithETag(key)
+  def get[T: JsonCodec](
+      key: StateKey,
+      consistency: StateConsistency = StateConsistency.Default,
+  )(using cap: StateCapability): Option[T] =
+    cap.get(key, consistency)
+  def getWithETag[T: JsonCodec](
+      key: StateKey,
+      consistency: StateConsistency = StateConsistency.Default,
+  )(using cap: StateCapability): StateEntry[T] =
+    cap.getWithETag(key, consistency)
   def getBulk[T: JsonCodec](keys: Seq[StateKey])(using
       cap: StateCapability,
   ): Map[StateKey, StateEntry[T]] =
@@ -70,14 +108,24 @@ object StateCapability:
     cap.save(key, value)
   def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)])(using cap: StateCapability): Unit =
     cap.saveBulk(entries)
-  def saveWithETag[T: JsonCodec](key: StateKey, value: T, etag: ETag)(using
-      cap: StateCapability,
-  ): Option[ETagMismatchException] =
-    cap.saveWithETag(key, value, etag)
+  def saveWithETag[T: JsonCodec](
+      key: StateKey,
+      value: T,
+      etag: ETag,
+      metadata: Map[String, String] = Map.empty,
+      consistency: StateConsistency = StateConsistency.Default,
+      concurrency: StateConcurrency = StateConcurrency.FirstWrite,
+  )(using cap: StateCapability): Option[ETagMismatchException] =
+    cap.saveWithETag(key, value, etag, metadata, consistency, concurrency)
   def delete(key: StateKey)(using cap: StateCapability): Unit =
     cap.delete(key)
-  def deleteWithETag(key: StateKey, etag: ETag)(using cap: StateCapability): Option[ETagMismatchException] =
-    cap.deleteWithETag(key, etag)
+  def deleteWithETag(
+      key: StateKey,
+      etag: ETag,
+      consistency: StateConsistency = StateConsistency.Default,
+      concurrency: StateConcurrency = StateConcurrency.FirstWrite,
+  )(using cap: StateCapability): Option[ETagMismatchException] =
+    cap.deleteWithETag(key, etag, consistency, concurrency)
   def transaction(ops: Seq[StateOp])(using cap: StateCapability): Unit =
     cap.transaction(ops)
   def queryState[T: JsonCodec](query: StateQuery)(using
@@ -134,13 +182,35 @@ object PubSubCapability:
 @scala.caps.assumeSafe
 trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
 
-  /** Invoke a remote method with a request body (HTTP POST). `Req` is inferred from `data`; `Resp` is specified at the
-    * call site: {{{invoker.invoke(appId, method, requestData)[ResponseType]}}}
+  /** Invoke a remote method with a request body. `Req` is inferred from `data`; `Resp` is specified at the call site:
+    * {{{invoker.invoke(appId, method, requestData)[ResponseType]}}}
+    *
+    * @param httpMethod
+    *   HTTP verb to use; defaults to [[HttpMethod.Post]]
+    * @param metadata
+    *   optional gRPC/HTTP metadata headers forwarded to the target service
     */
-  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec]: Resp
+  def invoke[Req: JsonCodec](
+      appId: AppId,
+      method: MethodName,
+      data: Req,
+      httpMethod: HttpMethod = HttpMethod.Post,
+      metadata: Map[String, String] = Map.empty,
+  )[Resp: JsonCodec]: Resp
 
-  /** Invoke a remote method with no request body (HTTP GET). */
-  def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName): Resp
+  /** Invoke a remote method with no request body.
+    *
+    * @param httpMethod
+    *   HTTP verb to use; defaults to [[HttpMethod.Get]]
+    * @param metadata
+    *   optional gRPC/HTTP metadata headers forwarded to the target service
+    */
+  def invokeGet[Resp: JsonCodec](
+      appId: AppId,
+      method: MethodName,
+      httpMethod: HttpMethod = HttpMethod.Get,
+      metadata: Map[String, String] = Map.empty,
+  ): Resp
 
 /** Companion-object API for [[ServiceInvocationCapability]].
   *
@@ -152,14 +222,21 @@ trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object ServiceInvocationCapability:
-  def invoke[Req: JsonCodec](appId: AppId, method: MethodName, data: Req)[Resp: JsonCodec](using
-      cap: ServiceInvocationCapability,
-  ): Resp =
-    cap.invoke(appId, method, data)[Resp]
-  def invokeGet[Resp: JsonCodec](appId: AppId, method: MethodName)(using
-      cap: ServiceInvocationCapability,
-  ): Resp =
-    cap.invokeGet(appId, method)
+  def invoke[Req: JsonCodec](
+      appId: AppId,
+      method: MethodName,
+      data: Req,
+      httpMethod: HttpMethod = HttpMethod.Post,
+      metadata: Map[String, String] = Map.empty,
+  )[Resp: JsonCodec](using cap: ServiceInvocationCapability): Resp =
+    cap.invoke(appId, method, data, httpMethod, metadata)[Resp]
+  def invokeGet[Resp: JsonCodec](
+      appId: AppId,
+      method: MethodName,
+      httpMethod: HttpMethod = HttpMethod.Get,
+      metadata: Map[String, String] = Map.empty,
+  )(using cap: ServiceInvocationCapability): Resp =
+    cap.invokeGet(appId, method, httpMethod, metadata)
 
 // ---------------------------------------------------------------------------
 
@@ -168,11 +245,19 @@ object ServiceInvocationCapability:
 trait SecretsCapability extends scala.caps.ExclusiveCapability:
   val storeName: SecretStoreName
 
-  /** Retrieve a single named secret value. Returns `None` if absent. */
-  def get(key: SecretKey): Option[String]
+  /** Retrieve a single named secret value. Returns `None` if absent.
+    *
+    * @param metadata
+    *   optional metadata passed to the secrets backend
+    */
+  def get(key: SecretKey, metadata: Map[String, String] = Map.empty): Option[String]
 
-  /** Retrieve all secrets in the store as a flat key→value map. */
-  def getBulk(): Map[SecretKey, String]
+  /** Retrieve all secrets in the store as a flat key→value map.
+    *
+    * @param metadata
+    *   optional metadata passed to the secrets backend
+    */
+  def getBulk(metadata: Map[String, String] = Map.empty): Map[SecretKey, String]
 
 /** Companion-object API for [[SecretsCapability]].
   *
@@ -184,10 +269,10 @@ trait SecretsCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object SecretsCapability:
-  def get(key: SecretKey)(using cap: SecretsCapability): Option[String] =
-    cap.get(key)
-  def getBulk()(using cap: SecretsCapability): Map[SecretKey, String] =
-    cap.getBulk()
+  def get(key: SecretKey, metadata: Map[String, String] = Map.empty)(using cap: SecretsCapability): Option[String] =
+    cap.get(key, metadata)
+  def getBulk(metadata: Map[String, String] = Map.empty)(using cap: SecretsCapability): Map[SecretKey, String] =
+    cap.getBulk(metadata)
 
 // ---------------------------------------------------------------------------
 
@@ -196,16 +281,25 @@ object SecretsCapability:
 trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
   val storeName: ConfigStoreName
 
-  /** Retrieve one or more configuration items by key. */
-  def get(keys: Seq[ConfigKey]): Map[ConfigKey, ConfigItem]
+  /** Retrieve one or more configuration items by key.
+    *
+    * @param metadata
+    *   optional metadata passed to the configuration backend
+    */
+  def get(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty): Map[ConfigKey, ConfigItem]
 
   /** Subscribe to live configuration changes for the given keys.
     *
     * `onChange` is called on a background thread whenever the sidecar delivers an update. Returns an `AutoCloseable`
     * that stops the subscription when closed. The subscription is also stopped when the enclosing [[DaprCapability]] is
     * closed.
+    *
+    * @param metadata
+    *   optional metadata passed to the configuration backend
     */
-  def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit): AutoCloseable
+  def subscribe(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty)(
+      onChange: ConfigUpdate => Unit,
+  ): AutoCloseable
 
 /** Companion-object API for [[ConfigurationCapability]].
   *
@@ -218,14 +312,14 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object ConfigurationCapability:
-  def get(keys: Seq[ConfigKey])(using
+  def get(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty)(using
       cap: ConfigurationCapability,
   ): Map[ConfigKey, ConfigItem] =
-    cap.get(keys)
-  def subscribe(keys: Seq[ConfigKey])(onChange: ConfigUpdate => Unit)(using
-      cap: ConfigurationCapability,
-  ): AutoCloseable =
-    cap.subscribe(keys)(onChange)
+    cap.get(keys, metadata)
+  def subscribe(keys: Seq[ConfigKey], metadata: Map[String, String] = Map.empty)(
+      onChange: ConfigUpdate => Unit,
+  )(using cap: ConfigurationCapability): AutoCloseable =
+    cap.subscribe(keys, metadata)(onChange)
 
 // ---------------------------------------------------------------------------
 
@@ -236,11 +330,26 @@ trait BindingsCapability extends scala.caps.ExclusiveCapability:
 
   /** Invoke a binding operation that may return a response. `Req` is inferred from `data`; `Resp` is specified at the
     * call site: {{{binding.invoke(operation, requestData)[ResponseType]}}}
+    *
+    * @param metadata
+    *   optional metadata forwarded to the binding component
     */
-  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec]: Option[Resp]
+  def invoke[Req: JsonCodec](
+      operation: BindingOperation,
+      data: Req,
+      metadata: Map[String, String] = Map.empty,
+  )[Resp: JsonCodec]: Option[Resp]
 
-  /** Fire-and-forget binding invocation (no response expected). */
-  def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req): Unit
+  /** Fire-and-forget binding invocation (no response expected).
+    *
+    * @param metadata
+    *   optional metadata forwarded to the binding component
+    */
+  def invokeOneWay[Req: JsonCodec](
+      operation: BindingOperation,
+      data: Req,
+      metadata: Map[String, String] = Map.empty,
+  ): Unit
 
 /** Companion-object API for [[BindingsCapability]].
   *
@@ -252,14 +361,18 @@ trait BindingsCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object BindingsCapability:
-  def invoke[Req: JsonCodec](operation: BindingOperation, data: Req)[Resp: JsonCodec](using
-      cap: BindingsCapability,
-  ): Option[Resp] =
-    cap.invoke(operation, data)[Resp]
-  def invokeOneWay[Req: JsonCodec](operation: BindingOperation, data: Req)(using
-      cap: BindingsCapability,
-  ): Unit =
-    cap.invokeOneWay(operation, data)
+  def invoke[Req: JsonCodec](
+      operation: BindingOperation,
+      data: Req,
+      metadata: Map[String, String] = Map.empty,
+  )[Resp: JsonCodec](using cap: BindingsCapability): Option[Resp] =
+    cap.invoke(operation, data, metadata)[Resp]
+  def invokeOneWay[Req: JsonCodec](
+      operation: BindingOperation,
+      data: Req,
+      metadata: Map[String, String] = Map.empty,
+  )(using cap: BindingsCapability): Unit =
+    cap.invokeOneWay(operation, data, metadata)
 
 // ---------------------------------------------------------------------------
 

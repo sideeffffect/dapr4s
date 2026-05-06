@@ -12,9 +12,10 @@ private[safe] final class SecretsCapabilityImpl(
     val storeName: SecretStoreName,
 ) extends SecretsCapability:
 
-  def get(key: SecretKey): Option[String] =
+  def get(key: SecretKey, metadata: Map[String, String] = Map.empty): Option[String] =
+    val javaMeta: java.util.Map[String, String] = metadata.asJava
     scope.client
-      .getSecret(storeName.value, key.value)
+      .getSecret(storeName.value, key.value, javaMeta)
       .awaitResult()
       .toOption
       .filterNot(_.isEmpty)
@@ -23,9 +24,10 @@ private[safe] final class SecretsCapabilityImpl(
         sm.get(key.value).orElse(if sm.sizeIs == 1 then sm.valuesIterator.nextOption() else None)
       }
 
-  def getBulk(): Map[SecretKey, String] =
+  def getBulk(metadata: Map[String, String] = Map.empty): Map[SecretKey, String] =
+    val javaMeta: java.util.Map[String, String] = metadata.asJava
     scope.client
-      .getBulkSecret(storeName.value)
+      .getBulkSecret(storeName.value, javaMeta)
       .awaitResult()
       .toOption
       .fold(Map.empty) { result =>
