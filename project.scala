@@ -13,9 +13,9 @@
 //> using dep "io.dapr:dapr-sdk-actors:1.17.2"
 //> using dep "io.dapr:dapr-sdk-workflows:1.17.2"
 //> using dep "com.lihaoyi::upickle:3.3.1"
-//> using dep "org.scalameta::munit:1.3.0"
-//> using dep "com.dimafeng::testcontainers-scala-munit:0.43.6"
-//> using dep "io.dapr:testcontainers-dapr:1.17.2"
+//> using test.dep "org.scalameta::munit:1.3.0"
+//> using test.dep "com.dimafeng::testcontainers-scala-munit:0.43.6"
+//> using test.dep "io.dapr:testcontainers-dapr:1.17.2"
 // testcontainers-scala 0.43.6 pulls TC 1.21.1; testcontainers-dapr 1.17.2 pulls TC 1.21.4.
 // Both resolve to 1.21.4 with no conflict. Upgrade to testcontainers-scala 0.44+ only after
 // testcontainers-dapr ships a TC 2.x-compatible release (fix merged to dapr/java-sdk master,
