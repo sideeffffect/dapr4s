@@ -1,7 +1,7 @@
-package dapr.safe.test.unit
+package dapr4s.test.unit
 
-import dapr.safe.*
-import dapr.safe.internal.DaprAppServer
+import dapr4s.*
+import dapr4s.internal.DaprAppServer
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 

@@ -1,12 +1,12 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*
 
 @scala.caps.assumeSafe
-private[safe] final class PubSubCapabilityImpl(
+private[dapr4s] final class PubSubCapabilityImpl(
     scope: DaprCapabilityImpl,
     val pubsubName: PubSubName,
 ) extends PubSubCapability:

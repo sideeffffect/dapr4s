@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** Thrown by [[StateCapability.saveWithETag]] and [[StateCapability.deleteWithETag]] when the provided ETag does not
   * match the current server-side value, indicating a concurrent modification.

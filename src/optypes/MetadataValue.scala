@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** A typed metadata map value, used in [[Map[MetadataKey, MetadataValue]]] parameters across Dapr capability methods.
   */

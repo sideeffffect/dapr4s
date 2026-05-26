@@ -1,12 +1,12 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.client.domain.{LockRequest, UnlockRequest, UnlockResponseStatus}
 import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[safe] final class LockCapabilityImpl(
+private[dapr4s] final class LockCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StoreName,
 ) extends DistributedLockCapability:

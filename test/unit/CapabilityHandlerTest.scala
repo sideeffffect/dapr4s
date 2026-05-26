@@ -1,7 +1,7 @@
-package dapr.safe.test.unit
+package dapr4s.test.unit
 
-import dapr.safe.*
-import dapr.safe.test.integration.apps.*
+import dapr4s.*
+import dapr4s.test.integration.apps.*
 import munit.FunSuite
 
 /** Structural smoke tests for DaprApp-based handlers that need no external infrastructure. */

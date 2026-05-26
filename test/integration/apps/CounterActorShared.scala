@@ -1,4 +1,4 @@
-package dapr.safe.test.integration.apps
+package dapr4s.test.integration.apps
 
 import upickle.default.{ReadWriter, macroRW}
 

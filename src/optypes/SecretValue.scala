@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** The plaintext value of a Dapr secret.
   *

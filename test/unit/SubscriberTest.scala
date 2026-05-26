@@ -1,6 +1,6 @@
-package dapr.safe.test.unit
+package dapr4s.test.unit
 
-import dapr.safe.*
+import dapr4s.*
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
@@ -61,7 +61,7 @@ class SubscriberTest extends FunSuite:
         },
       ),
     )
-    val server = new dapr.safe.internal.DaprAppServer(app)
+    val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
 
@@ -93,7 +93,7 @@ class SubscriberTest extends FunSuite:
         },
       ),
     )
-    val server = new dapr.safe.internal.DaprAppServer(app)
+    val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -117,7 +117,7 @@ class SubscriberTest extends FunSuite:
         Subscription[Int](PubSubName("ps"), Topic("numbers")) { _ => SubscriptionResult.Success },
       ),
     )
-    val server = new dapr.safe.internal.DaprAppServer(app)
+    val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -140,7 +140,7 @@ class SubscriberTest extends FunSuite:
         BindingRoute[String](BindingName("myqueue")) { payload => received = payload },
       ),
     )
-    val server = new dapr.safe.internal.DaprAppServer(app)
+    val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -157,7 +157,7 @@ class SubscriberTest extends FunSuite:
         InvocationRoute[String, String](MethodName("echo")) { req => "echo:" + req },
       ),
     )
-    val server = new dapr.safe.internal.DaprAppServer(app)
+    val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try
@@ -169,7 +169,7 @@ class SubscriberTest extends FunSuite:
       thread.join(2000)
 
   test("unit: DaprAppServer returns 404 for unknown route"):
-    val server = new dapr.safe.internal.DaprAppServer(DaprApp())
+    val server = new dapr4s.internal.DaprAppServer(DaprApp())
     val port = freePort()
     val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
     try

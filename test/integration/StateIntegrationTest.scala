@@ -1,6 +1,6 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite

@@ -1,11 +1,11 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import scala.concurrent.duration.FiniteDuration
 import unsafeExceptions.canThrowAny
 
 @scala.caps.assumeSafe
-private[safe] final class TaskJson[+O](
+private[dapr4s] final class TaskJson[+O](
     private val javaTask: io.dapr.durabletask.Task[String],
     private val error: String,
 )(using codec: JsonCodec[O])
@@ -22,7 +22,7 @@ private[safe] final class TaskJson[+O](
   def map[U](f: O => U): Task[U]^{f} = new TaskMap(this, f)
 
 @scala.caps.assumeSafe
-private[safe] final class TaskUnit(
+private[dapr4s] final class TaskUnit(
     private val javaTask: io.dapr.durabletask.Task[Void],
 ) extends Task[Unit]:
   def isDone: Boolean = javaTask.isDone()
@@ -31,7 +31,7 @@ private[safe] final class TaskUnit(
   def map[U](f: Unit => U): Task[U]^{f} = new TaskMap(this, f)
 
 @scala.caps.assumeSafe
-private[safe] final class TaskMap[O1, +O](
+private[dapr4s] final class TaskMap[O1, +O](
     private val task: Task[O1],
     private val g: O1 => O,
 ) extends Task[O]:
@@ -44,7 +44,7 @@ private[safe] final class TaskMap[O1, +O](
 
 /** Wraps `io.dapr.workflows.WorkflowContext` (Java SDK) and exposes the Scala [[WorkflowContext]] trait. */
 @scala.caps.assumeSafe
-private[safe] final class WorkflowContextImpl(
+private[dapr4s] final class WorkflowContextImpl(
     private val ctx: io.dapr.workflows.WorkflowContext,
 ) extends WorkflowContext:
 

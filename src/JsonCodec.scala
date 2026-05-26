@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 import unsafeExceptions.canThrowAny
 import scala.util.control.NonFatal

@@ -1,11 +1,11 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import MonoOps.*
 import scala.jdk.CollectionConverters.*
 
 @scala.caps.assumeSafe
-private[safe] final class BindingsCapabilityImpl(
+private[dapr4s] final class BindingsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val bindingName: BindingName,
 ) extends BindingsCapability:

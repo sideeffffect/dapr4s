@@ -1,6 +1,6 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.client.domain.{State as DaprState, StateOptions, TransactionalStateOperation}
 import io.dapr.client.domain.TransactionalStateOperation.OperationType
 
@@ -22,7 +22,7 @@ private object StateOpsConversions:
       case StateConcurrency.LastWrite  => StateOptions.Concurrency.LAST_WRITE
 
 @scala.caps.assumeSafe
-private[safe] final class StateCapabilityImpl(
+private[dapr4s] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StoreName,
 ) extends StateCapability:

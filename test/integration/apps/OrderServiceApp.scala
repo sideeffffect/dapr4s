@@ -1,6 +1,6 @@
-package dapr.safe.test.integration.apps
+package dapr4s.test.integration.apps
 
-import dapr.safe.*
+import dapr4s.*
 
 /** Standalone entry point for the Order microservice.
   *
@@ -10,13 +10,13 @@ import dapr.safe.*
   * Run locally (requires Dapr sidecar on localhost:3500/50001):
   * {{{
   *   dapr run --app-id order-service --app-port 8080 -- \
-  *     scala-cli run . --main-class "dapr.safe.test.integration.apps.orderServiceMain"
+  *     scala-cli run . --main-class "dapr4s.test.integration.apps.orderServiceMain"
   * }}}
   *
   * Build a fat jar for Docker:
   * {{{
   *   scala-cli --power package . --assembly -o order-service.jar \
-  *     --main-class "dapr.safe.test.integration.apps.orderServiceMain"
+  *     --main-class "dapr4s.test.integration.apps.orderServiceMain"
   * }}}
   */
 @main def orderServiceMain(): Unit =

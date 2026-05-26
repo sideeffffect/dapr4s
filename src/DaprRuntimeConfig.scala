@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 import java.net.URI
 import scala.concurrent.duration.{FiniteDuration, Duration, DurationInt}
@@ -84,7 +84,7 @@ case class SidecarConfig(
 /** Inbound HTTP app-server configuration.
   *
   * @param port
-  *   Port on which [[dapr.safe.internal.DaprAppServer]] listens (default 8080).
+  *   Port on which [[dapr4s.internal.DaprAppServer]] listens (default 8080).
   * @param httpBacklog
   *   TCP accept backlog for [[com.sun.net.httpserver.HttpServer]] (0 = OS default).
   * @param shutdownGrace

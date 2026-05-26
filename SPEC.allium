@@ -1,5 +1,5 @@
 -- allium: 3
--- SPEC.allium — scala-safe-dapr behavioural specification
+-- SPEC.allium — dapr4s behavioural specification
 --
 -- Scope: Safe Scala capability library wrapping DAPR building blocks
 -- Includes: DaprRuntime lifecycle (run + serve), StateCapability, PubSubCapability,
@@ -36,14 +36,14 @@ external entity Workflow {
     -- Companion object WorkflowContext provides forwarder methods so users call
     --   WorkflowContext.getInput / callActivity / complete etc. without explicit ctx binding.
     -- Internally, WorkflowBridge extends io.dapr.workflows.Workflow and is registered
-    -- via registerWorkflow(name, bridge, "", false); bridge is in dapr.safe.internal.
+    -- via registerWorkflow(name, bridge, "", false); bridge is in dapr4s.internal.
 }
 
 external entity WorkflowActivity {
     -- Pure Scala abstract class: WorkflowActivity[I: JsonCodec, O: JsonCodec].
     -- User implements execute(input: I): O — no context needed, no Java types visible.
     -- Internally, WorkflowActivityBridge extends io.dapr.workflows.WorkflowActivity and is
-    -- registered via registerActivity(name, bridge); bridge is in dapr.safe.internal.
+    -- registered via registerActivity(name, bridge); bridge is in dapr4s.internal.
     -- Codec fields are private[safe] so the bridge can access them.
 }
 

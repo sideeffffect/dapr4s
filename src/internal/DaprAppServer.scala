@@ -1,6 +1,6 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 import io.dapr.workflows.runtime.WorkflowRuntimeBuilder
 import java.net.{InetSocketAddress, URI}
@@ -23,7 +23,7 @@ import scala.util.control.NonFatal
   * graph.
   */
 @scala.caps.assumeSafe
-private[safe] final class DaprAppServer(
+private[dapr4s] final class DaprAppServer(
     app: DaprApp,
     // WHY AnyRef: ActorContext extends ExclusiveCapability, so CC tracks every instance.
     // Storing the factory as AnyRef erases the capture set on the returned ActorContext,
@@ -33,7 +33,7 @@ private[safe] final class DaprAppServer(
         .asInstanceOf[AnyRef],
 ):
 
-  private val log = Logger.getLogger("dapr.safe.internal.DaprAppServer")
+  private val log = Logger.getLogger("dapr4s.internal.DaprAppServer")
 
   def startAndBlock(
       port: Int,
@@ -484,7 +484,7 @@ private[safe] final class DaprAppServer(
   * performs the `AnyRef`-cast internally.
   */
 @scala.caps.assumeSafe
-private[safe] object DaprAppServer:
+private[dapr4s] object DaprAppServer:
   def apply(
       app: DaprApp,
       mkActorCtx: (ActorType, ActorId, URI) => ActorContext,

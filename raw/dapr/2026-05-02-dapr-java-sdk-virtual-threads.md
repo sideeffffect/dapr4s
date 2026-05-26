@@ -105,7 +105,7 @@ Zero relevant results for "virtual thread", "loom", "Project Loom" in the dapr/j
 | Approach | Reactor dependency at call site | VT safety | Extra effort |
 |---|---|---|---|
 | `Mono.block()` from VT | Yes | Good (park via CountDownLatch) | None |
-| `.toFuture().get()` from VT | Minimal (convert to CF) | Best (CAS + park, no synchronized) | Minimal (current approach in scala-safe-dapr) |
+| `.toFuture().get()` from VT | Minimal (convert to CF) | Best (CAS + park, no synchronized) | Minimal (current approach in dapr4s) |
 | Blocking stub via `newGrpcStub()` | None | Best (LockSupport.park, no synchronized) | High (manual proto serialization) |
 | Future stub via `newGrpcStub()` + Guava | None | Best | High + Guava dep |
 | Custom JDK HttpClient | None | Best | Very high (reimplement full client) |

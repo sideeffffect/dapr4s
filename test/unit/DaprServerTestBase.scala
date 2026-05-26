@@ -1,7 +1,7 @@
-package dapr.safe.test.unit
+package dapr4s.test.unit
 
-import dapr.safe.*
-import dapr.safe.internal.DaprAppServer
+import dapr4s.*
+import dapr4s.internal.DaprAppServer
 import unsafeExceptions.canThrowAny
 
 /** Shared HTTP helpers and server lifecycle for DaprAppServer-based unit tests.
@@ -47,7 +47,7 @@ trait DaprServerTestBase:
     val stream = if code < 400 then conn.getInputStream.nn else conn.getErrorStream.nn
     new String(stream.readAllBytes().nn, "UTF-8")
 
-  /** Invoke a [[dapr.safe.InvocationRoute]] through a running [[dapr.safe.internal.DaprAppServer]].
+  /** Invoke a [[dapr4s.InvocationRoute]] through a running [[dapr4s.internal.DaprAppServer]].
     *
     * Encodes `req` with [[JsonCodec]], POSTs to `http://localhost:port/method`, and decodes the response.
     */
@@ -55,7 +55,7 @@ trait DaprServerTestBase:
     val reqJson = summon[JsonCodec[Req]].encode(req)
     JsonCodec.decodeOrThrow[Resp](httpPost(s"http://localhost:$port/$method", reqJson))
 
-  /** Deliver a CloudEvent to a [[dapr.safe.Subscription]] route on a running [[dapr.safe.internal.DaprAppServer]].
+  /** Deliver a CloudEvent to a [[dapr4s.Subscription]] route on a running [[dapr4s.internal.DaprAppServer]].
     *
     * Encodes `data` as the CloudEvent `data` field (embedded as a raw JSON value), POSTs to
     * `http://localhost:port/topic`, and returns the raw response body (typically `{"status":"SUCCESS"}`).

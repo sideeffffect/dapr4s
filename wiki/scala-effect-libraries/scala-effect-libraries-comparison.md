@@ -109,7 +109,7 @@ As capture checking stabilizes, the distinction between "effects in types" and "
 
 ## Relevance to Building a DAPR Wrapper
 
-A DAPR wrapper library ("scala-safe-dapr") exposes DAPR building blocks as Scala capabilities. Design considerations:
+A DAPR wrapper library ("dapr4s") exposes DAPR building blocks as Scala capabilities. Design considerations:
 
 ### Effect modeling
 
@@ -130,7 +130,7 @@ With **Kyo**, each becomes an effect tag in the `< S` intersection. With **Ox**,
 | Zero external dependencies, native Scala 3 | scala.caps.Capability + context functions |
 | Cross-platform (JVM + JS + Native) | Kyo or Cats Effect |
 
-For **scala-safe-dapr** specifically:
+For **dapr4s** specifically:
 - The project's goal is "safe Scala capabilities" — this aligns with the `scala.caps.Capability` native approach.
 - Using `scala.caps.Capability` directly keeps the library dependency-free and forward-compatible with CC stabilization.
 - Ox can be offered as an optional integration for JVM-only structured concurrency patterns.

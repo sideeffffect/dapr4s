@@ -1,4 +1,4 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
 import com.dimafeng.testcontainers.SingleContainer
 import io.dapr.testcontainers.{DaprContainer => JDaprContainer}

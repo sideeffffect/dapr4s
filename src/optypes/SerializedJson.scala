@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** A pre-serialised JSON string, used for workflow input and output payloads.
   *

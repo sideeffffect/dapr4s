@@ -1,6 +1,6 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.client.DaprClient
 import io.dapr.actors.client.ActorClient
 import io.dapr.workflows.client.DaprWorkflowClient
@@ -8,27 +8,27 @@ import java.util.concurrent.atomic.AtomicReference
 import java.util.logging.{Level, Logger}
 import scala.util.control.NonFatal
 
-/** Concrete implementation of [[dapr.safe.DaprCapability]] backed by a real [[DaprClient]].
+/** Concrete implementation of [[dapr4s.DaprCapability]] backed by a real [[DaprClient]].
   *
   * All interaction with the Java SDK is confined to this file and the individual `*CapabilityImpl` classes. No Java
   * types are visible in the public API.
   *
-  * Lifecycle: [[dapr.safe.DaprRuntime.run]] owns all three clients; it creates them, passes them here, and closes them
+  * Lifecycle: [[dapr4s.DaprRuntime.run]] owns all three clients; it creates them, passes them here, and closes them
   * in its `finally` block. `actorClientRef` and `workflowClientRef` start as `null` and are lazily populated on first
-  * use via `AtomicReference.compareAndSet`, so [[dapr.safe.DaprRuntime.run]] can read the refs at teardown and close
+  * use via `AtomicReference.compareAndSet`, so [[dapr4s.DaprRuntime.run]] can read the refs at teardown and close
   * only what was actually created.
   *
   * Marked `@scala.caps.assumeSafe` so that safe-mode user code can use [[DaprCapability]] (implemented by this class)
   * through the trait interface.
   */
 @scala.caps.assumeSafe
-private[safe] final class DaprCapabilityImpl(
+private[dapr4s] final class DaprCapabilityImpl(
     private[internal] val client: DaprClient,
     private val actorClientRef: AtomicReference[ActorClient],
     private val workflowClientRef: AtomicReference[DaprWorkflowClient],
 ) extends DaprCapability:
 
-  private val log = Logger.getLogger("dapr.safe.internal.DaprCapabilityImpl")
+  private val log = Logger.getLogger("dapr4s.internal.DaprCapabilityImpl")
 
   // WHY ^{this}: sub-capabilities extend ExclusiveCapability, so CC infers ^{fresh} for new
   // instances. The trait declares ^{this} to prevent sub-capabilities from outliving `this`.

@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 import scala.concurrent.duration.FiniteDuration
 import scala.reflect.ClassTag
@@ -217,8 +217,8 @@ abstract class Workflow:
   */
 @scala.caps.assumeSafe
 abstract class WorkflowActivity[I, O](using
-    private[safe] val inputCodec: JsonCodec[I],
-    private[safe] val outputCodec: JsonCodec[O],
+    private[dapr4s] val inputCodec: JsonCodec[I],
+    private[dapr4s] val outputCodec: JsonCodec[O],
 ):
 
   /** Implement activity logic here.  May perform I/O; need not be deterministic. */
@@ -244,9 +244,9 @@ abstract class WorkflowActivity[I, O](using
 sealed abstract class ActivityDef[A]:
   type Input
   type Output
-  private[safe] def activityName: String
-  private[safe] def inputCodec: JsonCodec[Input]
-  private[safe] def outputCodec: JsonCodec[Output]
+  private[dapr4s] def activityName: String
+  private[dapr4s] def inputCodec: JsonCodec[Input]
+  private[dapr4s] def outputCodec: JsonCodec[Output]
 
 @scala.caps.assumeSafe
 object ActivityDef:

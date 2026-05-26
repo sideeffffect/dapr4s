@@ -1,6 +1,6 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import java.net.URI
 import scala.concurrent.duration.FiniteDuration
 import unsafeExceptions.canThrowAny
@@ -17,7 +17,7 @@ import scala.util.control.NonFatal
   *   Base URL of the Dapr sidecar HTTP API (e.g. `"http://localhost:3500"`).
   */
 @scala.caps.assumeSafe
-private[safe] final class HttpActorContext(
+private[dapr4s] final class HttpActorContext(
     private val actorType: ActorType,
     private val actorId: ActorId,
     private val sidecarHttpEndpoint: URI,

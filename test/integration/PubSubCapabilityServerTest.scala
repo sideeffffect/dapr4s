@@ -1,7 +1,7 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
-import dapr.safe.*
-import dapr.safe.test.unit.DaprServerTestBase
+import dapr4s.*
+import dapr4s.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
@@ -9,7 +9,7 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Tests for every [[PubSubCapability]] method through real [[dapr.safe.internal.DaprAppServer]] HTTP dispatch, backed
+/** Tests for every [[PubSubCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed
   * by real Dapr pub/sub and state-store components via Testcontainers.
   *
   * Publish operations fire at the real Dapr sidecar and verify the handler returns without error. Subscription dispatch

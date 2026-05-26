@@ -1,4 +1,4 @@
-# scala-safe-dapr — Design
+# dapr4s — Design
 
 ## Goal
 
@@ -478,7 +478,7 @@ Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM err
 ## Project Structure (Scala CLI)
 
 ```
-scala-safe-dapr/
+dapr4s/
 ├── project.scala                     # Scala CLI directives (deps, compiler options; nightly Scala)
 ├── src/
 │   ├── Models.scala                  # Opaque types, ETag, StateEntry, ConfigItem, StateOp,
@@ -558,7 +558,7 @@ class OrderWorkflow extends Workflow:
     WorkflowContext.complete(result)
 ```
 
-`Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge constructs `given WorkflowContext = new WorkflowContextImpl(javaCtx)` and calls `w.run`, so `WorkflowContext` never escapes the bridge's stack frame. The bridge is in `dapr.safe.internal` and never visible to users.
+`Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge constructs `given WorkflowContext = new WorkflowContextImpl(javaCtx)` and calls `w.run`, so `WorkflowContext` never escapes the bridge's stack frame. The bridge is in `dapr4s.internal` and never visible to users.
 
 ### WorkflowActivity[I, O]
 

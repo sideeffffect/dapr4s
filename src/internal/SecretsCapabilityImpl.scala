@@ -1,13 +1,13 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[safe] final class SecretsCapabilityImpl(
+private[dapr4s] final class SecretsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: SecretStoreName,
 ) extends SecretsCapability:

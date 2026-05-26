@@ -1,6 +1,6 @@
-package dapr.safe.test.unit
+package dapr4s.test.unit
 
-import dapr.safe.*
+import dapr4s.*
 import munit.FunSuite
 
 @scala.caps.assumeSafe

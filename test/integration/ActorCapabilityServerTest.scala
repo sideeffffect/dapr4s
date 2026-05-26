@@ -1,10 +1,10 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
-import dapr.safe.*
-import dapr.safe.internal.{DaprAppServer, HttpActorContext}
+import dapr4s.*
+import dapr4s.internal.{DaprAppServer, HttpActorContext}
 import java.net.URI
-import dapr.safe.test.unit.DaprServerTestBase
-import dapr.safe.test.integration.apps.*
+import dapr4s.test.unit.DaprServerTestBase
+import dapr4s.test.integration.apps.*
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite

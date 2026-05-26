@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 import scala.util.control.NonFatal
 import io.dapr.client.{DaprClient, DaprClientBuilder}

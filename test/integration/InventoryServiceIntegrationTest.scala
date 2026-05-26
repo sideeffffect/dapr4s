@@ -1,8 +1,8 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
-import dapr.safe.*
-import dapr.safe.test.integration.apps.*
-import dapr.safe.test.unit.DaprServerTestBase
+import dapr4s.*
+import dapr4s.test.integration.apps.*
+import dapr4s.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.GenericContainer
 import com.dimafeng.testcontainers.lifecycle.and
@@ -15,7 +15,7 @@ import munit.FunSuite
 import java.util.Collections
 
 /** Integration tests for [[InventoryServiceHandlers]] against a real Dapr sidecar, dispatched through a real
-  * [[dapr.safe.internal.DaprAppServer]] HTTP server.
+  * [[dapr4s.internal.DaprAppServer]] HTTP server.
   *
   * Each test starts a real HTTP server wrapping the handler app. Pub/sub delivery is simulated by POSTing a CloudEvent
   * JSON envelope directly to the subscription route — the same format Dapr would use in production.

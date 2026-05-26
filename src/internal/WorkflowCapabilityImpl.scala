@@ -1,12 +1,12 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.workflows.client.{DaprWorkflowClient, NewWorkflowOptions, WorkflowRuntimeStatus, WorkflowState}
 import scala.concurrent.duration.FiniteDuration
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[safe] final class WorkflowCapabilityImpl(
+private[dapr4s] final class WorkflowCapabilityImpl(
     private val client: DaprWorkflowClient,
 ) extends WorkflowCapability:
 

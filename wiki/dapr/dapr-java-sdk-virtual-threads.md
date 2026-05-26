@@ -16,7 +16,7 @@ Both bridging strategies park the calling thread correctly without pinning a car
 
 **`Mono.block()`** — internally extends `CountDownLatch` → `LockSupport.park()`. VT unmounts from carrier while waiting. The subscriber's `onNext`/`onComplete`/`onError` methods are `synchronized`, meaning the *gRPC worker thread* that delivers the result can briefly pin its own carrier on JDK < 24. Under high concurrency this could reduce scalability of the Netty worker pool, but the calling VT is always handled correctly.
 
-**`.toFuture().get()`** — `CompletableFuture.complete()` uses CAS with no `synchronized`. `.get()` also parks via `LockSupport.park()` with no `synchronized`. Neither the calling VT nor the Netty worker risks pinning. This is why `scala-safe-dapr` uses `MonoOps.awaitResult()` instead of `.block()`.
+**`.toFuture().get()`** — `CompletableFuture.complete()` uses CAS with no `synchronized`. `.get()` also parks via `LockSupport.park()` with no `synchronized`. Neither the calling VT nor the Netty worker risks pinning. This is why `dapr4s` uses `MonoOps.awaitResult()` instead of `.block()`.
 
 Reactor 3.5.x does **not** flag virtual threads as non-blocking, so `.block()` does not throw `IllegalStateException` from a VT.
 
@@ -96,7 +96,7 @@ Setting the gRPC channel executor to a VT pool makes `StreamObserver` callbacks 
 
 `.publishOn(scheduler)` moves downstream operators to the scheduler but does NOT move the `.block()` wait. The thread calling `.block()` is always the one that parks, regardless of `.publishOn()`. Correct VT use requires calling `.block()` (or `.awaitResult()`) from a VT-dispatched thread, not pipeline transformation.
 
-## Recommendation for scala-safe-dapr
+## Recommendation for dapr4s
 
 The current `MonoOps.awaitResult()` approach (`.toFuture().get()` from a VT) is the correct and practical choice:
 - No additional dependencies

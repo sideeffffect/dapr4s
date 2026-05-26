@@ -1,4 +1,4 @@
-package dapr.safe.internal
+package dapr4s.internal
 
 /** Reactor ↔ virtual-thread bridge. See [[MonoOps.awaitResult]]. */
 @scala.caps.assumeSafe
@@ -25,7 +25,7 @@ private[internal] object MonoOps:
       *
       * ==Getting the most out of virtual threads==
       *
-      * Call [[dapr.safe.DaprRuntime.run]] from a virtual thread so that the carrier is freed during each I/O wait, and
+      * Call [[dapr4s.DaprRuntime.run]] from a virtual thread so that the carrier is freed during each I/O wait, and
       * the platform thread pool is not exhausted by concurrent Dapr calls:
       *
       * {{{

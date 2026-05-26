@@ -1,6 +1,6 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.client.domain.{ConfigurationItem as JConfigItem, SubscribeConfigurationResponse}
 import java.util.logging.{Level, Logger}
 
@@ -10,12 +10,12 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[safe] final class ConfigCapabilityImpl(
+private[dapr4s] final class ConfigCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: ConfigStoreName,
 ) extends ConfigurationCapability:
 
-  private val log = Logger.getLogger("dapr.safe.internal.ConfigCapabilityImpl")
+  private val log = Logger.getLogger("dapr4s.internal.ConfigCapabilityImpl")
 
   def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigKey, ConfigItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava

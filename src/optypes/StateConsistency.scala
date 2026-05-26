@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** Consistency level for Dapr state operations.
   *

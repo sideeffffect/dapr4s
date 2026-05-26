@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** Immutable, declarative description of all inbound handlers an application exposes.
   *
@@ -53,8 +53,8 @@ object DaprApp
   *
   * The abstract type member `Payload` binds [[codec]] to a concrete payload type, enabling path-dependent type safety
   * when iterating `DaprApp.subscriptions`. The handler lambda is stored as `AnyRef` (CC-opaque) so the instance has an
-  * empty capture set and can live in a plain `List`. Internal dispatch code (in [[dapr.safe.internal.DaprAppServer]]
-  * and [[dapr.safe.test.integration.TestDaprApp]]) casts it back using the `Payload` type member under `@assumeSafe`.
+  * empty capture set and can live in a plain `List`. Internal dispatch code (in [[dapr4s.internal.DaprAppServer]]
+  * and [[dapr4s.test.integration.TestDaprApp]]) casts it back using the `Payload` type member under `@assumeSafe`.
   *
   * Use [[Subscription.apply]] to construct instances.
   */
@@ -68,7 +68,7 @@ sealed abstract class Subscription:
   // CC tracks captures through typed function fields; AnyRef is opaque so the instance
   // has no CC capture set and can be stored in a plain List[Subscription].
   // Access only from @assumeSafe dispatch code that casts back with the Payload type member.
-  private[safe] val rawHandler: AnyRef
+  private[dapr4s] val rawHandler: AnyRef
 
 /** Factory for [[Subscription]] values.
   *
@@ -116,7 +116,7 @@ sealed abstract class InvocationRoute:
   val reqCodec: JsonCodec[Req]
   val respCodec: JsonCodec[Resp]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
-  private[safe] val rawHandler: AnyRef
+  private[dapr4s] val rawHandler: AnyRef
 
 /** Factory for [[InvocationRoute]] values.
   *
@@ -149,7 +149,7 @@ sealed abstract class BindingRoute:
   val bindingName: BindingName
   val codec: JsonCodec[Payload]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
-  private[safe] val rawHandler: AnyRef
+  private[dapr4s] val rawHandler: AnyRef
 
 /** Factory for [[BindingRoute]] values.
   *

@@ -1,7 +1,7 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
-import dapr.safe.*
-import dapr.safe.test.unit.DaprServerTestBase
+import dapr4s.*
+import dapr4s.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
@@ -9,7 +9,7 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Tests for every [[SecretsCapability]] method through real [[dapr.safe.internal.DaprAppServer]] HTTP dispatch, backed
+/** Tests for every [[SecretsCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed
   * by a real `secretstores.local.env` component that reads from the Dapr container's environment variables.
   *
   * Two secrets are pre-seeded via `addEnv` when the container is created.

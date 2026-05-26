@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** Concurrency control mode for conditional Dapr state writes.
   *

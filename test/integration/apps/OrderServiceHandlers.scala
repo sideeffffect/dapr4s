@@ -1,6 +1,6 @@
-package dapr.safe.test.integration.apps
+package dapr4s.test.integration.apps
 
-import dapr.safe.*
+import dapr4s.*
 import language.experimental.safe
 
 /** Business logic for the Order microservice.
@@ -18,7 +18,7 @@ import language.experimental.safe
   *
   * The `daprApp` method injects capabilities as `given`s and builds a [[DaprApp]] describing all inbound routes. The
   * resulting value is immutable and can be passed to [[DaprRuntime.serve]] or
-  * [[dapr.safe.test.integration.TestDaprApp]] for in-process testing.
+  * [[dapr4s.test.integration.TestDaprApp]] for in-process testing.
   *
   * Configured against Dapr component names:
   *   - state store : `statestore`

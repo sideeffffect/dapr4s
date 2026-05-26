@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 
 /** Root capability that acts as a factory for all DAPR sub-capabilities.

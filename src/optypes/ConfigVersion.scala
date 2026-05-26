@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 /** A store-assigned version token for a [[ConfigItem]].
   *

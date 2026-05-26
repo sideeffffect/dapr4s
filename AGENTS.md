@@ -1,4 +1,4 @@
-# AGENTS.md — scala-safe-dapr
+# AGENTS.md — dapr4s
 
 ## What this project is
 

@@ -1,26 +1,26 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.actors.ActorId as JavaActorId
 import io.dapr.actors.client.{
   ActorClient as JavaActorClient,
   ActorProxy as JavaActorProxy,
   ActorProxyBuilder as JavaActorProxyBuilder,
 }
-import dapr.safe.internal.MonoOps.awaitResult
+import dapr4s.internal.MonoOps.awaitResult
 import unsafeExceptions.canThrowAny
 
 /** Client-side capability for invoking methods on a specific Dapr virtual actor instance.
   *
   * The actor proxy communicates with the Dapr sidecar via gRPC. A [[JavaActorClient]] (and its underlying gRPC channel)
-  * is shared across all actor invocations within the same [[dapr.safe.DaprCapability]].
+  * is shared across all actor invocations within the same [[dapr4s.DaprCapability]].
   *
   * Serialization uses raw `byte[]` pass-through: the request value is encoded to JSON by our [[JsonCodec]], sent as raw
   * bytes, and the response bytes are decoded by the same codec — bypassing the Java SDK's Jackson-based serializer
   * entirely.
   */
 @scala.caps.assumeSafe
-private[safe] final class ActorCapabilityImpl(
+private[dapr4s] final class ActorCapabilityImpl(
     val actorType: ActorType,
     val actorId: ActorId,
     private val proxy: JavaActorProxy,
@@ -49,7 +49,7 @@ private[safe] final class ActorCapabilityImpl(
       case Right(v) => v
 
 @scala.caps.assumeSafe
-private[safe] object ActorCapabilityImpl:
+private[dapr4s] object ActorCapabilityImpl:
 
   def build(actorType: ActorType, actorId: ActorId, actorClient: JavaActorClient): ActorCapabilityImpl =
     val builder = new JavaActorProxyBuilder[JavaActorProxy](

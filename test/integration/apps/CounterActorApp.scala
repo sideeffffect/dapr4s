@@ -1,6 +1,6 @@
-package dapr.safe.test.integration.apps
+package dapr4s.test.integration.apps
 
-import dapr.safe.*
+import dapr4s.*
 import language.experimental.safe
 import scala.concurrent.duration.FiniteDuration
 

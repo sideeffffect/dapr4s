@@ -1,8 +1,8 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
-import dapr.safe.*
-import dapr.safe.test.integration.apps.*
-import dapr.safe.test.unit.DaprServerTestBase
+import dapr4s.*
+import dapr4s.test.integration.apps.*
+import dapr4s.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.GenericContainer
 import com.dimafeng.testcontainers.lifecycle.and
@@ -17,11 +17,11 @@ import java.util.Collections
 /** End-to-end integration test that runs both [[OrderServiceHandlers]] and [[InventoryServiceHandlers]] against the
   * same real Dapr sidecar, exercising the full order-placement → inventory-update flow.
   *
-  * Each service runs in its own [[dapr.safe.internal.DaprAppServer]] HTTP server. Order-service pub/sub delivery to the
+  * Each service runs in its own [[dapr4s.internal.DaprAppServer]] HTTP server. Order-service pub/sub delivery to the
   * inventory service is simulated by POSTing a CloudEvent JSON envelope directly to the inventory server's subscription
   * route — the same format Dapr uses in production.
   *
-  * Showcases how multiple scala-safe-dapr capabilities work together:
+  * Showcases how multiple dapr4s capabilities work together:
   *   - [[StateCapability]] — persisting orders and stock levels
   *   - [[PubSubCapability]] — publishing order events (fire-and-forget to real Dapr sidecar)
   *   - [[DistributedLockCapability]] — serialising concurrent stock updates

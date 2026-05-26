@@ -1,4 +1,4 @@
-package dapr.safe
+package dapr4s
 
 import scala.concurrent.duration.FiniteDuration
 
@@ -119,7 +119,7 @@ sealed abstract class ActorMethodRoute:
   val reqCodec: JsonCodec[Req]
   val respCodec: JsonCodec[Resp]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
-  private[safe] val rawHandler: AnyRef
+  private[dapr4s] val rawHandler: AnyRef
 
 /** Factory for [[ActorMethodRoute]] values.
   *
@@ -158,7 +158,7 @@ sealed abstract class ActorReminderRoute:
   val reminderName: ReminderName
   val codec: JsonCodec[Payload]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
-  private[safe] val rawHandler: AnyRef
+  private[dapr4s] val rawHandler: AnyRef
 
 /** Factory for [[ActorReminderRoute]] values.
   *
@@ -192,7 +192,7 @@ sealed abstract class ActorTimerRoute:
   val timerName: TimerName
   val codec: JsonCodec[Payload]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
-  private[safe] val rawHandler: AnyRef
+  private[dapr4s] val rawHandler: AnyRef
 
 /** Factory for [[ActorTimerRoute]] values.
   *
@@ -260,9 +260,9 @@ final class ActorDefinition(
     // capture set so ActorDefinition itself has an empty capture set and can be
     // stored in List[ActorDefinition] without carrying capability captures.
     // Access only from @assumeSafe dispatch code that casts back.
-    private[safe] val rawBuild: AnyRef,
+    private[dapr4s] val rawBuild: AnyRef,
 ):
-  private[safe] def build(id: ActorId, ctx: ActorContext): ActorRoutes =
+  private[dapr4s] def build(id: ActorId, ctx: ActorContext): ActorRoutes =
     // WHY asInstanceOf chain: ActorContext now extends ExclusiveCapability,
     // so the CC checker tracks ctx with a capture set. Casting via AnyRef
     // erases the capture annotation before passing to the stored lambda.

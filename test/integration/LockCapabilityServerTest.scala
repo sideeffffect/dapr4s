@@ -1,7 +1,7 @@
-package dapr.safe.test.integration
+package dapr4s.test.integration
 
-import dapr.safe.*
-import dapr.safe.test.unit.DaprServerTestBase
+import dapr4s.*
+import dapr4s.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}
 import com.dimafeng.testcontainers.GenericContainer
 import com.dimafeng.testcontainers.lifecycle.and
@@ -12,7 +12,7 @@ import org.testcontainers.containers.wait.strategy.Wait
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-/** Tests for every [[DistributedLockCapability]] method through real [[dapr.safe.internal.DaprAppServer]] HTTP
+/** Tests for every [[DistributedLockCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP
   * dispatch, backed by a real `lock.redis` component via Testcontainers.
   *
   * Each test uses a unique resource ID (UUID) so tests sharing the same Dapr sidecar container do not interfere.

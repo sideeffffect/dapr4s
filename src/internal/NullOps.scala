@@ -1,4 +1,4 @@
-package dapr.safe.internal
+package dapr4s.internal
 
 /** Null-safety helpers for Java interop under Scala 3 explicit nulls. */
 @scala.caps.assumeSafe

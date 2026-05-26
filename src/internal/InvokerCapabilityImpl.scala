@@ -1,6 +1,6 @@
-package dapr.safe.internal
+package dapr4s.internal
 
-import dapr.safe.*
+import dapr4s.*
 import io.dapr.client.domain.HttpExtension
 import MonoOps.*
 import scala.jdk.CollectionConverters.*
@@ -17,7 +17,7 @@ private object HttpMethodConversions:
       case HttpMethod.Options => new HttpExtension(io.dapr.client.DaprHttp.HttpMethods.OPTIONS)
 
 @scala.caps.assumeSafe
-private[safe] final class InvokerCapabilityImpl(
+private[dapr4s] final class InvokerCapabilityImpl(
     scope: DaprCapabilityImpl,
 ) extends ServiceInvocationCapability:
 
