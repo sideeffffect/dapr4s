@@ -20,3 +20,10 @@
 // Both resolve to 1.21.4 with no conflict. Upgrade to testcontainers-scala 0.44+ only after
 // testcontainers-dapr ships a TC 2.x-compatible release (fix merged to dapr/java-sdk master,
 // awaiting release as v1.18.0).
+//> using publish.organization "com.github.sideeffffect"
+//> using publish.name "dapr4s"
+//> using publish.computeVersion "git:dynver"
+//> using publish.url "https://github.com/sideeffffect/dapr4s/"
+//> using publish.license "Apache-2.0"
+//> using publish.developer "sideeffffect|Ondra Pelech|https://github.com/sideeffffect/"
+//> using publish.repository "central"
