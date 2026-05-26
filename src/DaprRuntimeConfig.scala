@@ -58,7 +58,7 @@ case class DaprRuntimeConfig(
   * @param maxRetries
   *   Number of times to retry failed SDK calls (default 0 = no retries).
   * @param timeout
-  *   Global call timeout; [[Duration.Zero]] means no timeout (default no timeout).
+  *   Global call timeout; `Duration.Zero` means no timeout (default no timeout).
   */
 case class SidecarConfig(
     httpEndpoint: URI = URI.create("http://localhost:3500"),

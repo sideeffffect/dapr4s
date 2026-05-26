@@ -152,14 +152,14 @@ final case class InvocationRequest[T](
 
 /** Runtime status of a Dapr workflow instance.
   *
-  *   - [[Running]] — executing normally; may be waiting for an activity, timer, or external event.
-  *   - [[Completed]] — finished successfully; output is available via [[WorkflowSnapshot.serializedOutput]].
-  *   - [[ContinuedAsNew]] — restarted with new input via [[WorkflowContext.continueAsNew]]; history cleared.
-  *   - [[Failed]] — terminated due to an unhandled exception in workflow logic.
-  *   - [[Canceled]] — cancelled by the runtime or via an explicit API call.
-  *   - [[Terminated]] — forcibly stopped via [[WorkflowCapability.terminate]].
-  *   - [[Pending]] — scheduled but not yet started (placement in progress).
-  *   - [[Suspended]] — paused via [[WorkflowCapability.suspend]]; resumes via [[WorkflowCapability.resume]].
+  *   - [[WorkflowStatus.Running]] — executing normally; may be waiting for an activity, timer, or external event.
+  *   - [[WorkflowStatus.Completed]] — finished successfully; output is available via [[WorkflowSnapshot.serializedOutput]].
+  *   - [[WorkflowStatus.ContinuedAsNew]] — restarted with new input via [[WorkflowContext.continueAsNew]]; history cleared.
+  *   - [[WorkflowStatus.Failed]] — terminated due to an unhandled exception in workflow logic.
+  *   - [[WorkflowStatus.Canceled]] — cancelled by the runtime or via an explicit API call.
+  *   - [[WorkflowStatus.Terminated]] — forcibly stopped via [[WorkflowCapability.terminate]].
+  *   - [[WorkflowStatus.Pending]] — scheduled but not yet started (placement in progress).
+  *   - [[WorkflowStatus.Suspended]] — paused via [[WorkflowCapability.suspend]]; resumes via [[WorkflowCapability.resume]].
   */
 enum WorkflowStatus:
   case Running

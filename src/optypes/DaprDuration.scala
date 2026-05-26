@@ -4,7 +4,7 @@ import scala.concurrent.duration.{FiniteDuration, Duration}
 
 /** A non-negative duration used in Dapr actor runtime configuration.
   *
-  * Backed by [[FiniteDuration]] for type-safe arithmetic and interoperability. Serialized to Go duration format (e.g.
+  * Backed by `FiniteDuration` for type-safe arithmetic and interoperability. Serialized to Go duration format (e.g.
   * `"1h"`, `"30s"`, `"500ms"`) when sent to the Dapr sidecar via `GET /dapr/config`.
   */
 opaque type DaprDuration = FiniteDuration

@@ -54,7 +54,7 @@ object DaprApp
   * The abstract type member `Payload` binds [[codec]] to a concrete payload type, enabling path-dependent type safety
   * when iterating `DaprApp.subscriptions`. The handler lambda is stored as `AnyRef` (CC-opaque) so the instance has an
   * empty capture set and can live in a plain `List`. Internal dispatch code (in [[dapr4s.internal.DaprAppServer]]
-  * and [[dapr4s.test.integration.TestDaprApp]]) casts it back using the `Payload` type member under `@assumeSafe`.
+  * and `TestDaprApp`) casts it back using the `Payload` type member under `@assumeSafe`.
   *
   * Use [[Subscription.apply]] to construct instances.
   */
