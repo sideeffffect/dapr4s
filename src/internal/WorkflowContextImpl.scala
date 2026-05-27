@@ -54,9 +54,16 @@ private[dapr4s] final class WorkflowContextImpl(
   def isReplaying: Boolean = ctx.isReplaying
 
   def getInput[I: JsonCodec]: Option[I] =
-    Option(ctx.getInput(classOf[String])).flatMap { json =>
+    // The input may be stored as a JSON string literal (from DaprWorkflowClient.scheduleNewWorkflow
+    // with a Java String input, which Jackson re-serializes as a JSON string) or as a raw JSON
+    // value (from the HTTP workflow start API, which stores the body verbatim).
+    // Using JsonNode handles both: TextNode.asText() unwraps a JSON string literal;
+    // ObjectNode.toString() returns the raw JSON object as a string.
+    val node = ctx.getInput(classOf[com.fasterxml.jackson.databind.JsonNode])
+    if node == null then None
+    else
+      val json = if node.isTextual then node.asText() else node.toString
       summon[JsonCodec[I]].decode(json).toOption
-    }
 
   def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output] =
     val inputJson = d.inputCodec.encode(input)
@@ -82,7 +89,10 @@ private[dapr4s] final class WorkflowContextImpl(
     new TaskJson[T](javaTask, s"Failed to decode external event '${name.value}'")
 
   def complete[O: JsonCodec](output: O): Unit =
-    ctx.complete(summon[JsonCodec[O]].encode(output))
+    val json = summon[JsonCodec[O]].encode(output)
+    // Pass as JsonNode so that Jackson stores the value as raw JSON, not as a double-encoded
+    // JSON string literal (which would happen if we passed a Java String to complete(Object)).
+    ctx.complete(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json))
 
   // ContinueAsNewInterruption thrown here must reach the runtime — do not catch it.
   def continueAsNew[I: JsonCodec](input: I): Unit =

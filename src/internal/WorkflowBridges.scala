@@ -7,7 +7,8 @@ import unsafeExceptions.canThrowAny
   *
   * The SDK's instance-based `registerWorkflow(T)` overload uses the canonical class name of the registered object.
   * Since all bridges share the same class, we use the named overload `registerWorkflow(name, instance, ...)` with the
-  * user workflow's canonical class name as the name, so that `WorkflowCapability.start(WorkflowName(...))` matches.
+  * user workflow's simple class name as the name (e.g. `"OrderProcessingWorkflow"`, not `"workflows.OrderProcessingWorkflow"`),
+  * so that `WorkflowCapability.start(WorkflowName("OrderProcessingWorkflow"))` and the HTTP API URL match naturally.
   *
   * '''Invariant''': `w.run` must never be wrapped in a try/catch that intercepts
   * `io.dapr.durabletask.interruption.OrchestratorBlockedException` or

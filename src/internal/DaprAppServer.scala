@@ -101,11 +101,13 @@ private[dapr4s] final class DaprAppServer(
     val workflowRuntime =
       if app.workflows.nonEmpty || app.activities.nonEmpty then
         val wb = new WorkflowRuntimeBuilder()
-        // WHY named registration: WorkflowBridge is one class wrapping many user workflows.
-        // We register each under the user workflow's canonical class name so that
-        // WorkflowCapability.start(WorkflowName(classOf[MyWorkflow].getCanonicalName)) resolves correctly.
+        // WHY simple name: the workflow type appears in user-visible API URLs
+        // (POST /v1.0-beta1/workflows/dapr/{type}/start) and in WorkflowName("...") values.
+        // Users naturally use the simple class name ("OrderProcessingWorkflow"), not the
+        // canonical name ("workflows.OrderProcessingWorkflow"), so we register under
+        // getSimpleName so that the sidecar's dispatch matches what users pass to start().
         app.workflows.foreach { w =>
-          wb.registerWorkflow(w.getClass.getCanonicalName.nn, new WorkflowBridge(w), "", false)
+          wb.registerWorkflow(w.getClass.getSimpleName.nn, new WorkflowBridge(w), "", false)
         }
         app.activities.foreach { a =>
           wb.registerActivity(a.getClass.getCanonicalName.nn, new WorkflowActivityBridge(a))

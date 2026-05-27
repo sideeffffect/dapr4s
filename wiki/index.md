@@ -98,6 +98,7 @@ Dapr (Distributed Application Runtime) — portable, event-driven runtime for bu
 | [Dapr Workflows](dapr/dapr-workflows.md) | Durable workflow orchestration, event sourcing, determinism requirement, activities | 2026-05-01 |
 | [Dapr Java SDK](dapr/dapr-java-sdk.md) | Java SDK structure, DaprClient API, actors SDK, workflows SDK, key usage patterns | 2026-05-01 |
 | [Dapr Testcontainers](dapr/dapr-testcontainers.md) | Integration testing with DaprContainer, component/subscription setup, host app channel, QuotedBoolean, placement container, JUnit patterns, Spring Boot @ServiceConnection, multi-language | 2026-05-05 |
+| [Dapr E2E — Self-Hosted (dapr run)](dapr/dapr-e2e-selfhosted.md) | `dapr run -- java -cp <assembly>` pattern for host-JVM E2E tests; Mill forkArgs+assembly() to avoid deadlocks; Scala 3 testcontainers self-referential generic workaround; why not DaprContainer | 2026-05-27 |
 | [Dapr Other Building Blocks](dapr/dapr-other-building-blocks.md) | Bindings, secrets, configuration, distributed lock, cryptography, jobs | 2026-05-01 |
 | [Dapr Resiliency](dapr/dapr-resiliency.md) | Timeout, retry (constant/exponential), and circuit breaker policies; per-app, per-actor, per-component binding via named policy specs | 2026-05-01 |
 | [Dapr Workflow Patterns](dapr/dapr-workflow-patterns.md) | Task chaining, fan-out/fan-in, async HTTP APIs, monitor (eternal) pattern, external event / human approval, child workflows, compensation | 2026-05-01 |

@@ -14,17 +14,20 @@ private[dapr4s] final class WorkflowCapabilityImpl(
     WorkflowInstanceId(client.scheduleNewWorkflow(name.value).nn)
 
   def start[I: JsonCodec](name: WorkflowName, input: I): WorkflowInstanceId =
-    val jsonInput: String = summon[JsonCodec[I]].encode(input)
-    WorkflowInstanceId(client.scheduleNewWorkflow(name.value, jsonInput.asInstanceOf[Object]).nn)
+    val node = toJsonNode(summon[JsonCodec[I]].encode(input))
+    WorkflowInstanceId(client.scheduleNewWorkflow(name.value, node.asInstanceOf[Object]).nn)
 
   def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId =
     val opts = new NewWorkflowOptions().setInstanceId(instanceId.value)
     WorkflowInstanceId(client.scheduleNewWorkflow(name.value, opts).nn)
 
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
-    val jsonInput: String = summon[JsonCodec[I]].encode(input)
-    val opts = new NewWorkflowOptions().setInstanceId(instanceId.value).setInput(jsonInput.asInstanceOf[Object])
+    val node = toJsonNode(summon[JsonCodec[I]].encode(input))
+    val opts = new NewWorkflowOptions().setInstanceId(instanceId.value).setInput(node.asInstanceOf[Object])
     WorkflowInstanceId(client.scheduleNewWorkflow(name.value, opts).nn)
+
+  private def toJsonNode(json: String): com.fasterxml.jackson.databind.JsonNode =
+    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json)
 
   def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] =
     val state = client.getWorkflowState(instanceId.value, true)
