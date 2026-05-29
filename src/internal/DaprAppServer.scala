@@ -41,7 +41,7 @@ private[dapr4s] final class DaprAppServer(
       shutdownGrace: FiniteDuration = 2.seconds,
       httpBacklog: Int = 0,
       actorConfig: ActorRuntimeConfig = ActorRuntimeConfig(),
-  ): Unit =
+  ): Nothing =
 
     // -----------------------------------------------------------------------
     // Build dispatch tables from DaprApp
@@ -266,17 +266,18 @@ private[dapr4s] final class DaprAppServer(
     )
 
     // Block the calling thread until it is interrupted (e.g. by a test or
-    // by the shutdown hook completing).  Restore the interrupt flag so callers
-    // can detect it after serve() returns.
+    // by the shutdown hook completing), then propagate the interruption.
     try Thread.currentThread().join()
     catch
       case e: InterruptedException =>
         // WHY WE CATCH InterruptedException HERE
         // Same contract as MonoOps.awaitResult: Thread.join() clears the
         // interrupt flag when it throws InterruptedException.  We restore it
-        // immediately and then stop the server cleanly.
+        // immediately and then stop the server cleanly before re-throwing.
         Thread.currentThread().interrupt()
         server.stop(shutdownGrace.toSeconds.toInt)
+        throw e
+    throw AssertionError("unreachable: Thread.join() on current thread blocks until interrupted")
 
   // -------------------------------------------------------------------------
   // Actor request dispatch

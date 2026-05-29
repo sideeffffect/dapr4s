@@ -154,7 +154,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
     *   a pure context function that receives a `DaprCapability` and returns a [[DaprApp]] describing all inbound
     *   handlers
     */
-  def serve(body: DaprCapability ?=> DaprApp): Unit =
+  def serve(body: DaprCapability ?=> DaprApp): Nothing =
     run:
       new internal.DaprAppServer(body).startAndBlock(
         port = config.appServer.port.value,
