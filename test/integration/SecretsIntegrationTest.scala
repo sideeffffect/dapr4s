@@ -27,7 +27,7 @@ class SecretsIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: get from non-configured secrets store throws DaprException"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val secrets = summon[DaprCapability].secrets(SecretStoreName("nonexistent-store"))
         intercept[io.dapr.exceptions.DaprException]:
           secrets.get(SecretKey("any-key"))
@@ -35,7 +35,7 @@ class SecretsIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: getBulk from non-configured secrets store throws DaprException"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val secrets = summon[DaprCapability].secrets(SecretStoreName("nonexistent-store"))
         intercept[io.dapr.exceptions.DaprException]:
           secrets.getBulk()

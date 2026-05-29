@@ -9,8 +9,8 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Tests for every [[StateCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed
-  * by a real Dapr in-memory state store via Testcontainers.
+/** Tests for every [[StateCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed by a
+  * real Dapr in-memory state store via Testcontainers.
   *
   * Each test wraps its state operations in an [[InvocationRoute]] handler, starts the HTTP server, POSTs a request, and
   * asserts on the JSON response — the same path a real Dapr client would take.
@@ -36,7 +36,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: save then get returns saved value"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
           withServer(
@@ -62,7 +62,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: get missing key returns null"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.state(StoreName("statestore")) {
           withServer(
             DaprApp(invocations =
@@ -83,7 +83,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: getWithETag returns value and etag after save"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
           withServer(
@@ -113,7 +113,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: getWithETag for missing key returns none|none"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.state(StoreName("statestore")) {
           withServer(
             DaprApp(invocations =
@@ -137,7 +137,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: getBulk returns Some for present keys and None for absent"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val ka = uniqueKey()
         val kb = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
@@ -167,7 +167,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: saveBulk persists all entries"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k1 = uniqueKey()
         val k2 = uniqueKey()
         val k3 = uniqueKey()
@@ -205,7 +205,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: saveWithETag with correct etag succeeds"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
           withServer(
@@ -240,7 +240,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: saveWithETag with wrong etag returns conflict"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
           withServer(
@@ -272,7 +272,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: delete removes a key"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
           withServer(
@@ -302,7 +302,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: deleteWithETag with correct etag removes key"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
           withServer(
@@ -340,7 +340,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: deleteWithETag with wrong etag leaves key"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {
           withServer(
@@ -375,7 +375,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("state: transaction upserts and deletes atomically"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val kAdd = uniqueKey()
         val kDel = uniqueKey()
         DaprCapability.state(StoreName("statestore")) {

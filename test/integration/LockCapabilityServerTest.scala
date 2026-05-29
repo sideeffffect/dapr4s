@@ -12,8 +12,8 @@ import org.testcontainers.containers.wait.strategy.Wait
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-/** Tests for every [[DistributedLockCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP
-  * dispatch, backed by a real `lock.redis` component via Testcontainers.
+/** Tests for every [[DistributedLockCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch,
+  * backed by a real `lock.redis` component via Testcontainers.
   *
   * Each test uses a unique resource ID (UUID) so tests sharing the same Dapr sidecar container do not interfere.
   */
@@ -52,7 +52,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
 
   test("lock: tryLock on free resource returns true"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
@@ -74,7 +74,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
 
   test("lock: tryLock on held resource returns false"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         DaprCapability.lock(StoreName("lockstore")) {
           withServer(
@@ -99,7 +99,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
 
   test("lock: unlock by correct owner returns Success"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
@@ -126,7 +126,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
 
   test("lock: unlock on non-existent lock returns LockNotFound"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
@@ -148,7 +148,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
 
   test("lock: unlock by wrong owner returns InternalError"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val realOwner = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {
@@ -177,7 +177,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
 
   test("lock: re-lock after successful unlock succeeds"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
         DaprCapability.lock(StoreName("lockstore")) {

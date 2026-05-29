@@ -9,8 +9,8 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Tests for every [[SecretsCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed
-  * by a real `secretstores.local.env` component that reads from the Dapr container's environment variables.
+/** Tests for every [[SecretsCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed by
+  * a real `secretstores.local.env` component that reads from the Dapr container's environment variables.
   *
   * Two secrets are pre-seeded via `addEnv` when the container is created.
   */
@@ -39,7 +39,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
 
   test("secrets: get returns seeded env var value"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
           withServer(
             DaprApp(invocations =
@@ -61,7 +61,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
 
   test("secrets: get distinguishes between two seeded keys"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
           withServer(
             DaprApp(invocations =
@@ -89,7 +89,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
 
   test("secrets: getBulk result contains seeded env var keys"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
           withServer(
             DaprApp(invocations =

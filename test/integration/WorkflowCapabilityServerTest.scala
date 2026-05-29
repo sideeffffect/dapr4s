@@ -17,7 +17,7 @@ import scala.concurrent.duration.*
   *   1. The app server starts first on a pre-allocated port, exposing the workflow runtime to the sidecar.
   *   2. The Dapr sidecar (Testcontainers) starts with `withAppPort` + `withAppChannelAddress`; it calls the app's gRPC
   *      port to register the workflow runtime.
-  *   3. After the sidecar is up, tests use [[DaprRuntime.runWithEndpoints]] to obtain a [[WorkflowCapability]].
+  *   3. After the sidecar is up, tests use [[Dapr.runWithEndpoints]] to obtain a [[WorkflowCapability]].
   *
   * [[WorkflowApp]] registers [[AddingWorkflow]] + [[AddActivity]]. The activity doubles its input, so starting the
   * workflow with `IncrRequest(5)` should produce `CounterState(10)`.
@@ -79,7 +79,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
     var done = false
     while !done && System.currentTimeMillis() < deadline do
       try
-        DaprRuntime.runWithEndpoints(
+        Dapr.runWithEndpoints(
           java.net.URI.create(s"http://localhost:$sidecarPort"),
           java.net.URI.create(s"http://localhost:$sidecarPort"),
         ):
@@ -105,7 +105,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
 
   test("workflow: start with no input returns a non-empty instanceId"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val wf = summon[DaprCapability].workflow
         val id = wf.start(workflowName)
         assert(id.value.nonEmpty, "instanceId should be non-empty")
@@ -113,7 +113,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
 
   test("workflow: start with input and waitForCompletion returns doubled result"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val wf = summon[DaprCapability].workflow
         val id = wf.start(workflowName, IncrRequest(5))
         val snapshot = wf.waitForCompletion(id, thirtySeconds)
@@ -128,7 +128,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
 
   test("workflow: startWithId uses the provided instanceId"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val wf = summon[DaprCapability].workflow
         val customId = WorkflowInstanceId(s"test-wf-${java.util.UUID.randomUUID()}")
         val returnedId = wf.startWithId(workflowName, customId)
@@ -137,7 +137,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
 
   test("workflow: getStatus for unknown id returns None"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val wf = summon[DaprCapability].workflow
         val id = WorkflowInstanceId(s"does-not-exist-${java.util.UUID.randomUUID()}")
         val status = wf.getStatus(id)
@@ -146,7 +146,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
 
   test("workflow: purge after completion returns true and getStatus returns None"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val wf = summon[DaprCapability].workflow
         val id = wf.start(workflowName, IncrRequest(3))
         val snapshot = wf.waitForCompletion(id, thirtySeconds)

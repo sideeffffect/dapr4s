@@ -9,8 +9,8 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Tests for every [[PubSubCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed
-  * by real Dapr pub/sub and state-store components via Testcontainers.
+/** Tests for every [[PubSubCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed by
+  * real Dapr pub/sub and state-store components via Testcontainers.
   *
   * Publish operations fire at the real Dapr sidecar and verify the handler returns without error. Subscription dispatch
   * is exercised by POSTing a CloudEvent JSON envelope directly to the subscription route — the same format Dapr uses in
@@ -38,7 +38,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
 
   test("pubsub: publish fires without error"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.pubsub(PubSubName("pubsub")) {
           withServer(
             DaprApp(invocations =
@@ -58,7 +58,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
 
   test("pubsub: publishWithMetadata fires without error"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.pubsub(PubSubName("pubsub")) {
           withServer(
             DaprApp(invocations =
@@ -86,7 +86,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
 
   test("pubsub: bulkPublish returns empty failedEntries"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.pubsub(PubSubName("pubsub")) {
           withServer(
             DaprApp(invocations =
@@ -111,7 +111,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
 
   test("pubsub: bulkPublish with empty list propagates SDK error"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.pubsub(PubSubName("pubsub")) {
           withServer(
             DaprApp(invocations =
@@ -139,7 +139,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
 
   test("pubsub: subscription handler receives and processes event"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val topic = uniqueTopic()
         val stateKey = s"recv-${java.util.UUID.randomUUID()}"
         DaprCapability.state(StoreName("statestore")) {
@@ -172,7 +172,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
 
   test("pubsub: multiple publishes all fire without error"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.pubsub(PubSubName("pubsub")) {
           withServer(
             DaprApp(invocations =

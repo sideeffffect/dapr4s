@@ -58,7 +58,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   test("inventory service: get-stock returns default when no stock seeded"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -70,7 +70,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   test("inventory service: seed-stock sets explicit level"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -82,7 +82,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   test("inventory service: order event decrements stock"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -103,7 +103,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   test("inventory service: multiple order events accumulate correctly"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -120,7 +120,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   test("inventory service: stock never goes below zero"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -136,7 +136,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   test("inventory service: independent items do not interfere"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -156,7 +156,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
 
   test("inventory service: all routes are declared in the app"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = InventoryServiceHandlers.daprApp(using scope)
 

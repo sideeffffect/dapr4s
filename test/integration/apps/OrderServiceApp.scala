@@ -23,7 +23,7 @@ import dapr4s.*
   val port = sys.env.getOrElse("APP_PORT", "8080").toInt
   val config = DaprRuntimeConfig(appServer = AppServerConfig(port = DaprPort(port)))
   println(s"[order-service] starting on port $port")
-  DaprRuntime.serve(config):
+  Dapr(config).serve:
     val app = OrderServiceHandlers.daprApp
     println("[order-service] handlers declared, serving...")
     app

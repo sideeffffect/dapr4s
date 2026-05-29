@@ -17,8 +17,8 @@ import language.experimental.safe
   * }}}
   *
   * The `daprApp` method injects capabilities as `given`s and builds a [[DaprApp]] describing all inbound routes. The
-  * resulting value is immutable and can be passed to [[DaprRuntime.serve]] or
-  * [[dapr4s.test.integration.TestDaprApp]] for in-process testing.
+  * resulting value is immutable and can be passed to [[Dapr.serve]] or [[dapr4s.test.integration.TestDaprApp]] for
+  * in-process testing.
   *
   * Configured against Dapr component names:
   *   - state store : `statestore`

@@ -13,9 +13,9 @@ import scala.util.control.NonFatal
   * All interaction with the Java SDK is confined to this file and the individual `*CapabilityImpl` classes. No Java
   * types are visible in the public API.
   *
-  * Lifecycle: [[dapr4s.DaprRuntime.run]] owns all three clients; it creates them, passes them here, and closes them
+  * Lifecycle: [[dapr4s.Dapr.run]] owns all three clients; it creates them, passes them here, and closes them
   * in its `finally` block. `actorClientRef` and `workflowClientRef` start as `null` and are lazily populated on first
-  * use via `AtomicReference.compareAndSet`, so [[dapr4s.DaprRuntime.run]] can read the refs at teardown and close
+  * use via `AtomicReference.compareAndSet`, so [[dapr4s.Dapr.run]] can read the refs at teardown and close
   * only what was actually created.
   *
   * Marked `@scala.caps.assumeSafe` so that safe-mode user code can use [[DaprCapability]] (implemented by this class)

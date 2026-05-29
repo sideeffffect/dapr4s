@@ -18,7 +18,7 @@ class CCTest extends FunSuite:
   // With -language:experimental.pureFunctions, A => B is a *pure* function
   // type — the compiler rejects lambdas whose body captures a CC-tracked
   // capability.  The key guarantee for this library:
-  //   DaprRuntime.run body: (DaprCapability, CanThrow[Exception]) ?=> T
+  //   Dapr(config).run body: (DaprCapability, CanThrow[Exception]) ?=> T
   // is now a pure context function.  The body may use only the two context
   // parameters it is explicitly given; it cannot silently close over an
   // external DaprCapability or CanThrow capability.

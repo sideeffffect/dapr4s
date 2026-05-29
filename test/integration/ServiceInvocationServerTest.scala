@@ -101,7 +101,7 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
 
   test("invoke: POST self-invocation round-trips string payload"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val invoker = summon[DaprCapability].invoker
         val result = invoker.invoke(selfAppId, MethodName("echo"), "hello")[String]
         assertEquals(result, "hello")
@@ -109,7 +109,7 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
 
   test("invoke: POST self-invocation with structured data"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val invoker = summon[DaprCapability].invoker
         val result = invoker.invoke(selfAppId, MethodName("double"), IncrRequest(5))[CounterState]
         assertEquals(result, CounterState(10))
@@ -117,7 +117,7 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
 
   test("invoke: POST self-invocation returns correct structured response for another value"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val invoker = summon[DaprCapability].invoker
         val result = invoker.invoke(selfAppId, MethodName("double"), IncrRequest(7))[CounterState]
         assertEquals(result, CounterState(14))

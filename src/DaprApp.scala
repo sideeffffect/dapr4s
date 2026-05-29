@@ -3,10 +3,10 @@ package dapr4s
 /** Immutable, declarative description of all inbound handlers an application exposes.
   *
   * Build a `DaprApp` using the [[Subscription]], [[InvocationRoute]], [[BindingRoute]], and [[ActorDefinition]] factory
-  * objects, then return it from the [[DaprRuntime.serve]] body:
+  * objects, then return it from the [[Dapr.serve]] body:
   *
   * {{{
-  *   DaprRuntime.serve(appPort = 8080):
+  *   Dapr(config).serve:
   *     val scope = summon[DaprCapability]
   *     given StateCapability  = scope.state(StoreName("statestore"))
   *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
@@ -53,8 +53,8 @@ object DaprApp
   *
   * The abstract type member `Payload` binds [[codec]] to a concrete payload type, enabling path-dependent type safety
   * when iterating `DaprApp.subscriptions`. The handler lambda is stored as `AnyRef` (CC-opaque) so the instance has an
-  * empty capture set and can live in a plain `List`. Internal dispatch code (in [[dapr4s.internal.DaprAppServer]]
-  * and `TestDaprApp`) casts it back using the `Payload` type member under `@assumeSafe`.
+  * empty capture set and can live in a plain `List`. Internal dispatch code (in [[dapr4s.internal.DaprAppServer]] and
+  * `TestDaprApp`) casts it back using the `Payload` type member under `@assumeSafe`.
   *
   * Use [[Subscription.apply]] to construct instances.
   */

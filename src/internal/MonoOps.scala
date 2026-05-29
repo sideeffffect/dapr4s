@@ -25,12 +25,12 @@ private[internal] object MonoOps:
       *
       * ==Getting the most out of virtual threads==
       *
-      * Call [[dapr4s.DaprRuntime.run]] from a virtual thread so that the carrier is freed during each I/O wait, and
-      * the platform thread pool is not exhausted by concurrent Dapr calls:
+      * Call [[dapr4s.Dapr.run]] from a virtual thread so that the carrier is freed during each I/O wait, and the
+      * platform thread pool is not exhausted by concurrent Dapr calls:
       *
       * {{{
       *   // Plain Java / Scala main():
-      *   Thread.ofVirtual().start(() => DaprRuntime.run { ... }).join()
+      *   Thread.ofVirtual().start(() => Dapr().run { ... }).join()
       *
       *   // Spring Boot 3.2+:  add to application.properties:
       *   //   spring.threads.virtual.enabled=true

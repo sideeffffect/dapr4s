@@ -10,7 +10,7 @@ import unsafeExceptions.canThrowAny
   * Dapr sidecar without any HTTP round-trips.
   *
   * {{{
-  *   DaprRuntime.runWithEndpoints(httpEndpoint, grpcEndpoint):
+  *   Dapr.runWithEndpoints(httpEndpoint, grpcEndpoint):
   *     val scope = summon[DaprCapability]
   *     val app   = MyServiceHandlers.daprApp(using scope)
   *

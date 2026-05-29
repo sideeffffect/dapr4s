@@ -7,7 +7,7 @@
 //> using options "-experimental"
 //> using options "-Wconf:any:error"
 // Note: -language:experimental.safe is NOT applied globally because non-safe-mode
-// files (DaprRuntime, JsonCodec, internal/*) need to use @scala.caps.assumeSafe.
+// files (Dapr, JsonCodec, internal/*) need to use @scala.caps.assumeSafe.
 // Safe mode is enabled per-file via: import language.experimental.safe
 //> using dep "io.dapr:dapr-sdk:1.17.2"
 //> using dep "io.dapr:dapr-sdk-actors:1.17.2"

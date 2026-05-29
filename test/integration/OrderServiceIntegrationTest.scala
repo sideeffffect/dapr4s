@@ -37,7 +37,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
 
   test("order service: place-order saves order to state store"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = OrderServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -56,7 +56,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
 
   test("order service: get-order retrieves a previously placed order"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = OrderServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -70,7 +70,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
 
   test("order service: get-order returns None for unknown order ID"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = OrderServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -81,7 +81,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
 
   test("order service: two consecutive orders get distinct IDs"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = OrderServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -96,7 +96,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
 
   test("order service: publish does not throw (fire-and-forget)"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = OrderServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -107,7 +107,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
 
   test("order service: bulk orders all land in state store"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = OrderServiceHandlers.daprApp(using scope)
         withServer(app) { port =>
@@ -127,7 +127,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
 
   test("order service: all routes are declared in the app"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val app = OrderServiceHandlers.daprApp(using scope)
 

@@ -8,14 +8,26 @@ import io.dapr.workflows.client.DaprWorkflowClient
 import java.net.URI
 import java.util.concurrent.atomic.AtomicReference
 
-/** Entry-point singleton that manages the [[DaprCapability]] lifecycle.
+/** Entry point that manages the [[DaprCapability]] lifecycle.
   *
-  * This object is annotated `@scala.caps.assumeSafe` so that safe-mode user code can call `DaprRuntime.run` without
-  * seeing any unsafe operations. The internal use of `DaprCapabilityImpl` (a Java-SDK-backed class) and the Java SDK
-  * clients it wraps are managed entirely here.
+  * Construct with a [[DaprRuntimeConfig]] (defaults to sensible local-sidecar settings) and call `run` or `serve`:
+  *
+  * {{{
+  *   // one-shot request/response:
+  *   Dapr().run:
+  *     summon[DaprCapability].state(StoreName("statestore")).get(StateKey("k"))
+  *
+  *   // long-running HTTP server:
+  *   Dapr(config).serve:
+  *     DaprApp(subscriptions = ..., invocations = ...)
+  * }}}
+  *
+  * Annotated `@scala.caps.assumeSafe` so that safe-mode user code can call `Dapr(config).run` without seeing any unsafe
+  * operations. The internal use of `DaprCapabilityImpl` (a Java-SDK-backed class) and the Java SDK clients it wraps are
+  * managed entirely here.
   */
 @scala.caps.assumeSafe
-object DaprRuntime:
+class Dapr(config: DaprRuntimeConfig = DaprRuntimeConfig()):
 
   /** Acquire a `DaprClient`, run `body` with a `DaprCapability` in context, then release the client whether `body`
     * completes normally or throws.
@@ -35,22 +47,19 @@ object DaprRuntime:
     *
     * {{{
     *   // Plain Scala / Java main():
-    *   Thread.ofVirtual().start(() => DaprRuntime.run() { ... }).join()
+    *   Thread.ofVirtual().start(() => Dapr().run { ... }).join()
     *
     *   // Spring Boot 3.2+:  spring.threads.virtual.enabled=true
     *   // Quarkus:            @RunOnVirtualThread on the endpoint method
     *   // Helidon 4:          virtual threads by default — no annotation needed
     * }}}
     *
-    * @param config
-    *   Runtime configuration (sidecar endpoints, retries, TLS, …). Defaults to [[DaprRuntimeConfig]] with sensible
-    *   defaults pointing at the standard local sidecar ports.
     * @param body
     *   a pure context function that receives a `DaprCapability`
     * @return
     *   the value returned by `body`
     */
-  def run[T](config: DaprRuntimeConfig = DaprRuntimeConfig())(body: DaprCapability ?=> T): T =
+  def run[T](body: DaprCapability ?=> T): T =
     val sc = config.sidecar
     val builder = new DaprClientBuilder()
     builder
@@ -116,7 +125,7 @@ object DaprRuntime:
     *
     * ==Usage==
     * {{{
-    *   DaprRuntime.serve():
+    *   Dapr(config).serve:
     *     val scope = summon[DaprCapability]
     *     given StateCapability  = scope.state(StoreName("statestore"))
     *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
@@ -141,15 +150,12 @@ object DaprRuntime:
     * `GET /dapr/subscribe` after connecting to the app port. With Testcontainers, use `DaprContainer.withAppPort` and
     * `withAppChannelAddress` to point the sidecar at the running server.
     *
-    * @param config
-    *   Runtime configuration. `config.appServer.port` determines the listening port (default 8080).
-    *   `config.sidecar.httpEndpoint` is used for actor state API calls back to the sidecar.
     * @param body
     *   a pure context function that receives a `DaprCapability` and returns a [[DaprApp]] describing all inbound
     *   handlers
     */
-  def serve(config: DaprRuntimeConfig = DaprRuntimeConfig())(body: DaprCapability ?=> DaprApp): Unit =
-    run(config):
+  def serve(body: DaprCapability ?=> DaprApp): Unit =
+    run:
       new internal.DaprAppServer(body).startAndBlock(
         port = config.appServer.port.value,
         sidecarHttpEndpoint = config.sidecar.httpEndpoint,
@@ -158,14 +164,19 @@ object DaprRuntime:
         actorConfig = config.actors,
       )
 
+/** Companion object for [[Dapr]] providing convenience factory methods. */
+object Dapr:
+
   /** Run `body` with a [[DaprCapability]] pointing to a specific sidecar endpoint.
     *
     * Convenience wrapper for tests and local development where the sidecar runs on a non-default port. Equivalent to
-    * `run(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...)))`.
+    * `Dapr(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...))).run`.
     *
-    * See [[run]] for the full configuration API.
+    * See [[Dapr.run]] for the full configuration API.
     */
   def runWithEndpoints[T](httpEndpoint: URI, grpcEndpoint: URI)(
       body: DaprCapability ?=> T,
   ): T =
-    run(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = httpEndpoint, grpcEndpoint = grpcEndpoint)))(body)
+    Dapr(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = httpEndpoint, grpcEndpoint = grpcEndpoint))).run(
+      body,
+    )

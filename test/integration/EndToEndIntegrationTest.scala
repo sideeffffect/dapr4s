@@ -61,7 +61,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
 
   test("e2e: placing an order decrements inventory stock"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val orderApp = OrderServiceHandlers.daprApp(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
@@ -92,7 +92,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
 
   test("e2e: multiple orders reduce inventory cumulatively"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val orderApp = OrderServiceHandlers.daprApp(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
@@ -115,7 +115,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
 
   test("e2e: orders for different items tracked independently"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val orderApp = OrderServiceHandlers.daprApp(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
@@ -140,7 +140,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
 
   test("e2e: order state survives re-query after inventory update"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val orderApp = OrderServiceHandlers.daprApp(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
@@ -163,7 +163,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
 
   test("e2e: concurrent orders use bulk state operations"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val orderApp = OrderServiceHandlers.daprApp(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
@@ -192,7 +192,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
     withContainers { case _ and c =>
       var capturedScope: AnyRef | Null = null
 
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         capturedScope = summon[DaprCapability].asInstanceOf[AnyRef]
 
       val closed = capturedScope.asInstanceOf[DaprCapability | Null]
@@ -203,7 +203,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
 
   test("e2e: DaprApp composition with ++ merges routes"):
     withContainers { case _ and c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
         val orderApp = OrderServiceHandlers.daprApp(using scope)
         val inventoryApp = InventoryServiceHandlers.daprApp(using scope)

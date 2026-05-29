@@ -4,7 +4,7 @@ package dapr4s
 /** Root capability that acts as a factory for all DAPR sub-capabilities.
   *
   * A `DaprCapability` is provided as a context parameter inside
-  * [[DaprRuntime.run]]. It must not outlive the `run` block — the Scala 3
+  * [[Dapr.run]]. It must not outlive the `run` block — the Scala 3
   * capture checker enforces this via `^{this}` return type annotations on
   * the factory methods below.
   *

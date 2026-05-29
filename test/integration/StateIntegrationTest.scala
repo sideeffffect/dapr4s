@@ -39,7 +39,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: save and get"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val key = uniqueKey()
         state.save(key, "hello-integration")
@@ -48,7 +48,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: get missing key returns None"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val v = state.get[String](StateKey("definitely-does-not-exist-" + System.nanoTime()))
         assertEquals(v, None)
@@ -56,7 +56,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: getWithETag returns etag"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val key = uniqueKey()
         state.save(key, "v1")
@@ -67,7 +67,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: saveWithETag happy path"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val key = uniqueKey()
         state.save(key, "v1")
@@ -78,7 +78,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: saveWithETag conflict returns Some(ETagMismatchException)"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val key = uniqueKey()
         state.save(key, "v1")
@@ -87,7 +87,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: delete removes key"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val key = uniqueKey()
         state.save(key, "to-be-deleted")
@@ -97,7 +97,7 @@ class StateIntegrationTest extends FunSuite with TestContainersForAll:
 
   test("integration: transaction upsert and delete"):
     withContainers { c =>
-      DaprRuntime.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val state = summon[DaprCapability].state(StoreName("kvstore"))
         val k1 = uniqueKey()
         val k2 = uniqueKey()
