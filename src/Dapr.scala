@@ -10,7 +10,7 @@ import java.util.concurrent.atomic.AtomicReference
 
 /** Entry point that manages the [[DaprCapability]] lifecycle.
   *
-  * Construct with a [[DaprRuntimeConfig]] (defaults to sensible local-sidecar settings) and call `run` or `serve`:
+  * Construct with a [[DaprConfig]] (defaults to sensible local-sidecar settings) and call `run` or `serve`:
   *
   * {{{
   *   // one-shot request/response:
@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicReference
   * managed entirely here.
   */
 @scala.caps.assumeSafe
-class Dapr(config: DaprRuntimeConfig = DaprRuntimeConfig()):
+class Dapr(config: DaprConfig = DaprConfig()):
 
   /** Acquire a `DaprClient`, run `body` with a `DaprCapability` in context, then release the client whether `body`
     * completes normally or throws.
@@ -170,13 +170,13 @@ object Dapr:
   /** Run `body` with a [[DaprCapability]] pointing to a specific sidecar endpoint.
     *
     * Convenience wrapper for tests and local development where the sidecar runs on a non-default port. Equivalent to
-    * `Dapr(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...))).run`.
+    * `Dapr(DaprConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...))).run`.
     *
     * See [[Dapr.run]] for the full configuration API.
     */
   def runWithEndpoints[T](httpEndpoint: URI, grpcEndpoint: URI)(
       body: DaprCapability ?=> T,
   ): T =
-    Dapr(DaprRuntimeConfig(sidecar = SidecarConfig(httpEndpoint = httpEndpoint, grpcEndpoint = grpcEndpoint))).run(
+    Dapr(DaprConfig(sidecar = SidecarConfig(httpEndpoint = httpEndpoint, grpcEndpoint = grpcEndpoint))).run(
       body,
     )

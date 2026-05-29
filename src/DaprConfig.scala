@@ -6,7 +6,7 @@ import scala.concurrent.duration.{FiniteDuration, Duration, DurationInt}
 /** Top-level configuration for [[Dapr]].
   *
   * All configuration is explicit and typed — no environment variable reads or system property manipulation anywhere in
-  * production code. Pass a `DaprRuntimeConfig` to [[Dapr]]'s constructor, then call `run` or `serve`.
+  * production code. Pass a `DaprConfig` to [[Dapr]]'s constructor, then call `run` or `serve`.
   *
   * @param sidecar
   *   Connection settings for the Dapr sidecar (HTTP/gRPC endpoints, timeouts, TLS, retries).
@@ -15,7 +15,7 @@ import scala.concurrent.duration.{FiniteDuration, Duration, DurationInt}
   * @param actors
   *   Actor runtime settings reported to the sidecar via `GET /dapr/config`.
   */
-case class DaprRuntimeConfig(
+case class DaprConfig(
     sidecar: SidecarConfig = SidecarConfig(),
     appServer: AppServerConfig = AppServerConfig(),
     actors: ActorRuntimeConfig = ActorRuntimeConfig(),
