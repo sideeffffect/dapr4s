@@ -27,11 +27,3 @@ object JsonCodec:
       case Right(v)  => v
       case Left(err) => throw err
 
-  given [T: JsonCodec]: JsonCodec[Option[T]] with
-    def encode(value: Option[T]): String =
-      value match
-        case None    => "null"
-        case Some(v) => summon[JsonCodec[T]].encode(v)
-    def decode(json: String | Null): Either[JsonDecodeException, Option[T]] =
-      if json == null || json == "null" then Right(None)
-      else summon[JsonCodec[T]].decode(json).map(Some(_))
