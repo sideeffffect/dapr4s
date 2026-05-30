@@ -15,9 +15,9 @@ private[dapr4s] final class TaskJson[+O](
   def await(): O = {
     val result = javaTask.await()
     val json = if result == null then "null" else result
-    codec
-      .decode(json)
-      .getOrElse(throw RuntimeException(error))
+    codec.decode(json) match
+      case Right(v)  => v
+      case Left(err) => throw RuntimeException(error, err)
   }
   def map[U](f: O => U): Task[U]^{f} = new TaskMap(this, f)
 
