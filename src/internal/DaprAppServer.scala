@@ -1,6 +1,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import com.fasterxml.jackson.databind.ObjectMapper
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 import io.dapr.workflows.runtime.WorkflowRuntimeBuilder
 import java.net.{InetSocketAddress, URI}
@@ -34,6 +35,7 @@ private[dapr4s] final class DaprAppServer(
 ):
 
   private val log = Logger.getLogger("dapr4s.internal.DaprAppServer")
+  private val mapper = new ObjectMapper()
 
   def startAndBlock(
       port: Int,
@@ -130,10 +132,10 @@ private[dapr4s] final class DaprAppServer(
       exchange =>
         try
           if exchange.getRequestMethod.nn == "GET" then
-            val arr = ujson.Arr.from(
-              pubSubEntries.asScala.map(e => ujson.Obj("pubsubname" -> e(0), "topic" -> e(1), "route" -> e(2))),
-            )
-            sendJson(exchange, 200, ujson.write(arr))
+            val arr = mapper.createArrayNode()
+            pubSubEntries.asScala.foreach: e =>
+              arr.addObject().put("pubsubname", e(0)).put("topic", e(1)).put("route", e(2))
+            sendJson(exchange, 200, mapper.writeValueAsString(arr))
           else
             exchange.sendResponseHeaders(405, -1)
             exchange.getResponseBody.nn.close()
@@ -150,34 +152,33 @@ private[dapr4s] final class DaprAppServer(
         try
           if exchange.getRequestMethod.nn == "GET" then
             val types = actorDefs.keySet().asScala.toList.sorted
-            val obj = ujson.Obj(
-              "entities" -> ujson.Arr.from(types.map(ujson.Str(_))),
-              "actorIdleTimeout" -> actorConfig.actorIdleTimeout.toGoString,
-              "actorScanInterval" -> actorConfig.actorScanInterval.toGoString,
-              "drainOngoingCallTimeout" -> actorConfig.drainOngoingCallTimeout.toGoString,
-              "drainRebalancedActors" -> actorConfig.drainRebalancedActors,
-              "reentrancy" -> ujson.Obj(
-                "enabled" -> actorConfig.reentrancy.enabled,
-                "maxStackDepth" -> actorConfig.reentrancy.maxStackDepth,
-              ),
-              "remindersStoragePartitions" -> actorConfig.remindersStoragePartitions,
-            )
+            val obj = mapper.createObjectNode()
+            val entitiesArr = obj.putArray("entities")
+            types.foreach(entitiesArr.add)
+            obj.put("actorIdleTimeout", actorConfig.actorIdleTimeout.toGoString)
+            obj.put("actorScanInterval", actorConfig.actorScanInterval.toGoString)
+            obj.put("drainOngoingCallTimeout", actorConfig.drainOngoingCallTimeout.toGoString)
+            obj.put("drainRebalancedActors", actorConfig.drainRebalancedActors)
+            obj.put("remindersStoragePartitions", actorConfig.remindersStoragePartitions)
+            val reentrancyObj = obj.putObject("reentrancy")
+            reentrancyObj.put("enabled", actorConfig.reentrancy.enabled)
+            reentrancyObj.put("maxStackDepth", actorConfig.reentrancy.maxStackDepth)
             if actorConfig.entitiesConfig.nonEmpty then
-              obj("entitiesConfig") = ujson.Arr.from(
-                actorConfig.entitiesConfig.map { ec =>
-                  val entry = ujson.Obj("entities" -> ujson.Arr.from(ec.entities.map(e => ujson.Str(e.value))))
-                  ec.actorIdleTimeout.foreach(v => entry("actorIdleTimeout") = v.toGoString)
-                  ec.actorScanInterval.foreach(v => entry("actorScanInterval") = v.toGoString)
-                  ec.drainOngoingCallTimeout.foreach(v => entry("drainOngoingCallTimeout") = v.toGoString)
-                  ec.drainRebalancedActors.foreach(v => entry("drainRebalancedActors") = v)
-                  ec.reentrancy.foreach { r =>
-                    entry("reentrancy") = ujson.Obj("enabled" -> r.enabled, "maxStackDepth" -> r.maxStackDepth)
-                  }
-                  ec.remindersStoragePartitions.foreach(v => entry("remindersStoragePartitions") = v)
-                  entry
-                },
-              )
-            sendJson(exchange, 200, ujson.write(obj))
+              val ecArr = obj.putArray("entitiesConfig")
+              actorConfig.entitiesConfig.foreach: ec =>
+                val entry = ecArr.addObject()
+                val ecEntities = entry.putArray("entities")
+                ec.entities.foreach(e => ecEntities.add(e.value))
+                ec.actorIdleTimeout.foreach(v => entry.put("actorIdleTimeout", v.toGoString))
+                ec.actorScanInterval.foreach(v => entry.put("actorScanInterval", v.toGoString))
+                ec.drainOngoingCallTimeout.foreach(v => entry.put("drainOngoingCallTimeout", v.toGoString))
+                ec.drainRebalancedActors.foreach(v => entry.put("drainRebalancedActors", v))
+                ec.reentrancy.foreach: r =>
+                  val rEntry = entry.putObject("reentrancy")
+                  rEntry.put("enabled", r.enabled)
+                  rEntry.put("maxStackDepth", r.maxStackDepth)
+                ec.remindersStoragePartitions.foreach(v => entry.put("remindersStoragePartitions", v))
+            sendJson(exchange, 200, mapper.writeValueAsString(obj))
           else
             exchange.sendResponseHeaders(405, -1)
             exchange.getResponseBody.nn.close()
@@ -432,9 +433,10 @@ private[dapr4s] final class DaprAppServer(
   private def errorJson(e: Throwable): String =
     val name = e.getClass.getSimpleName.nn
     val error = if name.nonEmpty then name else e.getClass.getName.nn
-    Option(e.getMessage) match
-      case Some(msg) => ujson.write(ujson.Obj("error" -> error, "error_description" -> msg))
-      case None      => ujson.write(ujson.Obj("error" -> error))
+    val node = mapper.createObjectNode()
+    node.put("error", error)
+    Option(e.getMessage).foreach(node.put("error_description", _))
+    mapper.writeValueAsString(node)
 
   /** Decode the `data` field from a reminder/timer callback body.
     *
@@ -443,8 +445,8 @@ private[dapr4s] final class DaprAppServer(
     */
   private def decodeCallbackPayload[T](body: String, codec: JsonCodec[T]): T =
     try
-      val env = ujson.read(body).obj
-      val data = env.get("data").map(_.str).getOrElse("")
+      val env = mapper.readTree(body)
+      val data = Option(env.get("data")).map(_.asText("")).getOrElse("")
       val json =
         if data.isEmpty then "null"
         else new String(java.util.Base64.getDecoder.nn.decode(data).nn, "UTF-8")
@@ -461,21 +463,26 @@ private[dapr4s] final class DaprAppServer(
       defaultTopic: Topic,
       handler: CloudEvent[T] => SubscriptionResult,
   ): SubscriptionResult =
-    val env = ujson.read(bodyJson).obj
-    val data = env.get("data").map(v => ujson.write(v)).getOrElse("null")
+    val env = mapper.readTree(bodyJson)
+    val data = Option(env.get("data")).map(mapper.writeValueAsString).getOrElse("null")
     codec.decode(data) match
       case Left(_)  => SubscriptionResult.Drop
       case Right(v) =>
         handler(
           CloudEvent[T](
-            id = CloudEventId(env.get("id").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
-            source = CloudEventSource(env.get("source").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
-            specVersion = CloudEventSpecVersion(env.get("specversion").map(_.str).filter(_.nonEmpty).getOrElse("1.0")),
-            eventType = CloudEventType(env.get("type").map(_.str).filter(_.nonEmpty).getOrElse("unknown")),
-            topic = env.get("topic").map(s => Topic(s.str)).getOrElse(defaultTopic),
-            pubSubName = env.get("pubsubname").map(s => PubSubName(s.str)).getOrElse(defaultPubsubName),
-            dataContentType =
-              ContentType(env.get("datacontenttype").map(_.str).filter(_.nonEmpty).getOrElse("application/json")),
+            id = CloudEventId(Option(env.get("id")).map(_.asText("")).filter(_.nonEmpty).getOrElse("unknown")),
+            source =
+              CloudEventSource(Option(env.get("source")).map(_.asText("")).filter(_.nonEmpty).getOrElse("unknown")),
+            specVersion = CloudEventSpecVersion(
+              Option(env.get("specversion")).map(_.asText("")).filter(_.nonEmpty).getOrElse("1.0"),
+            ),
+            eventType =
+              CloudEventType(Option(env.get("type")).map(_.asText("")).filter(_.nonEmpty).getOrElse("unknown")),
+            topic = Option(env.get("topic")).map(s => Topic(s.asText(""))).getOrElse(defaultTopic),
+            pubSubName = Option(env.get("pubsubname")).map(s => PubSubName(s.asText(""))).getOrElse(defaultPubsubName),
+            dataContentType = ContentType(
+              Option(env.get("datacontenttype")).map(_.asText("")).filter(_.nonEmpty).getOrElse("application/json"),
+            ),
             data = v,
           ),
         )
