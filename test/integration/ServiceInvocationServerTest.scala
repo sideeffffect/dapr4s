@@ -1,6 +1,7 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.given
 import dapr4s.internal.DaprAppServer
 import dapr4s.test.unit.DaprServerTestBase
 import dapr4s.test.integration.apps.*

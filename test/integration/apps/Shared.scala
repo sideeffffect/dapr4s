@@ -1,6 +1,7 @@
 package dapr4s.test.integration.apps
 
-import upickle.default.{ReadWriter, macroRW}
+import dapr4s.*
+import dapr4s.given
 
 /** Domain models shared by all demo microservices. */
 
@@ -8,28 +9,28 @@ import upickle.default.{ReadWriter, macroRW}
 final case class OrderRequest(item: String, quantity: Int)
 @scala.caps.assumeSafe
 object OrderRequest:
-  given ReadWriter[OrderRequest] = macroRW
+  given JsonCodec[OrderRequest] = upickleCodec(using upickle.default.macroRW)
 
 /** Response returned after placing an order. */
 final case class OrderResponse(orderId: String, status: String)
 @scala.caps.assumeSafe
 object OrderResponse:
-  given ReadWriter[OrderResponse] = macroRW
+  given JsonCodec[OrderResponse] = upickleCodec(using upickle.default.macroRW)
 
 /** The pub/sub event published when an order is accepted. */
 final case class OrderEvent(orderId: String, item: String, quantity: Int)
 @scala.caps.assumeSafe
 object OrderEvent:
-  given ReadWriter[OrderEvent] = macroRW
+  given JsonCodec[OrderEvent] = upickleCodec(using upickle.default.macroRW)
 
 /** Query for the stock level of a named item. */
 final case class StockQuery(item: String)
 @scala.caps.assumeSafe
 object StockQuery:
-  given ReadWriter[StockQuery] = macroRW
+  given JsonCodec[StockQuery] = upickleCodec(using upickle.default.macroRW)
 
 /** Current stock level for an item. */
 final case class StockLevel(item: String, available: Int)
 @scala.caps.assumeSafe
 object StockLevel:
-  given ReadWriter[StockLevel] = macroRW
+  given JsonCodec[StockLevel] = upickleCodec(using upickle.default.macroRW)

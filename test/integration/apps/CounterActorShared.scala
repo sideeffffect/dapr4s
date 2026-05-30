@@ -1,19 +1,16 @@
 package dapr4s.test.integration.apps
 
-import upickle.default.{ReadWriter, macroRW}
+import dapr4s.*
+import dapr4s.given
 
-/** Domain types for the Counter actor integration tests.
-  *
-  * Defined separately from [[CounterActorApp]] so their [[upickle]] [[ReadWriter]] instances can be marked
-  * `@scala.caps.assumeSafe`, making them usable from safe-mode files that import `language.experimental.safe`.
-  */
+/** Domain types for the Counter actor integration tests. */
 
 final case class IncrRequest(amount: Int)
 @scala.caps.assumeSafe
 object IncrRequest:
-  given ReadWriter[IncrRequest] = macroRW
+  given JsonCodec[IncrRequest] = upickleCodec(using upickle.default.macroRW)
 
 final case class CounterState(count: Int)
 @scala.caps.assumeSafe
 object CounterState:
-  given ReadWriter[CounterState] = macroRW
+  given JsonCodec[CounterState] = upickleCodec(using upickle.default.macroRW)

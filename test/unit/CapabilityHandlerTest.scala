@@ -1,6 +1,7 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.given
 import dapr4s.test.integration.apps.*
 import munit.FunSuite
 

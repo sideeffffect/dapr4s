@@ -1,6 +1,7 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.given
 import dapr4s.test.integration.apps.*
 import dapr4s.test.unit.DaprServerTestBase
 import io.dapr.testcontainers.{DaprContainer, Component}

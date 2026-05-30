@@ -1,13 +1,14 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.given
 import munit.FunSuite
 
 @scala.caps.assumeSafe
 class JsonCodecTest extends FunSuite:
 
   // -------------------------------------------------------------------------
-  // Primitive instances
+  // Primitive codec contract (instances supplied by TestCodecs, not the library)
   // -------------------------------------------------------------------------
 
   test("JsonCodec[String] roundtrip"):
@@ -59,21 +60,6 @@ class JsonCodecTest extends FunSuite:
   test("JsonCodec[Boolean] decode returns Left on garbage"):
     val codec = summon[JsonCodec[Boolean]]
     assert(codec.decode("maybe").isLeft)
-
-  // -------------------------------------------------------------------------
-  // upickle ReadWriter derivation
-  // -------------------------------------------------------------------------
-
-  case class Point(x: Int, y: Int) derives upickle.default.ReadWriter
-
-  test("JsonCodec via ReadWriter roundtrip"):
-    val codec = summon[JsonCodec[Point]]
-    val p = Point(3, 7)
-    assertEquals(codec.decode(codec.encode(p)), Right(p))
-
-  test("JsonCodec via ReadWriter decode error returns Left"):
-    val codec = summon[JsonCodec[Point]]
-    assert(codec.decode("{\"x\": 1}").isLeft) // missing y field
 
   // -------------------------------------------------------------------------
   // decodeOrThrow helper — needs CanThrow created inside the test body lambda

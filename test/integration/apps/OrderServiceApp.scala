@@ -1,6 +1,7 @@
 package dapr4s.test.integration.apps
 
 import dapr4s.*
+import dapr4s.given
 
 /** Standalone entry point for the Order microservice.
   *

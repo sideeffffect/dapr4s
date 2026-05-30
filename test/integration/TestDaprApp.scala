@@ -1,6 +1,7 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.given
 import unsafeExceptions.canThrowAny
 
 /** Test helper for exercising [[DaprApp]] handler logic in-process.
