@@ -2,8 +2,8 @@ package dapr4s
 
 /** A pre-serialised JSON string, used for workflow input and output payloads.
   *
-  * Obtain instances from [[WorkflowSnapshot.serializedInput]] and [[WorkflowSnapshot.serializedOutput]]. Use [[SerializedJson.decode]]
-  * or [[SerializedJson.decodeOrThrow]] to recover the typed value:
+  * Obtain instances from [[WorkflowSnapshot.serializedInput]] and [[WorkflowSnapshot.serializedOutput]]. Use
+  * [[SerializedJson.decode]] or [[SerializedJson.decodeOrThrow]] to recover the typed value:
   * {{{
   *   val result: CounterState = snapshot.serializedOutput
   *     .getOrElse(throw RuntimeException("no output"))
