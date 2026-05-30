@@ -45,6 +45,7 @@ private[dapr4s] final class ActorCapabilityImpl(
       case Left(err) =>
         throw JsonDecodeException(
           s"Actor '${actorType.value}/${method.value}' response decode failed: ${err.getMessage}",
+          err,
         )
       case Right(v) => v
 
