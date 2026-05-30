@@ -164,19 +164,3 @@ class Dapr(config: DaprConfig = DaprConfig()):
         actorConfig = config.actors,
       )
 
-/** Companion object for [[Dapr]] providing convenience factory methods. */
-object Dapr:
-
-  /** Run `body` with a [[DaprCapability]] pointing to a specific sidecar endpoint.
-    *
-    * Convenience wrapper for tests and local development where the sidecar runs on a non-default port. Equivalent to
-    * `Dapr(DaprConfig(sidecar = SidecarConfig(httpEndpoint = ..., grpcEndpoint = ...))).run`.
-    *
-    * See [[Dapr.run]] for the full configuration API.
-    */
-  def runWithEndpoints[T](httpEndpoint: URI, grpcEndpoint: URI)(
-      body: DaprCapability ?=> T,
-  ): T =
-    Dapr(DaprConfig(sidecar = SidecarConfig(httpEndpoint = httpEndpoint, grpcEndpoint = grpcEndpoint))).run(
-      body,
-    )
