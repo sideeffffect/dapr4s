@@ -62,15 +62,28 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
 
     for inv <- app.invocations do
       val path = "/" + inv.methodName.value
-      val handler = inv.rawHandler.asInstanceOf[inv.Req => inv.Resp]
-      val fn: String => String = bodyJson =>
-        inv.reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
-          case Right(req) => inv.respCodec.encode(handler(req))
-          case Left(e)    =>
-            throw RuntimeException(
-              s"Cannot decode invocation request for '${inv.methodName.value}': ${e.getMessage}",
-              e,
-            )
+      val fn: (String, String) => String =
+        if inv.usesRequestEnvelope then
+          val handler = inv.rawHandler.asInstanceOf[InvocationRequest[inv.Req] => inv.Resp]
+          (methodStr, bodyJson) =>
+            inv.reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
+              case Right(req) =>
+                inv.respCodec.encode(handler(InvocationRequest(inv.methodName, parseHttpMethod(methodStr), req)))
+              case Left(e) =>
+                throw RuntimeException(
+                  s"Cannot decode invocation request for '${inv.methodName.value}': ${e.getMessage}",
+                  e,
+                )
+        else
+          val handler = inv.rawHandler.asInstanceOf[inv.Req => inv.Resp]
+          (_, bodyJson) =>
+            inv.reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
+              case Right(req) => inv.respCodec.encode(handler(req))
+              case Left(e) =>
+                throw RuntimeException(
+                  s"Cannot decode invocation request for '${inv.methodName.value}': ${e.getMessage}",
+                  e,
+                )
       invokeRoutes.put(path, fn.asInstanceOf[AnyRef])
 
     for bin <- app.bindings do
@@ -232,9 +245,8 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
             else
               val ivFn = invokeRoutes.get(path)
               if ivFn != null then
-                val fn = ivFn.asInstanceOf[String => String]
-                val body = readBody(exchange)
-                val resp = fn(body)
+                val fn = ivFn.asInstanceOf[(String, String) => String]
+                val resp = fn(exchange.getRequestMethod.nn, readBody(exchange))
                 sendJson(exchange, 200, resp)
               else
                 exchange.sendResponseHeaders(404, -1)
@@ -395,6 +407,16 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
   // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
+
+  private def parseHttpMethod(s: String): HttpMethod = s.toUpperCase match
+    case "GET"     => HttpMethod.Get
+    case "POST"    => HttpMethod.Post
+    case "PUT"     => HttpMethod.Put
+    case "PATCH"   => HttpMethod.Patch
+    case "DELETE"  => HttpMethod.Delete
+    case "HEAD"    => HttpMethod.Head
+    case "OPTIONS" => HttpMethod.Options
+    case _         => HttpMethod.Post
 
   private def readBody(exchange: HttpExchange): String =
     new String(exchange.getRequestBody.nn.readAllBytes().nn, "UTF-8")

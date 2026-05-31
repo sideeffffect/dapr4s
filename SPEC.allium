@@ -206,7 +206,7 @@ value CloudEvent<T> {
 }
 
 value InvocationRequest<T> {
-    -- Incoming service invocation request delivered by the sidecar to an InvocationRoute handler.
+    -- Incoming service invocation request delivered by the sidecar to an InvocationRoute.withRequest handler.
     -- Matches final case class InvocationRequest[T](methodName: MethodName, httpMethod: HttpMethod, data: T).
     method_name: MethodName
     http_method: HttpMethod
@@ -1068,15 +1068,8 @@ surface DaprRuntimeSurface {
         -- then blocks until the JVM shuts down or the calling thread is interrupted.
         -- DaprClient lifecycle matches the server's lifetime.
 
-        run_with_endpoints: (http_endpoint: String, grpc_endpoint: String, body: DaprCapability ?=> Any) -> Any
-        -- Like run but overrides the DAPR sidecar HTTP and gRPC endpoints.
-        -- Intended for integration tests where the sidecar runs on a
-        -- non-default port (e.g. via Testcontainers).
-        -- Endpoint overrides are reset to their original values on exit,
-        -- whether the body completes normally or throws.
-
     @guarantee ResourceCleanup
-        -- DaprRuntime.run, serve, and run_with_endpoints always close the DaprClient
+        -- DaprRuntime.run and serve always close the DaprClient
         -- on exit, whether the body completes normally or throws.
 }
 
@@ -1206,7 +1199,10 @@ surface DaprAppSurface {
         -- Two overloads: default route is "/" + topic.value
         Subscription: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Subscription
         Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
+        -- Simple overload: handler receives only the decoded request body.
         InvocationRoute: (method_name: MethodName, handler: Req -> Resp) -> InvocationRoute
+        -- Rich overload: handler receives the full InvocationRequest envelope (method name, HTTP verb, body).
+        InvocationRoute.withRequest: (method_name: MethodName, handler: InvocationRequest<Req> -> Resp) -> InvocationRoute
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
         DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp

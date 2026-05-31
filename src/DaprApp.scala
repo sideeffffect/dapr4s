@@ -107,7 +107,7 @@ object Subscription:
   * `Req` and `Resp` type members bind [[reqCodec]] and [[respCodec]] to concrete types. The handler is stored as
   * `AnyRef` for the same reasons as [[Subscription.rawHandler]].
   *
-  * Use [[InvocationRoute.apply]] to construct instances.
+  * Use [[InvocationRoute.apply]] or [[InvocationRoute.withRequest]] to construct instances.
   */
 sealed abstract class InvocationRoute:
   type Req
@@ -117,6 +117,8 @@ sealed abstract class InvocationRoute:
   val respCodec: JsonCodec[Resp]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
   private[dapr4s] val rawHandler: AnyRef
+  // true when the handler expects InvocationRequest[Req] rather than plain Req.
+  private[dapr4s] val usesRequestEnvelope: Boolean
 
 /** Factory for [[InvocationRoute]] values.
   *
@@ -125,6 +127,7 @@ sealed abstract class InvocationRoute:
 @scala.caps.assumeSafe
 object InvocationRoute:
 
+  /** Handler receives only the decoded request body. */
   def apply[Q: JsonCodec, R: JsonCodec](methodName: MethodName)(
       handler: Q => R,
   ): InvocationRoute =
@@ -139,6 +142,23 @@ object InvocationRoute:
       val reqCodec = rc
       val respCodec = wc
       val rawHandler = handler.asInstanceOf[AnyRef]
+      val usesRequestEnvelope = false
+
+  /** Handler receives the full [[InvocationRequest]] envelope (method name, HTTP verb, and decoded body). */
+  def withRequest[Q: JsonCodec, R: JsonCodec](methodName: MethodName)(
+      handler: InvocationRequest[Q] => R,
+  ): InvocationRoute =
+    val mn = methodName
+    val rc = summon[JsonCodec[Q]]
+    val wc = summon[JsonCodec[R]]
+    new InvocationRoute:
+      type Req = Q
+      type Resp = R
+      val methodName = mn
+      val reqCodec = rc
+      val respCodec = wc
+      val rawHandler = handler.asInstanceOf[AnyRef]
+      val usesRequestEnvelope = true
 
 /** Existential wrapper for an input-binding handler.
   *
