@@ -24,22 +24,14 @@ import scala.util.control.NonFatal
   * graph.
   */
 @scala.caps.assumeSafe
-private[dapr4s] final class DaprAppServer(
-    app: DaprApp,
-    // WHY AnyRef: ActorContext extends ExclusiveCapability, so CC tracks every instance.
-    // Storing the factory as AnyRef erases the capture set on the returned ActorContext,
-    // consistent with the @assumeSafe / AnyRef-erasure pattern used throughout the library.
-    private val mkActorCtxRaw: AnyRef =
-      ((actorType: ActorType, actorId: ActorId, endpoint: URI) => HttpActorContext(actorType, actorId, endpoint))
-        .asInstanceOf[AnyRef],
-):
+private[dapr4s] final class DaprAppServer(app: DaprApp):
 
   private val log = Logger.getLogger("dapr4s.internal.DaprAppServer")
   private val mapper = new ObjectMapper()
 
   def startAndBlock(
       port: Int,
-      sidecarHttpEndpoint: URI = URI.create("http://localhost:3500"),
+      sidecarHttpEndpoint: () => URI = () => URI.create("http://localhost:3500"),
       shutdownGrace: FiniteDuration = 2.seconds,
       httpBacklog: Int = 0,
       actorConfig: ActorRuntimeConfig = ActorRuntimeConfig(),
@@ -197,7 +189,7 @@ private[dapr4s] final class DaprAppServer(
         "/actors",
         exchange =>
           val path = exchange.getRequestURI.nn.getPath.nn
-          try handleActorRequest(exchange, path, actorDefs, sidecarHttpEndpoint)
+          try handleActorRequest(exchange, path, actorDefs, sidecarHttpEndpoint())
           catch
             case NonFatal(e) =>
               try sendJson(exchange, 500, errorJson(e))
@@ -328,12 +320,7 @@ private[dapr4s] final class DaprAppServer(
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx = mkActorCtxRaw
-        .asInstanceOf[(ActorType, ActorId, URI) => ActorContext](
-          ActorType(actorType),
-          ActorId(actorId),
-          sidecarHttpEndpoint,
-        )
+      val ctx = HttpActorContext(ActorType(actorType), ActorId(actorId), sidecarHttpEndpoint)
       val routes = defn.build(ActorId(actorId), ctx)
       val route = routes.methods.find(_.methodName.value == methodName).orNull
       if route == null then
@@ -363,12 +350,7 @@ private[dapr4s] final class DaprAppServer(
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx = mkActorCtxRaw
-        .asInstanceOf[(ActorType, ActorId, URI) => ActorContext](
-          ActorType(actorType),
-          ActorId(actorId),
-          sidecarHttpEndpoint,
-        )
+      val ctx = HttpActorContext(ActorType(actorType), ActorId(actorId), sidecarHttpEndpoint)
       val routes = defn.build(ActorId(actorId), ctx)
       val route = routes.reminders.find(_.reminderName.value == reminderName).orNull
       if route == null then
@@ -396,12 +378,7 @@ private[dapr4s] final class DaprAppServer(
       exchange.sendResponseHeaders(404, -1)
       exchange.getResponseBody.nn.close()
     else
-      val ctx = mkActorCtxRaw
-        .asInstanceOf[(ActorType, ActorId, URI) => ActorContext](
-          ActorType(actorType),
-          ActorId(actorId),
-          sidecarHttpEndpoint,
-        )
+      val ctx = HttpActorContext(ActorType(actorType), ActorId(actorId), sidecarHttpEndpoint)
       val routes = defn.build(ActorId(actorId), ctx)
       val route = routes.timers.find(_.timerName.value == timerName).orNull
       if route == null then
@@ -487,16 +464,3 @@ private[dapr4s] final class DaprAppServer(
           ),
         )
 
-/** Companion object providing a typed factory that accepts an injectable [[ActorContext]] factory.
-  *
-  * WHY: [[DaprAppServer]] stores the factory as `AnyRef` to erase CC capture sets (same pattern as [[Subscription]],
-  * [[InvocationRoute]], etc.). This `apply` gives callers a type-safe entry point with named-parameter ergonomics, then
-  * performs the `AnyRef`-cast internally.
-  */
-@scala.caps.assumeSafe
-private[dapr4s] object DaprAppServer:
-  def apply(
-      app: DaprApp,
-      mkActorCtx: (ActorType, ActorId, URI) => ActorContext,
-  ): DaprAppServer =
-    new DaprAppServer(app, mkActorCtx.asInstanceOf[AnyRef])

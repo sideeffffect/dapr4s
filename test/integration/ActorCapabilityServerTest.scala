@@ -2,7 +2,7 @@ package dapr4s.test.integration
 
 import dapr4s.*
 import dapr4s.given
-import dapr4s.internal.{DaprAppServer, HttpActorContext}
+import dapr4s.internal.DaprAppServer
 import java.net.URI
 import dapr4s.test.unit.DaprServerTestBase
 import dapr4s.test.integration.apps.*
@@ -65,16 +65,12 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     // Start the app server BEFORE the sidecar so the sidecar can call /dapr/config
     // and register the Counter actor type with the placement service.
     // sidecarPortRef is still 0 here; actor state calls will fail until it is updated below.
-    val server = DaprAppServer(
-      CounterActorHandlers.daprApp,
-      mkActorCtx = (actorType, actorId, _) =>
-        new HttpActorContext(
-          actorType,
-          actorId,
-          URI.create(s"http://localhost:${sidecarPortRef.get()}"),
-        ).asInstanceOf[ActorContext],
+    val server = new DaprAppServer(CounterActorHandlers.daprApp)
+    appServerThread = Some(
+      Thread.ofVirtual().start(() =>
+        server.startAndBlock(appPort, sidecarHttpEndpoint = () => URI.create(s"http://localhost:${sidecarPortRef.get()}")),
+      ),
     )
-    appServerThread = Some(Thread.ofVirtual().start(() => server.startAndBlock(appPort)))
     waitForPort(appPort, 5000)
 
     // Use Network.SHARED so the sidecar is on the same network as the Socat relay created by

@@ -158,7 +158,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
     run:
       new internal.DaprAppServer(body).startAndBlock(
         port = config.appServer.port.value,
-        sidecarHttpEndpoint = config.sidecar.httpEndpoint,
+        sidecarHttpEndpoint = () => config.sidecar.httpEndpoint,
         shutdownGrace = config.appServer.shutdownGrace,
         httpBacklog = config.appServer.httpBacklog,
         actorConfig = config.actors,
