@@ -18,9 +18,28 @@ jobs:
         power: true
     - name: Compile
       run: scala-cli compile .
+    - name: Unit tests
+      run: scala-cli test . --test-only 'dapr4s.test.unit.*'
+
+  integration-test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: coursier/cache-action@v6
+    - uses: VirtusLab/scala-cli-setup@v1
+      with:
+        power: true
+    # The integration suite spins up a real daprd sidecar (and Redis) per test via
+    # testcontainers-dapr; Docker is preinstalled on ubuntu-latest. These are the
+    # round-trip publish/subscribe + service-invocation tests — the coverage that
+    # would have caught the JSON double-encoding regression that compile-only CI missed.
+    - name: Integration tests
+      run: scala-cli test . --test-only 'dapr4s.test.integration.*'
 
   publish:
-    needs: test
+    needs: [test, integration-test]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
