@@ -4,6 +4,7 @@ import dapr4s.*
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*
+import java.nio.charset.StandardCharsets.UTF_8
 
 @scala.caps.assumeSafe
 private[dapr4s] final class PubSubCapabilityImpl(
@@ -11,8 +12,11 @@ private[dapr4s] final class PubSubCapabilityImpl(
     val pubsubName: PubSubName,
 ) extends PubSubCapability:
 
+  // Publish the already-encoded JSON as raw bytes: the Dapr SDK's serializer passes byte[] through
+  // untouched but would re-serialize a String, double-encoding the event data into a JSON string
+  // (which subscribers then fail to decode as an object).
   def publish[T: JsonCodec](topic: Topic, data: T): Unit =
-    val json = summon[JsonCodec[T]].encode(data)
+    val json = summon[JsonCodec[T]].encode(data).getBytes(UTF_8)
     scope.client.publishEvent(pubsubName.value, topic.value, json).awaitResult(): Unit
 
   def publishWithMetadata[T: JsonCodec](
@@ -20,7 +24,7 @@ private[dapr4s] final class PubSubCapabilityImpl(
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
   ): Unit =
-    val json = summon[JsonCodec[T]].encode(data)
+    val json = summon[JsonCodec[T]].encode(data).getBytes(UTF_8)
     val javaMeta: java.util.Map[String, String] = metadata.map { case (k, v) => k.value -> v.value }.asJava
     scope.client
       .publishEvent(pubsubName.value, topic.value, json, javaMeta)
