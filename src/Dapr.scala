@@ -163,4 +163,3 @@ class Dapr(config: DaprConfig = DaprConfig()):
         httpBacklog = config.appServer.httpBacklog,
         actorConfig = config.actors,
       )
-

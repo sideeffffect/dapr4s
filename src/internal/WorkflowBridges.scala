@@ -48,6 +48,7 @@ private[dapr4s] final class WorkflowActivityBridge[I, O](
         case other => other
       val input = activity.inputCodec.decode(rawInput) match
         case Right(v)  => v
-        case Left(err) => throw RuntimeException(s"Failed to decode activity input for '${activity.getClass.getSimpleName}'", err)
+        case Left(err) =>
+          throw RuntimeException(s"Failed to decode activity input for '${activity.getClass.getSimpleName}'", err)
       val output = activity.execute(input)
       activity.outputCodec.encode(output)

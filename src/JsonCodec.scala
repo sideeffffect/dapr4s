@@ -26,4 +26,3 @@ object JsonCodec:
     codec.decode(json) match
       case Right(v)  => v
       case Left(err) => throw err
-

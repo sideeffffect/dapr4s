@@ -67,9 +67,12 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     // sidecarPortRef is still 0 here; actor state calls will fail until it is updated below.
     val server = new DaprAppServer(CounterActorHandlers.daprApp)
     appServerThread = Some(
-      Thread.ofVirtual().start(() =>
-        server.startAndBlock(appPort, sidecarHttpEndpoint = () => URI.create(s"http://localhost:${sidecarPortRef.get()}")),
-      ),
+      Thread
+        .ofVirtual()
+        .start(() =>
+          server
+            .startAndBlock(appPort, sidecarHttpEndpoint = () => URI.create(s"http://localhost:${sidecarPortRef.get()}")),
+        ),
     )
     waitForPort(appPort, 5000)
 
