@@ -41,7 +41,8 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     // Build dispatch tables from DaprApp
     // -----------------------------------------------------------------------
 
-    // For /dapr/subscribe response — ordered list of (pubsubName, topic, route) triples
+    // For /dapr/subscribe response — ordered list of (pubsubName, topic, route, deadLetterTopic)
+    // entries; the 4th element is "" (empty) when no dead-letter topic is configured.
     val pubSubEntries: ArrayList[Array[String]] = ArrayList()
 
     // Path → handler, stored as AnyRef to keep Java collections outside CC.
@@ -55,7 +56,9 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     for sub <- app.subscriptions do
       val path = if sub.route.value.startsWith("/") then sub.route.value else "/" + sub.route.value
       val handler = sub.rawHandler.asInstanceOf[CloudEvent[sub.Payload] => SubscriptionResult]
-      pubSubEntries.add(Array(sub.pubsubName.value, sub.topic.value, path))
+      pubSubEntries.add(
+        Array(sub.pubsubName.value, sub.topic.value, path, sub.deadLetterTopic.map(_.value).getOrElse("")),
+      )
       val fn: String => SubscriptionResult = bodyJson =>
         parseCloudEvent(bodyJson, sub.codec, sub.pubsubName, sub.topic, handler)
       pubSubRoutes.put(path, fn.asInstanceOf[AnyRef])
@@ -79,7 +82,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
           (_, bodyJson) =>
             inv.reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
               case Right(req) => inv.respCodec.encode(handler(req))
-              case Left(e) =>
+              case Left(e)    =>
                 throw RuntimeException(
                   s"Cannot decode invocation request for '${inv.methodName.value}': ${e.getMessage}",
                   e,
@@ -139,7 +142,8 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
           if exchange.getRequestMethod.nn == "GET" then
             val arr = mapper.createArrayNode()
             pubSubEntries.asScala.foreach: e =>
-              arr.addObject().put("pubsubname", e(0)).put("topic", e(1)).put("route", e(2))
+              val obj = arr.addObject().put("pubsubname", e(0)).put("topic", e(1)).put("route", e(2))
+              if e(3).nonEmpty then obj.put("deadLetterTopic", e(3))
             sendJson(exchange, 200, mapper.writeValueAsString(arr))
           else
             exchange.sendResponseHeaders(405, -1)
@@ -485,4 +489,3 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
             data = v,
           ),
         )
-

@@ -181,6 +181,29 @@ class SubscriberTest extends FunSuite:
       thread.interrupt()
       thread.join(2000)
 
+  test("unit: /dapr/subscribe emits deadLetterTopic only when configured"):
+    val app = DaprApp(
+      subscriptions = List(
+        Subscription[String](PubSubName("ps"), Topic("orders"), deadLetterTopic = Some(Topic("orders-dlq"))) { _ =>
+          SubscriptionResult.Success
+        },
+        Subscription[String](PubSubName("ps"), Topic("plain")) { _ => SubscriptionResult.Success },
+      ),
+    )
+    val server = new dapr4s.internal.DaprAppServer(app)
+    val port = freePort()
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    try
+      waitForPort(port)
+      val json = ujson.read(httpGet(s"http://localhost:$port/dapr/subscribe")).arr
+      val ordersEntry = json.find(_("topic").str == "orders").get
+      assertEquals(ordersEntry("deadLetterTopic").str, "orders-dlq")
+      val plainEntry = json.find(_("topic").str == "plain").get
+      assert(!plainEntry.obj.contains("deadLetterTopic"), s"plain subscription should not carry a DLQ: $plainEntry")
+    finally
+      thread.interrupt()
+      thread.join(2000)
+
   test("unit: DaprApp ++ merges subscriptions and invocations"):
     val app1 = DaprApp(
       subscriptions = List(Subscription[String](PubSubName("p"), Topic("t1")) { _ => SubscriptionResult.Success }),

@@ -64,6 +64,9 @@ sealed abstract class Subscription:
   val topic: Topic
   val route: Route
   val codec: JsonCodec[Payload]
+  // When set, the sidecar routes events that exhaust the retry policy to this topic
+  // instead of dropping them. Emitted as `deadLetterTopic` in the /dapr/subscribe response.
+  val deadLetterTopic: Option[Topic]
   // WHY AnyRef: stores CloudEvent[Payload] => SubscriptionResult with capture set erased.
   // CC tracks captures through typed function fields; AnyRef is opaque so the instance
   // has no CC capture set and can be stored in a plain List[Subscription].
@@ -80,12 +83,17 @@ sealed abstract class Subscription:
 @scala.caps.assumeSafe
 object Subscription:
 
-  def apply[T: JsonCodec](pubsubName: PubSubName, topic: Topic)(
+  def apply[T: JsonCodec](pubsubName: PubSubName, topic: Topic, deadLetterTopic: Option[Topic] = None)(
       handler: CloudEvent[T] => SubscriptionResult,
   ): Subscription =
-    apply(pubsubName, topic, Route("/" + topic.value))(handler)
+    apply(pubsubName, topic, Route("/" + topic.value), deadLetterTopic)(handler)
 
-  def apply[T: JsonCodec](pubsubName: PubSubName, topic: Topic, route: Route)(
+  def apply[T: JsonCodec](
+      pubsubName: PubSubName,
+      topic: Topic,
+      route: Route,
+      deadLetterTopic: Option[Topic],
+  )(
       handler: CloudEvent[T] => SubscriptionResult,
   ): Subscription =
     // WHY RENAME: val x = x in anonymous class is a Scala self-reference (x's RHS sees
@@ -93,6 +101,7 @@ object Subscription:
     val pn = pubsubName
     val tp = topic
     val rt = route
+    val dlt = deadLetterTopic
     val c = summon[JsonCodec[T]]
     new Subscription:
       type Payload = T
@@ -100,6 +109,7 @@ object Subscription:
       val topic = tp
       val route = rt
       val codec = c
+      val deadLetterTopic = dlt
       val rawHandler = handler.asInstanceOf[AnyRef]
 
 /** Existential wrapper for a service-invocation handler.
