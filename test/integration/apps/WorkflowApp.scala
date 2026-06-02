@@ -9,7 +9,7 @@ import language.experimental.safe
 // ---------------------------------------------------------------------------
 
 class AddActivity extends WorkflowActivity[IncrRequest, CounterState]:
-  def execute(input: IncrRequest): CounterState =
+  def execute(input: IncrRequest)(using DaprCapability): CounterState =
     CounterState(input.amount * 2) // doubles the input for test verification
 
 class AddingWorkflow extends Workflow:

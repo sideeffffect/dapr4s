@@ -38,6 +38,13 @@ private[dapr4s] final class WorkflowBridge(
 @scala.caps.assumeSafe
 private[dapr4s] final class WorkflowActivityBridge[I, O](
     private val activity: WorkflowActivity[I, O],
+    // WHY AnyRef: a DaprCapability carries a non-empty CC capture set, so storing it as a
+    // typed field would force that capture into the bridge instance (and into the plain
+    // collection that holds it). Storing it capture-erased — the same trick as
+    // Subscription.rawHandler — keeps the bridge CC-opaque; we cast back at use under
+    // @assumeSafe. The capability lives for the whole server lifetime (the enclosing
+    // Dapr.serve scope), so reusing it for every activity invocation is sound.
+    private val daprRef: AnyRef,
 ) extends io.dapr.workflows.WorkflowActivity:
 
   final override def run(ctx: io.dapr.workflows.WorkflowActivityContext | Null): AnyRef | Null =
@@ -50,5 +57,5 @@ private[dapr4s] final class WorkflowActivityBridge[I, O](
         case Right(v)  => v
         case Left(err) =>
           throw RuntimeException(s"Failed to decode activity input for '${activity.getClass.getSimpleName}'", err)
-      val output = activity.execute(input)
+      val output = activity.execute(input)(using daprRef.asInstanceOf[DaprCapability])
       activity.outputCodec.encode(output)

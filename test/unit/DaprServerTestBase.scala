@@ -16,7 +16,7 @@ trait DaprServerTestBase:
   protected def withServer[T](app: DaprApp)(f: Int => T): T =
     val port = freePort()
     val server = new DaprAppServer(app)
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
     try
       waitForPort(port)
       f(port)

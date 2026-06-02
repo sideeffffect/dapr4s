@@ -64,7 +64,7 @@ class SubscriberTest extends FunSuite:
     )
     val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
 
     try
       waitForPort(port)
@@ -96,7 +96,7 @@ class SubscriberTest extends FunSuite:
     )
     val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
     try
       waitForPort(port)
       val cloudEvent =
@@ -120,7 +120,7 @@ class SubscriberTest extends FunSuite:
     )
     val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
     try
       waitForPort(port)
       // "not-a-number" can't be decoded as Int → DROP
@@ -143,7 +143,7 @@ class SubscriberTest extends FunSuite:
     )
     val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
     try
       waitForPort(port)
       httpPost(s"http://localhost:$port/myqueue", "\"hello-binding\"", "application/json")
@@ -160,7 +160,7 @@ class SubscriberTest extends FunSuite:
     )
     val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
     try
       waitForPort(port)
       val resp = httpPost(s"http://localhost:$port/echo", "\"ping\"", "application/json")
@@ -172,7 +172,7 @@ class SubscriberTest extends FunSuite:
   test("unit: DaprAppServer returns 404 for unknown route"):
     val server = new dapr4s.internal.DaprAppServer(DaprApp())
     val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
     try
       waitForPort(port)
       val (code, _) = httpPostWithCode(s"http://localhost:$port/unknown", "{}", "application/json")
@@ -192,7 +192,7 @@ class SubscriberTest extends FunSuite:
     )
     val server = new dapr4s.internal.DaprAppServer(app)
     val port = freePort()
-    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port))
+    val thread = Thread.ofVirtual().start(() => server.startAndBlock(port, TestDapr.placeholderCapability))
     try
       waitForPort(port)
       val json = ujson.read(httpGet(s"http://localhost:$port/dapr/subscribe")).arr

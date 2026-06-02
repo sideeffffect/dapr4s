@@ -31,6 +31,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
 
   def startAndBlock(
       port: Int,
+      daprCapability: DaprCapability,
       sidecarHttpEndpoint: () => URI = () => URI.create("http://localhost:3500"),
       shutdownGrace: FiniteDuration = 2.seconds,
       httpBacklog: Int = 0,
@@ -120,7 +121,10 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
           wb.registerWorkflow(w.getClass.getSimpleName.nn, new WorkflowBridge(w), "", false)
         }
         app.activities.foreach { a =>
-          wb.registerActivity(a.getClass.getCanonicalName.nn, new WorkflowActivityBridge(a))
+          wb.registerActivity(
+            a.getClass.getCanonicalName.nn,
+            new WorkflowActivityBridge(a, daprCapability.asInstanceOf[AnyRef]),
+          )
         }
         val rt = wb.build()
         rt.start(false)

@@ -156,8 +156,10 @@ class Dapr(config: DaprConfig = DaprConfig()):
     */
   def serve(body: DaprCapability ?=> DaprApp): Nothing =
     run:
+      val cap = summon[DaprCapability]
       new internal.DaprAppServer(body).startAndBlock(
         port = config.appServer.port.value,
+        daprCapability = cap,
         sidecarHttpEndpoint = () => config.sidecar.httpEndpoint,
         shutdownGrace = config.appServer.shutdownGrace,
         httpBacklog = config.appServer.httpBacklog,

@@ -71,7 +71,11 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
         .ofVirtual()
         .start(() =>
           server
-            .startAndBlock(appPort, sidecarHttpEndpoint = () => URI.create(s"http://localhost:${sidecarPortRef.get()}")),
+            .startAndBlock(
+              appPort,
+              TestDapr.placeholderCapability,
+              sidecarHttpEndpoint = () => URI.create(s"http://localhost:${sidecarPortRef.get()}"),
+            ),
         ),
     )
     waitForPort(appPort, 5000)

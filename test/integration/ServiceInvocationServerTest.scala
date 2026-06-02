@@ -53,7 +53,9 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
 
     // Start the app server BEFORE the sidecar so the sidecar can call /dapr/config and route invocations.
     val server = new DaprAppServer(echoApp)
-    appServerThread = Some(Thread.ofVirtual().start(() => server.startAndBlock(appPort)))
+    appServerThread = Some(
+      Thread.ofVirtual().start(() => server.startAndBlock(appPort, TestDapr.placeholderCapability)),
+    )
     waitForPort(appPort, 5000)
 
     val c = DaprTestContainer(

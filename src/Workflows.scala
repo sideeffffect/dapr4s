@@ -208,11 +208,16 @@ abstract class Workflow:
   *
   * Register instances in [[DaprApp.activities]]; reference the concrete class in [[WorkflowContext.callActivity]].
   *
+  * An activity receives a [[DaprCapability]] on every invocation, so it can perform Dapr I/O
+  * (call other services, read state, publish events) without capturing a capability in a field.
+  * Because the capability arrives as a parameter and is never stored, activity implementations
+  * stay capture-checked ("safe mode") — no `@scala.caps.assumeSafe` is needed:
+  *
   * {{{
   *   class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
-  *     def execute(input: OrderRequest): PaymentResult =
-  *       // call payment gateway...
-  *       PaymentResult("confirmed")
+  *     def execute(input: OrderRequest)(using DaprCapability): PaymentResult =
+  *       DaprCapability.invoker:
+  *         ServiceInvocationCapability.invoke(PaymentService, MethodName("charge"), input)[PaymentResult]
   * }}}
   */
 @scala.caps.assumeSafe
@@ -221,8 +226,13 @@ abstract class WorkflowActivity[I, O](using
     private[dapr4s] val outputCodec: JsonCodec[O],
 ):
 
-  /** Implement activity logic here.  May perform I/O; need not be deterministic. */
-  def execute(input: I): O
+  /** Implement activity logic here.  May perform I/O; need not be deterministic.
+    *
+    * The [[DaprCapability]] is supplied by the workflow runtime for the duration of the call;
+    * use it (directly or via the `DaprCapability` transformer API) to reach any Dapr building
+    * block. Do not store it — it must not outlive the call.
+    */
+  def execute(input: I)(using DaprCapability): O
 
 // ---------------------------------------------------------------------------
 // ActivityDef — typeclass linking an activity class to its I/O types

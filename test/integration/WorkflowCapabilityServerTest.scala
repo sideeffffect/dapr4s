@@ -46,7 +46,9 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
 
     // Start the app server BEFORE the sidecar so the workflow runtime can register with the sidecar.
     val server = new DaprAppServer(WorkflowApp.daprApp)
-    appServerThread = Some(Thread.ofVirtual().start(() => server.startAndBlock(appPort)))
+    appServerThread = Some(
+      Thread.ofVirtual().start(() => server.startAndBlock(appPort, TestDapr.placeholderCapability)),
+    )
     waitForPort(appPort, 5000)
 
     val c = DaprTestContainer(
