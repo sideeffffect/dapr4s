@@ -51,7 +51,7 @@ jobs:
       with:
         power: true
     - name: Publish
-      run: scala-cli publish src/
+      run: scala-cli publish .
       env:
         PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
         PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
