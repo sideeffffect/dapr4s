@@ -48,7 +48,10 @@ case class DaprConfig(
   * @param grpcKeepAliveWithoutCalls
   *   Whether to send keep-alive pings even when there are no active calls (default true).
   * @param grpcTlsInsecure
-  *   Disable TLS on the gRPC channel (default true, i.e. plaintext by default).
+  *   Use TLS but skip server-certificate verification, i.e. trust any certificate (default false). This still forces a
+  *   TLS handshake — it does not mean plaintext. Plaintext is chosen automatically for an `http://` `grpcEndpoint` when
+  *   this is false and no cert/CA paths are set; an `https://` endpoint uses verified TLS. Set this to true only to
+  *   talk TLS to a sidecar presenting a self-signed/untrusted certificate.
   * @param grpcTlsCertPath
   *   Path to the client TLS certificate file (PEM). Required when TLS is enabled.
   * @param grpcTlsKeyPath
@@ -73,7 +76,7 @@ case class SidecarConfig(
     grpcKeepAliveTime: FiniteDuration = 10.seconds,
     grpcKeepAliveTimeout: FiniteDuration = 5.seconds,
     grpcKeepAliveWithoutCalls: Boolean = true,
-    grpcTlsInsecure: Boolean = true,
+    grpcTlsInsecure: Boolean = false,
     grpcTlsCertPath: Option[java.nio.file.Path] = None,
     grpcTlsKeyPath: Option[java.nio.file.Path] = None,
     grpcTlsCaPath: Option[java.nio.file.Path] = None,
