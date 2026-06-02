@@ -30,13 +30,12 @@ Both must stay in sync with the code at all times.
 - **Compiler flags** (all active):
   - `-language:experimental.captureChecking`
   - `-language:experimental.pureFunctions` — `A => B` is a pure function; context functions are
-    pure by default; strengthens `DaprRuntime.run`'s body type.
-  - `-language:experimental.modularity` — enables `tracked` keyword for singleton-typed
-    constructor parameters.
+    pure by default; strengthens `Dapr.run`'s body type.
   - `-experimental` — enables clause interleaving (`def f[A](x: A)[B: TC]: B`).
   - `-Ycc-verbose`, `-Yexplicit-nulls`, `-Wconf:any:error` (fatal warnings).
-- **Dependencies**: upickle 3.3.1 (pinned — 4.x crashes on CC-annotated types), munit 1.3.0,
-  testcontainers-scala-munit 0.44.1, testcontainers-dapr 1.17.2.
+- **Dependencies**: upickle 3.3.1 (pinned — 4.x crashes on CC-annotated types, test-only),
+  munit 1.3.0, testcontainers-scala-munit 0.43.6, testcontainers-dapr 1.17.2. (upickle, munit, and
+  both testcontainers deps are `test.dep` only — they are not part of the published library.)
 
 ---
 
@@ -87,8 +86,8 @@ declares `onNext`/`onComplete`/`onError` as `synchronized`, which can briefly pi
 of the gRPC worker thread on JDK < 24 under high concurrency. This bridge lives in
 `internal/MonoOps.scala` as the `awaitResult()` extension method.
 
-For best throughput, callers should invoke `DaprRuntime.run` from a virtual thread:
-- Plain Scala `main()`: `Thread.ofVirtual().start(() => DaprRuntime.run { ... }).join()`
+For best throughput, callers should invoke `Dapr(...).run` from a virtual thread:
+- Plain Scala `main()`: `Thread.ofVirtual().start(() => Dapr(config).run { ... }).join()`
 - Spring Boot 3.2+: `spring.threads.virtual.enabled=true`
 - Quarkus: `@RunOnVirtualThread`
 - Helidon 4: virtual threads by default
@@ -97,7 +96,7 @@ For best throughput, callers should invoke `DaprRuntime.run` from a virtual thre
 Only write comments when the *why* is non-obvious: a hidden constraint, a subtle invariant, a
 workaround for a specific library bug, or behavior that would surprise a reader. When something
 warrants a comment, make it thorough — explain the reasoning fully, not just the action. See the
-`InterruptedException` handling in `MonoOps` and the `NonFatal` trade-off note in `DaprRuntime`
+`InterruptedException` handling in `MonoOps` and the `NonFatal` trade-off note in `Dapr`
 as style references.
 
 ### CC sibling-lambda CanThrow pattern
@@ -130,11 +129,9 @@ catch clause (`throw e`) still requires a `CanThrow[Exception]` in scope.  The t
 provides this for the whole file.
 
 ### Experimental Scala features — exploit them, don't just enable them
-- **`pureFunctions`**: `DaprRuntime.run`'s body type is `(DaprScope, CanThrow[Exception]) ?=> T`
-  — a pure context function. Demonstrate this with tests that show pure lambdas compose
-  correctly and the body cannot close over external capabilities.
-- **`modularity` + `tracked`**: `DaprScopeImpl` has `tracked private[internal] val client`.
-  Each scope instance carries a distinct refined client type.
+- **`pureFunctions`**: `Dapr.run`/`Dapr.serve` take a `DaprCapability ?=> T` body — a pure context
+  function. Demonstrate this with tests that show pure lambdas compose correctly and the body
+  cannot close over external capabilities.
 - **Clause interleaving**: `invoke` methods use `def invoke[Req: JsonCodec](...)[Resp: JsonCodec]`
   so `Req` is inferred from the data argument and `Resp` is specified at the call site.
 
@@ -183,16 +180,17 @@ Format it manually (or leave it) until scalafmt gains nightly CC syntax support.
 
 ## Testing
 
-- **Unit tests** (no Docker required): `scala-cli test . --test-only "*unit*"`. Tests across
-  `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`.
-- **In-process integration tests** (no Docker required): `scala-cli test . --test-only
-  "*integration.ActorIntegrationTest"`. Tests actor business logic, state management, and
-  reminder/timer registration via `MockActorContext` (19 tests).
-- **Integration tests** (require Docker): use `testcontainers-scala-munit` with the
-  `TestContainersForAll` pattern. `startContainers()` **must return an already-started container**
-  — call `c.start()` before returning; the framework does NOT auto-start it. Tests use
-  `withContainers { c => }`. The `DaprTestContainer` wrapper bridges the testcontainers-scala
-  `SingleContainer` type to the Dapr Java testcontainers type.
+- **Unit tests** (no Docker required): `scala-cli test . --test-only 'dapr4s.test.unit.*'`. Tests
+  across `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`,
+  `BindingDispatchTest`, `CapabilityHandlerTest` (with `DaprServerTestBase` as a shared helper).
+- **Integration tests** (require Docker): `scala-cli test . --test-only 'dapr4s.test.integration.*'`.
+  They use `testcontainers-scala-munit` with the `TestContainersForAll` pattern and exercise a real
+  Dapr sidecar. `startContainers()` **must return an already-started container** — call `c.start()`
+  before returning; the framework does NOT auto-start it. Tests use `withContainers { c => }`. The
+  `DaprTestContainer` wrapper bridges the testcontainers-scala `SingleContainer` type to the Dapr
+  Java testcontainers type. Actor, workflow, state, pub/sub, lock, secrets, and service-invocation
+  capabilities each have a `*ServerTest` here; there are no in-process / mock-context actor tests.
+- CI runs unit and integration tests as separate jobs and gates `publish` on **both** passing.
 - After every non-trivial change: compile first, then run unit tests, then integration tests if
   relevant. Do not batch large changes and test only at the end.
 

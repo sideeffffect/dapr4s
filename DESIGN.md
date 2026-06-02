@@ -38,15 +38,15 @@ graph TB
     end
 
     subgraph "Internal Layer (@assumeSafe boundaries)"
-        DR["DaprRuntime.run { ... }"]
-        DS2["DaprRuntime.serve(port) { ... }"]
+        DR["Dapr(config).run { ... }"]
+        DS2["Dapr(config).serve { ... }"]
         IMPL["*CapabilityImpl\n(non-safe-mode,\n@assumeSafe methods)"]
         DC["DaprClient\n(Java SDK)"]
         SRV["DaprAppServer(DaprApp)\n(OpenJDK HttpServer)"]
     end
 
     subgraph "DAPR Sidecar"
-        SID["localhost:3500 HTTP API\n/ gRPC :50001"]
+        SID["SidecarConfig.httpEndpoint\n(default http://localhost:3500)\nSidecarConfig.grpcEndpoint\n(default http://localhost:50001)"]
     end
 
     UC -->|"summon[DaprCapability].state(...)"| DS
@@ -64,13 +64,13 @@ graph TB
 
 ### Layer 1 — Public API (safe-mode-compatible)
 
-Capability traits, opaque domain types, and the `DaprRuntime.run` entry point. These compile cleanly under both safe mode and capture checking. No Java types are visible.
+Capability traits, opaque domain types, and the `Dapr(config).run` / `.serve` entry points (on `class Dapr(config: DaprConfig)` in `src/Dapr.scala`). These compile cleanly under both safe mode and capture checking. No Java types are visible.
 
 ### Layer 2 — Internal implementations (`@assumeSafe`)
 
 Non-safe-mode Scala that wraps `DaprClient` Java SDK calls. Each class/object is marked `@scala.caps.assumeSafe` (from the `scala.caps` package) so safe-mode user code may call them through the capability trait interfaces. Library authors are responsible for the safety contract; user code cannot add new `@scala.caps.assumeSafe` annotations (the annotation is itself restricted to non-safe-mode code).
 
-Note: safe mode is enabled **per-file** via `import language.experimental.safe` (not globally via a compiler flag). This is intentional: files in `internal/` and `DaprRuntime.scala`/`JsonCodec.scala` must use `@scala.caps.assumeSafe` and therefore cannot have the safe-mode import.
+Note: safe mode is enabled **per-file** via `import language.experimental.safe` (not globally via a compiler flag). This is intentional: files in `internal/` and `Dapr.scala`/`JsonCodec.scala` must use `@scala.caps.assumeSafe` and therefore cannot have the safe-mode import.
 
 ---
 
@@ -158,23 +158,23 @@ classDiagram
 
 ---
 
-## Subscriber Server (`DaprRuntime.serve`)
+## Subscriber Server (`Dapr(config).serve`)
 
-Apps that need to receive Dapr events (pub/sub messages, input binding triggers, service invocations) use `DaprRuntime.serve` instead of `run`.  The body returns a declarative [[DaprApp]] value describing all inbound routes; the runtime passes it to `DaprAppServer` which starts an HTTP server and blocks until interrupted.
+Apps that need to receive Dapr events (pub/sub messages, input binding triggers, service invocations) use `Dapr(config).serve` instead of `run`.  The body returns a declarative [[DaprApp]] value describing all inbound routes; the runtime passes it to `DaprAppServer` which starts an HTTP server on `config.appServer.port` (default 8080) and blocks until interrupted.
 
 ```mermaid
 sequenceDiagram
     participant App
-    participant DaprRuntime
+    participant Dapr
     participant DaprAppServer
     participant Sidecar
 
-    App->>DaprRuntime: serve(port=8080) { ... returns DaprApp }
+    App->>Dapr: Dapr(config).serve { ... returns DaprApp }
     Note over App: body builds DaprApp with\nSubscription / InvocationRoute / BindingRoute
-    DaprRuntime->>DaprAppServer: new DaprAppServer(app)
-    DaprRuntime->>DaprAppServer: startAndBlock(8080)
+    Dapr->>DaprAppServer: new DaprAppServer(body)
+    Dapr->>DaprAppServer: startAndBlock(config.appServer.port)
     Note over DaprAppServer: builds dispatch tables\nfrom DaprApp fields
-    DaprAppServer-->>Sidecar: (server ready on :8080)
+    DaprAppServer-->>Sidecar: (server ready on app port)
     Sidecar->>DaprAppServer: GET /dapr/subscribe
     DaprAppServer-->>Sidecar: JSON subscription list
     Sidecar->>DaprAppServer: POST /topic-route (CloudEvent)
@@ -188,6 +188,12 @@ The server runs each request on its own virtual thread (via `Executors.newVirtua
 ### CloudEvent envelope parsing
 
 The Dapr sidecar wraps pub/sub messages in CloudEvents.  `DaprAppServer` extracts the `data` field and decodes it with the registered `JsonCodec[T]`.  If decoding fails, the result is `SubscriptionResult.Drop` (silently discards — avoids poison-pill retry loops).  If the handler itself throws, the result is `SubscriptionResult.Retry`.
+
+A `Subscription` may declare an optional `deadLetterTopic: Option[Topic]`; when set it is emitted as `deadLetterTopic` in the `/dapr/subscribe` response so the sidecar routes undeliverable messages to that topic instead of dropping them.
+
+### Service-invocation routes
+
+`InvocationRoute.apply` builds a route whose handler receives only the decoded request body (`Q => R`).  `InvocationRoute.withRequest` is an HTTP-method-aware overload whose handler receives the full `InvocationRequest[Q]` envelope (method name, `httpMethod: HttpMethod`, decoded body), letting one route branch on the incoming HTTP verb.
 
 ### Route collision
 
@@ -286,10 +292,10 @@ graph LR
 
 ### Testing with `TestDaprApp`
 
-Integration tests use the `TestDaprApp` object (which is `@assumeSafe` internally) to invoke handlers directly against a `DaprApp` without an HTTP round-trip:
+Integration tests use the `TestDaprApp` object (which is `@assumeSafe` internally) to invoke handlers directly against a `DaprApp` without an HTTP round-trip.  Tests point `Dapr` at the Testcontainers sidecar by constructing a `DaprConfig` whose `SidecarConfig.httpEndpoint` / `grpcEndpoint` come from the container (a test-only `Dapr.runWithEndpoints(http, grpc)` extension wraps this — it is **not** part of the published library):
 
 ```scala
-DaprRuntime.runWithEndpoints(http, grpc):
+Dapr(DaprConfig(SidecarConfig(httpEndpoint = c.httpEndpoint, grpcEndpoint = c.grpcEndpoint))).run:
   val scope = summon[DaprCapability]
   val app   = OrderServiceHandlers.daprApp(using scope)
   val resp  = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("widget", 2))[OrderResponse]
@@ -335,7 +341,7 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `ActorId` | `String` | no | Dapr virtual actor instance ID |
 | `HttpMethod` | enum | — | HTTP verb used by an incoming service invocation |
 
-Smart constructors live in companion objects and validate non-empty constraints at construction time (non-empty types). Extension methods provide `.value` unwrapping.
+Each opaque type lives in its own file under `src/optypes/` (one type per file), not in `Models.scala` companions. Smart constructors validate non-empty constraints at construction time (non-empty types). Extension methods provide `.value` unwrapping.
 
 ---
 
@@ -370,11 +376,11 @@ In Scala this is represented as:
 ```scala
 sealed abstract class StateOp          // entity StateOp
 object StateOp:
-  final case class UpsertOp(key: StateKey, encodedValue: String, etag: Option[ETag]) extends StateOp
-  final case class DeleteOp(key: StateKey, etag: Option[ETag] = None)                extends StateOp
+  final case class UpsertOp(key: StateKey, encodedValue: SerializedJson, etag: Option[ETag]) extends StateOp
+  final case class DeleteOp(key: StateKey, etag: Option[ETag] = None)                        extends StateOp
 ```
 
-`UpsertOp.encodedValue` is structurally always present (non-nullable by construction). Use the companion `UpsertOp.apply[T]` smart constructor to encode a typed value immediately; this avoids type erasure issues when the operation is dispatched in `StateCapability.transaction`.
+`UpsertOp.encodedValue` is a `SerializedJson` opaque type (structurally always present, non-nullable by construction). Use the companion `UpsertOp.apply[T]` smart constructor to encode a typed value immediately; this avoids type erasure issues when the operation is dispatched in `StateCapability.transaction`.
 
 ---
 
@@ -394,24 +400,26 @@ object JsonCodec:
   given [T: upickle.default.ReadWriter]: JsonCodec[T] = ...
 ```
 
+**Raw-bytes outbound payloads**: pub/sub publish and service invocation encode the value with the `JsonCodec[T]` and hand the result to the Java SDK as **raw bytes** (`byte[]`), not as a `String`. The SDK's serializer passes `byte[]` through untouched but would re-serialize a `String`, double-encoding the JSON into a JSON-string. Exchanging bytes in both directions keeps dapr4s the sole owner of the JSON encoding. See `PubSubCapabilityImpl` and `InvokerCapabilityImpl`.
+
 ---
 
 ## Resource Lifecycle (Scope Safety)
 
-`DaprRuntime.run` acquires a `DaprClient`, creates a `DaprCapability` that captures the client reference, and releases both on exit. The return type of capabilities created inside `run` captures `DaprCapability`, so they cannot outlive the `run` block.
+`Dapr(config).run` builds a `DaprClient` from `config.sidecar` (HTTP/gRPC endpoints, timeouts, TLS, retries), creates a `DaprCapability` that captures the client reference, and releases it on exit. The `ActorClient` and `DaprWorkflowClient` are created lazily on first use and all clients are closed in the `finally` block. The return type of capabilities created inside `run` captures `DaprCapability`, so they cannot outlive the `run` block.
 
 ```mermaid
 sequenceDiagram
     participant App
-    participant DaprRuntime
+    participant Dapr
     participant DaprCapability
     participant DaprClient
     participant Sidecar
 
-    App->>DaprRuntime: run { body }
-    DaprRuntime->>DaprClient: DaprClientBuilder().build()
-    DaprRuntime->>DaprCapability: new DaprCapabilityImpl(client)
-    DaprRuntime->>App: body (given DaprCapability)
+    App->>Dapr: Dapr(config).run { body }
+    Dapr->>DaprClient: DaprClientBuilder()...build()  (endpoints from config.sidecar)
+    Dapr->>DaprCapability: new DaprCapabilityImpl(client, ...)
+    Dapr->>App: body (given DaprCapability)
     App->>DaprCapability: .state("my-store")
     DaprCapability-->>App: StateCapability^scope
     App->>DaprCapability: state.save("k", value)
@@ -420,8 +428,8 @@ sequenceDiagram
     Sidecar-->>DaprClient: 200 OK
     DaprClient-->>DaprCapability: ()
     DaprCapability-->>App: ()
-    App->>DaprRuntime: (body complete)
-    DaprRuntime->>DaprClient: close()
+    App->>Dapr: (body complete)
+    Dapr->>DaprClient: close()
 ```
 
 ---
@@ -481,48 +489,77 @@ Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM err
 dapr4s/
 ├── project.scala                     # Scala CLI directives (deps, compiler options; nightly Scala)
 ├── src/
-│   ├── Models.scala                  # Opaque types, ETag, StateEntry, ConfigItem, StateOp,
-│   │                                 # SubscriptionResult, CloudEvent, InvocationRequest [safe mode]
+│   ├── Models.scala                  # Value types: StateEntry, ConfigItem, StateOp, SubscriptionResult,
+│   │                                 # CloudEvent, InvocationRequest, WorkflowSnapshot/Status [safe mode]
 │   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe]
-│   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes) [safe mode]
+│   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes + WorkflowCapability) [safe mode]
 │   ├── DaprApp.scala                 # DaprApp case class + Subscription/InvocationRoute/BindingRoute [@assumeSafe companions]
-│   ├── DaprCapability.scala               # DaprCapability trait with ^{this} return types [safe mode]
-│   ├── DaprRuntime.scala             # DaprRuntime.run + serve entry points [@assumeSafe]
+│   ├── DaprCapability.scala          # DaprCapability trait with ^{this} return types [safe mode]
+│   ├── Dapr.scala                    # class Dapr(config) with .run + .serve entry points [@assumeSafe]
+│   ├── DaprConfig.scala              # DaprConfig / SidecarConfig / AppServerConfig / ActorRuntimeConfig
+│   ├── Actors.scala                  # ActorContext, ActorDefinition, ActorRoutes + route types
+│   ├── Workflows.scala               # Workflow, WorkflowActivity, ActivityDef, Task, WorkflowContext
+│   ├── Exceptions.scala              # ETagMismatchException, JsonDecodeException
+│   ├── optypes/                      # One opaque domain type per file (StoreName, Topic, AppId,
+│   │                                 # SerializedJson, ApiToken, DaprPort, DaprDuration, ... )
 │   └── internal/
-│       ├── DaprCapabilityImpl.scala       # DaprCapability implementation
+│       ├── DaprCapabilityImpl.scala  # DaprCapability implementation
 │       ├── MonoOps.scala             # Reactor Mono → blocking bridge (.toFuture().get())
-│       ├── DaprAppServer.scala       # HTTP server (OpenJDK jdk.httpserver) for subscriber side
+│       ├── NullOps.scala             # null-handling helpers
+│       ├── DaprAppServer.scala       # HTTP server (OpenJDK jdk.httpserver); workflow/actor registration
 │       ├── StateCapabilityImpl.scala
 │       ├── PubSubCapabilityImpl.scala
 │       ├── InvokerCapabilityImpl.scala
 │       ├── SecretsCapabilityImpl.scala
 │       ├── ConfigCapabilityImpl.scala
 │       ├── BindingsCapabilityImpl.scala
-│       └── LockCapabilityImpl.scala
+│       ├── LockCapabilityImpl.scala
+│       ├── ActorCapabilityImpl.scala
+│       ├── HttpActorContext.scala
+│       ├── WorkflowCapabilityImpl.scala
+│       ├── WorkflowContextImpl.scala
+│       └── WorkflowBridges.scala     # WorkflowBridge / WorkflowActivityBridge (Java SDK adapters)
 └── test/
+    ├── TestCodecs.scala               # shared test JsonCodec instances
+    ├── TestDaprExtensions.scala       # test-only Dapr.runWithEndpoints(http, grpc) helper
+    ├── TestOptionCodec.scala
     ├── unit/
     │   ├── ModelsTest.scala
     │   ├── JsonCodecTest.scala
-    │   ├── CCTest.scala              # capture checking invariants (ScopeContainment, JsonCodec)
-    │   ├── MockDaprCapability.scala       # in-memory mock for unit tests
-    │   ├── StateCapabilityTest.scala # mock-based tests: state, pubsub, secrets, config, lock
-    │   └── SubscriberTest.scala      # DaprAppServer dispatch logic (no Docker required)
+    │   ├── CCTest.scala               # capture checking invariants (ScopeContainment, JsonCodec)
+    │   ├── CapabilityHandlerTest.scala
+    │   ├── DaprServerTestBase.scala   # in-memory DaprAppServer test harness base
+    │   ├── StateCapabilityTest.scala  # mock-based tests: state, pubsub, secrets, config, lock
+    │   ├── BindingDispatchTest.scala
+    │   └── SubscriberTest.scala       # DaprAppServer dispatch logic (no Docker required)
     └── integration/
-        ├── TestDaprApp.scala              # In-process DaprApp dispatch helper for tests (@assumeSafe)
-        ├── DaprTestContainer.scala        # Testcontainers bridge
+        ├── TestDaprApp.scala          # In-process DaprApp dispatch helper for tests (@assumeSafe)
+        ├── DaprTestContainer.scala    # Testcontainers bridge
         ├── StateIntegrationTest.scala
         ├── PubSubIntegrationTest.scala
         ├── InvokerIntegrationTest.scala
         ├── OrderServiceIntegrationTest.scala
         ├── InventoryServiceIntegrationTest.scala
         ├── EndToEndIntegrationTest.scala
-        └── SecretsIntegrationTest.scala
+        ├── SecretsIntegrationTest.scala
+        ├── StateCapabilityServerTest.scala       # *CapabilityServerTest: live-sidecar capability tests
+        ├── PubSubCapabilityServerTest.scala
+        ├── SecretsCapabilityServerTest.scala
+        ├── LockCapabilityServerTest.scala
+        ├── ActorCapabilityServerTest.scala
+        ├── ServiceInvocationServerTest.scala
+        ├── WorkflowCapabilityServerTest.scala
         └── apps/
-            ├── Shared.scala               # Shared domain models (OrderRequest, OrderEvent, etc.)
-            ├── OrderServiceHandlers.scala  # Business logic: no @assumeSafe, explicit using capabilities
+            ├── Shared.scala           # Shared domain models (OrderRequest, OrderEvent, etc.)
+            ├── OrderServiceHandlers.scala   # Business logic: no @assumeSafe, explicit using capabilities
             ├── InventoryServiceHandlers.scala
-            ├── OrderServiceApp.scala       # Main entry point (serve)
-            └── InventoryServiceApp.scala
+            ├── OrderServiceApp.scala   # Main entry point (serve)
+            ├── InventoryServiceApp.scala
+            ├── CounterActorApp.scala
+            ├── CounterActorShared.scala
+            ├── WorkflowApp.scala
+            ├── TestDurations.scala
+            └── TestUpickleCodec.scala
 ```
 
 ---
@@ -536,7 +573,8 @@ dapr4s/
 | Async model | Blocking (`.toFuture().get()` on `Mono`) | Direct-style compatible; avoids bringing in effect library dependency; CAS-based VT-safe bridging |
 | Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |
 | Java SDK visibility | Zero — all Java types in `internal/` | Users see only Scala types; easier to swap SDK in future |
-| Scope safety | Capture checking: capabilities `^{scope}` | Compiler enforces no DAPR resource outlives its `DaprRuntime.run` block (via `import language.experimental.captureChecking`, no `-Ycc` needed) |
+| Scope safety | Capture checking: capabilities `^{scope}` | Compiler enforces no DAPR resource outlives its `Dapr(config).run` block (via `import language.experimental.captureChecking`, no `-Ycc` needed) |
+| Configuration | Typed `DaprConfig` (`SidecarConfig` / `AppServerConfig` / `ActorRuntimeConfig`) | All endpoints/timeouts/TLS explicit and typed — no env-var reads or system-property manipulation in production code; `grpcTlsInsecure` defaults to `false` |
 | Capability base type | `scala.caps.ExclusiveCapability` | All capability traits extend `ExclusiveCapability` — the only sealed subtype of `Capability` that prevents sharing. Enables CC separation checking: no capability escapes its scope or is used concurrently. Sub-capabilities return as `^{this}` to bind lifetime to the parent; override methods must explicitly annotate return types to satisfy CC override checks. |
 
 ---
@@ -553,29 +591,37 @@ Extend `Workflow` and implement `run()(using WorkflowContext): Unit`. `WorkflowC
 class OrderWorkflow extends Workflow:
   def run(using WorkflowContext): Unit =
     val input = WorkflowContext.getInput[OrderRequest].getOrElse(throw RuntimeException("No input"))
-    val paymentTask = WorkflowContext.callActivity(classOf[ProcessPaymentActivity], input)
+    val paymentTask = WorkflowContext.callActivity[ProcessPaymentActivity](input)
     val result = paymentTask.await()
     WorkflowContext.complete(result)
 ```
 
+`callActivity` is parameterised by the concrete activity **class** (`callActivity[ProcessPaymentActivity](input)`), not a `classOf[...]` argument. The `ActivityDef[A]` typeclass (auto-derived for every `WorkflowActivity[I, O]` subclass with a `ClassTag` and the relevant `JsonCodec`s in scope) links the class to its input/output types, so the input/output types are resolved by the compiler.
+
 `Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge constructs `given WorkflowContext = new WorkflowContextImpl(javaCtx)` and calls `w.run`, so `WorkflowContext` never escapes the bridge's stack frame. The bridge is in `dapr4s.internal` and never visible to users.
+
+**Registration naming**: workflows register under their **simple** class name (`w.getClass.getSimpleName`) — this is what users pass to `WorkflowCapability.start(WorkflowName(...))`. Activities register under their **canonical** class name (`a.getClass.getCanonicalName`, exposed via `ActivityDef.activityName`). See `DaprAppServer`'s registration loop and `Workflows.scala`.
+
+Workflow operations honour the configured gRPC endpoint: `Dapr` derives a `workflowProperties: Properties` from `config.sidecar` and threads it through to the `DaprWorkflowClient` and `WorkflowRuntimeBuilder`, whose no-arg constructors would otherwise hardcode `localhost:50001`.
+
+`WorkflowCapability.getStatus` (and `waitForCompletion`) return `Option[WorkflowSnapshot]`, yielding `None` for an unknown or purged instance.
 
 ### WorkflowActivity[I, O]
 
-Extend `WorkflowActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]` in scope) and implement `execute(input: I): O`:
+Extend `WorkflowActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]` in scope) and implement `execute(input: I)(using DaprCapability): O`. The `DaprCapability` is supplied fresh by the workflow runtime on **every call** — it is a per-call parameter, never captured in a field. Because nothing is captured, activity implementations stay capture-checked ("safe mode") with no `@scala.caps.assumeSafe` annotation:
 
 ```scala
 class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
-  def execute(input: OrderRequest): PaymentResult =
-    // can do I/O, call services, etc.
-    PaymentResult("confirmed")
+  def execute(input: OrderRequest)(using DaprCapability): PaymentResult =
+    DaprCapability.invoker:
+      ServiceInvocationCapability.invoke(PaymentService, MethodName("charge"), input)[PaymentResult]
 ```
 
-`WorkflowActivity[I, O]` is a pure Scala abstract class. Internally, `WorkflowActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[safe]` on the abstract class.
+`WorkflowActivity[I, O]` is a pure Scala abstract class. Internally, `WorkflowActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[dapr4s]` on the abstract class.
 
-### WorkflowTask[O]
+### Task[O]
 
-`WorkflowContext.callActivity(...)`, `WorkflowContext.createTimer(...)`, and `WorkflowContext.waitForExternalEvent(...)` all return `WorkflowTask[O]`. Call `.await()` to block and get the result. This is replay-safe inside the workflow runtime.
+`WorkflowContext.callActivity(...)`, `WorkflowContext.createTimer(...)`, and `WorkflowContext.waitForExternalEvent(...)` all return `Task[O]`. Call `.await()` to block and get the result, or `.map(f)` to transform it without scheduling new durable work. This is replay-safe inside the workflow runtime.
 
 ---
 
@@ -588,7 +634,7 @@ Dapr virtual actors are hosted server-side via `ActorDefinition` without extendi
 `ActorContext` is a capability trait provided on every actor invocation. It bundles per-instance state access with reminder/timer scheduling:
 
 ```scala
-@assumeSafe trait ActorContext:
+@scala.caps.assumeSafe trait ActorContext extends scala.caps.ExclusiveCapability:
   // State
   def get[T: JsonCodec](key: StateKey): Option[T]
   def set[T: JsonCodec](key: StateKey, value: T): Unit
@@ -639,7 +685,7 @@ ActorDefinition(ActorType("Counter")) { (id, ctx) =>
 - `PUT /actors/{type}/{id}/method/timer/{name}` → dispatches to the matching `ActorTimerRoute`; same body format
 - `DELETE /actors/{type}/{id}` → actor deactivation (returns 200, no local cleanup needed)
 
-Actor state persists via `/v1.0/actors/{type}/{id}/state`. Reminders are registered at `/v1.0/actors/{type}/{id}/reminders/{name}` and timers at `/v1.0/actors/{type}/{id}/timers/{name}`. The app reads `DAPR_HTTP_PORT` (default 3500) for all sidecar callbacks.
+Actor state persists via `/v1.0/actors/{type}/{id}/state`. Reminders are registered at `/v1.0/actors/{type}/{id}/reminders/{name}` and timers at `/v1.0/actors/{type}/{id}/timers/{name}`. All sidecar callbacks target `config.sidecar.httpEndpoint` (default `http://localhost:3500`), passed into `HttpActorContext` — there is no `DAPR_HTTP_PORT` environment read. The actor runtime settings reported via `GET /dapr/config` come from `config.actors` (`ActorRuntimeConfig`).
 
 ---
 
