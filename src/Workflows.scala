@@ -177,9 +177,10 @@ object WorkflowContext:
   *
   * Workflows **must be deterministic** — use only [[WorkflowContext]] APIs for scheduling side effects.
   *
-  * The workflow is identified by its canonical class name when starting instances:
+  * The workflow is identified by its simple class name when starting instances (this matches how the runtime registers
+  * it with the sidecar):
   * {{{
-  *   WorkflowCapability.start(WorkflowName(classOf[OrderWorkflow].getCanonicalName))
+  *   WorkflowCapability.start(WorkflowName(classOf[OrderWorkflow].getSimpleName))
   * }}}
   */
 @scala.caps.assumeSafe

@@ -22,4 +22,5 @@ object TestDapr:
       new io.dapr.client.DaprClientBuilder().build(),
       new AtomicReference(null),
       new AtomicReference(null),
+      new io.dapr.config.Properties(),
     )

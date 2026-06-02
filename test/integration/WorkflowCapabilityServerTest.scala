@@ -44,13 +44,9 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
     // Make the host-side app server reachable from inside Docker containers.
     org.testcontainers.Testcontainers.exposeHostPorts(appPort)
 
-    // Start the app server BEFORE the sidecar so the workflow runtime can register with the sidecar.
-    val server = new DaprAppServer(WorkflowApp.daprApp)
-    appServerThread = Some(
-      Thread.ofVirtual().start(() => server.startAndBlock(appPort, TestDapr.placeholderCapability)),
-    )
-    waitForPort(appPort, 5000)
-
+    // Start the sidecar FIRST: the workflow runtime connects outbound to the sidecar's gRPC
+    // endpoint, which Testcontainers maps to a dynamic host port. The runtime must be told that
+    // port (not the default 50001), so the sidecar has to exist before we start the app server.
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
         .withNetwork(org.testcontainers.containers.Network.SHARED)
@@ -63,18 +59,30 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
     )
     c.start()
 
+    // Point the workflow runtime at the sidecar's dynamic gRPC port, then start the app server.
+    val wfProps = new io.dapr.config.Properties(
+      java.util.Map.of(io.dapr.config.Properties.GRPC_ENDPOINT.getName, c.grpcEndpoint.toString),
+    )
+    val server = new DaprAppServer(WorkflowApp.daprApp)
+    appServerThread = Some(
+      Thread
+        .ofVirtual()
+        .start(() => server.startAndBlock(appPort, TestDapr.placeholderCapability, workflowProperties = wfProps)),
+    )
+    waitForPort(appPort, 5000)
+
     // Give the workflow runtime time to connect to the sidecar gRPC endpoint and register.
-    waitForWorkflowRuntime(c.httpEndpoint.getPort)
+    waitForWorkflowRuntime(c)
 
     c
 
-  private val workflowName = WorkflowName(classOf[AddingWorkflow].getCanonicalName)
+  private val workflowName = WorkflowName(classOf[AddingWorkflow].getSimpleName)
 
   private def thirtySeconds: FiniteDuration = 30.seconds
 
   // Poll until the workflow runtime has registered with the sidecar by attempting to start a workflow
   // and retrying until we get a non-5xx response (or the attempt succeeds).
-  private def waitForWorkflowRuntime(sidecarPort: Int, maxMs: Int = 60000): Unit =
+  private def waitForWorkflowRuntime(c: DaprTestContainer, maxMs: Int = 60000): Unit =
     import scala.util.boundary
     import scala.util.boundary.break
     val deadline = System.currentTimeMillis() + maxMs
@@ -82,10 +90,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
     var done = false
     while !done && System.currentTimeMillis() < deadline do
       try
-        Dapr.runWithEndpoints(
-          java.net.URI.create(s"http://localhost:$sidecarPort"),
-          java.net.URI.create(s"http://localhost:$sidecarPort"),
-        ):
+        Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
           val wf = summon[DaprCapability].workflow
           try
             wf.start(workflowName)

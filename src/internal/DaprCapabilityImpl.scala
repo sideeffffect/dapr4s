@@ -26,6 +26,10 @@ private[dapr4s] final class DaprCapabilityImpl(
     private[internal] val client: DaprClient,
     private val actorClientRef: AtomicReference[ActorClient],
     private val workflowClientRef: AtomicReference[DaprWorkflowClient],
+    // gRPC/TLS overrides for the workflow client and runtime. Without these, the Java SDK's
+    // DaprWorkflowClient / WorkflowRuntimeBuilder default to localhost:50001 and ignore the
+    // gRPC endpoint configured in DaprConfig (which breaks any non-default sidecar port).
+    private[internal] val workflowProperties: io.dapr.config.Properties,
 ) extends DaprCapability:
 
   private val log = Logger.getLogger("dapr4s.internal.DaprCapabilityImpl")
@@ -74,7 +78,7 @@ private[dapr4s] final class DaprCapabilityImpl(
   def workflow: WorkflowCapability^{this} =
     val wc = workflowClientRef.get() match
       case null =>
-        val newWc = new DaprWorkflowClient()
+        val newWc = new DaprWorkflowClient(workflowProperties)
         if workflowClientRef.compareAndSet(null, newWc) then newWc
         else
           // Lost the CAS race — close the redundant client and use the winner's.

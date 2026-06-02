@@ -33,6 +33,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
       port: Int,
       daprCapability: DaprCapability,
       sidecarHttpEndpoint: () => URI = () => URI.create("http://localhost:3500"),
+      workflowProperties: io.dapr.config.Properties = new io.dapr.config.Properties(),
       shutdownGrace: FiniteDuration = 2.seconds,
       httpBacklog: Int = 0,
       actorConfig: ActorRuntimeConfig = ActorRuntimeConfig(),
@@ -111,7 +112,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
 
     val workflowRuntime =
       if app.workflows.nonEmpty || app.activities.nonEmpty then
-        val wb = new WorkflowRuntimeBuilder()
+        val wb = new WorkflowRuntimeBuilder(workflowProperties)
         // WHY simple name: the workflow type appears in user-visible API URLs
         // (POST /v1.0-beta1/workflows/dapr/{type}/start) and in WorkflowName("...") values.
         // Users naturally use the simple class name ("OrderProcessingWorkflow"), not the

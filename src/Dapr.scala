@@ -29,6 +29,24 @@ import java.util.concurrent.atomic.AtomicReference
 @scala.caps.assumeSafe
 class Dapr(config: DaprConfig = DaprConfig()):
 
+  /** gRPC/TLS overrides for the workflow client and runtime, derived from [[config]].
+    *
+    * The Java SDK's `DaprWorkflowClient()` and `WorkflowRuntimeBuilder()` no-arg constructors default to
+    * `localhost:50001` and ignore any configured gRPC endpoint. Passing these properties makes both honour
+    * `config.sidecar.grpcEndpoint` (and the related TLS / API-token settings), so workflows work against a sidecar on a
+    * non-default port.
+    */
+  private def workflowProperties: Properties =
+    val sc = config.sidecar
+    val overrides = new java.util.HashMap[String, String]()
+    overrides.put(Properties.GRPC_ENDPOINT.getName, sc.grpcEndpoint.toString)
+    overrides.put(Properties.GRPC_TLS_INSECURE.getName, sc.grpcTlsInsecure.toString)
+    sc.apiToken.foreach(t => overrides.put(Properties.API_TOKEN.getName, t.value))
+    sc.grpcTlsCertPath.foreach(p => overrides.put(Properties.GRPC_TLS_CERT_PATH.getName, p.toString))
+    sc.grpcTlsKeyPath.foreach(p => overrides.put(Properties.GRPC_TLS_KEY_PATH.getName, p.toString))
+    sc.grpcTlsCaPath.foreach(p => overrides.put(Properties.GRPC_TLS_CA_PATH.getName, p.toString))
+    new Properties(overrides)
+
   /** Acquire a `DaprClient`, run `body` with a `DaprCapability` in context, then release the client whether `body`
     * completes normally or throws.
     *
@@ -90,7 +108,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
     val client = builder.build()
     val actorClientRef = new AtomicReference[ActorClient](null)
     val workflowClientRef = new AtomicReference[DaprWorkflowClient](null)
-    val impl = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef)
+    val impl = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef, workflowProperties)
     var primary: Throwable | Null = null
     try body(using impl)
     catch
@@ -161,6 +179,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
         port = config.appServer.port.value,
         daprCapability = cap,
         sidecarHttpEndpoint = () => config.sidecar.httpEndpoint,
+        workflowProperties = workflowProperties,
         shutdownGrace = config.appServer.shutdownGrace,
         httpBacklog = config.appServer.httpBacklog,
         actorConfig = config.actors,

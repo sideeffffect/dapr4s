@@ -31,7 +31,12 @@ private[dapr4s] final class WorkflowCapabilityImpl(
 
   def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] =
     val state = client.getWorkflowState(instanceId.value, true)
-    if state == null then None else Some(toSnapshot(state))
+    // The SDK returns a non-null WorkflowState even for unknown or purged instances; durabletask signals
+    // "not found" by an empty workflow name (a scheduled instance always carries its orchestrator name).
+    if state == null then None
+    else
+      val name = state.getName
+      if name == null || name.isEmpty then None else Some(toSnapshot(state))
 
   def suspend(instanceId: WorkflowInstanceId): Unit =
     client.suspendWorkflow(instanceId.value, null)
