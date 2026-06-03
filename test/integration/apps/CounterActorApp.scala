@@ -22,7 +22,7 @@ import scala.concurrent.duration.FiniteDuration
   *   - `cancelReset(_)` — unregister the pending reset reminder
   *   - `scheduleTimer(_)` — register a one-shot timer that increments by 1 after 500ms
   */
-object CounterActorHandlers:
+object CounterActorApp:
 
   val ActorTypeName = ActorType("Counter")
   private val CountKey = StateKey("count")
@@ -73,7 +73,7 @@ object CounterActorHandlers:
     val current = ActorContext.get[Int](CountKey).getOrElse(0)
     ActorContext.set(CountKey, current + req.amount)
 
-  def daprApp: DaprApp =
+  def apply(): DaprApp =
     DaprApp(
       actors = List(
         ActorDefinition(ActorTypeName) { (id, ctx) =>

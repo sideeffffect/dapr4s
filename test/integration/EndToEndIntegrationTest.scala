@@ -15,8 +15,8 @@ import munit.FunSuite
 
 import java.util.Collections
 
-/** End-to-end integration test that runs both [[OrderServiceHandlers]] and [[InventoryServiceHandlers]] against the
-  * same real Dapr sidecar, exercising the full order-placement → inventory-update flow.
+/** End-to-end integration test that runs both [[OrderServiceApp]] and [[InventoryServiceApp]] against the same real
+  * Dapr sidecar, exercising the full order-placement → inventory-update flow.
   *
   * Each service runs in its own [[dapr4s.internal.DaprAppServer]] HTTP server. Order-service pub/sub delivery to the
   * inventory service is simulated by POSTing a CloudEvent JSON envelope directly to the inventory server's subscription
@@ -64,8 +64,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val orderApp = OrderServiceHandlers.daprApp(using scope)
-        val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
+        val orderApp = OrderServiceApp()(using scope)
+        val inventoryApp = InventoryServiceApp()(using scope)
 
         withServer(orderApp) { orderPort =>
           withServer(inventoryApp) { invPort =>
@@ -95,8 +95,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val orderApp = OrderServiceHandlers.daprApp(using scope)
-        val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
+        val orderApp = OrderServiceApp()(using scope)
+        val inventoryApp = InventoryServiceApp()(using scope)
 
         withServer(orderApp) { orderPort =>
           withServer(inventoryApp) { invPort =>
@@ -118,8 +118,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val orderApp = OrderServiceHandlers.daprApp(using scope)
-        val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
+        val orderApp = OrderServiceApp()(using scope)
+        val inventoryApp = InventoryServiceApp()(using scope)
 
         withServer(orderApp) { orderPort =>
           withServer(inventoryApp) { invPort =>
@@ -143,8 +143,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val orderApp = OrderServiceHandlers.daprApp(using scope)
-        val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
+        val orderApp = OrderServiceApp()(using scope)
+        val inventoryApp = InventoryServiceApp()(using scope)
 
         withServer(orderApp) { orderPort =>
           withServer(inventoryApp) { invPort =>
@@ -166,8 +166,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val orderApp = OrderServiceHandlers.daprApp(using scope)
-        val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
+        val orderApp = OrderServiceApp()(using scope)
+        val inventoryApp = InventoryServiceApp()(using scope)
 
         withServer(orderApp) { orderPort =>
           withServer(inventoryApp) { invPort =>
@@ -206,8 +206,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val orderApp = OrderServiceHandlers.daprApp(using scope)
-        val inventoryApp = InventoryServiceHandlers.daprApp(using scope)
+        val orderApp = OrderServiceApp()(using scope)
+        val inventoryApp = InventoryServiceApp()(using scope)
         val combined = orderApp ++ inventoryApp
 
         assert(combined.invocations.exists(_.methodName.value == "place-order"))

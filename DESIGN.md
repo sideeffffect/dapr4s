@@ -237,22 +237,23 @@ object StateCapability:
 
 These methods carry no `@assumeSafe`; they are pure capability-tracked code that the compiler can reason about.
 
-### Layer 2 — `daprApp` method: declarative route description
+### Layer 2 — the `*App` object's `apply` method: declarative route description
 
-The `daprApp` method uses the **`DaprCapability` transformer API** to nest sub-capabilities into scope, then returns an immutable `DaprApp`.  Each `DaprCapability.xxx(...)` call acquires a sub-capability and makes it available as an implicit inside its body block.  Handler methods are passed as direct function references — no wrapping lambda is needed because no library method carries a `throws T` annotation:
+The promoted idiom is a dedicated `*App` object whose `apply` method takes the capabilities it needs (`using DaprCapability`, codecs, …) and returns an immutable `DaprApp` — the in-library analogue of a `main`.  It uses the **`DaprCapability` transformer API** to nest sub-capabilities into scope.  Each `DaprCapability.xxx(...)` call acquires a sub-capability and makes it available as an implicit inside its body block.  Handler methods are passed as direct function references — no wrapping lambda is needed because no library method carries a `throws T` annotation:
 
 ```scala
-def daprApp(using DaprCapability): DaprApp =
-  DaprCapability.state(StateName) {
-    DaprCapability.pubsub(PubSubComp) {
-      DaprApp(
-        invocations = List(
-          InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order"))(placeOrder),
-          InvocationRoute[String, Option[OrderRequest]](MethodName("get-order"))(getOrder)
+object OrderServiceApp:
+  def apply()(using DaprCapability): DaprApp =
+    DaprCapability.state(StateName) {
+      DaprCapability.pubsub(PubSubComp) {
+        DaprApp(
+          invocations = List(
+            InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order"))(placeOrder),
+            InvocationRoute[String, Option[OrderRequest]](MethodName("get-order"))(getOrder)
+          )
         )
-      )
+      }
     }
-  }
 ```
 
 Transformer signature (in `src/DaprCapability.scala`):
@@ -262,7 +263,7 @@ object DaprCapability:
     body(using cap.state(storeName))
 ```
 
-**Capability injection lifetime**: Capabilities are bound once per `daprApp` call and shared across all handler invocations for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
+**Capability injection lifetime**: Capabilities are bound once per `apply` call and shared across all handler invocations for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
 
 **`DaprApp` stores handlers as `AnyRef`**: Handler lambdas capture DAPR capabilities.  `Subscription`, `InvocationRoute`, and `BindingRoute` store them as `rawHandler: AnyRef` (CC-opaque) so the instances have an empty capture set and can live in a plain `List`.  Internal dispatch code (`DaprAppServer`, `TestDaprApp`) casts them back via path-dependent types under `@assumeSafe`.
 
@@ -270,9 +271,9 @@ object DaprCapability:
 
 ```mermaid
 graph LR
-    subgraph "Handler object (no @assumeSafe)"
+    subgraph "*App object (no @assumeSafe)"
         BL["Business logic def methods\nusing StateCapability\nusing PubSubCapability\n→ calls StateCapability.save/get/...\n→ calls PubSubCapability.publish/..."]
-        CFG["daprApp\nusing DaprCapability\nreturns DaprApp"]
+        CFG["apply()\nusing DaprCapability\nreturns DaprApp"]
         CFG -->|"DaprCapability.state(name) { ... }\nDaprCapability.pubsub(name) { ... }"| BL
     end
 
@@ -297,13 +298,13 @@ Integration tests use the `TestDaprApp` object (which is `@assumeSafe` internall
 ```scala
 Dapr(DaprConfig(SidecarConfig(httpEndpoint = c.httpEndpoint, grpcEndpoint = c.grpcEndpoint))).run:
   val scope = summon[DaprCapability]
-  val app   = OrderServiceHandlers.daprApp(using scope)
+  val app   = OrderServiceApp()(using scope)
   val resp  = TestDaprApp.call[OrderRequest](app, "place-order", OrderRequest("widget", 2))[OrderResponse]
 ```
 
 Two apps can be composed with `++`:
 ```scala
-val combined = OrderServiceHandlers.daprApp ++ InventoryServiceHandlers.daprApp
+val combined = OrderServiceApp() ++ InventoryServiceApp()
 ```
 
 ---
@@ -551,10 +552,10 @@ dapr4s/
         ├── WorkflowCapabilityServerTest.scala
         └── apps/
             ├── Shared.scala           # Shared domain models (OrderRequest, OrderEvent, etc.)
-            ├── OrderServiceHandlers.scala   # Business logic: no @assumeSafe, explicit using capabilities
-            ├── InventoryServiceHandlers.scala
-            ├── OrderServiceApp.scala   # Main entry point (serve)
+            ├── OrderServiceApp.scala   # `object OrderServiceApp { def apply()(using …): DaprApp }` + handlers (no @assumeSafe)
             ├── InventoryServiceApp.scala
+            ├── OrderServiceMain.scala   # @main entry point (serve OrderServiceApp())
+            ├── InventoryServiceMain.scala
             ├── CounterActorApp.scala
             ├── CounterActorShared.scala
             ├── WorkflowApp.scala

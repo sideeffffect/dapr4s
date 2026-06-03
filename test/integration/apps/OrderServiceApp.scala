@@ -2,29 +2,83 @@ package dapr4s.test.integration.apps
 
 import dapr4s.*
 import dapr4s.given
+import language.experimental.safe
 
-/** Standalone entry point for the Order microservice.
+/** Business logic for the Order microservice.
   *
-  * Starts an HTTP server on port 8080 (configurable via APP_PORT env var) that receives Dapr sidecar traffic: service
-  * invocation and (optionally) pub/sub subscriptions.
+  * Each public handler method declares its capability requirements via anonymous `using` parameters — the capability
+  * type itself is the requirement, and the compiler enforces it statically. Business logic calls companion-object
+  * methods (e.g. [[StateCapability.save]], [[PubSubCapability.publish]]) rather than naming a capability value, so the
+  * handler code reads like regular function calls:
   *
-  * Run locally (requires Dapr sidecar on localhost:3500/50001):
   * {{{
-  *   dapr run --app-id order-service --app-port 8080 -- \
-  *     scala-cli run . --main-class "dapr4s.test.integration.apps.orderServiceMain"
+  *   def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse =
+  *     StateCapability.save(StateKey(orderId), req)
+  *     PubSubCapability.publish(OrdersTopic, event)
   * }}}
   *
-  * Build a fat jar for Docker:
-  * {{{
-  *   scala-cli --power package . --assembly -o order-service.jar \
-  *     --main-class "dapr4s.test.integration.apps.orderServiceMain"
-  * }}}
+  * The `apply` method injects capabilities as `given`s and builds a [[DaprApp]] describing all inbound routes. The
+  * resulting value is immutable and can be passed to [[Dapr.serve]] or [[dapr4s.test.integration.TestDaprApp]] for
+  * in-process testing. Exposing the app builder as `apply` on a dedicated `*App` object is the idiom this library
+  * promotes — see [[dapr4s.DaprCapability]].
+  *
+  * Configured against Dapr component names:
+  *   - state store : `statestore`
+  *   - pub/sub : `pubsub`
+  *   - topic : `orders`
   */
-@main def orderServiceMain(): Unit =
-  val port = sys.env.getOrElse("APP_PORT", "8080").toInt
-  val config = DaprConfig(appServer = AppServerConfig(port = DaprPort(port)))
-  println(s"[order-service] starting on port $port")
-  Dapr(config).serve:
-    val app = OrderServiceHandlers.daprApp
-    println("[order-service] handlers declared, serving...")
-    app
+object OrderServiceApp:
+
+  val StateName = StoreName("statestore")
+  val PubSubComp = PubSubName("pubsub")
+  val OrdersTopic = Topic("orders")
+
+  // ---------------------------------------------------------------------------
+  // Handler methods — pure functions with explicit capability requirements
+  // ---------------------------------------------------------------------------
+
+  /** Place a new order: persist to state store and publish an [[OrderEvent]]. Returns the assigned order ID and
+    * acceptance status.
+    */
+  def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse =
+    val orderId = java.util.UUID.randomUUID().toString
+    StateCapability.save(StateKey(orderId), req)
+    PubSubCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
+    OrderResponse(orderId, "accepted")
+
+  /** Retrieve a previously placed order by ID.  Returns `None` if not found. */
+  def getOrder(orderId: String)(using StateCapability): Option[OrderRequest] =
+    StateCapability.get[OrderRequest](StateKey(orderId))
+
+  /** Query orders using a raw JSON filter expression. Returns a JSON array of `{"value": ..., "etag": ...}` objects.
+    */
+  def queryOrders(queryJson: String)(using StateCapability): String =
+    val results = StateCapability.queryState[OrderRequest](StateQuery(queryJson))
+    val entries = results.map { e =>
+      val v = e.value.map(r => s"""{"item":"${r.item}","quantity":${r.quantity}}""").getOrElse("null")
+      val etag = e.etag.map(t => s""""${t.value}"""").getOrElse("null")
+      s"""{"value":$v,"etag":$etag}"""
+    }
+    entries.mkString("[", ",", "]")
+
+  // ---------------------------------------------------------------------------
+  // Declarative app description
+  // ---------------------------------------------------------------------------
+
+  /** Build a [[DaprApp]] with all inbound routes for the Order service.
+    *
+    * Uses the [[DaprCapability]] transformer API to introduce `StateCapability` and `PubSubCapability` into the body
+    * scope, so the handler lambdas capture them without requiring explicit `given` declarations.
+    */
+  def apply()(using DaprCapability): DaprApp =
+    DaprCapability.state(StateName) {
+      DaprCapability.pubsub(PubSubComp) {
+        DaprApp(
+          invocations = List(
+            InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order"))(placeOrder),
+            InvocationRoute[String, Option[OrderRequest]](MethodName("get-order"))(getOrder),
+            InvocationRoute[String, String](MethodName("query-orders"))(queryOrders),
+          ),
+        )
+      }
+    }

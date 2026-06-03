@@ -24,7 +24,7 @@ class AddingWorkflow extends Workflow:
 // ---------------------------------------------------------------------------
 
 object WorkflowApp:
-  def daprApp: DaprApp = DaprApp(
+  def apply(): DaprApp = DaprApp(
     workflows = List(new AddingWorkflow),
     activities = List(new AddActivity),
   )

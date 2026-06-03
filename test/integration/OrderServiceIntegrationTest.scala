@@ -10,7 +10,7 @@ import munit.FunSuite
 
 import java.util.Collections
 
-/** Integration tests for [[OrderServiceHandlers]] against a real Dapr sidecar, dispatched through a real
+/** Integration tests for [[OrderServiceApp]] against a real Dapr sidecar, dispatched through a real
   * [[dapr4s.internal.DaprAppServer]] HTTP server.
   *
   * Each test starts a real HTTP server wrapping the handler app and exercises it via HTTP POST — the full encode → HTTP
@@ -40,7 +40,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = OrderServiceHandlers.daprApp(using scope)
+        val app = OrderServiceApp()(using scope)
         withServer(app) { port =>
           val req = OrderRequest("laptop", 2)
           val resp = invokeMethod[OrderRequest, OrderResponse](port, "place-order", req)
@@ -59,7 +59,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = OrderServiceHandlers.daprApp(using scope)
+        val app = OrderServiceApp()(using scope)
         withServer(app) { port =>
           val req = OrderRequest("keyboard", 1)
           val resp = invokeMethod[OrderRequest, OrderResponse](port, "place-order", req)
@@ -73,7 +73,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = OrderServiceHandlers.daprApp(using scope)
+        val app = OrderServiceApp()(using scope)
         withServer(app) { port =>
           val fetched = invokeMethod[String, Option[OrderRequest]](port, "get-order", "no-such-order-id")
           assertEquals(fetched, None)
@@ -84,7 +84,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = OrderServiceHandlers.daprApp(using scope)
+        val app = OrderServiceApp()(using scope)
         withServer(app) { port =>
           val r1 = invokeMethod[OrderRequest, OrderResponse](port, "place-order", OrderRequest("mouse", 1))
           val r2 = invokeMethod[OrderRequest, OrderResponse](port, "place-order", OrderRequest("monitor", 2))
@@ -99,7 +99,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = OrderServiceHandlers.daprApp(using scope)
+        val app = OrderServiceApp()(using scope)
         withServer(app) { port =>
           val resp = invokeMethod[OrderRequest, OrderResponse](port, "place-order", OrderRequest("headphones", 3))
           assertEquals(resp.status, "accepted")
@@ -110,7 +110,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = OrderServiceHandlers.daprApp(using scope)
+        val app = OrderServiceApp()(using scope)
         withServer(app) { port =>
           val items = List("pencil", "ruler", "eraser", "notebook", "stapler")
           val ids = items.map { item =>
@@ -130,7 +130,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val scope = summon[DaprCapability]
-        val app = OrderServiceHandlers.daprApp(using scope)
+        val app = OrderServiceApp()(using scope)
 
         assert(app.invocations.exists(_.methodName.value == "place-order"))
         assert(app.invocations.exists(_.methodName.value == "get-order"))

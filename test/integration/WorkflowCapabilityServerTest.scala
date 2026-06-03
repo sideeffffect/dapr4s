@@ -63,7 +63,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
     val wfProps = new io.dapr.config.Properties(
       java.util.Map.of(io.dapr.config.Properties.GRPC_ENDPOINT.getName, c.grpcEndpoint.toString),
     )
-    val server = new DaprAppServer(WorkflowApp.daprApp)
+    val server = new DaprAppServer(WorkflowApp())
     appServerThread = Some(
       Thread
         .ofVirtual()

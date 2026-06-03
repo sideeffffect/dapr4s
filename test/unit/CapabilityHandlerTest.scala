@@ -10,6 +10,6 @@ import munit.FunSuite
 class CapabilityHandlerTest extends FunSuite:
 
   test("unit: WorkflowApp DaprApp has non-empty workflows and activities"):
-    val app = WorkflowApp.daprApp
+    val app = WorkflowApp()
     assert(app.workflows.nonEmpty, "expected non-empty workflows")
     assert(app.activities.nonEmpty, "expected non-empty activities")

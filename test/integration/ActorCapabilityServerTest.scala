@@ -65,7 +65,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     // Start the app server BEFORE the sidecar so the sidecar can call /dapr/config
     // and register the Counter actor type with the placement service.
     // sidecarPortRef is still 0 here; actor state calls will fail until it is updated below.
-    val server = new DaprAppServer(CounterActorHandlers.daprApp)
+    val server = new DaprAppServer(CounterActorApp())
     appServerThread = Some(
       Thread
         .ofVirtual()
@@ -255,7 +255,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   test("actor: DaprApp ++ merges actor definitions"):
     withContainers { _ =>
-      val app1 = CounterActorHandlers.daprApp
+      val app1 = CounterActorApp()
       val app2 = DaprApp(actors = List(ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() }))
       val combined = app1 ++ app2
       assertEquals(combined.actors.size, 2)

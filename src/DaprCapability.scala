@@ -16,13 +16,19 @@ package dapr4s
   *   val cap = summon[DaprCapability]
   *   given StateCapability = cap.state(StoreName("statestore"))
   *
-  *   // Transformer style (recommended for service handlers)
-  *   def daprApp(using DaprCapability): DaprApp =
-  *     DaprCapability.state(StoreName("statestore")) {
-  *       DaprCapability.pubsub(PubSubName("pubsub")) {
-  *         DaprApp(...)
+  *   // Transformer style (recommended for service handlers): a dedicated
+  *   // `*App` object whose `apply` takes the capabilities it needs and
+  *   // returns a [[DaprApp]] — the idiom this library promotes.
+  *   object MyServiceApp:
+  *     def apply()(using DaprCapability): DaprApp =
+  *       DaprCapability.state(StoreName("statestore")) {
+  *         DaprCapability.pubsub(PubSubName("pubsub")) {
+  *           DaprApp(...)
+  *         }
   *       }
-  *     }
+  *
+  *   // Built and served as `MyServiceApp()`:
+  *   Dapr(config).serve(MyServiceApp())
   * }}}
   */
 @scala.caps.assumeSafe
@@ -64,19 +70,20 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   * by nesting:
   *
   * {{{
-  *   def daprApp(using DaprCapability): DaprApp =
-  *     DaprCapability.state(StoreName("statestore")) {
-  *       DaprCapability.pubsub(PubSubName("pubsub")) {
-  *         DaprApp(
-  *           invocations = List(
-  *             InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
-  *               try placeOrder(req)
-  *               catch case e: Exception => throw e
-  *             }
+  *   object MyServiceApp:
+  *     def apply()(using DaprCapability): DaprApp =
+  *       DaprCapability.state(StoreName("statestore")) {
+  *         DaprCapability.pubsub(PubSubName("pubsub")) {
+  *           DaprApp(
+  *             invocations = List(
+  *               InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+  *                 try placeOrder(req)
+  *                 catch case e: Exception => throw e
+  *               }
+  *             )
   *           )
-  *         )
+  *         }
   *       }
-  *     }
   * }}}
   *
   * WHY @assumeSafe: the transformer methods call into `@assumeSafe` DaprCapability
