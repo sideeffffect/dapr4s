@@ -225,3 +225,79 @@ class ModelsTest extends FunSuite:
     assertEquals(snap.status, WorkflowStatus.Running)
     assertEquals(snap.serializedInput, Some(SerializedJson("{\"x\":1}")))
     assertEquals(snap.serializedOutput, None)
+
+  // -------------------------------------------------------------------------
+  // Crypto opaque types
+  // -------------------------------------------------------------------------
+
+  test("CryptoComponentName round-trips"):
+    assertEquals(CryptoComponentName("localstorage").value, "localstorage")
+
+  test("CryptoComponentName rejects empty string"):
+    intercept[IllegalArgumentException] { CryptoComponentName("") }
+
+  test("CryptoKeyName round-trips"):
+    assertEquals(CryptoKeyName("rsa-key").value, "rsa-key")
+
+  test("CryptoKeyName rejects empty string"):
+    intercept[IllegalArgumentException] { CryptoKeyName("") }
+
+  test("KeyWrapAlgorithm constants and custom values"):
+    assertEquals(KeyWrapAlgorithm.Rsa.value, "RSA")
+    assertEquals(KeyWrapAlgorithm.Aes.value, "AES")
+    assertEquals(KeyWrapAlgorithm("A256KW").value, "A256KW")
+
+  test("KeyWrapAlgorithm rejects empty string"):
+    intercept[IllegalArgumentException] { KeyWrapAlgorithm("") }
+
+  // -------------------------------------------------------------------------
+  // Jobs
+  // -------------------------------------------------------------------------
+
+  test("JobName round-trips"):
+    assertEquals(JobName("nightly-report").value, "nightly-report")
+
+  test("JobName rejects empty string"):
+    intercept[IllegalArgumentException] { JobName("") }
+
+  test("JobSchedule cases hold their data"):
+    import scala.concurrent.duration.DurationInt
+    assertEquals(JobSchedule.Cron("0 30 * * * *").asInstanceOf[JobSchedule.Cron].expression, "0 30 * * * *")
+    assertEquals(JobSchedule.Every(5.seconds).asInstanceOf[JobSchedule.Every].period, 5.seconds)
+
+  test("JobDetails holds all fields"):
+    val now = java.time.Instant.now()
+    val d = JobDetails(
+      name = JobName("j"),
+      data = Some(SerializedJson("\"x\"")),
+      scheduleExpression = Some("@every 5s"),
+      dueTime = Some(now),
+      repeats = Some(3),
+      ttl = None,
+    )
+    assertEquals(d.name, JobName("j"))
+    assertEquals(d.repeats, Some(3))
+    assertEquals(d.ttl, None)
+
+  // -------------------------------------------------------------------------
+  // Conversation
+  // -------------------------------------------------------------------------
+
+  test("ConversationComponentName round-trips"):
+    assertEquals(ConversationComponentName("echo").value, "echo")
+
+  test("ConversationComponentName rejects empty string"):
+    intercept[IllegalArgumentException] { ConversationComponentName("") }
+
+  test("ChatMessage smart constructors set the role"):
+    assertEquals(ChatMessage.system("s").role, ChatRole.System)
+    assertEquals(ChatMessage.user("u").role, ChatRole.User)
+    assertEquals(ChatMessage.assistant("a").role, ChatRole.Assistant)
+    assertEquals(ChatMessage.developer("d").role, ChatRole.Developer)
+    assertEquals(ChatMessage.tool("t", Some("fn")).name, Some("fn"))
+
+  test("ChatRole enum values are distinct"):
+    assertEquals(
+      List(ChatRole.System, ChatRole.User, ChatRole.Assistant, ChatRole.Tool, ChatRole.Developer).distinct.size,
+      5,
+    )

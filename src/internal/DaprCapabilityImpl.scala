@@ -89,3 +89,12 @@ private[dapr4s] final class DaprCapabilityImpl(
           workflowClientRef.get().nn
       case existing => existing
     new WorkflowCapabilityImpl(wc).asInstanceOf[WorkflowCapability]
+
+  def crypto(componentName: CryptoComponentName): CryptoCapability^{this} =
+    new CryptoCapabilityImpl(this, componentName).asInstanceOf[CryptoCapability]
+
+  def jobs: JobsCapability^{this} =
+    new JobsCapabilityImpl(this).asInstanceOf[JobsCapability]
+
+  def conversation(componentName: ConversationComponentName): ConversationCapability^{this} =
+    new ConversationCapabilityImpl(this, componentName).asInstanceOf[ConversationCapability]

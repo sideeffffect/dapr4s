@@ -51,6 +51,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     val pubSubRoutes: JHashMap[String, AnyRef] = JHashMap()
     val bindingRoutes: JHashMap[String, AnyRef] = JHashMap()
     val invokeRoutes: JHashMap[String, AnyRef] = JHashMap()
+    val jobRoutes: JHashMap[String, AnyRef] = JHashMap()
 
     // actorType → actorDefinition
     val actorDefs: JHashMap[String, ActorDefinition] = JHashMap()
@@ -103,6 +104,19 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
               e,
             )
       bindingRoutes.put(path, fn.asInstanceOf[AnyRef])
+
+    for job <- app.jobs do
+      val path = "/job/" + job.name.value
+      val handler = job.rawHandler.asInstanceOf[job.Payload => Unit]
+      val fn: String => Unit = bodyJson =>
+        decodeJobPayload(bodyJson, job.codec) match
+          case Right(data) => handler(data)
+          case Left(e)     =>
+            throw RuntimeException(
+              s"Cannot decode job payload for '${job.name.value}': ${e.getMessage}",
+              e,
+            )
+      jobRoutes.put(path, fn.asInstanceOf[AnyRef])
 
     for actorDef <- app.actors do actorDefs.put(actorDef.actorType.value, actorDef)
 
@@ -258,8 +272,21 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
                 val resp = fn(exchange.getRequestMethod.nn, readBody(exchange))
                 sendJson(exchange, 200, resp)
               else
-                exchange.sendResponseHeaders(404, -1)
-                exchange.getResponseBody.nn.close()
+                val jobFn = jobRoutes.get(path)
+                if jobFn != null then
+                  val fn = jobFn.asInstanceOf[String => Unit]
+                  val body = readBody(exchange)
+                  try
+                    fn(body)
+                    exchange.sendResponseHeaders(200, -1)
+                    exchange.getResponseBody.nn.close()
+                  catch
+                    case NonFatal(e) =>
+                      try sendJson(exchange, 500, errorJson(e))
+                      catch case NonFatal(e2) => log.log(Level.WARNING, s"Failed to send error response for $path", e2)
+                else
+                  exchange.sendResponseHeaders(404, -1)
+                  exchange.getResponseBody.nn.close()
         catch
           case NonFatal(e) =>
             try sendJson(exchange, 500, errorJson(e))
@@ -463,6 +490,26 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
       case e: RuntimeException            => throw e
       case scala.util.control.NonFatal(e) =>
         throw RuntimeException("Failed to parse callback body", e)
+
+  /** Decode the payload of an inbound job trigger (`POST /job/<name>`).
+    *
+    * Dapr delivers the job's stored data as the request body. Depending on the sidecar version and how the job was
+    * scheduled, the body is either the raw JSON payload or an envelope of the form `{"data": ...}`. We try the raw form
+    * first and fall back to unwrapping a top-level `data` field so both shapes work.
+    */
+  private def decodeJobPayload[T](body: String, codec: JsonCodec[T]): Either[JsonDecodeException, T] =
+    val json = if body.isEmpty then "null" else body
+    codec.decode(json) match
+      case r @ Right(_)   => r
+      case Left(firstErr) =>
+        try
+          val env = mapper.readTree(json)
+          if env != null && env.has("data") then
+            val data = env.get("data").nn
+            val inner = if data.isTextual then data.asText("") else mapper.writeValueAsString(data)
+            codec.decode(inner)
+          else Left(firstErr)
+        catch case NonFatal(_) => Left(firstErr)
 
   private def parseCloudEvent[T](
       bodyJson: String,

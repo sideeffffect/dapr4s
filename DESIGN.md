@@ -89,6 +89,9 @@ classDiagram
         +lock(storeName: StoreName) DistributedLockCapability^this
         +actor(actorType, actorId) ActorCapability^this
         +workflow WorkflowCapability^this
+        +crypto(componentName: CryptoComponentName) CryptoCapability^this
+        +jobs JobsCapability^this
+        +conversation(componentName: ConversationComponentName) ConversationCapability^this
     }
     note for DaprCapability "Root capability. Companion object provides transformer API:\nDaprCapability.state(name) { ... } introduces StateCapability into body scope"
     class StateCapability {
@@ -134,6 +137,7 @@ classDiagram
         +workflows: List[Workflow]
         +activities: List[WorkflowActivity[?,?]]
         +actors: List[ActorDefinition]
+        +jobs: List[JobRoute]
         +\+\+(other: DaprApp) DaprApp
     }
     class BindingsCapability {
@@ -146,6 +150,26 @@ classDiagram
         +tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int) Boolean
         +unlock(resourceId: LockResourceId, lockOwner: LockOwner) UnlockStatus
     }
+    class CryptoCapability {
+        <<trait>>
+        +encrypt(keyName, plaintext: ArraySeq[Byte], algorithm) ArraySeq[Byte]
+        +decrypt(ciphertext: ArraySeq[Byte]) ArraySeq[Byte]
+        +encryptString(keyName, plaintext: String, algorithm) ArraySeq[Byte]
+        +decryptString(ciphertext: ArraySeq[Byte]) String
+    }
+    class JobsCapability {
+        <<trait>>
+        +schedule[T](name: JobName, data: T, schedule: JobSchedule) Unit
+        +scheduleOnce[T](name: JobName, data: T, dueTime: Instant) Unit
+        +get(name: JobName) Option[JobDetails]
+        +delete(name: JobName) Unit
+    }
+    class ConversationCapability {
+        <<trait>>
+        +converse(prompt: String) String
+        +converseMany(prompts: Seq[String]) Seq[String]
+        +chat(messages: Seq[ChatMessage], ...) ChatResponse
+    }
 
     DaprCapability --> StateCapability : .state()
     DaprCapability --> PubSubCapability : .pubsub()
@@ -154,6 +178,9 @@ classDiagram
     DaprCapability --> ConfigurationCapability : .config()
     DaprCapability --> BindingsCapability : .binding()
     DaprCapability --> DistributedLockCapability : .lock()
+    DaprCapability --> CryptoCapability : .crypto()
+    DaprCapability --> JobsCapability : .jobs
+    DaprCapability --> ConversationCapability : .conversation()
 ```
 
 ---
@@ -197,9 +224,13 @@ A `Subscription` may declare an optional `deadLetterTopic: Option[Topic]`; when 
 
 ### Route collision
 
-Pub/sub routes (default `/<topic>`), input binding paths (`/<bindingName>`), and service invocation paths (`/<methodName>`) all use the same flat namespace.  Users should choose distinct names.  Registration is first-writer-wins.
+Pub/sub routes (default `/<topic>`), input binding paths (`/<bindingName>`), service invocation paths (`/<methodName>`), and job-trigger paths (`/job/<jobName>`) all use the same flat namespace.  Users should choose distinct names.  Registration is first-writer-wins.
 
-> **`ExclusiveCapability` as a cornerstone**: Every capability in this library — `DaprCapability`, all nine sub-capability traits, `ActorContext`, and `WorkflowContext` — extends `scala.caps.ExclusiveCapability`. This is intentional and load-bearing:
+### Job triggers
+
+A scheduled job created via `JobsCapability.schedule`/`scheduleOnce` is delivered by the sidecar as a POST to `/job/<jobName>` on the app server. A `JobRoute[T](JobName(...)) { payload => ... }` registered on the `DaprApp` decodes the payload (the sidecar sends either the raw value or a `{"data": ...}` envelope — both are accepted) and invokes the handler. Unknown job names return 404; a handler exception returns 500.
+
+> **`ExclusiveCapability` as a cornerstone**: Every capability in this library — `DaprCapability`, all twelve sub-capability traits, `ActorContext`, and `WorkflowContext` — extends `scala.caps.ExclusiveCapability`. This is intentional and load-bearing:
 > - `ExclusiveCapability` tells the Scala 3 CC framework that these objects are exclusive (not shared), enabling separation checking that prevents concurrent or escaping use.
 > - `scala.caps.Capability` is **sealed** in nightly Scala 3; only `SharedCapability` and `ExclusiveCapability` can be extended. `SharedCapability` would allow sharing across concurrent fibers, which violates the exclusive-per-invocation semantics we require.
 > - Because each sub-capability extends `ExclusiveCapability`, CC infers `^{fresh}` for new instances returned from methods. The trait declares `^{this}` to bind the sub-capability lifetime to the parent — overrides must explicitly annotate return types as `StateCapability^{this}` etc. to satisfy the override check. See `DaprCapabilityImpl` and `MockDaprCapability` for the pattern.
@@ -332,6 +363,11 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `TimerName` | `String` | yes | Non-persistent actor timer name |
 | `WorkflowName` | `String` | yes | Dapr workflow class name |
 | `EventName` | `String` | yes | External event name for `WorkflowContext.waitForExternalEvent` and `WorkflowCapability.raiseEvent` |
+| `CryptoComponentName` | `String` | yes | DAPR cryptography component name |
+| `CryptoKeyName` | `String` | yes | Key name within a crypto component |
+| `KeyWrapAlgorithm` | `String` | yes | Key-wrap algorithm (e.g. `RSA`, `AES`); has `Rsa`/`Aes` constants |
+| `JobName` | `String` | yes | DAPR job name (routed back to `/job/<name>`) |
+| `ConversationComponentName` | `String` | yes | DAPR conversation (LLM) component name |
 | `ETag` | `String` | no | Optimistic-concurrency tag |
 | `StateKey` | `String` | no | Key in a DAPR state store |
 | `StateQuery` | `String` | no | State store query expression (JSON filter) |
@@ -365,6 +401,12 @@ Structured data without identity, compared by value. Defined in `Models.scala`. 
 | `StateOp` | `sealed abstract class` | Base of the state transaction ADT (see below) |
 | `WorkflowSnapshot` | `case class` | Snapshot of a workflow instance's current state |
 | `WorkflowStatus` | `enum` | Workflow instance lifecycle status |
+| `JobSchedule` | `enum` | Job schedule: `Cron(expr)`, `Every(period)`, `Daily`/`Hourly`/`Weekly`/`Monthly`/`Yearly` |
+| `JobDetails` | `case class` | Stored job definition returned by `JobsCapability.get` |
+| `ChatMessage` | `case class` | A conversation (alpha2) message with `role: ChatRole` + content; smart constructors `user`/`system`/`assistant`/`developer`/`tool` |
+| `ChatRole` | `enum` | Conversation message role: `System`, `User`, `Assistant`, `Tool`, `Developer` |
+| `ChatTool` / `ChatToolCall` | `case class` | Tool (function) definition and an assistant's tool-call request |
+| `ChatResponse` | `case class` | Result of `chat`: `results: Seq[ChatResult]` (choices + usage) |
 
 ### StateOp — sealed ADT (entity + variants in spec)
 

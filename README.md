@@ -2,7 +2,8 @@
 
 A Scala 3 library that exposes every [Dapr](https://dapr.io) building block as a
 **capture-checked capability**. Dapr effects — state, pub/sub, service invocation,
-secrets, configuration, bindings, distributed locks, actors, and workflows — are
+secrets, configuration, bindings, distributed locks, actors, workflows,
+cryptography, jobs, and conversation (LLM) — are
 modelled as `scala.caps.Capability` values that the compiler tracks. User code
 compiles under `import language.experimental.safe`, so the compiler statically
 guarantees that a Dapr resource can never escape the scope that owns it. The Dapr

@@ -61,6 +61,15 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   /** Obtain the [[WorkflowCapability]] for managing workflow instances. */
   def workflow: WorkflowCapability^{this}
 
+  /** Obtain a [[CryptoCapability]] for the named crypto component. */
+  def crypto(componentName: CryptoComponentName): CryptoCapability^{this}
+
+  /** Obtain the [[JobsCapability]] (shared; no named component). */
+  def jobs: JobsCapability^{this}
+
+  /** Obtain a [[ConversationCapability]] for the named conversation (LLM) component. */
+  def conversation(componentName: ConversationComponentName): ConversationCapability^{this}
+
 
 /** Companion-object transformer API for [[DaprCapability]].
   *
@@ -125,3 +134,14 @@ object DaprCapability:
 
   def workflow[T](body: WorkflowCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.workflow.asInstanceOf[WorkflowCapability])
+
+  def crypto(componentName: CryptoComponentName)[T](body: CryptoCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.crypto(componentName).asInstanceOf[CryptoCapability])
+
+  def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.jobs.asInstanceOf[JobsCapability])
+
+  def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability ?=> T)(using
+      cap: DaprCapability
+  ): T =
+    body(using cap.conversation(componentName).asInstanceOf[ConversationCapability])
