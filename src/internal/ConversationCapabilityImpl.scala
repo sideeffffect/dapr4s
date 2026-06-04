@@ -1,7 +1,6 @@
 package dapr4s.internal
 
 import dapr4s.*
-import com.fasterxml.jackson.databind.ObjectMapper
 import io.dapr.client.domain.{
   ConversationInput,
   ConversationInputAlpha2,
@@ -71,7 +70,7 @@ private[internal] final class ConversationCapabilityImpl(
 
 @scala.caps.assumeSafe
 private object ConversationCapabilityImpl:
-  private val mapper = new ObjectMapper()
+  private val mapper = Json.mapper
 
   private def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
     resp.toOption.fold(ConversationResponseAlpha2(None, Nil)) { r =>

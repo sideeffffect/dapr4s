@@ -92,7 +92,7 @@ private[internal] final class WorkflowContextImpl(
     val json = summon[JsonCodec[O]].encode(output)
     // Pass as JsonNode so that Jackson stores the value as raw JSON, not as a double-encoded
     // JSON string literal (which would happen if we passed a Java String to complete(Object)).
-    ctx.complete(new com.fasterxml.jackson.databind.ObjectMapper().readTree(json))
+    ctx.complete(Json.mapper.readTree(json))
 
   // ContinueAsNewInterruption thrown here must reach the runtime — do not catch it.
   def continueAsNew[I: JsonCodec](input: I): Unit =

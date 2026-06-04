@@ -323,7 +323,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
 private object DaprAppServer:
 
   private val log: Logger = Logger.getLogger("dapr4s.internal.DaprAppServer").nn
-  private val mapper: ObjectMapper = new ObjectMapper()
+  private val mapper: ObjectMapper = Json.mapper
 
   // -------------------------------------------------------------------------
   // Actor request dispatch

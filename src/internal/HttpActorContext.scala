@@ -1,7 +1,6 @@
 package dapr4s.internal
 
 import dapr4s.*
-import com.fasterxml.jackson.databind.ObjectMapper
 import java.net.URI
 import scala.concurrent.duration.FiniteDuration
 import unsafeExceptions.canThrowAny
@@ -26,7 +25,7 @@ private[internal] final class HttpActorContext(
 
   import HttpActorContext.*
 
-  private val mapper = new ObjectMapper()
+  private val mapper = Json.mapper
 
   // ---- URL helpers -----------------------------------------------------------
 
