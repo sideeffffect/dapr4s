@@ -17,8 +17,6 @@ private[internal] final class ConfigCapabilityImpl(
 
   import ConfigCapabilityImpl.*
 
-  private val log = Logger.getLogger("dapr4s.internal.ConfigCapabilityImpl")
-
   def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigKey, ConfigItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
     val javaMeta = toJavaMeta(metadata)
@@ -48,6 +46,8 @@ private[internal] final class ConfigCapabilityImpl(
 
 @scala.caps.assumeSafe
 private object ConfigCapabilityImpl:
+  private val log = Logger.getLogger("dapr4s.internal.ConfigCapabilityImpl")
+
   private def toConfigItem(k: String, item: JConfigItem): ConfigItem =
     ConfigItem(
       key = ConfigKey(k),
