@@ -556,7 +556,7 @@ trait CryptoCapability extends scala.caps.ExclusiveCapability:
   def encryptString(keyName: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
     encrypt(
       keyName,
-      ArraySeq.unsafeWrapArray(plaintext.getBytes(java.nio.charset.StandardCharsets.UTF_8).nn),
+      Charsets.encodeString(plaintext, Charsets.Utf8),
       algorithm,
     )
 

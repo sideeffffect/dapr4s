@@ -9,7 +9,6 @@ import unsafeExceptions.canThrowAny
 
 import java.security.KeyPairGenerator
 import java.util.Base64
-import scala.collection.immutable.ArraySeq
 
 /** Tests for [[CryptoCapability]] against Dapr's `crypto.dapr.localstorage` component, backed by an RSA key generated
   * at test time and mounted into the container. Verifies the encrypt → decrypt round trip over the real alpha1
@@ -69,7 +68,7 @@ class CryptoCapabilityServerTest extends FunSuite with TestContainersForAll:
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.crypto(CryptoComponentName("localstorage")) {
-          val data = ArraySeq.unsafeWrapArray("payload-bytes".getBytes("UTF-8").nn)
+          val data = Charsets.encodeString("payload-bytes", Charsets.Utf8)
           val cipher = CryptoCapability.encrypt(CryptoKeyName(KeyName), data, KeyWrapAlgorithm.Rsa)
           assertEquals(CryptoCapability.decrypt(cipher), data)
         }
