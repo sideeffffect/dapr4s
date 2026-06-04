@@ -255,11 +255,11 @@ final case class JobDetails(
 // Conversation (LLM)
 // ---------------------------------------------------------------------------
 
-/** Role of a message in a [[ConversationCapability.chat]] (alpha2) exchange. */
-enum ChatRole:
+/** Role of a message in a [[ConversationCapability.converseAlpha2]] exchange. */
+enum ConversationMessageRole:
   case System, User, Assistant, Tool, Developer
 
-/** Why the model stopped generating a [[ChatChoice]].
+/** Why the model stopped generating a [[ConversationResultChoices]].
   *
   * Providers report this as a free-form string; values outside the recognised set are preserved verbatim in
   * [[FinishReason.Other]].
@@ -281,7 +281,7 @@ object FinishReason:
       case "content_filter" => ContentFilter
       case _                => Other(raw)
 
-/** Controls whether (and which) tool the model may call in a [[ConversationCapability.chat]] request. */
+/** Controls whether (and which) tool the model may call in a [[ConversationCapability.converseAlpha2]] request. */
 enum ToolChoice:
   /** Let the model decide whether to call a tool. */
   case Auto
@@ -304,9 +304,10 @@ object ToolChoice:
       case ToolChoice.Required    => "required"
       case ToolChoice.Named(name) => name.value
 
-/** A single message in a [[ConversationCapability.chat]] request.
+/** A single message in a [[ConversationCapability.converseAlpha2]] request.
   *
-  * Use the smart constructors ([[ChatMessage.user]], [[ChatMessage.system]], etc.) rather than the raw apply.
+  * Use the smart constructors ([[ConversationMessage.user]], [[ConversationMessage.system]], etc.) rather than the raw
+  * apply.
   *
   * @param role
   *   Who authored the message.
@@ -315,15 +316,16 @@ object ToolChoice:
   * @param name
   *   Optional author name (used by some providers, e.g. to attribute a tool result).
   */
-final case class ChatMessage(role: ChatRole, text: String, name: Option[String] = None)
-object ChatMessage:
-  def system(text: String): ChatMessage = ChatMessage(ChatRole.System, text)
-  def user(text: String): ChatMessage = ChatMessage(ChatRole.User, text)
-  def assistant(text: String): ChatMessage = ChatMessage(ChatRole.Assistant, text)
-  def tool(text: String, name: Option[String] = None): ChatMessage = ChatMessage(ChatRole.Tool, text, name)
-  def developer(text: String): ChatMessage = ChatMessage(ChatRole.Developer, text)
+final case class ConversationMessage(role: ConversationMessageRole, text: String, name: Option[String] = None)
+object ConversationMessage:
+  def system(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.System, text)
+  def user(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.User, text)
+  def assistant(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.Assistant, text)
+  def tool(text: String, name: Option[String] = None): ConversationMessage =
+    ConversationMessage(ConversationMessageRole.Tool, text, name)
+  def developer(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.Developer, text)
 
-/** A function/tool the model may call during a [[ConversationCapability.chat]] exchange.
+/** A function/tool the model may call during a [[ConversationCapability.converseAlpha2]] exchange.
   *
   * @param name
   *   The function name the model uses to invoke the tool.
@@ -332,22 +334,37 @@ object ChatMessage:
   * @param parametersJson
   *   The function's parameter schema as a JSON object (typically a JSON Schema describing the arguments).
   */
-final case class ChatTool(name: ToolName, description: Option[String], parametersJson: SerializedJson)
+final case class ConversationTools(name: ToolName, description: Option[String], parametersJson: SerializedJson)
 
 /** A tool/function call the model emitted in its response. */
-final case class ChatToolCall(id: ToolCallId, functionName: ToolName, arguments: SerializedJson)
+final case class ConversationToolCalls(id: ToolCallId, functionName: ToolName, arguments: SerializedJson)
 
-/** The assistant message of a single [[ChatChoice]]. */
-final case class ChatResultMessage(content: String, toolCalls: List[ChatToolCall])
+/** The assistant message of a single [[ConversationResultChoices]]. */
+final case class ConversationResultMessage(content: String, toolCalls: List[ConversationToolCalls])
 
-/** One candidate completion within a [[ChatResult]]. */
-final case class ChatChoice(finishReason: Option[FinishReason], index: Long, message: ChatResultMessage)
+/** One candidate completion within a [[ConversationResultAlpha2]]. */
+final case class ConversationResultChoices(
+    finishReason: Option[FinishReason],
+    index: Long,
+    message: ConversationResultMessage,
+)
 
-/** Token usage reported by the model for a [[ChatResult]], when the provider supplies it. */
-final case class ChatUsage(promptTokens: Option[Long], completionTokens: Option[Long], totalTokens: Option[Long])
+/** Token usage reported by the model for a [[ConversationResultAlpha2]], when the provider supplies it. */
+final case class ConversationResultCompletionUsage(
+    promptTokens: Option[Long],
+    completionTokens: Option[Long],
+    totalTokens: Option[Long],
+)
 
-/** One output of a [[ChatResponse]] (one per conversation input). */
-final case class ChatResult(choices: List[ChatChoice], model: Option[ModelName], usage: Option[ChatUsage])
+/** One output of a [[ConversationResponseAlpha2]] (one per conversation input). */
+final case class ConversationResultAlpha2(
+    choices: List[ConversationResultChoices],
+    model: Option[ModelName],
+    usage: Option[ConversationResultCompletionUsage],
+)
 
-/** The full response of a [[ConversationCapability.chat]] (alpha2) call. */
-final case class ChatResponse(contextId: Option[ConversationContextId], results: List[ChatResult])
+/** The full response of a [[ConversationCapability.converseAlpha2]] call. */
+final case class ConversationResponseAlpha2(
+    contextId: Option[ConversationContextId],
+    outputs: List[ConversationResultAlpha2],
+)

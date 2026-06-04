@@ -49,12 +49,12 @@ class ConversationCapabilityServerTest extends FunSuite with TestContainersForAl
         }
     }
 
-  test("conversation: chat (alpha2) returns the echoed content in a choice"):
+  test("conversation: converseAlpha2 returns the echoed content in a choice"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.conversation(ConversationComponentName("echo")) {
-          val resp = ConversationCapability.chat(Seq(ChatMessage.user("ping")))
-          val content = resp.results.headOption
+          val resp = ConversationCapability.converseAlpha2(Seq(ConversationMessage.user("ping")))
+          val content = resp.outputs.headOption
             .flatMap(_.choices.headOption)
             .map(_.message.content)
           assertEquals(content, Some("ping"))

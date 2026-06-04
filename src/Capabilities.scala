@@ -552,18 +552,6 @@ trait CryptoCapability extends scala.caps.ExclusiveCapability:
   /** Decrypt `ciphertext` previously produced by [[encrypt]] against the same component. */
   def decrypt(ciphertext: ArraySeq[Byte]): ArraySeq[Byte]
 
-  /** Encrypt a UTF-8 string. The returned bytes are the raw ciphertext, suitable for [[decryptString]]. */
-  def encryptString(keyName: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
-    encrypt(
-      keyName,
-      Charsets.encodeString(plaintext, Charsets.Utf8),
-      algorithm,
-    )
-
-  /** Decrypt ciphertext into a UTF-8 string. */
-  def decryptString(ciphertext: ArraySeq[Byte]): String =
-    new String(decrypt(ciphertext).toArray, Charsets.Utf8)
-
 /** Companion-object API for [[CryptoCapability]].
   *
   * Forwards to the `CryptoCapability` in the enclosing `using` context:
@@ -580,12 +568,16 @@ object CryptoCapability:
     cap.encrypt(keyName, plaintext, algorithm)
   def decrypt(ciphertext: ArraySeq[Byte])(using cap: CryptoCapability): ArraySeq[Byte] =
     cap.decrypt(ciphertext)
+
+  /** Encrypt a UTF-8 string. The returned bytes are the raw ciphertext, suitable for [[decryptString]]. */
   def encryptString(keyName: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm)(using
       cap: CryptoCapability,
   ): ArraySeq[Byte] =
-    cap.encryptString(keyName, plaintext, algorithm)
+    cap.encrypt(keyName, Charsets.encodeString(plaintext, Charsets.Utf8), algorithm)
+
+  /** Decrypt ciphertext into a UTF-8 string. */
   def decryptString(ciphertext: ArraySeq[Byte])(using cap: CryptoCapability): String =
-    cap.decryptString(ciphertext)
+    new String(cap.decrypt(ciphertext).toArray, Charsets.Utf8)
 
 // ---------------------------------------------------------------------------
 
@@ -664,22 +656,13 @@ object JobsCapability:
 
 /** Capability for invoking a DAPR conversation (LLM) component.
   *
-  * [[converse]]/[[converseMany]] use the alpha1 API (prompt strings in, completion strings out). [[chat]] uses the
-  * alpha2 API, which adds chat roles, tool/function calling, and usage reporting. Acquired via
+  * [[converseMany]] uses the alpha1 API (prompt strings in, completion strings out). [[converseAlpha2]] uses the alpha2
+  * API, which adds message roles, tool/function calling, and usage reporting. Acquired via
   * [[DaprCapability.conversation]].
   */
 @scala.caps.assumeSafe
 trait ConversationCapability extends scala.caps.ExclusiveCapability:
   val componentName: ConversationComponentName
-
-  /** Send a single prompt and return the model's completion. Convenience over [[converseMany]]. */
-  def converse(
-      prompt: String,
-      temperature: Option[Double] = None,
-      contextId: Option[ConversationContextId] = None,
-      scrubPii: Boolean = false,
-  ): String =
-    converseMany(Seq(prompt), temperature, contextId, scrubPii).headOption.getOrElse("")
 
   /** Send several prompts in one call and return one completion per prompt (alpha1). */
   def converseMany(
@@ -690,14 +673,14 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
   ): List[String]
 
   /** Hold a multi-message exchange with optional tool definitions (alpha2). */
-  def chat(
-      messages: Seq[ChatMessage],
-      tools: Seq[ChatTool] = Nil,
+  def converseAlpha2(
+      messages: Seq[ConversationMessage],
+      tools: Seq[ConversationTools] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
-  ): ChatResponse
+  ): ConversationResponseAlpha2
 
 /** Companion-object API for [[ConversationCapability]].
   *
@@ -709,13 +692,14 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object ConversationCapability:
+  /** Send a single prompt and return the model's completion. Convenience over [[converseMany]]. */
   def converse(
       prompt: String,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   )(using cap: ConversationCapability): String =
-    cap.converse(prompt, temperature, contextId, scrubPii)
+    cap.converseMany(Seq(prompt), temperature, contextId, scrubPii).headOption.getOrElse("")
   def converseMany(
       prompts: Seq[String],
       temperature: Option[Double] = None,
@@ -723,12 +707,12 @@ object ConversationCapability:
       scrubPii: Boolean = false,
   )(using cap: ConversationCapability): List[String] =
     cap.converseMany(prompts, temperature, contextId, scrubPii)
-  def chat(
-      messages: Seq[ChatMessage],
-      tools: Seq[ChatTool] = Nil,
+  def converseAlpha2(
+      messages: Seq[ConversationMessage],
+      tools: Seq[ConversationTools] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
-  )(using cap: ConversationCapability): ChatResponse =
-    cap.chat(messages, tools, toolChoice, temperature, contextId, scrubPii)
+  )(using cap: ConversationCapability): ConversationResponseAlpha2 =
+    cap.converseAlpha2(messages, tools, toolChoice, temperature, contextId, scrubPii)

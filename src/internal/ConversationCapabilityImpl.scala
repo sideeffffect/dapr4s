@@ -5,14 +5,14 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.dapr.client.domain.{
   ConversationInput,
   ConversationInputAlpha2,
-  ConversationMessage,
+  ConversationMessage as JConversationMessage,
   ConversationMessageContent,
-  ConversationMessageRole,
+  ConversationMessageRole as JConversationMessageRole,
   ConversationRequest,
   ConversationRequestAlpha2,
-  ConversationResponseAlpha2,
-  ConversationResultAlpha2,
-  ConversationTools,
+  ConversationResponseAlpha2 as JConversationResponseAlpha2,
+  ConversationResultAlpha2 as JConversationResultAlpha2,
+  ConversationTools as JConversationTools,
   ConversationToolsFunction,
 }
 import scala.jdk.CollectionConverters.*
@@ -28,7 +28,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
   private val mapper = new ObjectMapper()
 
   // The SDK marks the alpha1 `converse` API deprecated in favour of alpha2, but we deliberately
-  // expose both (see ConversationCapability.converseMany vs chat), so silence the deprecation here.
+  // expose both (see ConversationCapability.converseMany vs converseAlpha2), so silence the deprecation here.
   @annotation.nowarn("cat=deprecation")
   def converseMany(
       prompts: Seq[String],
@@ -50,14 +50,14 @@ private[dapr4s] final class ConversationCapabilityImpl(
       .flatMap(r => Option(r.getConversationOutputs))
       .fold(List.empty[String])(_.asScala.toList.map(o => o.getResult.nn))
 
-  def chat(
-      messages: Seq[ChatMessage],
-      tools: Seq[ChatTool] = Nil,
+  def converseAlpha2(
+      messages: Seq[ConversationMessage],
+      tools: Seq[ConversationTools] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
-  ): ChatResponse =
+  ): ConversationResponseAlpha2 =
     val input = new ConversationInputAlpha2(messages.map(toJavaMessage).asJava)
     input.setScrubPii(scrubPii)
     val req = new ConversationRequestAlpha2(componentName.value, java.util.List.of(input))
@@ -67,61 +67,62 @@ private[dapr4s] final class ConversationCapabilityImpl(
     if tools.nonEmpty then req.setTools(tools.map(toJavaTool).asJava)
     toolChoice.foreach(tc => req.setToolChoice(tc.wireValue))
     val resp = scope.clientPreview.converseAlpha2(req).awaitResult()
-    toChatResponse(resp)
+    toResponse(resp)
 
-  private def toChatResponse(resp: ConversationResponseAlpha2 | Null): ChatResponse =
-    resp.toOption.fold(ChatResponse(None, Nil)) { r =>
-      val results = Option(r.getOutputs).fold(List.empty[ChatResult])(_.asScala.toList.map(toChatResult))
-      ChatResponse(Option(r.getContextId).map(ConversationContextId(_)), results)
+  private def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
+    resp.toOption.fold(ConversationResponseAlpha2(None, Nil)) { r =>
+      val outputs =
+        Option(r.getOutputs).fold(List.empty[ConversationResultAlpha2])(_.asScala.toList.map(toResult))
+      ConversationResponseAlpha2(Option(r.getContextId).map(ConversationContextId(_)), outputs)
     }
 
-  private def toChatResult(out: ConversationResultAlpha2): ChatResult =
-    val choices = Option(out.getChoices).fold(List.empty[ChatChoice]) {
+  private def toResult(out: JConversationResultAlpha2): ConversationResultAlpha2 =
+    val choices = Option(out.getChoices).fold(List.empty[ConversationResultChoices]) {
       _.asScala.toList.map { c =>
         val msg = c.getMessage.nn
-        val toolCalls = Option(msg.getToolCalls).fold(List.empty[ChatToolCall]) {
+        val toolCalls = Option(msg.getToolCalls).fold(List.empty[ConversationToolCalls]) {
           _.asScala.toList.map { tc =>
             val fn = tc.getFunction.nn
-            ChatToolCall(ToolCallId(tc.getId.nn), ToolName(fn.getName.nn), SerializedJson(fn.getArguments.nn))
+            ConversationToolCalls(ToolCallId(tc.getId.nn), ToolName(fn.getName.nn), SerializedJson(fn.getArguments.nn))
           }
         }
-        ChatChoice(
+        ConversationResultChoices(
           Option(c.getFinishReason).map(FinishReason.fromWire),
           c.getIndex,
-          ChatResultMessage(msg.getContent.nn, toolCalls),
+          ConversationResultMessage(msg.getContent.nn, toolCalls),
         )
       }
     }
     val usage = Option(out.getUsage).map { u =>
-      ChatUsage(Some(u.getPromptTokens), Some(u.getCompletionTokens), Some(u.getTotalTokens))
+      ConversationResultCompletionUsage(Some(u.getPromptTokens), Some(u.getCompletionTokens), Some(u.getTotalTokens))
     }
-    ChatResult(choices, Option(out.getModel).map(ModelName(_)), usage)
+    ConversationResultAlpha2(choices, Option(out.getModel).map(ModelName(_)), usage)
 
-  private def toJavaMessage(m: ChatMessage): ConversationMessage =
+  private def toJavaMessage(m: ConversationMessage): JConversationMessage =
     val role = m.role match
-      case ChatRole.System    => ConversationMessageRole.SYSTEM
-      case ChatRole.User      => ConversationMessageRole.USER
-      case ChatRole.Assistant => ConversationMessageRole.ASSISTANT
-      case ChatRole.Tool      => ConversationMessageRole.TOOL
-      case ChatRole.Developer => ConversationMessageRole.DEVELOPER
+      case ConversationMessageRole.System    => JConversationMessageRole.SYSTEM
+      case ConversationMessageRole.User      => JConversationMessageRole.USER
+      case ConversationMessageRole.Assistant => JConversationMessageRole.ASSISTANT
+      case ConversationMessageRole.Tool      => JConversationMessageRole.TOOL
+      case ConversationMessageRole.Developer => JConversationMessageRole.DEVELOPER
     val contents = java.util.List.of(new ConversationMessageContent(m.text))
     new ConversationCapabilityImpl.SimpleMessage(role, m.name.orNull, contents)
 
-  private def toJavaTool(t: ChatTool): ConversationTools =
+  private def toJavaTool(t: ConversationTools): JConversationTools =
     val params = mapper
       .readValue(t.parametersJson.value, classOf[java.util.Map[?, ?]])
       .asInstanceOf[java.util.Map[String, Object]]
     val fn = new ConversationToolsFunction(t.name.value, params)
     t.description.foreach(fn.setDescription)
-    new ConversationTools(fn)
+    new JConversationTools(fn)
 
 private object ConversationCapabilityImpl:
-  /** Minimal [[ConversationMessage]] implementation; the SDK ships only the interface. */
+  /** Minimal [[JConversationMessage]] implementation; the SDK ships only the interface. */
   private final class SimpleMessage(
-      r: ConversationMessageRole,
+      r: JConversationMessageRole,
       n: String | Null,
       c: java.util.List[ConversationMessageContent],
-  ) extends ConversationMessage:
-    override def getRole(): ConversationMessageRole = r
+  ) extends JConversationMessage:
+    override def getRole(): JConversationMessageRole = r
     override def getName(): String | Null = n
     override def getContent(): java.util.List[ConversationMessageContent] = c

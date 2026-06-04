@@ -317,15 +317,21 @@ class ModelsTest extends FunSuite:
   test("ConversationComponentName rejects empty string"):
     intercept[IllegalArgumentException] { ConversationComponentName("") }
 
-  test("ChatMessage smart constructors set the role"):
-    assertEquals(ChatMessage.system("s").role, ChatRole.System)
-    assertEquals(ChatMessage.user("u").role, ChatRole.User)
-    assertEquals(ChatMessage.assistant("a").role, ChatRole.Assistant)
-    assertEquals(ChatMessage.developer("d").role, ChatRole.Developer)
-    assertEquals(ChatMessage.tool("t", Some("fn")).name, Some("fn"))
+  test("ConversationMessage smart constructors set the role"):
+    assertEquals(ConversationMessage.system("s").role, ConversationMessageRole.System)
+    assertEquals(ConversationMessage.user("u").role, ConversationMessageRole.User)
+    assertEquals(ConversationMessage.assistant("a").role, ConversationMessageRole.Assistant)
+    assertEquals(ConversationMessage.developer("d").role, ConversationMessageRole.Developer)
+    assertEquals(ConversationMessage.tool("t", Some("fn")).name, Some("fn"))
 
-  test("ChatRole enum values are distinct"):
+  test("ConversationMessageRole enum values are distinct"):
     assertEquals(
-      List(ChatRole.System, ChatRole.User, ChatRole.Assistant, ChatRole.Tool, ChatRole.Developer).distinct.size,
+      List(
+        ConversationMessageRole.System,
+        ConversationMessageRole.User,
+        ConversationMessageRole.Assistant,
+        ConversationMessageRole.Tool,
+        ConversationMessageRole.Developer,
+      ).distinct.size,
       5,
     )
