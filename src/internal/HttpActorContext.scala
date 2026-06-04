@@ -25,8 +25,6 @@ private[internal] final class HttpActorContext(
 
   import HttpActorContext.*
 
-  private val mapper = Json.mapper
-
   // ---- URL helpers -----------------------------------------------------------
 
   private def stateUrl(key: StateKey): String =
@@ -56,22 +54,22 @@ private[internal] final class HttpActorContext(
     finally conn.disconnect()
 
   def set[T: JsonCodec](key: StateKey, value: T): Unit =
-    val requestInner = mapper.createObjectNode()
+    val requestInner = Json.mapper.createObjectNode()
     requestInner.put("key", key.value)
-    requestInner.set("value", mapper.readTree(summon[JsonCodec[T]].encode(value)))
-    val requestObj = mapper.createObjectNode()
+    requestInner.set("value", Json.mapper.readTree(summon[JsonCodec[T]].encode(value)))
+    val requestObj = Json.mapper.createObjectNode()
     requestObj.put("operation", "upsert")
     requestObj.set("request", requestInner)
-    val body = mapper.writeValueAsString(mapper.createArrayNode().add(requestObj))
+    val body = Json.mapper.writeValueAsString(Json.mapper.createArrayNode().add(requestObj))
     postJson(bulkStateUrl, body)
 
   def remove(key: StateKey): Unit =
-    val requestInner = mapper.createObjectNode()
+    val requestInner = Json.mapper.createObjectNode()
     requestInner.put("key", key.value)
-    val requestObj = mapper.createObjectNode()
+    val requestObj = Json.mapper.createObjectNode()
     requestObj.put("operation", "delete")
     requestObj.set("request", requestInner)
-    val body = mapper.writeValueAsString(mapper.createArrayNode().add(requestObj))
+    val body = Json.mapper.writeValueAsString(Json.mapper.createArrayNode().add(requestObj))
     postJson(bulkStateUrl, body)
 
   // ---- Reminders -------------------------------------------------------------
@@ -85,11 +83,11 @@ private[internal] final class HttpActorContext(
     val dataJson = summon[JsonCodec[T]].encode(data)
     val dataBytes = dataJson.getBytes("UTF-8").nn
     val dataBase64 = java.util.Base64.getEncoder.nn.encodeToString(dataBytes).nn
-    val fields = mapper.createObjectNode()
+    val fields = Json.mapper.createObjectNode()
     fields.put("dueTime", toIso(dueTime))
     fields.put("data", dataBase64)
     period.foreach(p => fields.put("period", toIso(p)))
-    postJson(reminderUrl(name), mapper.writeValueAsString(fields))
+    postJson(reminderUrl(name), Json.mapper.writeValueAsString(fields))
 
   def unregisterReminder(name: ReminderName): Unit =
     deleteRequest(reminderUrl(name))
@@ -105,11 +103,11 @@ private[internal] final class HttpActorContext(
     val dataJson = summon[JsonCodec[T]].encode(data)
     val dataBytes = dataJson.getBytes("UTF-8").nn
     val dataBase64 = java.util.Base64.getEncoder.nn.encodeToString(dataBytes).nn
-    val fields = mapper.createObjectNode()
+    val fields = Json.mapper.createObjectNode()
     fields.put("dueTime", toIso(dueTime))
     fields.put("data", dataBase64)
     period.foreach(p => fields.put("period", toIso(p)))
-    postJson(timerUrl(name), mapper.writeValueAsString(fields))
+    postJson(timerUrl(name), Json.mapper.writeValueAsString(fields))
 
   def unregisterTimer(name: TimerName): Unit =
     deleteRequest(timerUrl(name))

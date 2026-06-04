@@ -70,7 +70,6 @@ private[internal] final class ConversationCapabilityImpl(
 
 @scala.caps.assumeSafe
 private object ConversationCapabilityImpl:
-  private val mapper = Json.mapper
 
   private def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
     resp.toOption.fold(ConversationResponseAlpha2(None, Nil)) { r =>
@@ -112,7 +111,7 @@ private object ConversationCapabilityImpl:
     new SimpleMessage(role, m.name.orNull, contents)
 
   private def toJavaTool(t: ConversationTools): JConversationTools =
-    val params = mapper
+    val params = Json.mapper
       .readValue(t.parametersJson.value, classOf[java.util.Map[?, ?]])
       .asInstanceOf[java.util.Map[String, Object]]
     val fn = new ConversationToolsFunction(t.name.value, params)

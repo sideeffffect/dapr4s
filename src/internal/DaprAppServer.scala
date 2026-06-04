@@ -1,7 +1,6 @@
 package dapr4s.internal
 
 import dapr4s.*
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.sun.net.httpserver.{HttpExchange, HttpServer}
 import io.dapr.workflows.runtime.WorkflowRuntimeBuilder
 import java.net.{InetSocketAddress, URI}
@@ -158,11 +157,11 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
       exchange =>
         try
           if exchange.getRequestMethod.nn == "GET" then
-            val arr = mapper.createArrayNode()
+            val arr = Json.mapper.createArrayNode()
             pubSubEntries.asScala.foreach: e =>
               val obj = arr.addObject().put("pubsubname", e(0)).put("topic", e(1)).put("route", e(2))
               if e(3).nonEmpty then obj.put("deadLetterTopic", e(3))
-            sendJson(exchange, 200, mapper.writeValueAsString(arr))
+            sendJson(exchange, 200, Json.mapper.writeValueAsString(arr))
           else
             exchange.sendResponseHeaders(405, -1)
             exchange.getResponseBody.nn.close()
@@ -179,7 +178,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         try
           if exchange.getRequestMethod.nn == "GET" then
             val types = actorDefs.keySet().asScala.toList.sorted
-            val obj = mapper.createObjectNode()
+            val obj = Json.mapper.createObjectNode()
             val entitiesArr = obj.putArray("entities")
             types.foreach(entitiesArr.add)
             obj.put("actorIdleTimeout", actorConfig.actorIdleTimeout.toGoString)
@@ -205,7 +204,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
                   rEntry.put("enabled", r.enabled)
                   rEntry.put("maxStackDepth", r.maxStackDepth)
                 ec.remindersStoragePartitions.foreach(v => entry.put("remindersStoragePartitions", v))
-            sendJson(exchange, 200, mapper.writeValueAsString(obj))
+            sendJson(exchange, 200, Json.mapper.writeValueAsString(obj))
           else
             exchange.sendResponseHeaders(405, -1)
             exchange.getResponseBody.nn.close()
@@ -323,7 +322,6 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
 private object DaprAppServer:
 
   private val log: Logger = Logger.getLogger("dapr4s.internal.DaprAppServer").nn
-  private val mapper: ObjectMapper = Json.mapper
 
   // -------------------------------------------------------------------------
   // Actor request dispatch
@@ -473,10 +471,10 @@ private object DaprAppServer:
   private def errorJson(e: Throwable): String =
     val name = e.getClass.getSimpleName.nn
     val error = if name.nonEmpty then name else e.getClass.getName.nn
-    val node = mapper.createObjectNode()
+    val node = Json.mapper.createObjectNode()
     node.put("error", error)
     Option(e.getMessage).foreach(node.put("error_description", _))
-    mapper.writeValueAsString(node)
+    Json.mapper.writeValueAsString(node)
 
   /** Decode the `data` field from a reminder/timer callback body.
     *
@@ -485,7 +483,7 @@ private object DaprAppServer:
     */
   private def decodeCallbackPayload[T](body: String, codec: JsonCodec[T]): T =
     try
-      val env = mapper.readTree(body)
+      val env = Json.mapper.readTree(body)
       val data = Option(env.get("data")).map(_.asText("")).getOrElse("")
       val json =
         if data.isEmpty then "null"
@@ -508,10 +506,10 @@ private object DaprAppServer:
       case r @ Right(_)   => r
       case Left(firstErr) =>
         try
-          val env = mapper.readTree(json)
+          val env = Json.mapper.readTree(json)
           if env != null && env.has("data") then
             val data = env.get("data").nn
-            val inner = if data.isTextual then data.asText("") else mapper.writeValueAsString(data)
+            val inner = if data.isTextual then data.asText("") else Json.mapper.writeValueAsString(data)
             codec.decode(inner)
           else Left(firstErr)
         catch case NonFatal(_) => Left(firstErr)
@@ -523,8 +521,8 @@ private object DaprAppServer:
       defaultTopic: Topic,
       handler: CloudEvent[T] => SubscriptionResult,
   ): SubscriptionResult =
-    val env = mapper.readTree(bodyJson)
-    val data = Option(env.get("data")).map(mapper.writeValueAsString).getOrElse("null")
+    val env = Json.mapper.readTree(bodyJson)
+    val data = Option(env.get("data")).map(Json.mapper.writeValueAsString).getOrElse("null")
     codec.decode(data) match
       case Left(_)  => SubscriptionResult.Drop
       case Right(v) =>
