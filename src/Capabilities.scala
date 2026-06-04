@@ -299,7 +299,7 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
   * {{{
   *   def featureFlag()(using ConfigurationCapability): Boolean =
   *     ConfigurationCapability.get(Seq(ConfigKey("feature-x")))
-  *       .get(ConfigKey("feature-x")).exists(_.value == "true")
+  *       .get(ConfigKey("feature-x")).exists(_.value.value == "true")
   * }}}
   */
 @scala.caps.assumeSafe
@@ -374,7 +374,7 @@ trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
   val storeName: StoreName
 
   /** Try to acquire a lock. Returns true if acquired, false if already held. */
-  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int): Boolean
+  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean
 
   /** Release a previously acquired lock. */
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus
@@ -384,7 +384,7 @@ trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
   * Forwards to the `DistributedLockCapability` in the enclosing `using` context:
   * {{{
   *   def withLock(resource: LockResourceId, owner: LockOwner)(using DistributedLockCapability): Boolean =
-  *     if DistributedLockCapability.tryLock(resource, owner, expirySeconds = 30) then
+  *     if DistributedLockCapability.tryLock(resource, owner, expiry = 30.seconds) then
   *       try doWork(); true
   *       finally DistributedLockCapability.unlock(resource, owner)
   *     else false
@@ -392,10 +392,10 @@ trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
   */
 @scala.caps.assumeSafe
 object DistributedLockCapability:
-  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int)(using
+  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration)(using
       cap: DistributedLockCapability,
   ): Boolean =
-    cap.tryLock(resourceId, lockOwner, expirySeconds)
+    cap.tryLock(resourceId, lockOwner, expiry)
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner)(using
       cap: DistributedLockCapability,
   ): UnlockStatus =
@@ -562,7 +562,7 @@ trait CryptoCapability extends scala.caps.ExclusiveCapability:
 
   /** Decrypt ciphertext into a UTF-8 string. */
   def decryptString(ciphertext: ArraySeq[Byte]): String =
-    new String(decrypt(ciphertext).toArray, java.nio.charset.StandardCharsets.UTF_8)
+    new String(decrypt(ciphertext).toArray, Charsets.Utf8)
 
 /** Companion-object API for [[CryptoCapability]].
   *
@@ -676,7 +676,7 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
   def converse(
       prompt: String,
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   ): String =
     converseMany(Seq(prompt), temperature, contextId, scrubPii).headOption.getOrElse("")
@@ -685,7 +685,7 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
   def converseMany(
       prompts: Seq[String],
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   ): List[String]
 
@@ -693,9 +693,9 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
   def chat(
       messages: Seq[ChatMessage],
       tools: Seq[ChatTool] = Nil,
-      toolChoice: Option[String] = None,
+      toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   ): ChatResponse
 
@@ -712,23 +712,23 @@ object ConversationCapability:
   def converse(
       prompt: String,
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   )(using cap: ConversationCapability): String =
     cap.converse(prompt, temperature, contextId, scrubPii)
   def converseMany(
       prompts: Seq[String],
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   )(using cap: ConversationCapability): List[String] =
     cap.converseMany(prompts, temperature, contextId, scrubPii)
   def chat(
       messages: Seq[ChatMessage],
       tools: Seq[ChatTool] = Nil,
-      toolChoice: Option[String] = None,
+      toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   )(using cap: ConversationCapability): ChatResponse =
     cap.chat(messages, tools, toolChoice, temperature, contextId, scrubPii)

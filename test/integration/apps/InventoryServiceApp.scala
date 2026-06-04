@@ -52,7 +52,7 @@ object InventoryServiceApp:
     val key = StateKey(s"stock-$item")
     val owner = LockOwner(s"inv-${event.id.value}")
 
-    if DistributedLockCapability.tryLock(LockResourceId(item), owner, 10) then
+    if DistributedLockCapability.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
       try
         val current = StateCapability.get[Int](key).getOrElse(DefaultStock)
         val updated = math.max(0, current - qty)

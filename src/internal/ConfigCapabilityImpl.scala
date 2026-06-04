@@ -47,7 +47,7 @@ private[dapr4s] final class ConfigCapabilityImpl(
   private def toConfigItem(k: String, item: JConfigItem): ConfigItem =
     ConfigItem(
       key = ConfigKey(k),
-      value = item.getValue.toOption.getOrElse(""),
+      value = ConfigValue(item.getValue.toOption.getOrElse("")),
       version = ConfigVersion(item.getVersion.toOption.getOrElse("")),
       metadata = item.getMetadata.toOption.fold(Map.empty[MetadataKey, MetadataValue]) { jm =>
         jm.asScala.map { case (mk, mv) => MetadataKey(mk) -> MetadataValue(mv) }.toMap

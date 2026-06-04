@@ -72,11 +72,17 @@ class ModelsTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("ConfigItem default metadata is empty"):
-    val item = ConfigItem(ConfigKey("key"), "value", ConfigVersion("1"))
+    val item = ConfigItem(ConfigKey("key"), ConfigValue("value"), ConfigVersion("1"))
     assertEquals(item.metadata, Map.empty)
 
   test("ConfigItem with metadata"):
-    val item = ConfigItem(ConfigKey("key"), "value", ConfigVersion("2"), Map(MetadataKey("a") -> MetadataValue("b")))
+    val item =
+      ConfigItem(
+        ConfigKey("key"),
+        ConfigValue("value"),
+        ConfigVersion("2"),
+        Map(MetadataKey("a") -> MetadataValue("b")),
+      )
     assertEquals(item.metadata(MetadataKey("a")), MetadataValue("b"))
 
   // -------------------------------------------------------------------------
@@ -119,6 +125,28 @@ class ModelsTest extends FunSuite:
   test("BulkPublishResult with failed entries"):
     val result = BulkPublishResult(List(BulkEntryId("id-2"), BulkEntryId("id-3")))
     assertEquals(result.failedEntries, List(BulkEntryId("id-2"), BulkEntryId("id-3")))
+
+  // -------------------------------------------------------------------------
+  // Conversation: FinishReason / ToolChoice
+  // -------------------------------------------------------------------------
+
+  test("FinishReason.fromWire maps known reasons"):
+    assertEquals(FinishReason.fromWire("stop"), FinishReason.Stop)
+    assertEquals(FinishReason.fromWire("length"), FinishReason.Length)
+    assertEquals(FinishReason.fromWire("tool_calls"), FinishReason.ToolCalls)
+    assertEquals(FinishReason.fromWire("content_filter"), FinishReason.ContentFilter)
+
+  test("FinishReason.fromWire is case-insensitive"):
+    assertEquals(FinishReason.fromWire("STOP"), FinishReason.Stop)
+
+  test("FinishReason.fromWire preserves unknown values"):
+    assertEquals(FinishReason.fromWire("function_call"), FinishReason.Other("function_call"))
+
+  test("ToolChoice.wireValue maps each case"):
+    assertEquals(ToolChoice.Auto.wireValue, "auto")
+    assertEquals(ToolChoice.None.wireValue, "none")
+    assertEquals(ToolChoice.Required.wireValue, "required")
+    assertEquals(ToolChoice.Named(ToolName("get_weather")).wireValue, "get_weather")
 
   // -------------------------------------------------------------------------
   // Exceptions

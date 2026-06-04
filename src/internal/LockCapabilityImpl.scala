@@ -2,6 +2,7 @@ package dapr4s.internal
 
 import dapr4s.*
 import io.dapr.client.domain.{LockRequest, UnlockRequest, UnlockResponseStatus}
+import scala.concurrent.duration.FiniteDuration
 import MonoOps.*
 import NullOps.*
 
@@ -11,8 +12,8 @@ private[dapr4s] final class LockCapabilityImpl(
     val storeName: StoreName,
 ) extends DistributedLockCapability:
 
-  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int): Boolean =
-    val request = new LockRequest(storeName.value, resourceId.value, lockOwner.value, expirySeconds)
+  def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean =
+    val request = new LockRequest(storeName.value, resourceId.value, lockOwner.value, expiry.toSeconds.toInt)
     scope.clientPreview.tryLock(request).awaitResult().toOption.exists(_.booleanValue())
 
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus =

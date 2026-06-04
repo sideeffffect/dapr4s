@@ -33,7 +33,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
   def converseMany(
       prompts: Seq[String],
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   ): List[String] =
     val inputs = prompts.map { p =>
@@ -43,7 +43,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
     }.asJava
     val req = new ConversationRequest(componentName.value, inputs)
     req.setScrubPii(scrubPii)
-    contextId.foreach(req.setContextId)
+    contextId.foreach(c => req.setContextId(c.value))
     temperature.foreach(t => req.setTemperature(t))
     val resp = scope.clientPreview.converse(req).awaitResult()
     resp.toOption
@@ -53,26 +53,26 @@ private[dapr4s] final class ConversationCapabilityImpl(
   def chat(
       messages: Seq[ChatMessage],
       tools: Seq[ChatTool] = Nil,
-      toolChoice: Option[String] = None,
+      toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
-      contextId: Option[String] = None,
+      contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   ): ChatResponse =
     val input = new ConversationInputAlpha2(messages.map(toJavaMessage).asJava)
     input.setScrubPii(scrubPii)
     val req = new ConversationRequestAlpha2(componentName.value, java.util.List.of(input))
     req.setScrubPii(scrubPii)
-    contextId.foreach(req.setContextId)
+    contextId.foreach(c => req.setContextId(c.value))
     temperature.foreach(t => req.setTemperature(t))
     if tools.nonEmpty then req.setTools(tools.map(toJavaTool).asJava)
-    toolChoice.foreach(req.setToolChoice)
+    toolChoice.foreach(tc => req.setToolChoice(tc.wireValue))
     val resp = scope.clientPreview.converseAlpha2(req).awaitResult()
     toChatResponse(resp)
 
   private def toChatResponse(resp: ConversationResponseAlpha2 | Null): ChatResponse =
     resp.toOption.fold(ChatResponse(None, Nil)) { r =>
       val results = Option(r.getOutputs).fold(List.empty[ChatResult])(_.asScala.toList.map(toChatResult))
-      ChatResponse(Option(r.getContextId), results)
+      ChatResponse(Option(r.getContextId).map(ConversationContextId(_)), results)
     }
 
   private def toChatResult(out: ConversationResultAlpha2): ChatResult =
@@ -82,16 +82,20 @@ private[dapr4s] final class ConversationCapabilityImpl(
         val toolCalls = Option(msg.getToolCalls).fold(List.empty[ChatToolCall]) {
           _.asScala.toList.map { tc =>
             val fn = tc.getFunction.nn
-            ChatToolCall(tc.getId.nn, fn.getName.nn, fn.getArguments.nn)
+            ChatToolCall(ToolCallId(tc.getId.nn), ToolName(fn.getName.nn), SerializedJson(fn.getArguments.nn))
           }
         }
-        ChatChoice(Option(c.getFinishReason), c.getIndex, ChatResultMessage(msg.getContent.nn, toolCalls))
+        ChatChoice(
+          Option(c.getFinishReason).map(FinishReason.fromWire),
+          c.getIndex,
+          ChatResultMessage(msg.getContent.nn, toolCalls),
+        )
       }
     }
     val usage = Option(out.getUsage).map { u =>
       ChatUsage(Some(u.getPromptTokens), Some(u.getCompletionTokens), Some(u.getTotalTokens))
     }
-    ChatResult(choices, Option(out.getModel), usage)
+    ChatResult(choices, Option(out.getModel).map(ModelName(_)), usage)
 
   private def toJavaMessage(m: ChatMessage): ConversationMessage =
     val role = m.role match
@@ -107,7 +111,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
     val params = mapper
       .readValue(t.parametersJson.value, classOf[java.util.Map[?, ?]])
       .asInstanceOf[java.util.Map[String, Object]]
-    val fn = new ConversationToolsFunction(t.name, params)
+    val fn = new ConversationToolsFunction(t.name.value, params)
     t.description.foreach(fn.setDescription)
     new ConversationTools(fn)
 

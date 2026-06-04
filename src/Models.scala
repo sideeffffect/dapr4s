@@ -19,7 +19,7 @@ final case class StateEntry[T](value: Option[T], etag: Option[ETag])
   * @param key
   *   The [[ConfigKey]] identifying this item.
   * @param value
-  *   The current configuration value as a string.
+  *   The current configuration value.
   * @param version
   *   The store-assigned version token (empty string if the store does not support versioning).
   * @param metadata
@@ -27,7 +27,7 @@ final case class StateEntry[T](value: Option[T], etag: Option[ETag])
   */
 final case class ConfigItem(
     key: ConfigKey,
-    value: String,
+    value: ConfigValue,
     version: ConfigVersion,
     metadata: Map[MetadataKey, MetadataValue] = Map.empty,
 )
@@ -259,6 +259,51 @@ final case class JobDetails(
 enum ChatRole:
   case System, User, Assistant, Tool, Developer
 
+/** Why the model stopped generating a [[ChatChoice]].
+  *
+  * Providers report this as a free-form string; values outside the recognised set are preserved verbatim in
+  * [[FinishReason.Other]].
+  */
+enum FinishReason:
+  case Stop
+  case Length
+  case ToolCalls
+  case ContentFilter
+  case Other(raw: String)
+
+object FinishReason:
+  /** Map a provider's raw finish-reason string onto a [[FinishReason]]; unknown values become [[Other]]. */
+  def fromWire(raw: String): FinishReason =
+    raw.toLowerCase match
+      case "stop"           => Stop
+      case "length"         => Length
+      case "tool_calls"     => ToolCalls
+      case "content_filter" => ContentFilter
+      case _                => Other(raw)
+
+/** Controls whether (and which) tool the model may call in a [[ConversationCapability.chat]] request. */
+enum ToolChoice:
+  /** Let the model decide whether to call a tool. */
+  case Auto
+
+  /** Forbid tool calls; the model must answer directly. */
+  case None
+
+  /** Require the model to call at least one tool. */
+  case Required
+
+  /** Require the model to call the named tool. */
+  case Named(name: ToolName)
+
+object ToolChoice:
+  extension (tc: ToolChoice)
+    /** The string the Dapr conversation API expects for this choice. */
+    def wireValue: String = tc match
+      case ToolChoice.Auto        => "auto"
+      case ToolChoice.None        => "none"
+      case ToolChoice.Required    => "required"
+      case ToolChoice.Named(name) => name.value
+
 /** A single message in a [[ConversationCapability.chat]] request.
   *
   * Use the smart constructors ([[ChatMessage.user]], [[ChatMessage.system]], etc.) rather than the raw apply.
@@ -287,22 +332,22 @@ object ChatMessage:
   * @param parametersJson
   *   The function's parameter schema as a JSON object (typically a JSON Schema describing the arguments).
   */
-final case class ChatTool(name: String, description: Option[String], parametersJson: SerializedJson)
+final case class ChatTool(name: ToolName, description: Option[String], parametersJson: SerializedJson)
 
 /** A tool/function call the model emitted in its response. */
-final case class ChatToolCall(id: String, functionName: String, arguments: String)
+final case class ChatToolCall(id: ToolCallId, functionName: ToolName, arguments: SerializedJson)
 
 /** The assistant message of a single [[ChatChoice]]. */
 final case class ChatResultMessage(content: String, toolCalls: List[ChatToolCall])
 
 /** One candidate completion within a [[ChatResult]]. */
-final case class ChatChoice(finishReason: Option[String], index: Long, message: ChatResultMessage)
+final case class ChatChoice(finishReason: Option[FinishReason], index: Long, message: ChatResultMessage)
 
 /** Token usage reported by the model for a [[ChatResult]], when the provider supplies it. */
 final case class ChatUsage(promptTokens: Option[Long], completionTokens: Option[Long], totalTokens: Option[Long])
 
 /** One output of a [[ChatResponse]] (one per conversation input). */
-final case class ChatResult(choices: List[ChatChoice], model: Option[String], usage: Option[ChatUsage])
+final case class ChatResult(choices: List[ChatChoice], model: Option[ModelName], usage: Option[ChatUsage])
 
 /** The full response of a [[ConversationCapability.chat]] (alpha2) call. */
-final case class ChatResponse(contextId: Option[String], results: List[ChatResult])
+final case class ChatResponse(contextId: Option[ConversationContextId], results: List[ChatResult])

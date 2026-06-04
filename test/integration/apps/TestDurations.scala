@@ -9,3 +9,4 @@ import scala.concurrent.duration.*
 private[apps] object Dur:
   val OneMinute: FiniteDuration = 1.minute
   val OneSecond: FiniteDuration = 1.second
+  val TenSeconds: FiniteDuration = 10.seconds
