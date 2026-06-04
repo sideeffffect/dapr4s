@@ -41,7 +41,11 @@ private[dapr4s] final class ActorCapabilityImpl(
 @scala.caps.assumeSafe
 private[dapr4s] object ActorCapabilityImpl:
 
-  def decodeResponse[Resp: JsonCodec](actorType: ActorType, method: MethodName, rawResult: Array[Byte] | Null): Resp =
+  private def decodeResponse[Resp: JsonCodec](
+      actorType: ActorType,
+      method: MethodName,
+      rawResult: Array[Byte] | Null,
+  ): Resp =
     val bytes = if rawResult == null then Array.empty[Byte] else rawResult
     val responseStr = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
     summon[JsonCodec[Resp]].decode(responseStr) match
@@ -52,7 +56,11 @@ private[dapr4s] object ActorCapabilityImpl:
         )
       case Right(v) => v
 
-  def build(actorType: ActorType, actorId: ActorId, actorClient: JavaActorClient): ActorCapabilityImpl =
+  private[internal] def build(
+      actorType: ActorType,
+      actorId: ActorId,
+      actorClient: JavaActorClient,
+  ): ActorCapabilityImpl =
     val builder = new JavaActorProxyBuilder[JavaActorProxy](
       actorType.value,
       classOf[JavaActorProxy],

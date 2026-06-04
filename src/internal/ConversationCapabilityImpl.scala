@@ -73,14 +73,14 @@ private[dapr4s] final class ConversationCapabilityImpl(
 private object ConversationCapabilityImpl:
   private val mapper = new ObjectMapper()
 
-  def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
+  private def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
     resp.toOption.fold(ConversationResponseAlpha2(None, Nil)) { r =>
       val outputs =
         Option(r.getOutputs).fold(List.empty[ConversationResultAlpha2])(_.asScala.toList.map(toResult))
       ConversationResponseAlpha2(Option(r.getContextId).map(ConversationContextId(_)), outputs)
     }
 
-  def toResult(out: JConversationResultAlpha2): ConversationResultAlpha2 =
+  private def toResult(out: JConversationResultAlpha2): ConversationResultAlpha2 =
     val choices = Option(out.getChoices).fold(List.empty[ConversationResultChoices]) {
       _.asScala.toList.map { c =>
         val msg = c.getMessage.nn
@@ -102,7 +102,7 @@ private object ConversationCapabilityImpl:
     }
     ConversationResultAlpha2(choices, Option(out.getModel).map(ModelName(_)), usage)
 
-  def toJavaMessage(m: ConversationMessage): JConversationMessage =
+  private def toJavaMessage(m: ConversationMessage): JConversationMessage =
     val role = m.role match
       case ConversationMessageRole.System    => JConversationMessageRole.SYSTEM
       case ConversationMessageRole.User      => JConversationMessageRole.USER
@@ -112,7 +112,7 @@ private object ConversationCapabilityImpl:
     val contents = java.util.List.of(new ConversationMessageContent(m.text))
     new SimpleMessage(role, m.name.orNull, contents)
 
-  def toJavaTool(t: ConversationTools): JConversationTools =
+  private def toJavaTool(t: ConversationTools): JConversationTools =
     val params = mapper
       .readValue(t.parametersJson.value, classOf[java.util.Map[?, ?]])
       .asInstanceOf[java.util.Map[String, Object]]

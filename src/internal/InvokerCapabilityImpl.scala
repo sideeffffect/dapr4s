@@ -7,8 +7,8 @@ import scala.jdk.CollectionConverters.*
 import java.nio.charset.StandardCharsets.UTF_8
 
 @scala.caps.assumeSafe
-private object HttpMethodConversions:
-  def toJava(m: HttpMethod): HttpExtension =
+private object InvokerCapabilityImpl:
+  private def toJava(m: HttpMethod): HttpExtension =
     m match
       case HttpMethod.Get     => HttpExtension.GET
       case HttpMethod.Post    => HttpExtension.POST
@@ -18,12 +18,12 @@ private object HttpMethodConversions:
       case HttpMethod.Head    => HttpExtension.HEAD
       case HttpMethod.Options => new HttpExtension(io.dapr.client.DaprHttp.HttpMethods.OPTIONS)
 
-  val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
+  private val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
 
-  def bytesToString(bytes: Array[Byte] | Null): String | Null =
+  private def bytesToString(bytes: Array[Byte] | Null): String | Null =
     if bytes == null then null else new String(bytes, UTF_8)
 
-  def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
     m.map { case (k, v) => k.value -> v.value }.asJava
 
 @scala.caps.assumeSafe
@@ -31,7 +31,7 @@ private[dapr4s] final class InvokerCapabilityImpl(
     scope: DaprCapabilityImpl,
 ) extends ServiceInvocationCapability:
 
-  import HttpMethodConversions.*
+  import InvokerCapabilityImpl.*
 
   def invoke[Req: JsonCodec](
       appId: AppId,

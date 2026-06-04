@@ -59,10 +59,10 @@ private[dapr4s] final class WorkflowCapabilityImpl(
 
 @scala.caps.assumeSafe
 private object WorkflowCapabilityImpl:
-  def toJsonNode(json: String): com.fasterxml.jackson.databind.JsonNode =
+  private def toJsonNode(json: String): com.fasterxml.jackson.databind.JsonNode =
     new com.fasterxml.jackson.databind.ObjectMapper().readTree(json)
 
-  def toSnapshot(state: WorkflowState): WorkflowSnapshot =
+  private def toSnapshot(state: WorkflowState): WorkflowSnapshot =
     WorkflowSnapshot(
       name = WorkflowName(state.getName.nn),
       instanceId = WorkflowInstanceId(state.getWorkflowId.nn),

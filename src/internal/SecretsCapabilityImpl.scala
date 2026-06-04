@@ -44,5 +44,5 @@ private[dapr4s] final class SecretsCapabilityImpl(
 
 @scala.caps.assumeSafe
 private object SecretsCapabilityImpl:
-  def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
     m.map { case (k, v) => k.value -> v.value }.asJava

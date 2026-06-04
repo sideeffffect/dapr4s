@@ -9,23 +9,23 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private object StateOpsConversions:
-  def toJavaConsistency(c: StateConsistency): StateOptions.Consistency | Null =
+private object StateCapabilityImpl:
+  private def toJavaConsistency(c: StateConsistency): StateOptions.Consistency | Null =
     c match
       case StateConsistency.Default  => null
       case StateConsistency.Eventual => StateOptions.Consistency.EVENTUAL
       case StateConsistency.Strong   => StateOptions.Consistency.STRONG
 
-  def toJavaConcurrency(c: StateConcurrency): StateOptions.Concurrency | Null =
+  private def toJavaConcurrency(c: StateConcurrency): StateOptions.Concurrency | Null =
     c match
       case StateConcurrency.Default    => null
       case StateConcurrency.FirstWrite => StateOptions.Concurrency.FIRST_WRITE
       case StateConcurrency.LastWrite  => StateOptions.Concurrency.LAST_WRITE
 
-  def decode[T: JsonCodec](raw: String | Null): T =
+  private def decode[T: JsonCodec](raw: String | Null): T =
     JsonCodec.decodeOrThrow[T](raw)
 
-  def toJavaOp(op: StateOp): TransactionalStateOperation[?] =
+  private def toJavaOp(op: StateOp): TransactionalStateOperation[?] =
     op match
       case StateOp.UpsertOp(key, encodedValue, etag) =>
         val daprState = etag match
@@ -39,7 +39,7 @@ private object StateOpsConversions:
           case None    => new DaprState[String](key.value, null, null, null)
         new TransactionalStateOperation[String](OperationType.DELETE, daprState)
 
-  def isETagConflict(e: io.dapr.exceptions.DaprException): Boolean =
+  private def isETagConflict(e: io.dapr.exceptions.DaprException): Boolean =
     e.getHttpStatusCode == 409 || e.getMessage.toOption.exists(_.contains("ABORTED"))
 
 @scala.caps.assumeSafe
@@ -48,7 +48,7 @@ private[dapr4s] final class StateCapabilityImpl(
     val storeName: StoreName,
 ) extends StateCapability:
 
-  import StateOpsConversions.*
+  import StateCapabilityImpl.*
 
   def get[T: JsonCodec](key: StateKey, consistency: StateConsistency = StateConsistency.Default): Option[T] =
     val mono =

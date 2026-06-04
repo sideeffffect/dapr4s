@@ -48,7 +48,7 @@ private[dapr4s] final class ConfigCapabilityImpl(
 
 @scala.caps.assumeSafe
 private object ConfigCapabilityImpl:
-  def toConfigItem(k: String, item: JConfigItem): ConfigItem =
+  private def toConfigItem(k: String, item: JConfigItem): ConfigItem =
     ConfigItem(
       key = ConfigKey(k),
       value = ConfigValue(item.getValue.toOption.getOrElse("")),
@@ -58,5 +58,5 @@ private object ConfigCapabilityImpl:
       },
     )
 
-  def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
     m.map { case (k, v) => k.value -> v.value }.asJava

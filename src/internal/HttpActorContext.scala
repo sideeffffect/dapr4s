@@ -119,7 +119,7 @@ private[dapr4s] final class HttpActorContext(
 private object HttpActorContext:
   // ---- HTTP helpers ----------------------------------------------------------
 
-  def openConn(url: String): java.net.HttpURLConnection =
+  private def openConn(url: String): java.net.HttpURLConnection =
     java.net.URI
       .create(url)
       .toURL
@@ -127,10 +127,10 @@ private object HttpActorContext:
       .openConnection()
       .asInstanceOf[java.net.HttpURLConnection]
 
-  def readStream(in: java.io.InputStream): String =
+  private def readStream(in: java.io.InputStream): String =
     new String(in.readAllBytes().nn, "UTF-8")
 
-  def postJson(url: String, body: String): Unit =
+  private def postJson(url: String, body: String): Unit =
     val conn = openConn(url)
     try
       conn.setRequestMethod("POST")
@@ -146,10 +146,10 @@ private object HttpActorContext:
         throw RuntimeException(s"Dapr API error $code at $url: $errBody")
     finally conn.disconnect()
 
-  def toIso(d: FiniteDuration): String =
+  private def toIso(d: FiniteDuration): String =
     java.time.Duration.ofNanos(d.toNanos).toString
 
-  def deleteRequest(url: String): Unit =
+  private def deleteRequest(url: String): Unit =
     val conn = openConn(url)
     try
       conn.setRequestMethod("DELETE")
