@@ -33,7 +33,7 @@ private[dapr4s] final class DaprCapabilityImpl(
     private[internal] val workflowProperties: io.dapr.config.Properties,
 ) extends DaprCapability:
 
-  private val log = Logger.getLogger("dapr4s.internal.DaprCapabilityImpl")
+  import DaprCapabilityImpl.*
 
   // WHY ^{this}: sub-capabilities extend ExclusiveCapability, so CC infers ^{fresh} for new
   // instances. The trait declares ^{this} to prevent sub-capabilities from outliving `this`.
@@ -99,3 +99,7 @@ private[dapr4s] final class DaprCapabilityImpl(
 
   def conversation(componentName: ConversationComponentName): ConversationCapability^{this} =
     new ConversationCapabilityImpl(this, componentName).asInstanceOf[ConversationCapability]
+
+@scala.caps.assumeSafe
+private object DaprCapabilityImpl:
+  private val log = Logger.getLogger("dapr4s.internal.DaprCapabilityImpl")
