@@ -43,7 +43,7 @@ private object StateCapabilityImpl:
     e.getHttpStatusCode == 409 || e.getMessage.toOption.exists(_.contains("ABORTED"))
 
 @scala.caps.assumeSafe
-private[dapr4s] final class StateCapabilityImpl(
+private[internal] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StoreName,
 ) extends StateCapability:

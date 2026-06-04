@@ -20,7 +20,7 @@ import unsafeExceptions.canThrowAny
   * entirely.
   */
 @scala.caps.assumeSafe
-private[dapr4s] final class ActorCapabilityImpl(
+private[internal] final class ActorCapabilityImpl(
     val actorType: ActorType,
     val actorId: ActorId,
     private val proxy: JavaActorProxy,
@@ -39,7 +39,7 @@ private[dapr4s] final class ActorCapabilityImpl(
     proxy.invokeMethod(method.value).awaitResult()
 
 @scala.caps.assumeSafe
-private[dapr4s] object ActorCapabilityImpl:
+private[internal] object ActorCapabilityImpl:
 
   private def decodeResponse[Resp: JsonCodec](
       actorType: ActorType,

@@ -7,7 +7,7 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class SecretsCapabilityImpl(
+private[internal] final class SecretsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: SecretStoreName,
 ) extends SecretsCapability:

@@ -10,7 +10,7 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class ConfigCapabilityImpl(
+private[internal] final class ConfigCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: ConfigStoreName,
 ) extends ConfigurationCapability:

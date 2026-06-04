@@ -7,7 +7,7 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class LockCapabilityImpl(
+private[internal] final class LockCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StoreName,
 ) extends DistributedLockCapability:

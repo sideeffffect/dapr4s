@@ -7,7 +7,7 @@ import MonoOps.*
 import java.nio.charset.StandardCharsets.UTF_8
 
 @scala.caps.assumeSafe
-private[dapr4s] final class PubSubCapabilityImpl(
+private[internal] final class PubSubCapabilityImpl(
     scope: DaprCapabilityImpl,
     val pubsubName: PubSubName,
 ) extends PubSubCapability:

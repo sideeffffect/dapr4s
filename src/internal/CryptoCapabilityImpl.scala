@@ -7,7 +7,7 @@ import scala.collection.immutable.ArraySeq
 import FluxOps.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class CryptoCapabilityImpl(
+private[internal] final class CryptoCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: CryptoComponentName,
 ) extends CryptoCapability:

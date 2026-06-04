@@ -5,7 +5,7 @@ import MonoOps.*
 import scala.jdk.CollectionConverters.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class BindingsCapabilityImpl(
+private[internal] final class BindingsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val bindingName: BindingName,
 ) extends BindingsCapability:

@@ -20,7 +20,7 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class ConversationCapabilityImpl(
+private[internal] final class ConversationCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: ConversationComponentName,
 ) extends ConversationCapability:

@@ -27,7 +27,7 @@ private object InvokerCapabilityImpl:
     m.map { case (k, v) => k.value -> v.value }.asJava
 
 @scala.caps.assumeSafe
-private[dapr4s] final class InvokerCapabilityImpl(
+private[internal] final class InvokerCapabilityImpl(
     scope: DaprCapabilityImpl,
 ) extends ServiceInvocationCapability:
 

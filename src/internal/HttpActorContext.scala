@@ -18,7 +18,7 @@ import scala.util.control.NonFatal
   *   Base URL of the Dapr sidecar HTTP API (e.g. `"http://localhost:3500"`).
   */
 @scala.caps.assumeSafe
-private[dapr4s] final class HttpActorContext(
+private[internal] final class HttpActorContext(
     private val actorType: ActorType,
     private val actorId: ActorId,
     private val sidecarHttpEndpoint: URI,

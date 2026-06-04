@@ -8,7 +8,7 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class JobsCapabilityImpl(
+private[internal] final class JobsCapabilityImpl(
     scope: DaprCapabilityImpl,
 ) extends JobsCapability:
 

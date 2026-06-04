@@ -6,7 +6,7 @@ import scala.concurrent.duration.FiniteDuration
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[dapr4s] final class WorkflowCapabilityImpl(
+private[internal] final class WorkflowCapabilityImpl(
     private val client: DaprWorkflowClient,
 ) extends WorkflowCapability:
 
