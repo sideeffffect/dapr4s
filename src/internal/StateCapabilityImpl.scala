@@ -131,8 +131,7 @@ private[dapr4s] final class StateCapabilityImpl(
       .awaitResult(): Unit
 
   def queryState[T: JsonCodec](query: StateQuery): List[StateEntry[T]] =
-    val previewClient = scope.client.asInstanceOf[io.dapr.client.DaprPreviewClient]
-    previewClient
+    scope.clientPreview
       .queryState(storeName.value, query.value, classOf[String])
       .awaitResult()
       .toOption

@@ -1,7 +1,7 @@
 package dapr4s
 
 import scala.util.control.NonFatal
-import io.dapr.client.{DaprClient, DaprClientBuilder}
+import io.dapr.client.{DaprClient, DaprClientBuilder, DaprPreviewClient}
 import io.dapr.config.Properties
 import io.dapr.actors.client.ActorClient
 import io.dapr.workflows.client.DaprWorkflowClient
@@ -105,10 +105,15 @@ class Dapr(config: DaprConfig = DaprConfig()):
     sc.grpcTlsCertPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CERT_PATH, p.toString))
     sc.grpcTlsKeyPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_KEY_PATH, p.toString))
     sc.grpcTlsCaPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CA_PATH, p.toString))
+    // AbstractDaprClient (the concrete type DaprClientBuilder.build() returns) implements both
+    // DaprClient and DaprPreviewClient; clientPreview is the same instance viewed through the
+    // preview API, so only `client` is closed below.
     val client = builder.build()
+    val clientPreview = client.asInstanceOf[DaprPreviewClient]
     val actorClientRef = new AtomicReference[ActorClient](null)
     val workflowClientRef = new AtomicReference[DaprWorkflowClient](null)
-    val impl = new internal.DaprCapabilityImpl(client, actorClientRef, workflowClientRef, workflowProperties)
+    val impl =
+      new internal.DaprCapabilityImpl(client, clientPreview, actorClientRef, workflowClientRef, workflowProperties)
     var primary: Throwable | Null = null
     try body(using impl)
     catch

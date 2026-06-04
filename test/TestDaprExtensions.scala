@@ -18,8 +18,10 @@ extension (obj: Dapr.type)
 @scala.caps.assumeSafe
 object TestDapr:
   def placeholderCapability: DaprCapability =
+    val client = new io.dapr.client.DaprClientBuilder().build()
     new internal.DaprCapabilityImpl(
-      new io.dapr.client.DaprClientBuilder().build(),
+      client,
+      client.asInstanceOf[io.dapr.client.DaprPreviewClient],
       new AtomicReference(null),
       new AtomicReference(null),
       new io.dapr.config.Properties(),

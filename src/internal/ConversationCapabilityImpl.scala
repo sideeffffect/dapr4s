@@ -2,7 +2,6 @@ package dapr4s.internal
 
 import dapr4s.*
 import com.fasterxml.jackson.databind.ObjectMapper
-import io.dapr.client.DaprPreviewClient
 import io.dapr.client.domain.{
   ConversationInput,
   ConversationInputAlpha2,
@@ -28,9 +27,6 @@ private[dapr4s] final class ConversationCapabilityImpl(
 
   private val mapper = new ObjectMapper()
 
-  // The concrete DaprClient (AbstractDaprClient) implements DaprPreviewClient too.
-  private def preview: DaprPreviewClient = scope.client.asInstanceOf[DaprPreviewClient]
-
   // The SDK marks the alpha1 `converse` API deprecated in favour of alpha2, but we deliberately
   // expose both (see ConversationCapability.converseMany vs chat), so silence the deprecation here.
   @annotation.nowarn("cat=deprecation")
@@ -49,7 +45,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
     req.setScrubPii(scrubPii)
     contextId.foreach(req.setContextId)
     temperature.foreach(t => req.setTemperature(t))
-    val resp = preview.converse(req).awaitResult()
+    val resp = scope.clientPreview.converse(req).awaitResult()
     resp.toOption
       .flatMap(r => Option(r.getConversationOutputs))
       .fold(List.empty[String])(_.asScala.toList.map(o => o.getResult.nn))
@@ -70,7 +66,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
     temperature.foreach(t => req.setTemperature(t))
     if tools.nonEmpty then req.setTools(tools.map(toJavaTool).asJava)
     toolChoice.foreach(req.setToolChoice)
-    val resp = preview.converseAlpha2(req).awaitResult()
+    val resp = scope.clientPreview.converseAlpha2(req).awaitResult()
     toChatResponse(resp)
 
   private def toChatResponse(resp: ConversationResponseAlpha2 | Null): ChatResponse =

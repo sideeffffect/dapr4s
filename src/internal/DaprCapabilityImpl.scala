@@ -1,7 +1,7 @@
 package dapr4s.internal
 
 import dapr4s.*
-import io.dapr.client.DaprClient
+import io.dapr.client.{DaprClient, DaprPreviewClient}
 import io.dapr.actors.client.ActorClient
 import io.dapr.workflows.client.DaprWorkflowClient
 import java.util.concurrent.atomic.AtomicReference
@@ -24,6 +24,7 @@ import scala.util.control.NonFatal
 @scala.caps.assumeSafe
 private[dapr4s] final class DaprCapabilityImpl(
     private[internal] val client: DaprClient,
+    private[internal] val clientPreview: DaprPreviewClient,
     private val actorClientRef: AtomicReference[ActorClient],
     private val workflowClientRef: AtomicReference[DaprWorkflowClient],
     // gRPC/TLS overrides for the workflow client and runtime. Without these, the Java SDK's
