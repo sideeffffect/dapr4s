@@ -8,6 +8,7 @@ import scala.jdk.CollectionConverters.*
 import MonoOps.*
 import NullOps.*
 
+@scala.caps.assumeSafe
 private object StateOpsConversions:
   def toJavaConsistency(c: StateConsistency): StateOptions.Consistency | Null =
     c match
@@ -20,6 +21,26 @@ private object StateOpsConversions:
       case StateConcurrency.Default    => null
       case StateConcurrency.FirstWrite => StateOptions.Concurrency.FIRST_WRITE
       case StateConcurrency.LastWrite  => StateOptions.Concurrency.LAST_WRITE
+
+  def decode[T: JsonCodec](raw: String | Null): T =
+    JsonCodec.decodeOrThrow[T](raw)
+
+  def toJavaOp(op: StateOp): TransactionalStateOperation[?] =
+    op match
+      case StateOp.UpsertOp(key, encodedValue, etag) =>
+        val daprState = etag match
+          case Some(e) => new DaprState[String](key.value, encodedValue.value, e.value, null)
+          case None    => new DaprState[String](key.value, encodedValue.value, null, null)
+        new TransactionalStateOperation[String](OperationType.UPSERT, daprState)
+
+      case StateOp.DeleteOp(key, etag) =>
+        val daprState = etag match
+          case Some(e) => new DaprState[String](key.value, null, e.value, null)
+          case None    => new DaprState[String](key.value, null, null, null)
+        new TransactionalStateOperation[String](OperationType.DELETE, daprState)
+
+  def isETagConflict(e: io.dapr.exceptions.DaprException): Boolean =
+    e.getHttpStatusCode == 409 || e.getMessage.toOption.exists(_.contains("ABORTED"))
 
 @scala.caps.assumeSafe
 private[dapr4s] final class StateCapabilityImpl(
@@ -143,27 +164,3 @@ private[dapr4s] final class StateCapabilityImpl(
           StateEntry(raw.map(decode[T]), etag)
         }
       }
-
-  // -------------------------------------------------------------------------
-  // Helpers
-  // -------------------------------------------------------------------------
-
-  private def decode[T: JsonCodec](raw: String | Null): T =
-    JsonCodec.decodeOrThrow[T](raw)
-
-  private def toJavaOp(op: StateOp): TransactionalStateOperation[?] =
-    op match
-      case StateOp.UpsertOp(key, encodedValue, etag) =>
-        val daprState = etag match
-          case Some(e) => new DaprState[String](key.value, encodedValue.value, e.value, null)
-          case None    => new DaprState[String](key.value, encodedValue.value, null, null)
-        new TransactionalStateOperation[String](OperationType.UPSERT, daprState)
-
-      case StateOp.DeleteOp(key, etag) =>
-        val daprState = etag match
-          case Some(e) => new DaprState[String](key.value, null, e.value, null)
-          case None    => new DaprState[String](key.value, null, null, null)
-        new TransactionalStateOperation[String](OperationType.DELETE, daprState)
-
-  private def isETagConflict(e: io.dapr.exceptions.DaprException): Boolean =
-    e.getHttpStatusCode == 409 || e.getMessage.toOption.exists(_.contains("ABORTED"))

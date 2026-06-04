@@ -26,8 +26,7 @@ import scala.util.control.NonFatal
 @scala.caps.assumeSafe
 private[dapr4s] final class DaprAppServer(app: DaprApp):
 
-  private val log = Logger.getLogger("dapr4s.internal.DaprAppServer")
-  private val mapper = new ObjectMapper()
+  import DaprAppServer.*
 
   def startAndBlock(
       port: Int,
@@ -320,11 +319,17 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         throw e
     throw AssertionError("unreachable: Thread.join() on current thread blocks until interrupted")
 
+@scala.caps.assumeSafe
+private object DaprAppServer:
+
+  val log: Logger = Logger.getLogger("dapr4s.internal.DaprAppServer").nn
+  val mapper: ObjectMapper = new ObjectMapper()
+
   // -------------------------------------------------------------------------
   // Actor request dispatch
   // -------------------------------------------------------------------------
 
-  private def handleActorRequest(
+  def handleActorRequest(
       exchange: HttpExchange,
       path: String,
       actorDefs: JHashMap[String, ActorDefinition],
@@ -355,7 +360,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         exchange.sendResponseHeaders(404, -1)
         exchange.getResponseBody.nn.close()
 
-  private def dispatchActorMethod(
+  def dispatchActorMethod(
       exchange: HttpExchange,
       actorType: String,
       actorId: String,
@@ -385,7 +390,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
             val resp = handler(req)
             sendJson(exchange, 200, route.respCodec.encode(resp))
 
-  private def dispatchActorReminder(
+  def dispatchActorReminder(
       exchange: HttpExchange,
       actorType: String,
       actorId: String,
@@ -413,7 +418,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         exchange.sendResponseHeaders(200, -1)
         exchange.getResponseBody.nn.close()
 
-  private def dispatchActorTimer(
+  def dispatchActorTimer(
       exchange: HttpExchange,
       actorType: String,
       actorId: String,
@@ -444,7 +449,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
   // Helpers
   // -------------------------------------------------------------------------
 
-  private def parseHttpMethod(s: String): HttpMethod = s.toUpperCase match
+  def parseHttpMethod(s: String): HttpMethod = s.toUpperCase match
     case "GET"     => HttpMethod.Get
     case "POST"    => HttpMethod.Post
     case "PUT"     => HttpMethod.Put
@@ -454,10 +459,10 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     case "OPTIONS" => HttpMethod.Options
     case _         => HttpMethod.Post
 
-  private def readBody(exchange: HttpExchange): String =
+  def readBody(exchange: HttpExchange): String =
     new String(exchange.getRequestBody.nn.readAllBytes().nn, "UTF-8")
 
-  private def sendJson(exchange: HttpExchange, code: Int, body: String): Unit =
+  def sendJson(exchange: HttpExchange, code: Int, body: String): Unit =
     val bytes = body.getBytes("UTF-8").nn
     exchange.getResponseHeaders.nn.add("Content-Type", "application/json")
     exchange.sendResponseHeaders(code, bytes.length.toLong)
@@ -465,7 +470,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     out.write(bytes)
     out.close()
 
-  private def errorJson(e: Throwable): String =
+  def errorJson(e: Throwable): String =
     val name = e.getClass.getSimpleName.nn
     val error = if name.nonEmpty then name else e.getClass.getName.nn
     val node = mapper.createObjectNode()
@@ -478,7 +483,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     * The Dapr sidecar sends `{"data":"base64-encoded-json","dueTime":"...","period":"..."}`. We base64-decode the
     * `data` field and then JSON-decode it with the route's codec.
     */
-  private def decodeCallbackPayload[T](body: String, codec: JsonCodec[T]): T =
+  def decodeCallbackPayload[T](body: String, codec: JsonCodec[T]): T =
     try
       val env = mapper.readTree(body)
       val data = Option(env.get("data")).map(_.asText("")).getOrElse("")
@@ -497,7 +502,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     * scheduled, the body is either the raw JSON payload or an envelope of the form `{"data": ...}`. We try the raw form
     * first and fall back to unwrapping a top-level `data` field so both shapes work.
     */
-  private def decodeJobPayload[T](body: String, codec: JsonCodec[T]): Either[JsonDecodeException, T] =
+  def decodeJobPayload[T](body: String, codec: JsonCodec[T]): Either[JsonDecodeException, T] =
     val json = if body.isEmpty then "null" else body
     codec.decode(json) match
       case r @ Right(_)   => r
@@ -511,7 +516,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
           else Left(firstErr)
         catch case NonFatal(_) => Left(firstErr)
 
-  private def parseCloudEvent[T](
+  def parseCloudEvent[T](
       bodyJson: String,
       codec: JsonCodec[T],
       defaultPubsubName: PubSubName,

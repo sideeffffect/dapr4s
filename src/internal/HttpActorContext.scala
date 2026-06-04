@@ -24,6 +24,8 @@ private[dapr4s] final class HttpActorContext(
     private val sidecarHttpEndpoint: URI,
 ) extends ActorContext:
 
+  import HttpActorContext.*
+
   private val mapper = new ObjectMapper()
 
   // ---- URL helpers -----------------------------------------------------------
@@ -113,9 +115,11 @@ private[dapr4s] final class HttpActorContext(
   def unregisterTimer(name: TimerName): Unit =
     deleteRequest(timerUrl(name))
 
+@scala.caps.assumeSafe
+private object HttpActorContext:
   // ---- HTTP helpers ----------------------------------------------------------
 
-  private def openConn(url: String): java.net.HttpURLConnection =
+  def openConn(url: String): java.net.HttpURLConnection =
     java.net.URI
       .create(url)
       .toURL
@@ -123,10 +127,10 @@ private[dapr4s] final class HttpActorContext(
       .openConnection()
       .asInstanceOf[java.net.HttpURLConnection]
 
-  private def readStream(in: java.io.InputStream): String =
+  def readStream(in: java.io.InputStream): String =
     new String(in.readAllBytes().nn, "UTF-8")
 
-  private def postJson(url: String, body: String): Unit =
+  def postJson(url: String, body: String): Unit =
     val conn = openConn(url)
     try
       conn.setRequestMethod("POST")
@@ -142,10 +146,10 @@ private[dapr4s] final class HttpActorContext(
         throw RuntimeException(s"Dapr API error $code at $url: $errBody")
     finally conn.disconnect()
 
-  private def toIso(d: FiniteDuration): String =
+  def toIso(d: FiniteDuration): String =
     java.time.Duration.ofNanos(d.toNanos).toString
 
-  private def deleteRequest(url: String): Unit =
+  def deleteRequest(url: String): Unit =
     val conn = openConn(url)
     try
       conn.setRequestMethod("DELETE")

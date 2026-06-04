@@ -25,7 +25,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
     val componentName: ConversationComponentName,
 ) extends ConversationCapability:
 
-  private val mapper = new ObjectMapper()
+  import ConversationCapabilityImpl.*
 
   // The SDK marks the alpha1 `converse` API deprecated in favour of alpha2, but we deliberately
   // expose both (see ConversationCapability.converseMany vs converseAlpha2), so silence the deprecation here.
@@ -69,14 +69,18 @@ private[dapr4s] final class ConversationCapabilityImpl(
     val resp = scope.clientPreview.converseAlpha2(req).awaitResult()
     toResponse(resp)
 
-  private def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
+@scala.caps.assumeSafe
+private object ConversationCapabilityImpl:
+  private val mapper = new ObjectMapper()
+
+  def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
     resp.toOption.fold(ConversationResponseAlpha2(None, Nil)) { r =>
       val outputs =
         Option(r.getOutputs).fold(List.empty[ConversationResultAlpha2])(_.asScala.toList.map(toResult))
       ConversationResponseAlpha2(Option(r.getContextId).map(ConversationContextId(_)), outputs)
     }
 
-  private def toResult(out: JConversationResultAlpha2): ConversationResultAlpha2 =
+  def toResult(out: JConversationResultAlpha2): ConversationResultAlpha2 =
     val choices = Option(out.getChoices).fold(List.empty[ConversationResultChoices]) {
       _.asScala.toList.map { c =>
         val msg = c.getMessage.nn
@@ -98,7 +102,7 @@ private[dapr4s] final class ConversationCapabilityImpl(
     }
     ConversationResultAlpha2(choices, Option(out.getModel).map(ModelName(_)), usage)
 
-  private def toJavaMessage(m: ConversationMessage): JConversationMessage =
+  def toJavaMessage(m: ConversationMessage): JConversationMessage =
     val role = m.role match
       case ConversationMessageRole.System    => JConversationMessageRole.SYSTEM
       case ConversationMessageRole.User      => JConversationMessageRole.USER
@@ -106,9 +110,9 @@ private[dapr4s] final class ConversationCapabilityImpl(
       case ConversationMessageRole.Tool      => JConversationMessageRole.TOOL
       case ConversationMessageRole.Developer => JConversationMessageRole.DEVELOPER
     val contents = java.util.List.of(new ConversationMessageContent(m.text))
-    new ConversationCapabilityImpl.SimpleMessage(role, m.name.orNull, contents)
+    new SimpleMessage(role, m.name.orNull, contents)
 
-  private def toJavaTool(t: ConversationTools): JConversationTools =
+  def toJavaTool(t: ConversationTools): JConversationTools =
     val params = mapper
       .readValue(t.parametersJson.value, classOf[java.util.Map[?, ?]])
       .asInstanceOf[java.util.Map[String, Object]]
@@ -116,7 +120,6 @@ private[dapr4s] final class ConversationCapabilityImpl(
     t.description.foreach(fn.setDescription)
     new JConversationTools(fn)
 
-private object ConversationCapabilityImpl:
   /** Minimal [[JConversationMessage]] implementation; the SDK ships only the interface. */
   private final class SimpleMessage(
       r: JConversationMessageRole,

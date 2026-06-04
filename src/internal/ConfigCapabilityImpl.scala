@@ -15,6 +15,8 @@ private[dapr4s] final class ConfigCapabilityImpl(
     val storeName: ConfigStoreName,
 ) extends ConfigurationCapability:
 
+  import ConfigCapabilityImpl.*
+
   private val log = Logger.getLogger("dapr4s.internal.ConfigCapabilityImpl")
 
   def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigKey, ConfigItem] =
@@ -44,7 +46,9 @@ private[dapr4s] final class ConfigCapabilityImpl(
     }
     () => sub.dispose()
 
-  private def toConfigItem(k: String, item: JConfigItem): ConfigItem =
+@scala.caps.assumeSafe
+private object ConfigCapabilityImpl:
+  def toConfigItem(k: String, item: JConfigItem): ConfigItem =
     ConfigItem(
       key = ConfigKey(k),
       value = ConfigValue(item.getValue.toOption.getOrElse("")),
@@ -54,5 +58,5 @@ private[dapr4s] final class ConfigCapabilityImpl(
       },
     )
 
-  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+  def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
     m.map { case (k, v) => k.value -> v.value }.asJava

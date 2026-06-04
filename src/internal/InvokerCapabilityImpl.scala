@@ -6,6 +6,7 @@ import MonoOps.*
 import scala.jdk.CollectionConverters.*
 import java.nio.charset.StandardCharsets.UTF_8
 
+@scala.caps.assumeSafe
 private object HttpMethodConversions:
   def toJava(m: HttpMethod): HttpExtension =
     m match
@@ -16,6 +17,14 @@ private object HttpMethodConversions:
       case HttpMethod.Patch   => HttpExtension.PATCH
       case HttpMethod.Head    => HttpExtension.HEAD
       case HttpMethod.Options => new HttpExtension(io.dapr.client.DaprHttp.HttpMethods.OPTIONS)
+
+  val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
+
+  def bytesToString(bytes: Array[Byte] | Null): String | Null =
+    if bytes == null then null else new String(bytes, UTF_8)
+
+  def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+    m.map { case (k, v) => k.value -> v.value }.asJava
 
 @scala.caps.assumeSafe
 private[dapr4s] final class InvokerCapabilityImpl(
@@ -53,11 +62,3 @@ private[dapr4s] final class InvokerCapabilityImpl(
           .awaitResult(),
       ),
     )
-
-  private def bytesToString(bytes: Array[Byte] | Null): String | Null =
-    if bytes == null then null else new String(bytes, UTF_8)
-
-  private val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
-
-  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
-    m.map { case (k, v) => k.value -> v.value }.asJava

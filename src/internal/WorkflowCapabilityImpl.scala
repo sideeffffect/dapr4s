@@ -10,6 +10,8 @@ private[dapr4s] final class WorkflowCapabilityImpl(
     private val client: DaprWorkflowClient,
 ) extends WorkflowCapability:
 
+  import WorkflowCapabilityImpl.*
+
   def start(name: WorkflowName): WorkflowInstanceId =
     WorkflowInstanceId(client.scheduleNewWorkflow(name.value).nn)
 
@@ -25,9 +27,6 @@ private[dapr4s] final class WorkflowCapabilityImpl(
     val node = toJsonNode(summon[JsonCodec[I]].encode(input))
     val opts = new NewWorkflowOptions().setInstanceId(instanceId.value).setInput(node.asInstanceOf[Object])
     WorkflowInstanceId(client.scheduleNewWorkflow(name.value, opts).nn)
-
-  private def toJsonNode(json: String): com.fasterxml.jackson.databind.JsonNode =
-    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json)
 
   def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] =
     val state = client.getWorkflowState(instanceId.value, true)
@@ -58,7 +57,12 @@ private[dapr4s] final class WorkflowCapabilityImpl(
   def purge(instanceId: WorkflowInstanceId): Boolean =
     client.purgeWorkflow(instanceId.value)
 
-  private def toSnapshot(state: WorkflowState): WorkflowSnapshot =
+@scala.caps.assumeSafe
+private object WorkflowCapabilityImpl:
+  def toJsonNode(json: String): com.fasterxml.jackson.databind.JsonNode =
+    new com.fasterxml.jackson.databind.ObjectMapper().readTree(json)
+
+  def toSnapshot(state: WorkflowState): WorkflowSnapshot =
     WorkflowSnapshot(
       name = WorkflowName(state.getName.nn),
       instanceId = WorkflowInstanceId(state.getWorkflowId.nn),

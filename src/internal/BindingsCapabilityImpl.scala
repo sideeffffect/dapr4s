@@ -10,6 +10,8 @@ private[dapr4s] final class BindingsCapabilityImpl(
     val bindingName: BindingName,
 ) extends BindingsCapability:
 
+  import BindingsCapabilityImpl.toJavaMeta
+
   def invoke[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
@@ -35,5 +37,7 @@ private[dapr4s] final class BindingsCapabilityImpl(
       .invokeBinding(bindingName.value, operation.value, reqJson, javaMeta, classOf[String])
       .awaitResult(): Unit
 
-  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+@scala.caps.assumeSafe
+private object BindingsCapabilityImpl:
+  def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
     m.map { case (k, v) => k.value -> v.value }.asJava

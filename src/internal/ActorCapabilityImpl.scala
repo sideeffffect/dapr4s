@@ -29,16 +29,19 @@ private[dapr4s] final class ActorCapabilityImpl(
   def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp =
     val requestBytes = summon[JsonCodec[Req]].encode(data).getBytes(java.nio.charset.StandardCharsets.UTF_8).nn
     val rawResult = proxy.invokeMethod(method.value, requestBytes, classOf[Array[Byte]]).awaitResult()
-    decodeResponse[Resp](method, rawResult)
+    ActorCapabilityImpl.decodeResponse[Resp](actorType, method, rawResult)
 
   def invoke[Resp: JsonCodec](method: MethodName): Resp =
     val rawResult = proxy.invokeMethod(method.value, classOf[Array[Byte]]).awaitResult()
-    decodeResponse[Resp](method, rawResult)
+    ActorCapabilityImpl.decodeResponse[Resp](actorType, method, rawResult)
 
   def invokeVoid(method: MethodName): Unit =
     proxy.invokeMethod(method.value).awaitResult()
 
-  private def decodeResponse[Resp: JsonCodec](method: MethodName, rawResult: Array[Byte] | Null): Resp =
+@scala.caps.assumeSafe
+private[dapr4s] object ActorCapabilityImpl:
+
+  def decodeResponse[Resp: JsonCodec](actorType: ActorType, method: MethodName, rawResult: Array[Byte] | Null): Resp =
     val bytes = if rawResult == null then Array.empty[Byte] else rawResult
     val responseStr = new String(bytes, java.nio.charset.StandardCharsets.UTF_8)
     summon[JsonCodec[Resp]].decode(responseStr) match
@@ -48,9 +51,6 @@ private[dapr4s] final class ActorCapabilityImpl(
           err,
         )
       case Right(v) => v
-
-@scala.caps.assumeSafe
-private[dapr4s] object ActorCapabilityImpl:
 
   def build(actorType: ActorType, actorId: ActorId, actorClient: JavaActorClient): ActorCapabilityImpl =
     val builder = new JavaActorProxyBuilder[JavaActorProxy](

@@ -12,6 +12,8 @@ private[dapr4s] final class SecretsCapabilityImpl(
     val storeName: SecretStoreName,
 ) extends SecretsCapability:
 
+  import SecretsCapabilityImpl.toJavaMeta
+
   def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue] = Map.empty): Option[SecretValue] =
     val javaMeta = toJavaMeta(metadata)
     scope.client
@@ -40,5 +42,7 @@ private[dapr4s] final class SecretsCapabilityImpl(
         }.toMap
       }
 
-  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
+@scala.caps.assumeSafe
+private object SecretsCapabilityImpl:
+  def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
     m.map { case (k, v) => k.value -> v.value }.asJava

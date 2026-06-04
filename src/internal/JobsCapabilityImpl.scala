@@ -12,6 +12,8 @@ private[dapr4s] final class JobsCapabilityImpl(
     scope: DaprCapabilityImpl,
 ) extends JobsCapability:
 
+  import JobsCapabilityImpl.*
+
   def schedule[T: JsonCodec](
       name: JobName,
       data: T,
@@ -55,10 +57,12 @@ private[dapr4s] final class JobsCapabilityImpl(
   def delete(name: JobName): Unit =
     scope.client.deleteJob(new DeleteJobRequest(name.value)).awaitResult(): Unit
 
-  private def encodeData[T: JsonCodec](data: T): Array[Byte] =
+@scala.caps.assumeSafe
+private object JobsCapabilityImpl:
+  def encodeData[T: JsonCodec](data: T): Array[Byte] =
     summon[JsonCodec[T]].encode(data).getBytes(UTF_8).nn
 
-  private def toJavaSchedule(s: JobSchedule): JJobSchedule = s match
+  def toJavaSchedule(s: JobSchedule): JJobSchedule = s match
     case JobSchedule.Cron(expr)    => JJobSchedule.fromString(expr)
     case JobSchedule.Every(period) => JJobSchedule.fromPeriod(JDuration.ofNanos(period.toNanos))
     case JobSchedule.Daily         => JJobSchedule.daily()
