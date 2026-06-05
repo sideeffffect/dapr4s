@@ -286,12 +286,16 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
     * that stops the subscription when closed. The subscription is also stopped when the enclosing [[DaprCapability]] is
     * closed.
     *
+    * The returned handle captures this capability (`AutoCloseable^{this}`), so capture checking forbids it from
+    * outliving the configuration scope — it cannot be stored in an outer `var` or returned and closed later, when the
+    * underlying subscription is already gone. Close it within the scope (or let the scope close it).
+    *
     * @param metadata
     *   optional metadata passed to the configuration backend
     */
   def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
       onChange: ConfigUpdate => Unit,
-  ): AutoCloseable
+  ): AutoCloseable^{this}
 
 /** Companion-object API for [[ConfigurationCapability]].
   *
@@ -310,7 +314,7 @@ object ConfigurationCapability:
     cap.get(keys, metadata)
   def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
       onChange: ConfigUpdate => Unit,
-  )(using cap: ConfigurationCapability): AutoCloseable =
+  )(using cap: ConfigurationCapability): AutoCloseable^{cap} =
     cap.subscribe(keys, metadata)(onChange)
 
 // ---------------------------------------------------------------------------

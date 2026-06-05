@@ -28,7 +28,7 @@ private[internal] final class ConfigCapabilityImpl(
 
   def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
       onChange: ConfigUpdate => Unit,
-  ): AutoCloseable =
+  ): AutoCloseable^{this} =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
     val javaMeta = toJavaMeta(metadata)
     val storeNameStr = storeName.value
