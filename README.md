@@ -43,6 +43,10 @@ See [`DESIGN.md`](DESIGN.md) for the architecture and the two-layer
 (safe / `@assumeSafe` shell) model, and
 [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples) for runnable examples.
 
+## Sponsors
+
+This work has been sponsored by [Chili Piper](https://github.com/Chili-Piper).
+
 ## License
 
 Apache-2.0
