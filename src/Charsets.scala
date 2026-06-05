@@ -23,5 +23,5 @@ object Charsets:
     * A pure replacement for the `ArraySeq.unsafeWrapArray(text.getBytes(charset))` idiom, so callers never handle the
     * mutable `Array[Byte]` the JDK returns.
     */
-  def encodeString(text: String, charset: Charset): ArraySeq[Byte] =
+  def encodeString(text: String, charset: Charset = Utf8): ArraySeq[Byte] =
     ArraySeq.unsafeWrapArray(text.getBytes(charset).nn)
