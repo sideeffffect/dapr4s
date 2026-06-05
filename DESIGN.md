@@ -166,9 +166,7 @@ classDiagram
     }
     class ConversationCapability {
         <<trait>>
-        +converse(prompt: String) String
-        +converseMany(prompts: Seq[String]) Seq[String]
-        +chat(messages: Seq[ChatMessage], ...) ChatResponse
+        +converse(messages: Seq[ConversationMessage], ...) ConversationResponse
     }
 
     DaprCapability --> StateCapability : .state()
@@ -403,10 +401,10 @@ Structured data without identity, compared by value. Defined in `Models.scala`. 
 | `WorkflowStatus` | `enum` | Workflow instance lifecycle status |
 | `JobSchedule` | `enum` | Job schedule: `Cron(expr)`, `Every(period)`, `Daily`/`Hourly`/`Weekly`/`Monthly`/`Yearly` |
 | `JobDetails` | `case class` | Stored job definition returned by `JobsCapability.get` |
-| `ChatMessage` | `case class` | A conversation (alpha2) message with `role: ChatRole` + content; smart constructors `user`/`system`/`assistant`/`developer`/`tool` |
-| `ChatRole` | `enum` | Conversation message role: `System`, `User`, `Assistant`, `Tool`, `Developer` |
-| `ChatTool` / `ChatToolCall` | `case class` | Tool (function) definition and an assistant's tool-call request |
-| `ChatResponse` | `case class` | Result of `chat`: `results: Seq[ChatResult]` (choices + usage) |
+| `ConversationMessage` | `case class` | A conversation message with `role: ConversationMessageRole` + text; smart constructors `user`/`system`/`assistant`/`developer`/`tool` |
+| `ConversationMessageRole` | `enum` | Conversation message role: `System`, `User`, `Assistant`, `Tool`, `Developer` |
+| `ConversationTools` / `ConversationToolCalls` | `case class` | Tool (function) definition and an assistant's tool-call request |
+| `ConversationResponse` | `case class` | Result of `converse`: `outputs: List[ConversationResult]` (choices + usage) |
 
 ### StateOp — sealed ADT (entity + variants in spec)
 

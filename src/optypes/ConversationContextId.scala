@@ -2,8 +2,8 @@ package dapr4s
 
 /** A conversation continuation token returned by the model and replayed to continue a multi-turn exchange.
   *
-  * Pass into [[ConversationCapability.converse]] / [[ConversationCapability.converseAlpha2]] to continue a prior
-  * conversation; read back from [[ConversationResponseAlpha2.contextId]].
+  * Pass into [[ConversationCapability.converse]] to continue a prior conversation; read back from
+  * [[ConversationResponse.contextId]].
   */
 opaque type ConversationContextId = String
 

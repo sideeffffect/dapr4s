@@ -2,15 +2,13 @@ package dapr4s.internal
 
 import dapr4s.*
 import io.dapr.client.domain.{
-  ConversationInput,
   ConversationInputAlpha2,
   ConversationMessage as JConversationMessage,
   ConversationMessageContent,
   ConversationMessageRole as JConversationMessageRole,
-  ConversationRequest,
   ConversationRequestAlpha2,
-  ConversationResponseAlpha2 as JConversationResponseAlpha2,
-  ConversationResultAlpha2 as JConversationResultAlpha2,
+  ConversationResponseAlpha2 as JConversationResponse,
+  ConversationResultAlpha2 as JConversationResult,
   ConversationTools as JConversationTools,
   ConversationToolsFunction,
 }
@@ -26,37 +24,14 @@ private[internal] final class ConversationCapabilityImpl(
 
   import ConversationCapabilityImpl.*
 
-  // The SDK marks the alpha1 `converse` API deprecated in favour of alpha2, but we deliberately
-  // expose both (see ConversationCapability.converseMany vs converseAlpha2), so silence the deprecation here.
-  @annotation.nowarn("cat=deprecation")
-  def converseMany(
-      prompts: Seq[String],
-      temperature: Option[Double] = None,
-      contextId: Option[ConversationContextId] = None,
-      scrubPii: Boolean = false,
-  ): List[String] =
-    val inputs = prompts.map { p =>
-      val in = new ConversationInput(p)
-      in.setScrubPii(scrubPii)
-      in
-    }.asJava
-    val req = new ConversationRequest(componentName.value, inputs)
-    req.setScrubPii(scrubPii)
-    contextId.foreach(c => req.setContextId(c.value))
-    temperature.foreach(t => req.setTemperature(t))
-    val resp = scope.clientPreview.converse(req).awaitResult()
-    resp.toOption
-      .flatMap(r => Option(r.getConversationOutputs))
-      .fold(List.empty[String])(_.asScala.toList.map(o => o.getResult.nn))
-
-  def converseAlpha2(
+  def converse(
       messages: Seq[ConversationMessage],
       tools: Seq[ConversationTools] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
-  ): ConversationResponseAlpha2 =
+  ): ConversationResponse =
     val input = new ConversationInputAlpha2(messages.map(toJavaMessage).asJava)
     input.setScrubPii(scrubPii)
     val req = new ConversationRequestAlpha2(componentName.value, java.util.List.of(input))
@@ -71,14 +46,14 @@ private[internal] final class ConversationCapabilityImpl(
 @scala.caps.assumeSafe
 private object ConversationCapabilityImpl:
 
-  private def toResponse(resp: JConversationResponseAlpha2 | Null): ConversationResponseAlpha2 =
-    resp.toOption.fold(ConversationResponseAlpha2(None, Nil)) { r =>
+  private def toResponse(resp: JConversationResponse | Null): ConversationResponse =
+    resp.toOption.fold(ConversationResponse(None, Nil)) { r =>
       val outputs =
-        Option(r.getOutputs).fold(List.empty[ConversationResultAlpha2])(_.asScala.toList.map(toResult))
-      ConversationResponseAlpha2(Option(r.getContextId).map(ConversationContextId(_)), outputs)
+        Option(r.getOutputs).fold(List.empty[ConversationResult])(_.asScala.toList.map(toResult))
+      ConversationResponse(Option(r.getContextId).map(ConversationContextId(_)), outputs)
     }
 
-  private def toResult(out: JConversationResultAlpha2): ConversationResultAlpha2 =
+  private def toResult(out: JConversationResult): ConversationResult =
     val choices = Option(out.getChoices).fold(List.empty[ConversationResultChoices]) {
       _.asScala.toList.map { c =>
         val msg = c.getMessage.nn
@@ -98,7 +73,7 @@ private object ConversationCapabilityImpl:
     val usage = Option(out.getUsage).map { u =>
       ConversationResultCompletionUsage(Some(u.getPromptTokens), Some(u.getCompletionTokens), Some(u.getTotalTokens))
     }
-    ConversationResultAlpha2(choices, Option(out.getModel).map(ModelName(_)), usage)
+    ConversationResult(choices, Option(out.getModel).map(ModelName(_)), usage)
 
   private def toJavaMessage(m: ConversationMessage): JConversationMessage =
     val role = m.role match

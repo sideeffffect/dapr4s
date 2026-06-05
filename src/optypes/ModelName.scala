@@ -2,7 +2,7 @@ package dapr4s
 
 /** The model identifier a provider reports for a completion (e.g. "gpt-4o").
   *
-  * Read from [[ConversationResultAlpha2.model]].
+  * Read from [[ConversationResult.model]].
   */
 opaque type ModelName = String
 

@@ -664,63 +664,39 @@ object JobsCapability:
 
 /** Capability for invoking a DAPR conversation (LLM) component.
   *
-  * [[converseMany]] uses the alpha1 API (prompt strings in, completion strings out). [[converseAlpha2]] uses the alpha2
-  * API, which adds message roles, tool/function calling, and usage reporting. Acquired via
-  * [[DaprCapability.conversation]].
+  * [[converse]] holds a multi-message exchange — message roles, optional tool/function calling, and usage reporting.
+  * Acquired via [[DaprCapability.conversation]].
   */
 @scala.caps.assumeSafe
 trait ConversationCapability extends scala.caps.ExclusiveCapability:
   val componentName: ConversationComponentName
 
-  /** Send several prompts in one call and return one completion per prompt (alpha1). */
-  def converseMany(
-      prompts: Seq[String],
-      temperature: Option[Double] = None,
-      contextId: Option[ConversationContextId] = None,
-      scrubPii: Boolean = false,
-  ): List[String]
-
-  /** Hold a multi-message exchange with optional tool definitions (alpha2). */
-  def converseAlpha2(
+  /** Hold a multi-message exchange with optional tool definitions. */
+  def converse(
       messages: Seq[ConversationMessage],
       tools: Seq[ConversationTools] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
-  ): ConversationResponseAlpha2
+  ): ConversationResponse
 
 /** Companion-object API for [[ConversationCapability]].
   *
   * Forwards to the `ConversationCapability` in the enclosing `using` context:
   * {{{
-  *   def summarize(text: String)(using ConversationCapability): String =
-  *     ConversationCapability.converse(s"Summarize: $text")
+  *   def ask(prompt: String)(using ConversationCapability): ConversationResponse =
+  *     ConversationCapability.converse(Seq(ConversationMessage.user(prompt)))
   * }}}
   */
 @scala.caps.assumeSafe
 object ConversationCapability:
-  /** Send a single prompt and return the model's completion. Convenience over [[converseMany]]. */
   def converse(
-      prompt: String,
-      temperature: Option[Double] = None,
-      contextId: Option[ConversationContextId] = None,
-      scrubPii: Boolean = false,
-  )(using cap: ConversationCapability): String =
-    cap.converseMany(Seq(prompt), temperature, contextId, scrubPii).headOption.getOrElse("")
-  def converseMany(
-      prompts: Seq[String],
-      temperature: Option[Double] = None,
-      contextId: Option[ConversationContextId] = None,
-      scrubPii: Boolean = false,
-  )(using cap: ConversationCapability): List[String] =
-    cap.converseMany(prompts, temperature, contextId, scrubPii)
-  def converseAlpha2(
       messages: Seq[ConversationMessage],
       tools: Seq[ConversationTools] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
-  )(using cap: ConversationCapability): ConversationResponseAlpha2 =
-    cap.converseAlpha2(messages, tools, toolChoice, temperature, contextId, scrubPii)
+  )(using cap: ConversationCapability): ConversationResponse =
+    cap.converse(messages, tools, toolChoice, temperature, contextId, scrubPii)

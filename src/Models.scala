@@ -255,7 +255,7 @@ final case class JobDetails(
 // Conversation (LLM)
 // ---------------------------------------------------------------------------
 
-/** Role of a message in a [[ConversationCapability.converseAlpha2]] exchange. */
+/** Role of a message in a [[ConversationCapability.converse]] exchange. */
 enum ConversationMessageRole:
   case System, User, Assistant, Tool, Developer
 
@@ -281,7 +281,7 @@ object FinishReason:
       case "content_filter" => ContentFilter
       case _                => Other(raw)
 
-/** Controls whether (and which) tool the model may call in a [[ConversationCapability.converseAlpha2]] request. */
+/** Controls whether (and which) tool the model may call in a [[ConversationCapability.converse]] request. */
 enum ToolChoice:
   /** Let the model decide whether to call a tool. */
   case Auto
@@ -304,7 +304,7 @@ object ToolChoice:
       case ToolChoice.Required    => "required"
       case ToolChoice.Named(name) => name.value
 
-/** A single message in a [[ConversationCapability.converseAlpha2]] request.
+/** A single message in a [[ConversationCapability.converse]] request.
   *
   * Use the smart constructors ([[ConversationMessage.user]], [[ConversationMessage.system]], etc.) rather than the raw
   * apply.
@@ -325,7 +325,7 @@ object ConversationMessage:
     ConversationMessage(ConversationMessageRole.Tool, text, name)
   def developer(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.Developer, text)
 
-/** A function/tool the model may call during a [[ConversationCapability.converseAlpha2]] exchange.
+/** A function/tool the model may call during a [[ConversationCapability.converse]] exchange.
   *
   * @param name
   *   The function name the model uses to invoke the tool.
@@ -342,29 +342,29 @@ final case class ConversationToolCalls(id: ToolCallId, functionName: ToolName, a
 /** The assistant message of a single [[ConversationResultChoices]]. */
 final case class ConversationResultMessage(content: String, toolCalls: List[ConversationToolCalls])
 
-/** One candidate completion within a [[ConversationResultAlpha2]]. */
+/** One candidate completion within a [[ConversationResult]]. */
 final case class ConversationResultChoices(
     finishReason: Option[FinishReason],
     index: Long,
     message: ConversationResultMessage,
 )
 
-/** Token usage reported by the model for a [[ConversationResultAlpha2]], when the provider supplies it. */
+/** Token usage reported by the model for a [[ConversationResult]], when the provider supplies it. */
 final case class ConversationResultCompletionUsage(
     promptTokens: Option[Long],
     completionTokens: Option[Long],
     totalTokens: Option[Long],
 )
 
-/** One output of a [[ConversationResponseAlpha2]] (one per conversation input). */
-final case class ConversationResultAlpha2(
+/** One output of a [[ConversationResponse]] (one per conversation input). */
+final case class ConversationResult(
     choices: List[ConversationResultChoices],
     model: Option[ModelName],
     usage: Option[ConversationResultCompletionUsage],
 )
 
-/** The full response of a [[ConversationCapability.converseAlpha2]] call. */
-final case class ConversationResponseAlpha2(
+/** The full response of a [[ConversationCapability.converse]] call. */
+final case class ConversationResponse(
     contextId: Option[ConversationContextId],
-    outputs: List[ConversationResultAlpha2],
+    outputs: List[ConversationResult],
 )
