@@ -14,6 +14,12 @@ import scala.caps
   * [[await]] to block until the operation completes and get its result. Because the workflow runtime replays history on
   * restart, calling [[await]] during replay returns the cached result immediately without re-executing the work.
   *
+  * A `Task` returned by those methods captures the [[WorkflowContext]] (`Task[O]^{ctx}`).  Since the context is an
+  * [[scala.caps.ExclusiveCapability]] scoped to [[Workflow.run]], capture checking forbids a `Task` from outliving the
+  * `run` block — it cannot be stored in an outer `var`, returned, or otherwise smuggled out and awaited later.  This is
+  * the same `^{this}` lifetime-binding used by every sub-capability of [[DaprCapability]], and it mirrors the
+  * underlying `io.dapr.durabletask.Task`, which is only meaningful while its orchestration is live.
+  *
   * The interface mirrors `io.dapr.durabletask.Task` but replaces the Java-style `thenApply`/`thenAccept` combinators
   * with the idiomatic Scala [[map]].
   *
@@ -42,8 +48,9 @@ trait Task[+O]:
   /** Transform the result of this task without scheduling a new durable operation.
     *
     * `f` runs synchronously in the calling thread when [[await]] is called on the returned task.
-    * The returned task captures both this task and `f` — if both have empty capture sets (the typical
-    * case for activities from [[WorkflowContext]] and pure lambdas), the result is also empty.
+    * The returned task captures both this task and `f`.  Since a [[Task]] from [[WorkflowContext]]
+    * captures the enclosing context (see the class doc), the mapped task captures it too — so it
+    * also cannot escape [[Workflow.run]].
     */
   def map[U](f: O => U): Task[U]^{this, f}
 
@@ -83,21 +90,21 @@ trait WorkflowContext extends scala.caps.ExclusiveCapability:
     * The input is serialised with the activity's [[JsonCodec]] and the output is deserialised from the activity's
     * return value.
     */
-  def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output]
+  def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output]^{this}
 
   /** Overload for activities that take no input. */
-  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output]
+  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output]^{this}
 
   /** Create a durable timer that fires after `duration`. */
-  def createTimer(duration: FiniteDuration): Task[Unit]
+  def createTimer(duration: FiniteDuration): Task[Unit]^{this}
 
   /** Wait for an external event with the given name, up to `timeout`. The payload is deserialised with the provided
     * [[JsonCodec]].
     */
-  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration): Task[T]
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration): Task[T]^{this}
 
   /** Wait for an external event with the given name (no timeout). */
-  def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T]
+  def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T]^{this}
 
   /** Complete the workflow instance with a serialisable output value. */
   def complete[O: JsonCodec](output: O): Unit
@@ -135,21 +142,21 @@ object WorkflowContext:
 
   def getInput[I: JsonCodec](using ctx: WorkflowContext): Option[I] = ctx.getInput[I]
 
-  def callActivity[A](using d: ActivityDef[A])(input: d.Input)(using ctx: WorkflowContext): Task[d.Output] =
+  def callActivity[A](using d: ActivityDef[A])(input: d.Input)(using ctx: WorkflowContext): Task[d.Output]^{ctx} =
     ctx.callActivity(input)
 
-  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit)(using ctx: WorkflowContext): Task[d.Output] =
+  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit)(using ctx: WorkflowContext): Task[d.Output]^{ctx} =
     ctx.callActivity
 
-  def createTimer(duration: FiniteDuration)(using ctx: WorkflowContext): Task[Unit] =
+  def createTimer(duration: FiniteDuration)(using ctx: WorkflowContext): Task[Unit]^{ctx} =
     ctx.createTimer(duration)
 
   def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration)(using
       ctx: WorkflowContext,
-  ): Task[T] =
+  ): Task[T]^{ctx} =
     ctx.waitForExternalEvent(name, timeout)
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName)(using ctx: WorkflowContext): Task[T] =
+  def waitForExternalEvent[T: JsonCodec](name: EventName)(using ctx: WorkflowContext): Task[T]^{ctx} =
     ctx.waitForExternalEvent(name)
 
   def complete[O: JsonCodec](output: O)(using ctx: WorkflowContext): Unit = ctx.complete(output)

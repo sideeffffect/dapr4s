@@ -65,26 +65,29 @@ private[internal] final class WorkflowContextImpl(
       val json = if node.isTextual then node.asText() else node.toString
       summon[JsonCodec[I]].decode(json).toOption
 
-  def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output] =
+  // Return types are annotated ^{this} to match the WorkflowContext trait: a Task captures the
+  // context so capture checking forbids it from outliving `run`. The TaskJson/TaskUnit instances
+  // are @assumeSafe (empty capture); widening empty -> ^{this} is sound, same as every sub-capability.
+  def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output]^{this} =
     val inputJson = d.inputCodec.encode(input)
     val name      = d.activityName
     val javaTask  = ctx.callActivity(name, inputJson, classOf[String])
     new TaskJson(javaTask, s"Failed to decode result of activity '$name'")(using d.outputCodec)
 
-  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output] =
+  def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output]^{this} =
     val name     = d.activityName
     val javaTask = ctx.callActivity(name, "null", classOf[String])
     new TaskJson(javaTask, s"Failed to decode result of activity '$name'")(using d.outputCodec)
 
-  def createTimer(duration: FiniteDuration): Task[Unit] =
+  def createTimer(duration: FiniteDuration): Task[Unit]^{this} =
     val javaTask = ctx.createTimer(java.time.Duration.ofNanos(duration.toNanos))
     new TaskUnit(javaTask)
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration): Task[T] =
+  def waitForExternalEvent[T: JsonCodec](name: EventName, timeout: FiniteDuration): Task[T]^{this} =
     val javaTask = ctx.waitForExternalEvent(name.value, java.time.Duration.ofNanos(timeout.toNanos), classOf[String])
     new TaskJson[T](javaTask, s"Failed to decode external event '${name.value}'")
 
-  def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T] =
+  def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T]^{this} =
     val javaTask = ctx.waitForExternalEvent(name.value, classOf[String])
     new TaskJson[T](javaTask, s"Failed to decode external event '${name.value}'")
 
