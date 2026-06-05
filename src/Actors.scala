@@ -234,12 +234,13 @@ object ActorRoutes
 
 /** Describes a hosted Dapr virtual actor type.
   *
-  * `build` is called by the framework on every incoming actor invocation. It receives the `ActorId` and a fresh
-  * [[ActorContext]] scoped to that instance, and must return the [[ActorRoutes]] for this actor type.
+  * `build` is called by the framework on every incoming actor invocation. The fresh [[ActorContext]] scoped to that
+  * instance is supplied as a `given` (it is a context-function parameter), so `ActorContext.get`/`set`/… and any
+  * `(using ActorContext)` handlers resolve directly — no `given ActorContext = ctx` boilerplate. The lambda receives
+  * the `ActorId` and must return the [[ActorRoutes]] for this actor type.
   *
   * {{{
-  *   ActorDefinition(ActorType("Counter")) { (id, ctx) =>
-  *     given ActorContext = ctx
+  *   ActorDefinition(ActorType("Counter")) { id =>
   *     val actor = new CounterActor
   *     ActorRoutes(
   *       methods = List(
@@ -266,7 +267,10 @@ final class ActorDefinition(
     // WHY asInstanceOf chain: ActorContext now extends ExclusiveCapability,
     // so the CC checker tracks ctx with a capture set. Casting via AnyRef
     // erases the capture annotation before passing to the stored lambda.
-    rawBuild.asInstanceOf[(ActorId, AnyRef) => ActorRoutes](id, ctx.asInstanceOf[AnyRef])
+    // The stored value is `ActorId => (ActorContext ?=> ActorRoutes)`; the inner
+    // context function is a ContextFunction1 at runtime (structurally Function1),
+    // so it is applied id-first then ctx.
+    rawBuild.asInstanceOf[ActorId => (AnyRef => ActorRoutes)](id)(ctx.asInstanceOf[AnyRef])
 
 /** Factory for [[ActorDefinition]] values.
   *
@@ -275,5 +279,5 @@ final class ActorDefinition(
   */
 @scala.caps.assumeSafe
 object ActorDefinition:
-  def apply(actorType: ActorType)(build: (ActorId, ActorContext) => ActorRoutes): ActorDefinition =
+  def apply(actorType: ActorType)(build: ActorId => ActorContext ?=> ActorRoutes): ActorDefinition =
     new ActorDefinition(actorType, build.asInstanceOf[AnyRef])

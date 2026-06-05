@@ -18,9 +18,8 @@ package dapr4s
   *         InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req => ... }
   *       ),
   *       actors = List(
-  *         ActorDefinition(ActorType("Counter")) { (id, ctx) =>
-  *           given ActorContext = ctx
-  *           val actor = new CounterActor
+  *         ActorDefinition(ActorType("Counter")) { id =>
+  *           val actor = new CounterActor // ActorContext is in implicit scope
   *           ActorRoutes(methods = List(ActorMethodRoute[Int, Int](MethodName("increment"))(actor.increment)))
   *         }
   *       )

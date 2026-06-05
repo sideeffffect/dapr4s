@@ -693,8 +693,9 @@ Implemented by `HttpActorContext` which calls the Dapr actor state and reminder/
 ### ActorDefinition, ActorRoutes, and Route Types
 
 ```scala
-ActorDefinition(ActorType("Counter")) { (id, ctx) =>
-  given ActorContext = ctx
+ActorDefinition(ActorType("Counter")) { id =>
+  // `build` is `ActorId => ActorContext ?=> ActorRoutes`, so the per-instance
+  // ActorContext is supplied as a `given` — no `given ActorContext = ctx` needed.
   val actor = new CounterActor   // plain Scala class, no special supertype
   ActorRoutes(
     methods = List(
@@ -711,7 +712,7 @@ ActorDefinition(ActorType("Counter")) { (id, ctx) =>
 }
 ```
 
-`build` is called on every incoming invocation. It receives a fresh `ActorContext` scoped to that `(actorType, actorId)` pair and returns an `ActorRoutes` value grouping all three route types.
+`build` has type `ActorId => ActorContext ?=> ActorRoutes` and is called on every incoming invocation. The fresh `ActorContext` scoped to that `(actorType, actorId)` pair is supplied as a context-function `given`, so handler methods declared `(using ActorContext)` resolve directly without any `given ActorContext = ctx` line. `build` returns an `ActorRoutes` value grouping all three route types.
 
 - `ActorMethodRoute[Req, Resp]` — handles `POST /actors/{type}/{id}/method/{name}`
 - `ActorReminderRoute[Payload]` — handles `PUT /actors/{type}/{id}/method/remind/{name}`

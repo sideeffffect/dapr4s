@@ -76,8 +76,7 @@ object CounterActorApp:
   def apply(): DaprApp =
     DaprApp(
       actors = List(
-        ActorDefinition(ActorTypeName) { (id, ctx) =>
-          given ActorContext = ctx
+        ActorDefinition(ActorTypeName) { _ =>
           ActorRoutes(
             methods = List(
               ActorMethodRoute[IncrRequest, CounterState](MethodName("increment"))(increment),

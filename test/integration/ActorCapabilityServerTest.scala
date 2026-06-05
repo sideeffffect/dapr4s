@@ -256,7 +256,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
   test("actor: DaprApp ++ merges actor definitions"):
     withContainers { _ =>
       val app1 = CounterActorApp()
-      val app2 = DaprApp(actors = List(ActorDefinition(ActorType("Other")) { (_, _) => ActorRoutes() }))
+      val app2 = DaprApp(actors = List(ActorDefinition(ActorType("Other")) { _ => ActorRoutes() }))
       val combined = app1 ++ app2
       assertEquals(combined.actors.size, 2)
       assert(combined.actors.exists(_.actorType.value == "Counter"))
