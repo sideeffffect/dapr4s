@@ -552,6 +552,14 @@ trait CryptoCapability extends scala.caps.ExclusiveCapability:
   /** Decrypt `ciphertext` previously produced by [[encrypt]] against the same component. */
   def decrypt(ciphertext: ArraySeq[Byte]): ArraySeq[Byte]
 
+  /** Encrypt a UTF-8 string. The returned bytes are the raw ciphertext, suitable for [[decryptString]]. */
+  def encryptString(keyName: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
+    encrypt(keyName, Charsets.encodeString(plaintext, Charsets.Utf8), algorithm)
+
+  /** Decrypt ciphertext into a UTF-8 string. */
+  def decryptString(ciphertext: ArraySeq[Byte]): String =
+    new String(decrypt(ciphertext).toArray, Charsets.Utf8)
+
 /** Companion-object API for [[CryptoCapability]].
   *
   * Forwards to the `CryptoCapability` in the enclosing `using` context:
@@ -573,11 +581,11 @@ object CryptoCapability:
   def encryptString(keyName: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm)(using
       cap: CryptoCapability,
   ): ArraySeq[Byte] =
-    cap.encrypt(keyName, Charsets.encodeString(plaintext, Charsets.Utf8), algorithm)
+    cap.encryptString(keyName, plaintext, algorithm)
 
   /** Decrypt ciphertext into a UTF-8 string. */
   def decryptString(ciphertext: ArraySeq[Byte])(using cap: CryptoCapability): String =
-    new String(cap.decrypt(ciphertext).toArray, Charsets.Utf8)
+    cap.decryptString(ciphertext)
 
 // ---------------------------------------------------------------------------
 
