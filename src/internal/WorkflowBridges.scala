@@ -22,13 +22,12 @@ private[internal] final class WorkflowBridge(
 ) extends io.dapr.workflows.Workflow:
 
   final override def create(): io.dapr.workflows.WorkflowStub | Null =
-    val w = workflow
     new io.dapr.workflows.WorkflowStub:
       // OrchestratorBlockedException and ContinueAsNewInterruption must not be caught here.
       override def run(javaCtx: io.dapr.workflows.WorkflowContext | Null): Unit =
         if javaCtx != null then
           given WorkflowContext = new WorkflowContextImpl(javaCtx)
-          w.run
+          workflow.run
 
 /** Internal bridge: wraps a [[WorkflowActivity]] instance for registration with the Dapr Java SDK.
   *
