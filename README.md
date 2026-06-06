@@ -1,5 +1,9 @@
 # dapr4s
 
+| CI | Release |
+| --- | --- |
+| [![Build Status][Badge-GitHubActions]][Link-GitHubActions] | [![Release Artifacts][Badge-MavenCentral]][Link-MavenCentral] |
+
 A Scala 3 library that exposes every [Dapr](https://dapr.io) building block as a
 **capture-checked capability**. Dapr effects — state, pub/sub, service invocation,
 secrets, configuration, bindings, distributed locks, actors, workflows,
@@ -50,3 +54,8 @@ This work has been sponsored by [Chili Piper](https://github.com/Chili-Piper).
 ## License
 
 Apache-2.0
+
+[Link-GitHubActions]: https://github.com/sideeffffect/dapr4s/actions/workflows/ci.yml?query=branch%3Amaster "GitHub Actions link"
+[Badge-GitHubActions]: https://github.com/sideeffffect/dapr4s/actions/workflows/ci.yml/badge.svg?branch=master "GitHub Actions badge"
+[Link-MavenCentral]: https://repo1.maven.org/maven2/com/github/sideeffffect/dapr4s_3/ "Maven Central link"
+[Badge-MavenCentral]: https://maven-badges.sml.io/sonatype-central/com.github.sideeffffect/dapr4s_3/badge.svg "Maven Central badge"
