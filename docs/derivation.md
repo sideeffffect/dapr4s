@@ -394,3 +394,32 @@ parameter (`class Counter(actorId: ActorId)`) — the macro does `new C(id)`.
 
 * **dapr4s-examples.** Per the agreed plan, the slice was proven inside dapr4s's own test apps;
   the separate `dapr4s-examples` repo was intentionally left untouched in this pass.
+
+---
+
+# Server-route derivation (0.11.0)
+
+To let a server app be written without hand-listing its routes, two more engines reify the
+*inbound* side from a handler type (an `object` of handlers, or a class with a no-arg ctor):
+
+- `InvocationRoutes.derive[T]: List[InvocationRoute]` — each method → an `InvocationRoute`
+  (name verbatim or `@name` → `InvocationMethodName`; first value param = request, return = response).
+- `Subscriptions.derive[T](pubsubName): List[Subscription]` — each method (taking `CloudEvent[P]`,
+  returning `SubscriptionResult`) → a `Subscription`; name → `Topic`, `@deadLetter("…")` sets the
+  dead-letter topic.
+
+**How the ambient capabilities/codecs are resolved.** Unlike the client facades (where the
+capability/codecs are the derived method's own `using` params, available as refs), a server
+handler's `using` dependencies and the route's `JsonCodec`s are *ambient* at the `derive` call
+site (inside the `DaprCapability.…` block, with codecs from the shell). The macro resolves them
+with **`Expr.summon[T]`** — which searches at the macro-*expansion* site, i.e. the call site.
+(`summon[T]` *inside a quote* does not work: it is searched at macro-*definition* time and fails.)
+Each handler is built as a `quotes.reflect.Lambda` whose body applies the method's value arg and
+fills every `using` clause with an `Expr.summon`-ed instance; the lambda is stored through the
+existing `@assumeSafe` route factories, whose `AnyRef` erasure absorbs the captured capabilities.
+
+This unblocks fully-derived server apps (no reified routes). The only remaining reified construct
+with no derived form is **workflow hosting** (`extends Workflow` / `extends WorkflowActivity[I,O]`
++ `callActivity[A]`): the orchestration must reference the activity *type* by name, which a macro
+cannot synthesise-and-reference within one compilation run — so workflow/activity definitions stay
+reified by necessity.

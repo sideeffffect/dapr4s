@@ -125,3 +125,59 @@ private[derivation] object MacroSupport:
   def isUnit(using q: Quotes)(tpe: q.reflect.TypeRepr): Boolean =
     import q.reflect.*
     tpe =:= TypeRepr.of[Unit]
+
+  // ---- server-route derivation helpers --------------------------------------
+
+  /** A term holding an instance of `T`: the singleton itself if `T` is an `object`, else `new T()`. */
+  def instanceOf[T: Type](using q: Quotes): q.reflect.Term =
+    import q.reflect.*
+    val tr = TypeRepr.of[T]
+    val ts = tr.typeSymbol
+    if ts.flags.is(Flags.Module) then Ref(tr.termSymbol)
+    else Apply(Select(New(TypeTree.of[T]), ts.primaryConstructor), Nil)
+
+  /** Declared handler methods of `T` (user `def`s — excludes constructors, synthetic, inherited). */
+  def handlerMethods[T: Type](using q: Quotes): List[q.reflect.Symbol] =
+    import q.reflect.*
+    TypeRepr.of[T].typeSymbol.declaredMethods.filter { m =>
+      !m.isClassConstructor && !m.flags.is(Flags.Synthetic) && m.name != "$init$"
+    }
+
+  /** A given instance of `tpe`, resolved at the macro-expansion (derive call) site. */
+  def summonExpr(using q: Quotes)(tpe: q.reflect.TypeRepr): q.reflect.Term =
+    import q.reflect.*
+    tpe.asType match
+      case '[u] =>
+        Expr.summon[u] match
+          case Some(e) => e.asTerm
+          case None    =>
+            report.errorAndAbort(s"derivation: no given instance for ${tpe.show} in scope at the derive site.")
+
+  /** Build `inst.m(<valueArg?>)(using summon[…]…)`, summoning every `using` parameter (resolved at the splice site).
+    * Value clauses take `valueArg` (one param) or nothing (empty clause).
+    */
+  def callSummoning(using
+      q: Quotes,
+  )(engine: String, inst: q.reflect.Term, m: q.reflect.Symbol, valueArg: Option[q.reflect.Term]): q.reflect.Term =
+    import q.reflect.*
+    m.tree.asInstanceOf[DefDef].paramss.foldLeft(Select(inst, m): Term) { (acc, clause) =>
+      clause match
+        case tc: TermParamClause =>
+          val isGiven = tc.params.headOption.exists(_.symbol.flags.is(Flags.Given))
+          val args =
+            if isGiven then tc.params.map(p => summonExpr(p.tpt.tpe))
+            else if tc.params.isEmpty then Nil
+            else if tc.params.sizeIs == 1 then List(valueArg.getOrElse(fail(engine, m, "missing value argument.")))
+            else fail(engine, m, "a derived route method takes at most one request parameter.")
+          Apply(acc, args)
+        case _ => acc
+    }
+
+  /** The single value-parameter type of a handler method, if it has one. */
+  def valueParamType(using q: Quotes)(m: q.reflect.Symbol): Option[q.reflect.TypeRepr] =
+    import q.reflect.*
+    m.tree.asInstanceOf[DefDef].paramss.collectFirst {
+      case tc: TermParamClause
+          if !tc.params.headOption.exists(_.symbol.flags.is(Flags.Given)) && tc.params.sizeIs == 1 =>
+        tc.params.head.tpt.tpe
+    }

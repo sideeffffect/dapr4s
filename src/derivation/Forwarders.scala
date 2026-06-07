@@ -226,3 +226,25 @@ object Forwarders:
   ): ActorTimerRoute =
     given JsonCodec[Payload] = codec
     ActorTimerRoute[Payload](name)(handler)
+
+  // ---- Invocation / subscription route construction (server-side) -----------
+
+  def invocationRoute[Q, R](
+      name: InvocationMethodName,
+      handler: Q => R,
+      qCodec: JsonCodec[Q],
+      rCodec: JsonCodec[R],
+  ): InvocationRoute =
+    given JsonCodec[Q] = qCodec
+    given JsonCodec[R] = rCodec
+    InvocationRoute[Q, R](name)(handler)
+
+  def subscriptionRoute[T](
+      pubsubName: PubSubName,
+      topic: Topic,
+      deadLetter: Option[Topic],
+      handler: CloudEvent[T] => SubscriptionResult,
+      codec: JsonCodec[T],
+  ): Subscription =
+    given JsonCodec[T] = codec
+    Subscription[T](pubsubName, topic, deadLetter)(handler)
