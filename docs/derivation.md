@@ -81,14 +81,14 @@ ActorDefinition(ActorType("Counter")) { actorId =>
       ActorMethodRoute[Unit, CounterState](ActorMethodName("reset"))(reset),
       ActorMethodRoute[Unit, Unit](ActorMethodName("scheduleReset"))(scheduleReset),
       ActorMethodRoute[Unit, Unit](ActorMethodName("cancelReset"))(cancelReset),
-      ActorMethodRoute[Unit, Unit](ActorMethodName("schedule-quick-reset"))(scheduleQuickReset),
-      ActorMethodRoute[Unit, Unit](ActorMethodName("schedule-auto-increment"))(scheduleAutoIncrement),
+      ActorMethodRoute[Unit, Unit](ActorMethodName("scheduleQuickReset"))(scheduleQuickReset),
+      ActorMethodRoute[Unit, Unit](ActorMethodName("scheduleAutoIncrement"))(scheduleAutoIncrement),
     ),
     reminders = List(
-      ActorReminderRoute[String](ReminderName("scheduled-reset"))(msg => onScheduledReset(msg)),
+      ActorReminderRoute[String](ReminderName("onScheduledReset"))(msg => onScheduledReset(msg)),
     ),
     timers = List(
-      ActorTimerRoute[IncrRequest](TimerName("auto-increment"))(req => onAutoIncrement(req)),
+      ActorTimerRoute[IncrRequest](TimerName("onAutoIncrement"))(req => onAutoIncrement(req)),
     ),
   )
 }
