@@ -2,11 +2,12 @@ package dapr4s
 
 import language.experimental.safe
 
-/** Fully-qualified class name of a [[Workflow]] subclass, used to start instances.
+/** Simple class name of a [[Workflow]] subclass, used to start instances.
   *
-  * Must not be empty. Obtain via `classOf[MyWorkflow].getCanonicalName` and pass to [[WorkflowCapability.start]] or
-  * [[WorkflowCapability.startWithId]]. The value must match the canonical class name of a [[Workflow]] subclass
-  * registered in the same [[DaprApp]].
+  * Must not be empty. Obtain via `classOf[MyWorkflow].getSimpleName` and pass to [[WorkflowCapability.start]] or
+  * [[WorkflowCapability.startWithId]]. The value must match the simple class name under which a [[Workflow]] subclass is
+  * registered in the same [[DaprApp]] — the server registers workflows by `getSimpleName` (e.g. `"OrderWorkflow"`, not
+  * `"workflows.OrderWorkflow"`), so the same is also what appears in the HTTP API URL.
   */
 opaque type WorkflowName = String
 object WorkflowName:

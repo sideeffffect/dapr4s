@@ -256,12 +256,14 @@ abstract class WorkflowActivity[I, O](using
 
   /** Wire name under which this activity is registered with the runtime and scheduled from workflows.
     *
-    * Defaults to the canonical class name, which is what [[WorkflowContext.callActivity callActivity[A]]] resolves via
-    * [[ActivityDef]]. Activities reified by `dapr4s.derivation.WorkflowActivities` are anonymous (no canonical name),
-    * so they override this with a stable name derived from the implementation class and method, matched by the
-    * corresponding name-based [[WorkflowContext.callActivityByName(name:* callActivityByName(name, …)]].
+    * Defaults to the simple class name (matching how workflows are named), which is what
+    * [[WorkflowContext.callActivity callActivity[A]]] resolves via [[ActivityDef]]. As with every other name in this
+    * library, registration is first-writer-wins, so two activity classes that share a simple name would collide —
+    * override `activityName` to disambiguate. Activities reified by `dapr4s.derivation.WorkflowActivities` are anonymous
+    * (no usable simple name), so they override this with a stable name derived from the implementation class and method,
+    * matched by the corresponding name-based [[WorkflowContext.callActivityByName(name:* callActivityByName(name, …)]].
     */
-  def activityName: String = getClass.getCanonicalName.nn
+  def activityName: String = getClass.getSimpleName.nn
 
   /** Implement activity logic here.  May perform I/O; need not be deterministic.
     *
@@ -305,6 +307,6 @@ object ActivityDef:
   ): ActivityDef[A] with
     type Input  = I
     type Output = O
-    def activityName = ct.runtimeClass.getCanonicalName.nn
+    def activityName = ct.runtimeClass.getSimpleName.nn
     def inputCodec   = ic
     def outputCodec  = oc

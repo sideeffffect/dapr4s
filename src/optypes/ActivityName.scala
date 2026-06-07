@@ -6,8 +6,8 @@ import language.experimental.safe
   *
   * Activity dispatch is by this string: the server registers each activity under its [[WorkflowActivity.activityName]]
   * and a workflow schedules it via [[WorkflowContext.callActivityByName(name:* callActivityByName(name, input)]]. Both
-  * sides must agree on the name. For class-based activities the name defaults to the canonical class name; the
-  * `dapr4s.derivation` engines compute a stable name from the implementation class and method.
+  * sides must agree on the name. For class-based activities the name defaults to the simple class name (matching how
+  * workflows are named); the `dapr4s.derivation` engines compute a stable name from the implementation class and method.
   *
   * Must not be empty.
   */

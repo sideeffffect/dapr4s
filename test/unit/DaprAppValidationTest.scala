@@ -57,7 +57,7 @@ class DaprAppValidationTest extends FunSuite:
     val app = DaprApp(activities = List(new EchoActivity, new EchoActivity))
     assertEquals(
       app.validationErrors,
-      List(DuplicateActivityName(classOf[EchoActivity].getCanonicalName.nn, 2)),
+      List(DuplicateActivityName(classOf[EchoActivity].getSimpleName.nn, 2)),
     )
 
   test("duplicate workflow simple names (cross-package) are detected"):

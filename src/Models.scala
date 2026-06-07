@@ -180,7 +180,7 @@ enum WorkflowStatus:
   * Returned by [[WorkflowCapability.getStatus]] and [[WorkflowCapability.waitForCompletion]].
   *
   * @param name
-  *   The [[WorkflowName]] (canonical class name) that identifies the workflow type.
+  *   The [[WorkflowName]] (simple class name) that identifies the workflow type.
   * @param instanceId
   *   The unique [[WorkflowInstanceId]] of this instance.
   * @param status

@@ -494,7 +494,7 @@ trait WorkflowCapability extends scala.caps.ExclusiveCapability:
   * {{{
   *   def processOrder(order: Order)(using WorkflowCapability): WorkflowInstanceId =
   *     WorkflowCapability.start[Order](
-  *       WorkflowName(classOf[OrderWorkflow].getCanonicalName),
+  *       WorkflowName(classOf[OrderWorkflow].getSimpleName),
   *       order,
   *     )
   * }}}

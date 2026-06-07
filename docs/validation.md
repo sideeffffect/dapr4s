@@ -31,8 +31,6 @@ Explicitly **out of scope** (documented as follow-ups, see end):
   registered. This is not soundly determinable from instances (see
   [Follow-ups](#follow-ups)).
 - Severity tiers. All findings are **errors**; there are no warnings.
-- The workflow simple-name vs. canonical-name inconsistency (a separate latent
-  issue, see [Follow-ups](#follow-ups)).
 
 ## Design decisions
 
@@ -55,7 +53,7 @@ All references below are to the current `src/` tree.
 
 Activities are registered with `wb.registerActivity(a.activityName, …)`. The wire
 name is `WorkflowActivity.activityName` (`Workflows.scala:264`), which defaults to
-the canonical class name; derived activities use `<impl-full-name>#<method>`
+the simple class name (uniform with workflows); derived activities use `<impl-full-name>#<method>`
 (`derivation/MacroSupport.scala:84`). Two activities resolving to the same name →
 the second silently replaces the first. A workflow scheduling that name (via
 `callActivity[A]` or `callActivityByName`) may then hit the wrong implementation.
@@ -255,9 +253,10 @@ Unit tests (no sidecar needed) covering:
    bytecode scan of `run` for literal names/types is possible but fragile and was
    rejected.
 
-2. **Workflow simple-name vs. canonical-name inconsistency.** The server registers
-   workflows by `getSimpleName` (`internal/DaprAppServer.scala:134`), but
-   `WorkflowName`'s docs (`optypes/WorkflowName.scala:5-9`) and the
-   `Capabilities.scala:497` example use the canonical name. This is a pre-existing
-   latent bug worth resolving on its own; under the errors-only model it is not a
-   validation check.
+2. **Workflow simple-name vs. canonical-name inconsistency.** *(Resolved.)* The
+   server registers workflows by `getSimpleName`; the `WorkflowName` docs and the
+   `WorkflowCapability.start` example were aligned to match, and class-based
+   activities were made to default to `getSimpleName` too, so the whole library
+   now names workflows and activities uniformly by simple class name. The
+   `DuplicateWorkflowName` / `DuplicateActivityName` checks above catch the
+   simple-name collisions this convention can produce.
