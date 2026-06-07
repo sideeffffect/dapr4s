@@ -9,10 +9,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: coursier/cache-action@v6
+    - uses: coursier/cache-action@v8
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
@@ -24,10 +24,10 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: coursier/cache-action@v6
+    - uses: coursier/cache-action@v8
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
@@ -43,10 +43,10 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: coursier/cache-action@v6
+    - uses: coursier/cache-action@v8
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
