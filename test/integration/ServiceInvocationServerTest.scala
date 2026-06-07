@@ -125,3 +125,14 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
         val result = invoker.invoke(selfAppId, InvocationMethodName("double"), IncrRequest(7))[CounterState]
         assertEquals(result, CounterState(14))
     }
+
+  // ---- derived client (dapr4s.derivation.ServiceInvocation) -------------------
+
+  test("invoke: derived EchoService round-trips through the sidecar"):
+    withContainers { c =>
+      Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
+        DaprCapability.invoker:
+          val svc = EchoService.derive(selfAppId)
+          assertEquals(svc.echo("hello"), "hello")
+          assertEquals(svc.double(IncrRequest(6)), CounterState(12))
+    }
