@@ -153,6 +153,7 @@ Specific rules currently active in this codebase:
 - `UnlockStatus` and `SubscriptionResult` are `enum` (not `case class` with int codes).
 - `StateOp` root is `sealed abstract class` (not `sealed trait`) — proper ADT root.
 - Do not call `.head`, `.tail`, `.last`, `.get` on collections or `Option`/`Try`/`Either` without a prior length/presence check; use `headOption`, `getOrElse`, `getOrElse(fail(...))` in tests.
+- Method names are domain-split, **not** a single shared `MethodName` type. Use `InvocationMethodName` for service invocation (`ServiceInvocationCapability.invoke`, `InvocationRoute`, `InvocationRequest`) and `ActorMethodName` for actor methods (`ActorCapability.invoke`/`invokeVoid`, `ActorMethodRoute`). These address genuinely different things (an HTTP route on a remote app vs. a method on a stateful actor instance) and the type wall prevents passing one where the other is expected. Do not reintroduce a unified `MethodName`. (Actor timer/reminder callbacks use `TimerName`/`ReminderName`, not a method-name type.)
 
 ### Java interop boundary
 Everything in `src/internal/` is marked `@scala.caps.assumeSafe`. This is the only place Java
