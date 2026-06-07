@@ -274,6 +274,13 @@ class and its companion object do, so there is no clash. The macro expands at th
 body, where `T` is concrete; a `lazy val` cannot itself be `inline`, but it does not need to
 be — only the engine `derive` it calls is.
 
+**Caveat — where `derive` summons implicits.** The client facades take their `JsonCodec`s as
+per-method `using` parameters, so `derive` summons nothing and a top-level `lazy val` is always
+fine. But `WorkflowActivities.derive[C]` and `WorkflowActivityCalls.derive[Calls, Impl]` summon
+`JsonCodec[I]`/`JsonCodec[O]` **at the `derive` site**. Put those calls where those codecs are in
+scope — typically inside the workflow body (whose constructor threads the codecs in), not in a
+top-level `lazy val` where they may be absent.
+
 ## How the generated body is built (implementation note)
 
 The macro creates the impl class with `Symbol.newClass` and one `DefDef` per abstract
@@ -513,11 +520,11 @@ class CounterActivities:
 // typed caller — a small trait bound to the impl by the macro
 trait CounterCalls:
   def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
-lazy val CounterCalls: CounterCalls = WorkflowActivityCalls.derive[CounterCalls, CounterActivities]
 
 class AddingWorkflow extends Workflow:
   def run(using WorkflowContext): Unit =
-    val acts = CounterCalls
+    // derive here: JsonCodec[I]/[O] are summoned at the derive site, in scope inside the workflow
+    val acts = WorkflowActivityCalls.derive[CounterCalls, CounterActivities]
     WorkflowContext.complete(acts.add(WorkflowContext.getInput[IncrRequest].get).await())
 
 object MyApp:

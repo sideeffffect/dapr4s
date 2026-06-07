@@ -19,14 +19,15 @@ import scala.quoted.*
   * per-call context. `JsonCodec[I]`/`JsonCodec[O]` are summoned at the `derive` call site. The corresponding `Impl`
   * method has shape `def m(input: I)(using DaprCapability): O` (see [[WorkflowActivities]]).
   *
+  * `JsonCodec[I]`/`JsonCodec[O]` are summoned where `derive` is expanded, so call it inside the
+  * workflow body (where the workflow's codec givens are in scope) rather than from a top-level val:
   * {{{
   *   trait CounterActivityCalls:
   *     def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
-  *   lazy val CounterActivityCalls: CounterActivityCalls = WorkflowActivityCalls.derive[CounterActivityCalls, CounterActivities]
   *
   *   class AddingWorkflow extends Workflow:
   *     def run(using WorkflowContext): Unit =
-  *       val acts = CounterActivityCalls
+  *       val acts = WorkflowActivityCalls.derive[CounterActivityCalls, CounterActivities]
   *       WorkflowContext.complete(acts.add(IncrRequest(21)).await())
   * }}}
   */
