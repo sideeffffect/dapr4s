@@ -40,8 +40,8 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
   // The set of routes registered on the app server used for all tests in this suite.
   private val echoApp = DaprApp(
     invocations = List(
-      InvocationRoute[String, String](MethodName("echo")) { s => s },
-      InvocationRoute[IncrRequest, CounterState](MethodName("double")) { req =>
+      InvocationRoute[String, String](InvocationMethodName("echo")) { s => s },
+      InvocationRoute[IncrRequest, CounterState](InvocationMethodName("double")) { req =>
         CounterState(req.amount * 2)
       },
     ),
@@ -106,7 +106,7 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val invoker = summon[DaprCapability].invoker
-        val result = invoker.invoke(selfAppId, MethodName("echo"), "hello")[String]
+        val result = invoker.invoke(selfAppId, InvocationMethodName("echo"), "hello")[String]
         assertEquals(result, "hello")
     }
 
@@ -114,7 +114,7 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val invoker = summon[DaprCapability].invoker
-        val result = invoker.invoke(selfAppId, MethodName("double"), IncrRequest(5))[CounterState]
+        val result = invoker.invoke(selfAppId, InvocationMethodName("double"), IncrRequest(5))[CounterState]
         assertEquals(result, CounterState(10))
     }
 
@@ -122,6 +122,6 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val invoker = summon[DaprCapability].invoker
-        val result = invoker.invoke(selfAppId, MethodName("double"), IncrRequest(7))[CounterState]
+        val result = invoker.invoke(selfAppId, InvocationMethodName("double"), IncrRequest(7))[CounterState]
         assertEquals(result, CounterState(14))
     }

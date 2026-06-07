@@ -35,7 +35,7 @@ private[internal] final class InvokerCapabilityImpl(
 
   def invoke[Req: JsonCodec](
       appId: AppId,
-      method: MethodName,
+      method: InvocationMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
@@ -54,7 +54,7 @@ private[internal] final class InvokerCapabilityImpl(
       ),
     )
 
-  def invoke[Resp: JsonCodec](appId: AppId, method: MethodName): Resp =
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvocationMethodName): Resp =
     JsonCodec.decodeOrThrow[Resp](
       bytesToString(
         scope.client

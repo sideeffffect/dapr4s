@@ -111,7 +111,7 @@ more lambdas in the same method each call a throwing method.
 
 **Required pattern** for every handler lambda that calls throwing methods:
 ```scala
-handlers.onInvoke[Req](MethodName("my-method"))[Resp] { req =>
+handlers.onInvoke[Req](InvocationMethodName("my-method"))[Resp] { req =>
   try myHandlerMethod(req)          // declares throws Exception
   catch case e: Exception => throw e  // re-throw WITHOUT swallowing
 }

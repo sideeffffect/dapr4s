@@ -193,7 +193,7 @@ trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
     */
   def invoke[Req: JsonCodec](
       appId: AppId,
-      method: MethodName,
+      method: InvocationMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
@@ -203,27 +203,27 @@ trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
     *
     * Use the body-bearing overload to pass a non-default HTTP verb or metadata headers.
     */
-  def invoke[Resp: JsonCodec](appId: AppId, method: MethodName): Resp
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvocationMethodName): Resp
 
 /** Companion-object API for [[ServiceInvocationCapability]].
   *
   * Forwards to the `ServiceInvocationCapability` in the enclosing `using` context:
   * {{{
   *   def getUser(id: String)(using ServiceInvocationCapability): User =
-  *     ServiceInvocationCapability.invoke(AppId("user-service"), MethodName("get"), id)[User]
+  *     ServiceInvocationCapability.invoke(AppId("user-service"), InvocationMethodName("get"), id)[User]
   * }}}
   */
 @scala.caps.assumeSafe
 object ServiceInvocationCapability:
   def invoke[Req: JsonCodec](
       appId: AppId,
-      method: MethodName,
+      method: InvocationMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec](using cap: ServiceInvocationCapability): Resp =
     cap.invoke(appId, method, data, httpMethod, metadata)[Resp]
-  def invoke[Resp: JsonCodec](appId: AppId, method: MethodName)(using cap: ServiceInvocationCapability): Resp =
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvocationMethodName)(using cap: ServiceInvocationCapability): Resp =
     cap.invoke(appId, method)
 
 // ---------------------------------------------------------------------------
@@ -416,34 +416,34 @@ trait ActorCapability extends scala.caps.ExclusiveCapability:
   /** Invoke an actor method with a request body.
     *
     * {{{
-    *   val resp = actor.invoke(MethodName("GetBalance"), req)[BalanceResponse]
+    *   val resp = actor.invoke(ActorMethodName("GetBalance"), req)[BalanceResponse]
     * }}}
     */
-  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp
+  def invoke[Req: JsonCodec](method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp
 
   /** Invoke an actor method with no request body. */
-  def invoke[Resp: JsonCodec](method: MethodName): Resp
+  def invoke[Resp: JsonCodec](method: ActorMethodName): Resp
 
   /** Invoke an actor method that returns no value. */
-  def invokeVoid(method: MethodName): Unit
+  def invokeVoid(method: ActorMethodName): Unit
 
 /** Companion-object API for [[ActorCapability]].
   *
   * Forwards to the `ActorCapability` in the enclosing `using` context:
   * {{{
   *   def getBalance(id: ActorId)(using cap: ActorCapability): Balance =
-  *     ActorCapability.invoke(MethodName("GetBalance"), BalanceRequest(id))[Balance]
+  *     ActorCapability.invoke(ActorMethodName("GetBalance"), BalanceRequest(id))[Balance]
   * }}}
   */
 @scala.caps.assumeSafe
 object ActorCapability:
-  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec](using
+  def invoke[Req: JsonCodec](method: ActorMethodName, data: Req)[Resp: JsonCodec](using
       cap: ActorCapability,
   ): Resp =
     cap.invoke(method, data)[Resp]
-  def invoke[Resp: JsonCodec](method: MethodName)(using cap: ActorCapability): Resp =
+  def invoke[Resp: JsonCodec](method: ActorMethodName)(using cap: ActorCapability): Resp =
     cap.invoke(method)
-  def invokeVoid(method: MethodName)(using cap: ActorCapability): Unit =
+  def invokeVoid(method: ActorMethodName)(using cap: ActorCapability): Unit =
     cap.invokeVoid(method)
 
 // ---------------------------------------------------------------------------

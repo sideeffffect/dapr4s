@@ -15,12 +15,12 @@ package dapr4s
   *         Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event => ... }
   *       ),
   *       invocations = List(
-  *         InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req => ... }
+  *         InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order")) { req => ... }
   *       ),
   *       actors = List(
   *         ActorDefinition(ActorType("Counter")) { id =>
   *           val actor = new CounterActor // ActorContext is in implicit scope
-  *           ActorRoutes(methods = List(ActorMethodRoute[Int, Int](MethodName("increment"))(actor.increment)))
+  *           ActorRoutes(methods = List(ActorMethodRoute[Int, Int](ActorMethodName("increment"))(actor.increment)))
   *         }
   *       )
   *     )
@@ -123,7 +123,7 @@ object Subscription:
 sealed abstract class InvocationRoute:
   type Req
   type Resp
-  val methodName: MethodName
+  val methodName: InvocationMethodName
   val reqCodec: JsonCodec[Req]
   val respCodec: JsonCodec[Resp]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
@@ -139,7 +139,7 @@ sealed abstract class InvocationRoute:
 object InvocationRoute:
 
   /** Handler receives only the decoded request body. */
-  def apply[Q: JsonCodec, R: JsonCodec](methodName: MethodName)(
+  def apply[Q: JsonCodec, R: JsonCodec](methodName: InvocationMethodName)(
       handler: Q => R,
   ): InvocationRoute =
     // WHY RENAME: avoid val x = x self-reference — see Subscription.apply comment.
@@ -156,7 +156,7 @@ object InvocationRoute:
       val usesRequestEnvelope = false
 
   /** Handler receives the full [[InvocationRequest]] envelope (method name, HTTP verb, and decoded body). */
-  def withRequest[Q: JsonCodec, R: JsonCodec](methodName: MethodName)(
+  def withRequest[Q: JsonCodec, R: JsonCodec](methodName: InvocationMethodName)(
       handler: InvocationRequest[Q] => R,
   ): InvocationRoute =
     val mn = methodName

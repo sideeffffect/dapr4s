@@ -114,7 +114,8 @@ value ETag             { value: String }   -- Optimistic-concurrency tag
 
 -- Operation key / identifier opaque types (non-empty where noted)
 value StateKey         { value: String }   -- Key in a DAPR state store
-value MethodName       { value: String }   -- Service-invocation / inbound handler method name (non-empty)
+value InvocationMethodName { value: String }   -- Service-invocation / inbound handler method name (non-empty)
+value ActorMethodName  { value: String }   -- Actor method name (non-empty)
 value Route            { value: String }   -- HTTP route for a pub/sub subscription (non-empty)
 value SecretKey        { value: String }   -- Key in a DAPR secrets store
 value ConfigKey        { value: String }   -- Key in a DAPR configuration store
@@ -207,8 +208,8 @@ value CloudEvent<T> {
 
 value InvocationRequest<T> {
     -- Incoming service invocation request delivered by the sidecar to an InvocationRoute.withRequest handler.
-    -- Matches final case class InvocationRequest[T](methodName: MethodName, httpMethod: HttpMethod, data: T).
-    method_name: MethodName
+    -- Matches final case class InvocationRequest[T](methodName: InvocationMethodName, httpMethod: HttpMethod, data: T).
+    method_name: InvocationMethodName
     http_method: HttpMethod
     data: T
 }
@@ -304,7 +305,7 @@ value Subscription {
 }
 
 value InvocationRoute {
-    method_name: MethodName
+    method_name: InvocationMethodName
     -- handler: Req -> Resp (captured, CC-erased internally)
 }
 
@@ -1019,7 +1020,7 @@ invariant ScopeLifetime {
 
 -- Non-empty identifier constraints (not machine-expressible as a state invariant;
 -- enforced by constructors at runtime):
---   Non-empty: StoreName, PubSubName, Topic, AppId, MethodName, BindingName, SecretStoreName,
+--   Non-empty: StoreName, PubSubName, Topic, AppId, InvocationMethodName, ActorMethodName, BindingName, SecretStoreName,
 --              ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
 --              WorkflowName, ActorType, ReminderName, TimerName, EventName — all reject the
 --              empty string at construction time via require().
@@ -1168,8 +1169,8 @@ surface ServiceInvocationSurface {
         demands JsonCodec
 
     exposes:
-        invoke: (app_id: AppId, method: MethodName, data: Any) -> Any
-        invoke_get: (app_id: AppId, method: MethodName) -> Any
+        invoke: (app_id: AppId, method: InvocationMethodName, data: Any) -> Any
+        invoke_get: (app_id: AppId, method: InvocationMethodName) -> Any
 }
 
 surface SecretsSurface {
@@ -1200,13 +1201,13 @@ surface DaprAppSurface {
         Subscription: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Subscription
         Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
         -- Simple overload: handler receives only the decoded request body.
-        InvocationRoute: (method_name: MethodName, handler: Req -> Resp) -> InvocationRoute
+        InvocationRoute: (method_name: InvocationMethodName, handler: Req -> Resp) -> InvocationRoute
         -- Rich overload: handler receives the full InvocationRequest envelope (method name, HTTP verb, body).
-        InvocationRoute.withRequest: (method_name: MethodName, handler: InvocationRequest<Req> -> Resp) -> InvocationRoute
+        InvocationRoute.withRequest: (method_name: InvocationMethodName, handler: InvocationRequest<Req> -> Resp) -> InvocationRoute
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
         DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp
-        ActorMethodRoute: (method_name: MethodName, handler: Req -> Resp) -> ActorMethodRoute
+        ActorMethodRoute: (method_name: InvocationMethodName, handler: Req -> Resp) -> ActorMethodRoute
         ActorReminderRoute: (reminder_name: ReminderName, handler: Payload -> Unit) -> ActorReminderRoute
         ActorTimerRoute: (timer_name: TimerName, handler: Payload -> Unit) -> ActorTimerRoute
         ActorRoutes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes

@@ -26,16 +26,16 @@ private[internal] final class ActorCapabilityImpl(
     private val proxy: JavaActorProxy,
 ) extends ActorCapability:
 
-  def invoke[Req: JsonCodec](method: MethodName, data: Req)[Resp: JsonCodec]: Resp =
+  def invoke[Req: JsonCodec](method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp =
     val requestBytes = summon[JsonCodec[Req]].encode(data).getBytes(java.nio.charset.StandardCharsets.UTF_8).nn
     val rawResult = proxy.invokeMethod(method.value, requestBytes, classOf[Array[Byte]]).awaitResult()
     ActorCapabilityImpl.decodeResponse[Resp](actorType, method, rawResult)
 
-  def invoke[Resp: JsonCodec](method: MethodName): Resp =
+  def invoke[Resp: JsonCodec](method: ActorMethodName): Resp =
     val rawResult = proxy.invokeMethod(method.value, classOf[Array[Byte]]).awaitResult()
     ActorCapabilityImpl.decodeResponse[Resp](actorType, method, rawResult)
 
-  def invokeVoid(method: MethodName): Unit =
+  def invokeVoid(method: ActorMethodName): Unit =
     proxy.invokeMethod(method.value).awaitResult()
 
 @scala.caps.assumeSafe
@@ -43,7 +43,7 @@ private[internal] object ActorCapabilityImpl:
 
   private def decodeResponse[Resp: JsonCodec](
       actorType: ActorType,
-      method: MethodName,
+      method: ActorMethodName,
       rawResult: Array[Byte] | Null,
   ): Resp =
     val bytes = if rawResult == null then Array.empty[Byte] else rawResult

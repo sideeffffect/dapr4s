@@ -84,8 +84,8 @@ object InventoryServiceApp:
             Subscription[OrderEvent](PubSubComp, OrdersTopic)(handleOrderEvent),
           ),
           invocations = List(
-            InvocationRoute[String, StockLevel](MethodName("get-stock"))(getStock),
-            InvocationRoute[StockLevel, StockLevel](MethodName("seed-stock"))(seedStock),
+            InvocationRoute[String, StockLevel](InvocationMethodName("get-stock"))(getStock),
+            InvocationRoute[StockLevel, StockLevel](InvocationMethodName("seed-stock"))(seedStock),
           ),
         )
       }

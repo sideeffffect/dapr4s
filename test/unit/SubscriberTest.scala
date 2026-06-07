@@ -155,7 +155,7 @@ class SubscriberTest extends FunSuite:
   test("unit: DaprAppServer dispatches invocation and returns response from DaprApp"):
     val app = DaprApp(
       invocations = List(
-        InvocationRoute[String, String](MethodName("echo")) { req => "echo:" + req },
+        InvocationRoute[String, String](InvocationMethodName("echo")) { req => "echo:" + req },
       ),
     )
     val server = new dapr4s.internal.DaprAppServer(app)
@@ -207,10 +207,10 @@ class SubscriberTest extends FunSuite:
   test("unit: DaprApp ++ merges subscriptions and invocations"):
     val app1 = DaprApp(
       subscriptions = List(Subscription[String](PubSubName("p"), Topic("t1")) { _ => SubscriptionResult.Success }),
-      invocations = List(InvocationRoute[String, String](MethodName("m1")) { s => s }),
+      invocations = List(InvocationRoute[String, String](InvocationMethodName("m1")) { s => s }),
     )
     val app2 = DaprApp(
-      invocations = List(InvocationRoute[Int, Int](MethodName("m2")) { n => n + 1 }),
+      invocations = List(InvocationRoute[Int, Int](InvocationMethodName("m2")) { n => n + 1 }),
     )
     val combined = app1 ++ app2
     assertEquals(combined.subscriptions.size, 1)

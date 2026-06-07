@@ -115,7 +115,7 @@ object ActorContext:
 sealed abstract class ActorMethodRoute:
   type Req
   type Resp
-  val methodName: MethodName
+  val methodName: ActorMethodName
   val reqCodec: JsonCodec[Req]
   val respCodec: JsonCodec[Resp]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
@@ -128,7 +128,7 @@ sealed abstract class ActorMethodRoute:
 @scala.caps.assumeSafe
 object ActorMethodRoute:
 
-  def apply[Q: JsonCodec, R: JsonCodec](methodName: MethodName)(
+  def apply[Q: JsonCodec, R: JsonCodec](methodName: ActorMethodName)(
       handler: Q => R,
   ): ActorMethodRoute =
     val mn = methodName
@@ -244,8 +244,8 @@ object ActorRoutes
   *     val actor = new CounterActor
   *     ActorRoutes(
   *       methods = List(
-  *         ActorMethodRoute[IncrReq, Int](MethodName("increment"))(actor.increment),
-  *         ActorMethodRoute[Unit, Int](MethodName("get"))(actor.get),
+  *         ActorMethodRoute[IncrReq, Int](ActorMethodName("increment"))(actor.increment),
+  *         ActorMethodRoute[Unit, Int](ActorMethodName("get"))(actor.get),
   *       ),
   *       reminders = List(
   *         ActorReminderRoute[String](ReminderName("alert"))(actor.onAlert),

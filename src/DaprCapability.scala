@@ -85,7 +85,7 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   *         DaprCapability.pubsub(PubSubName("pubsub")) {
   *           DaprApp(
   *             invocations = List(
-  *               InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+  *               InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order")) { req =>
   *                 try placeOrder(req)
   *                 catch case e: Exception => throw e
   *               }

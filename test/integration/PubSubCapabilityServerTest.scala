@@ -44,7 +44,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("pub")) { msg =>
+                InvocationRoute[String, String](InvocationMethodName("pub")) { msg =>
                   try { PubSubCapability.publish(Topic("orders"), msg); "ok" }
                   catch case e: Exception => throw e
                 },
@@ -64,7 +64,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("pub-meta")) { msg =>
+                InvocationRoute[String, String](InvocationMethodName("pub-meta")) { msg =>
                   try
                     PubSubCapability.publishWithMetadata(
                       Topic("orders"),
@@ -92,7 +92,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[List[String], Int](MethodName("bulk")) { msgs =>
+                InvocationRoute[List[String], Int](InvocationMethodName("bulk")) { msgs =>
                   try
                     val entries = msgs.zipWithIndex.map { case (m, i) =>
                       BulkPublishEntry(BulkEntryId(i.toString), m)
@@ -117,7 +117,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[List[String], Int](MethodName("bulk")) { msgs =>
+                InvocationRoute[List[String], Int](InvocationMethodName("bulk")) { msgs =>
                   try
                     val result = PubSubCapability
                       .bulkPublish(Topic("orders"), msgs.map(m => BulkPublishEntry(BulkEntryId("0"), m)))
@@ -154,7 +154,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
                   },
                 ),
                 invocations = List(
-                  InvocationRoute[Unit, Option[String]](MethodName("get-recv")) { _ =>
+                  InvocationRoute[Unit, Option[String]](InvocationMethodName("get-recv")) { _ =>
                     try StateCapability.get[String](StateKey(stateKey))
                     catch case e: Exception => throw e
                   },
@@ -178,7 +178,7 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("pub")) { msg =>
+                InvocationRoute[String, String](InvocationMethodName("pub")) { msg =>
                   try { PubSubCapability.publish(Topic("t"), msg); "ok" }
                   catch case e: Exception => throw e
                 },

@@ -116,8 +116,8 @@ classDiagram
     }
     class ServiceInvocationCapability {
         <<trait>>
-        +invoke[Req,Resp](appId: AppId, method: MethodName, data: Req) Resp
-        +invokeGet[Resp](appId: AppId, method: MethodName) Resp
+        +invoke[Req,Resp](appId: AppId, method: InvocationMethodName, data: Req) Resp
+        +invokeGet[Resp](appId: AppId, method: InvocationMethodName) Resp
     }
     class SecretsCapability {
         <<trait>>
@@ -277,8 +277,8 @@ object OrderServiceApp:
       DaprCapability.pubsub(PubSubComp) {
         DaprApp(
           invocations = List(
-            InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order"))(placeOrder),
-            InvocationRoute[String, Option[OrderRequest]](MethodName("get-order"))(getOrder)
+            InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order"))(placeOrder),
+            InvocationRoute[String, Option[OrderRequest]](InvocationMethodName("get-order"))(getOrder)
           )
         )
       }
@@ -351,7 +351,8 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `SecretStoreName` | `String` | yes | DAPR secrets store component name |
 | `ConfigStoreName` | `String` | yes | DAPR configuration store component name |
 | `BindingName` | `String` | yes | DAPR output binding component name |
-| `MethodName` | `String` | yes | Service-invocation / inbound handler method name |
+| `InvocationMethodName` | `String` | yes | Service-invocation / inbound handler method name |
+| `ActorMethodName` | `String` | yes | Actor method name |
 | `Route` | `String` | yes | HTTP route for a pub/sub subscription |
 | `BindingOperation` | `String` | yes | Operation name for an output binding |
 | `LockResourceId` | `String` | yes | Resource identifier for a distributed lock |
@@ -655,7 +656,7 @@ Extend `WorkflowActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]
 class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
   def execute(input: OrderRequest)(using DaprCapability): PaymentResult =
     DaprCapability.invoker:
-      ServiceInvocationCapability.invoke(PaymentService, MethodName("charge"), input)[PaymentResult]
+      ServiceInvocationCapability.invoke(PaymentService, InvocationMethodName("charge"), input)[PaymentResult]
 ```
 
 `WorkflowActivity[I, O]` is a pure Scala abstract class. Internally, `WorkflowActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[dapr4s]` on the abstract class.
@@ -699,8 +700,8 @@ ActorDefinition(ActorType("Counter")) { id =>
   val actor = new CounterActor   // plain Scala class, no special supertype
   ActorRoutes(
     methods = List(
-      ActorMethodRoute[IncrReq, Int](MethodName("increment"))(actor.increment),
-      ActorMethodRoute[Unit, Int](MethodName("get"))(actor.get),
+      ActorMethodRoute[IncrReq, Int](ActorMethodName("increment"))(actor.increment),
+      ActorMethodRoute[Unit, Int](ActorMethodName("get"))(actor.get),
     ),
     reminders = List(
       ActorReminderRoute[String](ReminderName("reset-reminder"))(actor.onReminder),

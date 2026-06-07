@@ -79,13 +79,13 @@ object CounterActorApp:
         ActorDefinition(ActorTypeName) { _ =>
           ActorRoutes(
             methods = List(
-              ActorMethodRoute[IncrRequest, CounterState](MethodName("increment"))(increment),
-              ActorMethodRoute[Unit, CounterState](MethodName("get"))(get),
-              ActorMethodRoute[Unit, CounterState](MethodName("reset"))(reset),
-              ActorMethodRoute[Unit, Unit](MethodName("schedule-reset"))(scheduleReset),
-              ActorMethodRoute[Unit, Unit](MethodName("cancel-reset"))(cancelReset),
-              ActorMethodRoute[Unit, Unit](MethodName("schedule-quick-reset"))(scheduleQuickReset),
-              ActorMethodRoute[Unit, Unit](MethodName("schedule-auto-increment"))(scheduleAutoIncrement),
+              ActorMethodRoute[IncrRequest, CounterState](ActorMethodName("increment"))(increment),
+              ActorMethodRoute[Unit, CounterState](ActorMethodName("get"))(get),
+              ActorMethodRoute[Unit, CounterState](ActorMethodName("reset"))(reset),
+              ActorMethodRoute[Unit, Unit](ActorMethodName("schedule-reset"))(scheduleReset),
+              ActorMethodRoute[Unit, Unit](ActorMethodName("cancel-reset"))(cancelReset),
+              ActorMethodRoute[Unit, Unit](ActorMethodName("schedule-quick-reset"))(scheduleQuickReset),
+              ActorMethodRoute[Unit, Unit](ActorMethodName("schedule-auto-increment"))(scheduleAutoIncrement),
             ),
             reminders = List(
               ActorReminderRoute[String](ReminderName("scheduled-reset"))(msg => onScheduledReset(msg)),

@@ -142,7 +142,7 @@ final case class CloudEvent[T](
   * calling app.
   */
 final case class InvocationRequest[T](
-    methodName: MethodName,
+    methodName: InvocationMethodName,
     httpMethod: HttpMethod,
     data: T,
 )

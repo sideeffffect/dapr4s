@@ -225,7 +225,7 @@ abstract class Workflow:
   *   class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
   *     def execute(input: OrderRequest)(using DaprCapability): PaymentResult =
   *       DaprCapability.invoker:
-  *         ServiceInvocationCapability.invoke(PaymentService, MethodName("charge"), input)[PaymentResult]
+  *         ServiceInvocationCapability.invoke(PaymentService, InvocationMethodName("charge"), input)[PaymentResult]
   * }}}
   */
 @scala.caps.assumeSafe

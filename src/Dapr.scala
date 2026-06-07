@@ -160,7 +160,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
     *         }
     *       ),
     *       invocations = List(
-    *         InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order")) { req =>
+    *         InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order")) { req =>
     *           // handle direct invocation
     *           OrderResponse(req.id, "processed")
     *         }

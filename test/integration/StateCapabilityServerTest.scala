@@ -43,11 +43,11 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("save")) { v =>
+                InvocationRoute[String, String](InvocationMethodName("save")) { v =>
                   try { StateCapability.save(StateKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, Option[String]](MethodName("get")) { _ =>
+                InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
                   try StateCapability.get[String](StateKey(k))
                   catch case e: Exception => throw e
                 },
@@ -68,7 +68,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[Unit, Option[String]](MethodName("get")) { _ =>
+                InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
                   try StateCapability.get[String](StateKey(s"absent-${java.util.UUID.randomUUID()}"))
                   catch case e: Exception => throw e
                 },
@@ -90,11 +90,11 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("save")) { v =>
+                InvocationRoute[String, String](InvocationMethodName("save")) { v =>
                   try { StateCapability.save(StateKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](MethodName("get-with-etag")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("get-with-etag")) { _ =>
                   try
                     val e = StateCapability.getWithETag[String](StateKey(k))
                     s"${e.value.getOrElse("none")}|${e.etag.map(_.value).getOrElse("none")}"
@@ -119,7 +119,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[Unit, String](MethodName("get-with-etag")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("get-with-etag")) { _ =>
                   try
                     val e = StateCapability.getWithETag[String](StateKey(s"absent-${java.util.UUID.randomUUID()}"))
                     s"${e.value.getOrElse("none")}|${e.etag.map(_.value).getOrElse("none")}"
@@ -147,7 +147,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[List[String], List[Option[String]]](MethodName("bulk-get")) { keys =>
+                InvocationRoute[List[String], List[Option[String]]](InvocationMethodName("bulk-get")) { keys =>
                   try
                     val results = StateCapability.getBulk[String](keys.map(StateKey(_)))
                     keys.map(k => results.get(StateKey(k)).flatMap(_.value))
@@ -176,7 +176,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[Unit, String](MethodName("save-bulk")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("save-bulk")) { _ =>
                   try
                     StateCapability.saveBulk[String](
                       List(StateKey(k1) -> "v1", StateKey(k2) -> "v2", StateKey(k3) -> "v3"),
@@ -184,7 +184,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
                     "ok"
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[String, Option[String]](MethodName("get")) { k =>
+                InvocationRoute[String, Option[String]](InvocationMethodName("get")) { k =>
                   try StateCapability.get[String](StateKey(k))
                   catch case e: Exception => throw e
                 },
@@ -212,15 +212,15 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("seed")) { v =>
+                InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
                   try { StateCapability.save(StateKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](MethodName("get-etag")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("get-etag")) { _ =>
                   try StateCapability.getWithETag[String](StateKey(k)).etag.map(_.value).getOrElse("none")
                   catch case ex: Exception => throw ex
                 },
-                InvocationRoute[String, String](MethodName("save-with-etag")) { etag =>
+                InvocationRoute[String, String](InvocationMethodName("save-with-etag")) { etag =>
                   try
                     val err = StateCapability.saveWithETag(StateKey(k), "new-value", ETag(etag))
                     if err.isDefined then "conflict" else "ok"
@@ -247,11 +247,11 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("seed")) { v =>
+                InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
                   try { StateCapability.save(StateKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](MethodName("save-with-wrong-etag")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("save-with-wrong-etag")) { _ =>
                   try
                     val err = StateCapability.saveWithETag(StateKey(k), "new", ETag("wrong-etag-999"))
                     if err.isDefined then "conflict" else "ok"
@@ -279,15 +279,15 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("save")) { v =>
+                InvocationRoute[String, String](InvocationMethodName("save")) { v =>
                   try { StateCapability.save(StateKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](MethodName("delete")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("delete")) { _ =>
                   try { StateCapability.delete(StateKey(k)); "deleted" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, Option[String]](MethodName("get")) { _ =>
+                InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
                   try StateCapability.get[String](StateKey(k))
                   catch case e: Exception => throw e
                 },
@@ -309,21 +309,21 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("seed")) { v =>
+                InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
                   try { StateCapability.save(StateKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](MethodName("get-etag")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("get-etag")) { _ =>
                   try StateCapability.getWithETag[String](StateKey(k)).etag.map(_.value).getOrElse("none")
                   catch case ex: Exception => throw ex
                 },
-                InvocationRoute[String, String](MethodName("del-with-etag")) { etag =>
+                InvocationRoute[String, String](InvocationMethodName("del-with-etag")) { etag =>
                   try
                     val err = StateCapability.deleteWithETag(StateKey(k), ETag(etag))
                     if err.isDefined then "conflict" else "ok"
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, Option[String]](MethodName("get")) { _ =>
+                InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
                   try StateCapability.get[String](StateKey(k))
                   catch case e: Exception => throw e
                 },
@@ -347,17 +347,17 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, String](MethodName("seed")) { v =>
+                InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
                   try { StateCapability.save(StateKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](MethodName("del-wrong")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("del-wrong")) { _ =>
                   try
                     val err = StateCapability.deleteWithETag(StateKey(k), ETag("bad-etag"))
                     if err.isDefined then "conflict" else "ok"
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, Option[String]](MethodName("get")) { _ =>
+                InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
                   try StateCapability.get[String](StateKey(k))
                   catch case e: Exception => throw e
                 },
@@ -384,7 +384,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[Unit, String](MethodName("tx")) { _ =>
+                InvocationRoute[Unit, String](InvocationMethodName("tx")) { _ =>
                   try
                     StateCapability.transaction(
                       Seq(
@@ -395,7 +395,7 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
                     "ok"
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[String, Option[String]](MethodName("get")) { k =>
+                InvocationRoute[String, Option[String]](InvocationMethodName("get")) { k =>
                   try StateCapability.get[String](StateKey(k))
                   catch case e: Exception => throw e
                 },

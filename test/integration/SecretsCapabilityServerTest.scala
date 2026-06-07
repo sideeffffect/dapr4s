@@ -45,7 +45,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, Option[SecretValue]](MethodName("get")) { key =>
+                InvocationRoute[String, Option[SecretValue]](InvocationMethodName("get")) { key =>
                   try SecretsCapability.get(SecretKey(key))
                   catch case e: Exception => throw e
                 },
@@ -67,7 +67,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[String, Option[SecretValue]](MethodName("get")) { key =>
+                InvocationRoute[String, Option[SecretValue]](InvocationMethodName("get")) { key =>
                   try SecretsCapability.get(SecretKey(key))
                   catch case e: Exception => throw e
                 },
@@ -95,7 +95,7 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
           withServer(
             DaprApp(invocations =
               List(
-                InvocationRoute[Unit, Map[String, String]](MethodName("bulk")) { _ =>
+                InvocationRoute[Unit, Map[String, String]](InvocationMethodName("bulk")) { _ =>
                   try SecretsCapability.getBulk().map { case (k, v) => k.value -> v.value }
                   catch case e: Exception => throw e
                 },

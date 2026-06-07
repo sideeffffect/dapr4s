@@ -75,9 +75,9 @@ object OrderServiceApp:
       DaprCapability.pubsub(PubSubComp) {
         DaprApp(
           invocations = List(
-            InvocationRoute[OrderRequest, OrderResponse](MethodName("place-order"))(placeOrder),
-            InvocationRoute[String, Option[OrderRequest]](MethodName("get-order"))(getOrder),
-            InvocationRoute[String, String](MethodName("query-orders"))(queryOrders),
+            InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order"))(placeOrder),
+            InvocationRoute[String, Option[OrderRequest]](InvocationMethodName("get-order"))(getOrder),
+            InvocationRoute[String, String](InvocationMethodName("query-orders"))(queryOrders),
           ),
         )
       }
