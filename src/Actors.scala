@@ -270,7 +270,11 @@ final class ActorDefinition(
     // The stored value is `ActorId => (ActorContext ?=> ActorRoutes)`; the inner
     // context function is a ContextFunction1 at runtime (structurally Function1),
     // so it is applied id-first then ctx.
-    rawBuild.asInstanceOf[ActorId => (AnyRef => ActorRoutes)](id)(ctx.asInstanceOf[AnyRef])
+    val routes = rawBuild.asInstanceOf[ActorId => (AnyRef => ActorRoutes)](id)(ctx.asInstanceOf[AnyRef])
+    // Validate immediately upon constructing the actor: duplicate method/timer/reminder
+    // names within one actor would silently shadow (find returns the first match).
+    DaprAppValidation.checkActorRoutes(actorType, routes)
+    routes
 
 /** Factory for [[ActorDefinition]] values.
   *

@@ -47,6 +47,27 @@ final case class DaprApp(
     jobs ++ other.jobs,
   )
 
+  /** All structural validation problems found in this app, in deterministic order (empty == valid).
+    *
+    * Catches silent-shadowing collisions the dispatch layer would otherwise hide: duplicate activity/workflow names,
+    * duplicate subscription routes / invocation methods / binding & job names / actor types, cross-type collisions on a
+    * shared HTTP path, and collisions with framework-reserved paths. Pure — performs no I/O and starts nothing.
+    *
+    * Actor-internal duplicates (method/timer/reminder names) are not reported here because actor routes are built per
+    * request; they are enforced at build time instead. See `docs/validation.md`.
+    */
+  def validationErrors: List[DaprAppValidationError] = DaprAppValidation.errors(this)
+
+  /** Return this app unchanged if it is valid, otherwise throw a [[DaprAppValidationException]] listing every problem.
+    *
+    * Designed for inline use at startup: `Dapr(cfg).serve { DaprApp(...).validateOrThrow() }`. [[Dapr.serve]] already
+    * calls this automatically before binding the port.
+    */
+  def validateOrThrow(): DaprApp =
+    val errs = validationErrors
+    if errs.nonEmpty then throw new DaprAppValidationException(errs)
+    this
+
 @scala.caps.assumeSafe
 object DaprApp
 

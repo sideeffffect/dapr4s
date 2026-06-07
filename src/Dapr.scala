@@ -180,7 +180,9 @@ class Dapr(config: DaprConfig = DaprConfig()):
   def serve(body: DaprCapability ?=> DaprApp): Nothing =
     run:
       val cap = summon[DaprCapability]
-      new internal.DaprAppServer(body).startAndBlock(
+      // Fail fast on structural misconfiguration (duplicate/colliding handlers) before binding the port.
+      val app = body.validateOrThrow()
+      new internal.DaprAppServer(app).startAndBlock(
         port = config.appServer.port.value,
         daprCapability = cap,
         sidecarHttpEndpoint = () => config.sidecar.httpEndpoint,
