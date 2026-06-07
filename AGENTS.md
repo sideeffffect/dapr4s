@@ -284,7 +284,7 @@ probing class files whenever you need to verify an API.
 
 ## GitHub workflow
 
-- Work on branches, not directly on `master`/`main`.
+- Work in independent worktrees, but push directly to `master`/`main`.
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
 - When forking external repos for contribution proposals: fork via `gh repo fork`, create a
   branch with a descriptive name (`feat/blocking-client-virtual-threads`), implement, compile,
