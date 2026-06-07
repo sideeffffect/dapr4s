@@ -43,7 +43,7 @@ DaprCapability.state(StoreName("statestore")):   // StateCapability^{cap} in sco
 // Using StateCapability here — outside the block — is a compile error.
 ```
 
-See [`DESIGN.md`](DESIGN.md) for the architecture and the two-layer
+See [`DESIGN.md`](docs/DESIGN.md) for the architecture and the two-layer
 (safe / `@assumeSafe` shell) model, and
 [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples) for runnable examples.
 

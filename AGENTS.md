@@ -13,7 +13,7 @@ The central design idea: each DAPR effect is a `scala.caps.Capability` subtype, 
 compiler statically verifies which effects a computation may perform and that resources cannot
 escape their managed scope.
 
-Refer to `DESIGN.md` for the full architecture and to `SPEC.allium` for the formal specification.
+Refer to `docs/DESIGN.md` for the full architecture and to `docs/SPEC.allium` for the formal specification.
 Both must stay in sync with the code at all times.
 
 ---
@@ -198,8 +198,8 @@ Format it manually (or leave it) until scalafmt gains nightly CC syntax support.
 
 ## Allium spec and DESIGN.md
 
-`SPEC.allium` is the formal specification of the library's behaviour written in the Allium DSL.
-`DESIGN.md` is the architecture and design document with Mermaid diagrams.
+`docs/SPEC.allium` is the formal specification of the library's behaviour written in the Allium DSL.
+`docs/DESIGN.md` is the architecture and design document with Mermaid diagrams.
 
 Both must stay in sync with the code. If you change the code, update the spec and design doc.
 If you change the spec or design doc, update the code to match. Verify Mermaid diagrams are
