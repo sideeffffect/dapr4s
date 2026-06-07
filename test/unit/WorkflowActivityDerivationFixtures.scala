@@ -14,6 +14,9 @@ class CounterActivities:
   def add(input: Req)(using DaprCapability): Resp = Resp(s"added-${input.n}")
   @name("clear")
   def reset()(using DaprCapability): Resp = Resp("reset")
+  // Declares an extra `using JsonCodec[Req]` the body needs (as a real activity would for a nested
+  // Dapr call); the derive engine must summon it at the derive site and thread it in.
+  def echo(input: Req)(using DaprCapability, JsonCodec[Req]): Resp = Resp(summon[JsonCodec[Req]].encode(input))
 
 /** The matching typed caller facade — derived by [[WorkflowActivityCalls.derive]]. */
 trait CounterCalls:

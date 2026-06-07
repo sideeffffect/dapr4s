@@ -461,7 +461,10 @@ Two engines, mirroring the existing server/client split (`ActorDefinitions` vs t
 * **Server — `WorkflowActivities.derive[C]: List[WorkflowActivity[?, ?]]`** (also `…Derived[C]` mixin).
   Reifies a plain class `C` (no-arg constructor) into one `WorkflowActivity` per `(using DaprCapability)`
   method, ready for `DaprApp.activities`. Input = first value parameter (or `Unit`); output = return type;
-  `JsonCodec[I]`/`JsonCodec[O]` summoned at the `derive` site. Each is registered under
+  `JsonCodec[I]`/`JsonCodec[O]` summoned at the `derive` site. Any *extra* `using` params on a method beyond
+  `DaprCapability` (e.g. the `JsonCodec`s a body needs for nested service-invocation / pub/sub calls) are also
+  summoned at the `derive` site and threaded in — so activities that do cross-service I/O work. Each is registered
+  under
   `<fully-qualified-class>#<method-wire-name>` (`@name` overrides the method part). Built like
   `ActorDefinitions`: one shared `new C` instance, a per-method handler `(in, d) => inst.m(in)(using d)`
   built as a **quote** (so no synthesised function type needs `asExprOf`, and no `asInstanceOf` leaks into

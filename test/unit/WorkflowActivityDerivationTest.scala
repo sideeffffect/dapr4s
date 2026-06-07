@@ -16,7 +16,11 @@ class WorkflowActivityDerivationTest extends FunSuite:
 
     assertEquals(
       activities.map(_.activityName).sorted,
-      List("dapr4s.test.unit.CounterActivities#add", "dapr4s.test.unit.CounterActivities#clear"),
+      List(
+        "dapr4s.test.unit.CounterActivities#add",
+        "dapr4s.test.unit.CounterActivities#clear",
+        "dapr4s.test.unit.CounterActivities#echo",
+      ),
     )
 
     val add = activities.find(_.activityName.endsWith("#add")).get.asInstanceOf[WorkflowActivity[Req, Resp]]
@@ -24,6 +28,10 @@ class WorkflowActivityDerivationTest extends FunSuite:
 
     val clear = activities.find(_.activityName.endsWith("#clear")).get.asInstanceOf[WorkflowActivity[Unit, Resp]]
     assertEquals(clear.execute(())(using noDapr), Resp("reset"))
+
+    // `echo` declares an extra `using JsonCodec[Req]`; the engine summons it at the derive site.
+    val echo = activities.find(_.activityName.endsWith("#echo")).get.asInstanceOf[WorkflowActivity[Req, Resp]]
+    assertEquals(echo.execute(Req(9))(using noDapr), Resp("9"))
 
   test("WorkflowActivityCalls.derive forwards to callActivity under the same name as the reified activity"):
     val fake = FakeActivityContext("scheduled")

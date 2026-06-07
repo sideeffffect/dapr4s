@@ -15,8 +15,10 @@ import scala.quoted.*
   *
   * '''Contract.'''
   *   - `C` must be a class with a no-argument primary constructor (the macro creates one shared `new C` instance).
-  *   - Each activity method has shape `def m(input: I)(using DaprCapability): O` or `def m()(using DaprCapability): O`
-  *     (input defaults to `Unit` when there is no value parameter).
+  *   - Each activity method has shape `def m(input: I)(using DaprCapability, …): O` or
+  *     `def m()(using DaprCapability, …): O` (input defaults to `Unit` when there is no value parameter). The `using`
+  *     clause must contain a `DaprCapability` (threaded in per call); any other `using` parameters — typically the
+  *     `JsonCodec`s the body needs for nested Dapr calls — are summoned at the `derive` call site and passed in.
   *   - `JsonCodec[I]` and `JsonCodec[O]` must be resolvable at the `derive` call site — they are summoned there, not
   *     declared on the method.
   *
@@ -84,14 +86,21 @@ object WorkflowActivities:
         case p if !p.symbol.flags.is(Flags.Given) && !(p.tpt.tpe <:< daprTpe) => p.tpt.tpe
       }
 
-    // build `inst.m(<in?>)(using <dapr>)`, applying clauses in declaration order
+    // A given of `tpe`, resolved at the macro-expansion (derive call) site.
+    def summonGiven(m: Symbol, tpe: TypeRepr): Term =
+      tpe.asType match
+        case '[t] =>
+          Expr.summon[t].map(_.asTerm).getOrElse(fail(m, s"no given instance for ${tpe.show} in scope at the derive site."))
+
+    // build `inst.m(<in?>)(using <dapr>, <summoned givens…>)`, applying clauses in declaration order.
+    // The DaprCapability in the `using` clause is threaded from `execute`; any other given params
+    // (typically JsonCodecs the body needs for nested Dapr calls) are summoned at the derive site.
     def callTerm(m: Symbol, dd: DefDef, inRef: Option[Term], daprRef: Term): Term =
       termClauses(dd).foldLeft(Select(instTerm, m): Term) { (acc, tc) =>
-        val isCap = tc.params.exists(_.tpt.tpe <:< daprTpe)
+        val isUsing = tc.params.nonEmpty && tc.params.forall(_.symbol.flags.is(Flags.Given))
         val args =
-          if isCap then
-            if tc.params.sizeIs != 1 then fail(m, "the `using` clause must contain exactly a DaprCapability.")
-            List(daprRef)
+          if isUsing then
+            tc.params.map(p => if p.tpt.tpe <:< daprTpe then daprRef else summonGiven(m, p.tpt.tpe))
           else if tc.params.isEmpty then Nil
           else if tc.params.sizeIs == 1 then List(inRef.getOrElse(fail(m, "missing input argument.")))
           else fail(m, "an activity method takes at most one request-body parameter.")
