@@ -1,5 +1,12 @@
 # Wiki Log
 
+## [2026-06-07] ingest | Scala 3 Metaprogramming + Trait-to-Implementation Derivation (RPC)
+- Raw sources (scala3-metaprogramming): docs.scala-lang.org/scala3/reference/metaprogramming {index, inline, compiletime-ops, macros, reflection, staging, tasty-inspect}; scala-hearth.readthedocs.io
+- Created topic `scala3-metaprogramming`: metaprogramming-overview.md, inline.md, compile-time-operations.md, macros-quotes-and-splices.md, tasty-reflection.md, runtime-staging-and-tasty-inspection.md, scala-hearth.md
+- Raw sources (scala-rpc-derivation): source-level survey of GitHub repos — cornerman/sloth, automorph-org/automorph, Kalin-Rudnicki/Oxygen, outr/spice, reactivecore/kreuzberg, neandertech/smithy4s-deriving, bishabosha/ops-mirror, zio/zio-blocks#1270, typelevel/cats-tagless, goodcover/tagless-redux, zio/zio (IsReloadable), 7mind/izumi (distage TraitConstructor); plus a multi-source landscape survey
+- Created topic `scala-rpc-derivation`: trait-to-impl-derivation-overview.md, derivation-mechanism-pattern.md, and per-library articles sloth/automorph/oxygen-http/spice/kreuzberg/smithy4s-deriving/ops-mirror/zio-blocks-rpc/cats-tagless/tagless-redux/zio-isreloadable/distage-traitconstructor (all tiers; Mirror/typeclass-derivation path covered via ops-mirror + smithy4s-deriving)
+- NOTE: excluded (with reasons recorded in the overview) — scala-json-rpc, autowire, mu-scala, Lagom (Scala 2 macros); airframe-rpc, jsonrpclib, smithy4s core, scalapb, Caliban client (external codegen); endpoints4s, tapir, sttp (no macros / value+interpreter)
+
 ## [2026-05-05] lint | 0 issues found, 0 auto-fixed
 - All internal links valid (51 wiki articles checked)
 - All Raw field references valid

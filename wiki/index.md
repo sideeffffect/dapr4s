@@ -114,3 +114,38 @@ Local Kubernetes distributions for development, CI, and integration testing — 
 |---------|---------|---------|
 | [Local Kubernetes Stacks](kubernetes/local-kubernetes-stacks.md) | k3d (v5.8.3), kind, k3s, k0s, Minikube, MicroK8s — comparison, k3d v5.x breaking changes, dev-mode Redis hostname, Dapr integration testing recipe | 2026-05-02 |
 | [Dapr on Kubernetes](kubernetes/dapr-on-kubernetes.md) | Dapr control plane, sidecar injection, component/subscription CRDs with correct `dapr-dev-redis-master` hostname, distributed lock component, complete k3d+Dapr setup | 2026-05-02 |
+
+## scala3-metaprogramming
+
+Scala 3 metaprogramming and macros — the official reference (inline, compile-time ops, quotes/splices, TASTy reflection, runtime staging, TASTy inspection) plus the cross-version Scala-Hearth library.
+
+| Article | Summary | Updated |
+|---------|---------|---------|
+| [Scala 3 Metaprogramming Overview](scala3-metaprogramming/metaprogramming-overview.md) | The six facilities, the static→dynamic spectrum, staging levels, and why it matters for trait derivation | 2026-06-07 |
+| [Inline](scala3-metaprogramming/inline.md) | `inline def`/`val`/params, transparent inline, inline if/match, role as macro entry point | 2026-06-07 |
+| [Compile-time Operations](scala3-metaprogramming/compile-time-operations.md) | `scala.compiletime`: constValue, erasedValue, summonInline/summonFrom, error; Mirror-based derivation context | 2026-06-07 |
+| [Macros: Quotes and Splices](scala3-metaprogramming/macros-quotes-and-splices.md) | `Expr`/`Type`, quotes `'{}` & splices `${}`, PCP/level consistency, lifting/unlifting, quote pattern matching, `Expr.summon` | 2026-06-07 |
+| [TASTy Reflection](scala3-metaprogramming/tasty-reflection.md) | `quotes.reflect`: Tree/Term/TypeRepr/Symbol/Flags, `Symbol.newClass`/`newMethod`, the canonical class-synthesis recipe | 2026-06-07 |
+| [Runtime Staging & TASTy Inspection](scala3-metaprogramming/runtime-staging-and-tasty-inspection.md) | `scala.quoted.staging` run/withQuotes for runtime codegen; TASTy `Inspector` over `.tasty` files | 2026-06-07 |
+| [Scala-Hearth](scala3-metaprogramming/scala-hearth.md) | Cross-version (Scala 2+3) macro standard library; cross-quotes plugin; derivation checklist | 2026-06-07 |
+
+## scala-rpc-derivation
+
+Scala 3 libraries that derive an implementation FROM a trait (RPC clients, routers, tagless algebras, proxies, DI wiring) — the landscape, the shared `quotes.reflect` mechanism, and how each qualifying library implements it.
+
+| Article | Summary | Updated |
+|---------|---------|---------|
+| [Trait-to-Implementation Derivation Overview](scala-rpc-derivation/trait-to-impl-derivation-overview.md) | The pattern, the Scala-3 filter, mechanism taxonomy, tier table, excluded libraries, Mirror-derivation note | 2026-06-07 |
+| [Derivation Mechanism Pattern](scala-rpc-derivation/derivation-mechanism-pattern.md) | The shared 5-step recipe (Symbol.newClass/newMethod/DefDef/ClassDef/New); what varies per library; sub-techniques | 2026-06-07 |
+| [Sloth](scala-rpc-derivation/sloth.md) | `client.wire[T]` → reflect class synthesis; ClientImpl.execute serialize+transport; Co/Contra | 2026-06-07 |
+| [Automorph](scala-rpc-derivation/automorph.md) | `client.bind[Api]` → macro bindings + JDK dynamic Proxy (name-keyed dispatch); not class synthesis | 2026-06-07 |
+| [Oxygen (oxygen-http)](scala-rpc-derivation/oxygen-http.md) | `DeriveClient.derived[A]` → reflect class synthesis; HTTP via ZIO Client; `URLayer[Client, Api]`; @experimental | 2026-06-07 |
+| [Spice](scala-rpc-derivation/spice.md) | `ApiClient.derive[T](baseUrl)` → reflect class synthesis; GET/RESTful/JSON by shape; `rapid.Task[R]`, fabric.rw | 2026-06-07 |
+| [Kreuzberg RPC](scala-rpc-derivation/kreuzberg.md) | `makeStub[T]` (client) + `makeDispatcher` (server) via shared TraitAnalyzer; Scala.js; @experimental | 2026-06-07 |
+| [smithy4s-deriving](scala-rpc-derivation/smithy4s-deriving.md) | `derives API` → operation-mirror + reflect; yields real smithy4s `Service`; @experimental, 3.4.1+, -Yretain-trees | 2026-06-07 |
+| [ops-mirror](scala-rpc-derivation/ops-mirror.md) | `OpsMirror.Of[T]` — Mirror for a trait's operations; structural view only, consumer's `derived` synthesizes impl | 2026-06-07 |
+| [zio-blocks RPC (PR #1270)](scala-rpc-derivation/zio-blocks-rpc.md) | `derives RPC` → reflect macro, but a metadata DESCRIPTOR `RPC[T]`, not a callable client; in-flight PR | 2026-06-07 |
+| [cats-tagless](scala-rpc-derivation/cats-tagless.md) | `derives FunctorK` etc. → reflect `newClassOf` builds `Alg[G]` from `Alg[F]` + `F ~> G`; @experimental | 2026-06-07 |
+| [tagless-redux](scala-rpc-derivation/tagless-redux.md) | `WireProtocol.derive` for tagless algebras (Kryo/Pekko/Boopickle); reflect rewrite of cats-tagless | 2026-06-07 |
+| [ZIO IsReloadable](scala-rpc-derivation/zio-isreloadable.md) | `IsReloadable[A].reloadable(scopedRef)` → reflect proxy forwarding to a ScopedRef; hot-reload; @experimental | 2026-06-07 |
+| [distage TraitConstructor](scala-rpc-derivation/distage-traitconstructor.md) | DI auto-implementation of an abstract trait → `Functoid[R]`; Symbol.newClass via reflection shim | 2026-06-07 |

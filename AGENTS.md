@@ -212,11 +212,32 @@ skills.
 
 ---
 
-## Wiki
+## Wiki (LLM wiki — lives in this repo)
 
-The project has a wiki at `wiki/` maintained by the `karpathy-llm-wiki` skill. Topics covered:
-Safe Scala / capture checking, effect systems, DAPR and DAPR Java SDK internals, Scala effect
-libraries (Kyo, Ox, Gears), research papers on capability-based type systems.
+**dapr4s contains its own LLM wiki**, checked into this repository — not an external one. It has
+two parts at the project root: `wiki/` (curated, cross-linked articles plus `index.md` and a
+`log.md` change log) and `raw/` (the immutable ingested source material the articles are compiled
+from). Both are organised into topic subdirectories.
+
+Topics currently covered:
+- **dapr** / **kubernetes** — DAPR building blocks, Java SDK internals, Testcontainers/E2E, k8s stacks.
+- **scala-capture-checking** / **capabilities-research** / **effect-systems** — Safe Scala, capture
+  checking, capability-based type systems and the research papers behind them.
+- **scala-effect-libraries** — Kyo, Ox, Gears, Effekt, comparison for the wrapper design.
+- **scala3-language** / **scala-type-safety** — opaque types, given/using, context functions,
+  parse-don't-validate, ADTs, nrinaudo best practices.
+- **scala3-metaprogramming** — the Scala 3 macro/metaprogramming reference (inline, compile-time ops,
+  quotes & splices, TASTy reflection, runtime staging) plus the cross-version Scala-Hearth library.
+- **scala-rpc-derivation** — Scala 3 libraries that derive an implementation *from a trait* (RPC
+  clients, routers, tagless algebras, proxies, DI): the landscape, the shared `quotes.reflect`
+  class-synthesis mechanism, and per-library write-ups (sloth, automorph, oxygen, spice, kreuzberg,
+  smithy4s-deriving, ops-mirror, zio-blocks RPC, cats-tagless, tagless-redux, ZIO IsReloadable,
+  distage TraitConstructor).
+
+**Interact with it via the `karpathy-llm-wiki` skill** — it handles the full pipeline (save raw
+source, synthesise/merge the article, update `index.md`, log to `log.md`). Use it to *query* the
+wiki ("what do I know about X"), to *ingest* new sources, and to *lint* for broken links / stale
+or orphaned articles. Start from `wiki/index.md` to orient.
 
 **Use the wiki actively**: before researching a topic, check if it's already covered. After
 researching a topic (especially SDK internals, Scala compiler behaviour, or library internals),
