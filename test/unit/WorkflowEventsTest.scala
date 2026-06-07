@@ -36,6 +36,8 @@ final class FakeWorkflowContext(resp: String) extends WorkflowContext:
   def getInput[I: JsonCodec]: Option[I] = ???
   def callActivity[A](using d: ActivityDef[A])(input: d.Input): Task[d.Output]^{this}            = ???
   def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output]^{this}      = ???
+  def callActivityByName[I: JsonCodec, O: JsonCodec](name: ActivityName, input: I): Task[O]^{this} = ???
+  def callActivityByName[O: JsonCodec](name: ActivityName): Task[O]^{this}                          = ???
   def createTimer(duration: FiniteDuration): Task[Unit]^{this}                                   = ???
   def complete[O: JsonCodec](output: O): Unit                                                    = ???
   def continueAsNew[I: JsonCodec](input: I): Unit                                                = ???

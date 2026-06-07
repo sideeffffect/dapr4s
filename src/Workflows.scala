@@ -95,6 +95,18 @@ trait WorkflowContext extends scala.caps.ExclusiveCapability:
   /** Overload for activities that take no input. */
   def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit): Task[d.Output]^{this}
 
+  /** Schedule an activity by its registered [[ActivityName]] and return a [[Task]] that resolves to its output.
+    *
+    * Lower-level counterpart to `callActivity[A]`: the activity is identified by name rather than by its concrete
+    * type, so it works with activities whose type is not nameable at the call site (e.g. those reified by
+    * `dapr4s.derivation.WorkflowActivities`). The input is serialised with `JsonCodec[I]` and the output deserialised
+    * with `JsonCodec[O]`; both must match the registered activity's codecs.
+    */
+  def callActivityByName[I: JsonCodec, O: JsonCodec](name: ActivityName, input: I): Task[O]^{this}
+
+  /** Overload of the name-based scheduler for activities that take no input. */
+  def callActivityByName[O: JsonCodec](name: ActivityName): Task[O]^{this}
+
   /** Create a durable timer that fires after `duration`. */
   def createTimer(duration: FiniteDuration): Task[Unit]^{this}
 
@@ -147,6 +159,14 @@ object WorkflowContext:
 
   def callActivity[A](using d: ActivityDef[A], ev: d.Input =:= Unit)(using ctx: WorkflowContext): Task[d.Output]^{ctx} =
     ctx.callActivity
+
+  def callActivityByName[I: JsonCodec, O: JsonCodec](name: ActivityName, input: I)(using
+      ctx: WorkflowContext,
+  ): Task[O]^{ctx} =
+    ctx.callActivityByName[I, O](name, input)
+
+  def callActivityByName[O: JsonCodec](name: ActivityName)(using ctx: WorkflowContext): Task[O]^{ctx} =
+    ctx.callActivityByName[O](name)
 
   def createTimer(duration: FiniteDuration)(using ctx: WorkflowContext): Task[Unit]^{ctx} =
     ctx.createTimer(duration)
@@ -233,6 +253,15 @@ abstract class WorkflowActivity[I, O](using
     private[dapr4s] val inputCodec: JsonCodec[I],
     private[dapr4s] val outputCodec: JsonCodec[O],
 ):
+
+  /** Wire name under which this activity is registered with the runtime and scheduled from workflows.
+    *
+    * Defaults to the canonical class name, which is what [[WorkflowContext.callActivity callActivity[A]]] resolves via
+    * [[ActivityDef]]. Activities reified by `dapr4s.derivation.WorkflowActivities` are anonymous (no canonical name),
+    * so they override this with a stable name derived from the implementation class and method, matched by the
+    * corresponding name-based [[WorkflowContext.callActivityByName(name:* callActivityByName(name, …)]].
+    */
+  def activityName: String = getClass.getCanonicalName.nn
 
   /** Implement activity logic here.  May perform I/O; need not be deterministic.
     *

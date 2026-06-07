@@ -20,8 +20,8 @@ import scala.concurrent.duration.*
   *      port to register the workflow runtime.
   *   3. After the sidecar is up, tests use [[Dapr.runWithEndpoints]] to obtain a [[WorkflowCapability]].
   *
-  * [[WorkflowApp]] registers [[AddingWorkflow]] + [[AddActivity]]. The activity doubles its input, so starting the
-  * workflow with `IncrRequest(5)` should produce `CounterState(10)`.
+  * [[WorkflowApp]] registers [[AddingWorkflow]] + the derived [[AddActivities]] (called through [[AddCalls]]). The
+  * activity doubles its input, so starting the workflow with `IncrRequest(5)` should produce `CounterState(10)`.
   */
 @scala.caps.assumeSafe
 class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
@@ -131,7 +131,7 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
         val output = snap.serializedOutput
         assert(output.isDefined, "completed workflow should have serialized output")
         val result = output.get.decodeOrThrow[CounterState]
-        assertEquals(result, CounterState(10)) // AddActivity doubles input: 5 * 2 = 10
+        assertEquals(result, CounterState(10)) // AddActivities.add doubles input: 5 * 2 = 10
     }
 
   test("workflow: startWithId uses the provided instanceId"):

@@ -1,0 +1,42 @@
+package dapr4s.test.unit
+
+import dapr4s.*
+import dapr4s.given
+import dapr4s.derivation.*
+import munit.FunSuite
+
+@scala.caps.assumeSafe
+class WorkflowActivityDerivationTest extends FunSuite:
+
+  // A DaprCapability is supplied to execute but never used by these activity bodies.
+  private def noDapr: DaprCapability = null.asInstanceOf[DaprCapability]
+
+  test("WorkflowActivities.derive reifies one named activity per method and dispatches to it"):
+    val activities = WorkflowActivities.derive[CounterActivities]
+
+    assertEquals(
+      activities.map(_.activityName).sorted,
+      List("dapr4s.test.unit.CounterActivities#add", "dapr4s.test.unit.CounterActivities#clear"),
+    )
+
+    val add = activities.find(_.activityName.endsWith("#add")).get.asInstanceOf[WorkflowActivity[Req, Resp]]
+    assertEquals(add.execute(Req(5))(using noDapr), Resp("added-5"))
+
+    val clear = activities.find(_.activityName.endsWith("#clear")).get.asInstanceOf[WorkflowActivity[Unit, Resp]]
+    assertEquals(clear.execute(())(using noDapr), Resp("reset"))
+
+  test("WorkflowActivityCalls.derive forwards to callActivity under the same name as the reified activity"):
+    val fake = FakeActivityContext("scheduled")
+    given WorkflowContext = fake
+    val calls = CounterCalls.derive
+
+    assertEquals(calls.add(Req(7)).await(), Resp("scheduled"))
+    assertEquals(calls.reset().await(), Resp("scheduled"))
+
+    assertEquals(
+      fake.log.toList,
+      List(
+        "call|dapr4s.test.unit.CounterActivities#add|7",
+        "call|dapr4s.test.unit.CounterActivities#clear",
+      ),
+    )

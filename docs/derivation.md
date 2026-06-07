@@ -375,14 +375,13 @@ parameter (`class Counter(actorId: ActorId)`) — the macro does `new C(id)`.
   inherited member at typer time. The annotation could only ever work for a downstream,
   separately-compiled consumer.
 
-* **`@WorkflowActivityDerivation` (workflow-activity reification).** Not implemented. It hits the
-  same macro-annotation wall *and* is structurally worse: its transformation must synthesise a
-  `WorkflowActivity[I, O]` *type* that the orchestration then references by name
-  (`WorkflowContext.callActivity[GeneratedActivity]`). A generated type referenced elsewhere in
-  the same module cannot be surfaced at typer time, and the transformation is not expressible as
-  a single-value `derive[T]: X` either (it produces a class + registrations + a schema-implementing
-  object). Left as designed-but-deferred; the manual `WorkflowActivity` + `callActivity` API
-  remains the way to write activities.
+* **`@WorkflowActivityDerivation` (workflow-activity reification).** ~~Not implemented.~~ **Shipped
+  in a revised shape** — see "Workflow-activity reification (2026-06-07)" below. The original blocker
+  ("must synthesise a `WorkflowActivity[I, O]` *type* referenced by name") rested on a false premise:
+  activity dispatch is by **string**, not type, so no generated type is needed. The narrower truth
+  that remains: a *generated, typed caller facade* cannot be surfaced without a user-written trait
+  (every trait-free alternative is compiler-blocked, below), so the caller uses a small user trait
+  like every other client engine; the implementation stays a plain class.
 
 * **Local `given`s in generated bodies (all engines).** Synthesising
   `given JsonCodec[…] = <param>` inside generated methods caused the compiler to lift and capture
@@ -418,8 +417,97 @@ Each handler is built as a `quotes.reflect.Lambda` whose body applies the method
 fills every `using` clause with an `Expr.summon`-ed instance; the lambda is stored through the
 existing `@assumeSafe` route factories, whose `AnyRef` erasure absorbs the captured capabilities.
 
-This unblocks fully-derived server apps (no reified routes). The only remaining reified construct
-with no derived form is **workflow hosting** (`extends Workflow` / `extends WorkflowActivity[I,O]`
-+ `callActivity[A]`): the orchestration must reference the activity *type* by name, which a macro
-cannot synthesise-and-reference within one compilation run — so workflow/activity definitions stay
-reified by necessity.
+This unblocks fully-derived server apps (no reified routes). Workflow **activities** are now derivable
+too (see the next section) — defined as a plain class and reified to `WorkflowActivity` values, called
+through a derived typed facade. The only construct that still has no derived form is the workflow
+**orchestration** itself (`extends Workflow` + `run`), which stays reified.
+
+---
+
+# Workflow-activity reification (2026-06-07)
+
+This supersedes the "deferred" note above. Workflow activities can now be **defined as a plain class**
+(no `extends WorkflowActivity[I, O]`, no manual registration) and **called through a typed facade**.
+
+## The key realisation
+
+Activity dispatch is by **string**, not type. The server registers each activity under a name
+(`registerActivity(name, …)`) and a workflow schedules it by the same name (`ctx.callActivity(name, …)`).
+The existing `callActivity[A]` / `ActivityDef[A]` / `ClassTag` machinery is just *one* way to produce
+that string (the canonical class name). So the doc's old blocker — "must synthesise a *type* referenced
+elsewhere by name" — dissolves: nothing needs a generated type.
+
+## What was proven impossible (so the design avoids it)
+
+A *generated, typed, named* caller facade with no user-written trait is not expressible on this toolchain
+(tested on `3.9` and `3.10` nightlies, project flags). Three independent walls:
+
+1. **`F[_]` shared trait** (`MyWorkflowSchema[F[_]]`, impl `extends …[Id]`, caller `extends …[Task]`):
+   an abstract `F[X]` return type is assumed by capture-checking to capture the root capability `any`, so
+   a clean (empty-capture) impl class cannot implement it (`Reference 'any' is not included in the allowed
+   capture set {}`). `Task[O]^{ctx}` also can never equal `F[O]` for a fixed `F` — the capture references a
+   per-call parameter. (Plus a nightly override-check crash, `AssertionError: ContextualMethodType …`.)
+2. **`transparent inline` returning an anonymous class** (no trait): the structural members widen to
+   `Object` — `value addActivity is not a member of Object`.
+3. **Macro annotation generating `object MyWorkflowActivity`**: `macro annotation can not add top-level
+   object`; and any nested/augmented member is invisible to same-compilation references anyway.
+
+⇒ The caller surface needs a user-written trait, exactly like every other client engine.
+
+## What shipped
+
+Two engines, mirroring the existing server/client split (`ActorDefinitions` vs the client facades):
+
+* **Server — `WorkflowActivities.derive[C]: List[WorkflowActivity[?, ?]]`** (also `…Derived[C]` mixin).
+  Reifies a plain class `C` (no-arg constructor) into one `WorkflowActivity` per `(using DaprCapability)`
+  method, ready for `DaprApp.activities`. Input = first value parameter (or `Unit`); output = return type;
+  `JsonCodec[I]`/`JsonCodec[O]` summoned at the `derive` site. Each is registered under
+  `<fully-qualified-class>#<method-wire-name>` (`@name` overrides the method part). Built like
+  `ActorDefinitions`: one shared `new C` instance, a per-method handler `(in, d) => inst.m(in)(using d)`
+  built as a **quote** (so no synthesised function type needs `asExprOf`, and no `asInstanceOf` leaks into
+  the expanded safe-mode code), passed through the `@assumeSafe` `Forwarders.workflowActivity`, which
+  capture-erases the handler to `AnyRef` (the `Subscription.rawHandler` trick) so the activity has an empty
+  capture set and lives in a plain `List`.
+
+* **Client — `WorkflowActivityCalls.derive[Calls, Impl]: Calls`** (also `…Derived[Calls, Impl]` mixin).
+  Implements a user trait `Calls` of methods `def m(input: I)(using ctx: WorkflowContext): Task[O]^{ctx}`
+  (the `Task` captures the per-call context, exactly like `WorkflowEvents`). Each forwards to
+  `WorkflowContext.callActivityByName(name, input)` under the **same** name computed from `Impl`. The macro
+  **verifies** each `Calls` method against `Impl` (matching Scala name; input type must match — output
+  agreement is enforced by the generated body's return type), keeping the two sides bound although they are
+  separate declarations.
+
+## Core changes that made it possible
+
+* `WorkflowActivity.activityName: String` — overridable, default `getClass.getCanonicalName`. Existing
+  class-based activities and `callActivity[A]` are unaffected (same default); derived anonymous activities
+  override it with the computed string. `DaprAppServer` now registers under `a.activityName`.
+* `WorkflowContext.callActivityByName[I, O](name: ActivityName, input)` and the no-input overload (plus
+  companion forwarders + `WorkflowContextImpl`). A **distinct name** (not an overload of `callActivity`) on
+  purpose — overloading `callActivity` with a name-based variant made `callActivity[A](input)` ambiguous.
+* New opaque type `ActivityName`.
+
+## Usage
+
+```scala
+// implementation — a plain class, no WorkflowActivity boilerplate
+class CounterActivities:
+  def add(input: IncrRequest)(using DaprCapability): CounterState = CounterState(input.amount * 2)
+
+// typed caller — a small trait bound to the impl by the macro
+trait CounterCalls:
+  def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
+object CounterCalls extends WorkflowActivityCalls.Derived[CounterCalls, CounterActivities]
+
+class AddingWorkflow extends Workflow:
+  def run(using WorkflowContext): Unit =
+    val acts = CounterCalls.derive
+    WorkflowContext.complete(acts.add(WorkflowContext.getInput[IncrRequest].get).await())
+
+object MyApp:
+  def apply() = DaprApp(workflows = List(new AddingWorkflow), activities = WorkflowActivities.derive[CounterActivities])
+```
+
+Proven by `WorkflowActivityDerivationTest` (Docker-free, recording fakes) and the refactored
+`test/integration/apps/WorkflowApp.scala` (compiles under safe mode; exercised by the real-sidecar
+`WorkflowCapabilityServerTest`).

@@ -75,6 +75,15 @@ private[derivation] object MacroSupport:
   def wireName(using q: Quotes)(m: q.reflect.Symbol): String =
     nameOverride(m).getOrElse(m.name)
 
+  /** Stable activity name for a method of an implementation class: `<impl-full-name>#<method-wire-name>`.
+    *
+    * Both the server reification ([[dapr4s.derivation.WorkflowActivities]]) and the caller derivation
+    * ([[dapr4s.derivation.WorkflowActivityCalls]]) compute it from the same implementation class symbol, so the two
+    * sides always agree on the dispatch string.
+    */
+  def activityName(using q: Quotes)(implSym: q.reflect.Symbol, m: q.reflect.Symbol): String =
+    s"${implSym.fullName}#${wireName(m)}"
+
   /** The declared result type of an abstract method symbol. */
   def resultTypeOf(using q: Quotes)(m: q.reflect.Symbol): q.reflect.TypeRepr =
     import q.reflect.*

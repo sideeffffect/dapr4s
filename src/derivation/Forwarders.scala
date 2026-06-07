@@ -199,6 +199,54 @@ object Forwarders:
     given JsonCodec[T] = codec
     ctx.waitForExternalEvent[T](name)
 
+  // ---- WorkflowContext (activity scheduling, by name) -----------------------
+
+  def callActivityByName[I, O](
+      ctx: WorkflowContext,
+      name: ActivityName,
+      input: I,
+      inputCodec: JsonCodec[I],
+      outputCodec: JsonCodec[O],
+  ): Task[O]^{ctx} =
+    given JsonCodec[I] = inputCodec
+    given JsonCodec[O] = outputCodec
+    ctx.callActivityByName[I, O](name, input)
+
+  def callActivityByNameNoInput[O](
+      ctx: WorkflowContext,
+      name: ActivityName,
+      outputCodec: JsonCodec[O],
+  ): Task[O]^{ctx} =
+    given JsonCodec[O] = outputCodec
+    ctx.callActivityByName[O](name)
+
+  // ---- WorkflowActivity construction (server-side reification) ---------------
+
+  /** Build a [[WorkflowActivity]] from a plain handler, fixing its registered name.
+    *
+    * The handler receives the decoded input and the runtime-supplied [[DaprCapability]] and returns the output; it is
+    * a flat function so the generated derivation tree stays trivial (no synthesised `given`s, no rebinding of the
+    * exclusive capability — both are passed straight through).
+    */
+  def workflowActivity[I, O](
+      name: String,
+      handler: (I, DaprCapability) => O,
+      inputCodec: JsonCodec[I],
+      outputCodec: JsonCodec[O],
+  ): WorkflowActivity[I, O] =
+    given JsonCodec[I] = inputCodec
+    given JsonCodec[O] = outputCodec
+    // WHY AnyRef: the handler captures the user activity instance, so storing it directly would give
+    // the WorkflowActivity instance a non-empty capture set. Erase it (the same trick as
+    // Subscription.rawHandler) so the activity can live in the plain DaprApp.activities list; cast
+    // back here under @assumeSafe. Done in this non-safe-mode object so no asInstanceOf leaks into
+    // the safe-mode call site that the derivation macro expands into.
+    val raw: AnyRef = handler.asInstanceOf[AnyRef]
+    new WorkflowActivity[I, O]:
+      override def activityName: String              = name
+      def execute(input: I)(using DaprCapability): O =
+        raw.asInstanceOf[(I, DaprCapability^) => O](input, summon[DaprCapability])
+
   // ---- Actor route construction (server-side reification) -------------------
 
   def actorMethodRoute[Q, R](

@@ -79,6 +79,15 @@ private[internal] final class WorkflowContextImpl(
     val javaTask = ctx.callActivity(name, "null", classOf[String])
     new TaskJson(javaTask, s"Failed to decode result of activity '$name'")(using d.outputCodec)
 
+  def callActivityByName[I: JsonCodec, O: JsonCodec](name: ActivityName, input: I): Task[O]^{this} =
+    val inputJson = summon[JsonCodec[I]].encode(input)
+    val javaTask  = ctx.callActivity(name.value, inputJson, classOf[String])
+    new TaskJson(javaTask, s"Failed to decode result of activity '${name.value}'")
+
+  def callActivityByName[O: JsonCodec](name: ActivityName): Task[O]^{this} =
+    val javaTask = ctx.callActivity(name.value, "null", classOf[String])
+    new TaskJson(javaTask, s"Failed to decode result of activity '${name.value}'")
+
   def createTimer(duration: FiniteDuration): Task[Unit]^{this} =
     val javaTask = ctx.createTimer(java.time.Duration.ofNanos(duration.toNanos))
     new TaskUnit(javaTask)

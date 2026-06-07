@@ -135,7 +135,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         }
         app.activities.foreach { a =>
           wb.registerActivity(
-            a.getClass.getCanonicalName.nn,
+            a.activityName,
             new WorkflowActivityBridge(a, daprCapability.asInstanceOf[AnyRef]),
           )
         }
