@@ -1,4 +1,4 @@
-//> using scala "3.9.0-RC1-bin-20260501-0c8c581-NIGHTLY"
+//> using scala "3.10.0-RC1-bin-20260607-dec42ae-NIGHTLY"
 //> using jvm "zulu:25.0.3"
 //> using options "-language:experimental.captureChecking"
 //> using options "-language:experimental.pureFunctions"

@@ -13,6 +13,7 @@ import scala.quoted.*
   *     optional `ttl: Option[Instant]`)
   *   - returns `Option[JobDetails]` with no value parameters → [[dapr4s.JobsCapability.get]]
   */
+@scala.caps.assumeSafe
 object Jobs:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

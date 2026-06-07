@@ -30,6 +30,7 @@ import scala.quoted.*
   *       WorkflowContext.complete(acts.add(IncrRequest(21)).await())
   * }}}
   */
+@scala.caps.assumeSafe
 object WorkflowActivityCalls:
 
   inline def derive[Calls, Impl]: Calls = ${ deriveImpl[Calls, Impl] }

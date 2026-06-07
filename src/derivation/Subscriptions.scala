@@ -18,6 +18,7 @@ import scala.quoted.*
   *   DaprApp(subscriptions = Subscriptions.derive[ResultRoutes.type](PubSubName("pubsub")))
   * }}}
   */
+@scala.caps.assumeSafe
 object Subscriptions:
 
   inline def derive[T](pubsubName: PubSubName): List[Subscription] = ${ deriveImpl[T]('pubsubName) }

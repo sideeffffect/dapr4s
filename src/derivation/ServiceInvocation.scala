@@ -39,6 +39,7 @@ import scala.quoted.*
   *   - The `using` clause must provide a [[dapr4s.ServiceInvocationCapability]] and the required `JsonCodec`s
   *     (`JsonCodec[Resp]` always; `JsonCodec[Req]` when there is a body).
   */
+@scala.caps.assumeSafe
 object ServiceInvocation:
 
   /** Derive an implementation of trait `T` that routes its methods to `appId`. */

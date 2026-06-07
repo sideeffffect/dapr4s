@@ -12,6 +12,7 @@ import scala.quoted.*
   *   - `instanceId: WorkflowInstanceId` only → `startWithId(name, instanceId)`
   *   - `instanceId` + `input` → `startWithId(name, instanceId, input)`
   */
+@scala.caps.assumeSafe
 object Workflow:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

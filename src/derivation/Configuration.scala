@@ -15,6 +15,7 @@ import scala.quoted.*
   *   lazy val Config: Config = Configuration.derive[Config]
   * }}}
   */
+@scala.caps.assumeSafe
 object Configuration:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

@@ -18,6 +18,7 @@ import scala.quoted.*
   *   lazy val Events: Events = WorkflowEvents.derive[Events]
   * }}}
   */
+@scala.caps.assumeSafe
 object WorkflowEvents:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

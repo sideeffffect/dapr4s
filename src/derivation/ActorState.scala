@@ -10,6 +10,7 @@ import scala.quoted.*
   *   - a getter `def x(using ActorContext, JsonCodec[T]): Option[T]` → `ctx.get(ActorStateKey("x"))`
   *   - a setter `def x_=(value: T)(using ActorContext, JsonCodec[T]): Unit` → `ctx.set(ActorStateKey("x"), value)`
   */
+@scala.caps.assumeSafe
 object ActorState:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

@@ -12,6 +12,7 @@ import scala.quoted.*
   *   - `ArraySeq[Byte]` → [[dapr4s.CryptoCapability.encrypt]]
   *   - `String` → [[dapr4s.CryptoCapability.encryptString]]
   */
+@scala.caps.assumeSafe
 object Crypto:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

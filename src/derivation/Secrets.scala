@@ -15,6 +15,7 @@ import scala.quoted.*
   *   lazy val Secrets: Secrets = Secrets.derive[Secrets]
   * }}}
   */
+@scala.caps.assumeSafe
 object Secrets:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

@@ -19,6 +19,7 @@ import scala.quoted.*
   *   DaprApp(invocations = InvocationRoutes.derive[PaymentRoutes.type])
   * }}}
   */
+@scala.caps.assumeSafe
 object InvocationRoutes:
 
   inline def derive[T]: List[InvocationRoute] = ${ deriveImpl[T] }

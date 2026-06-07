@@ -20,6 +20,7 @@ import scala.quoted.*
   *   lazy val EmailBinding: EmailBinding = Bindings.derive[EmailBinding]
   * }}}
   */
+@scala.caps.assumeSafe
 object Bindings:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

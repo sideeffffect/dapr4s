@@ -15,6 +15,7 @@ import scala.quoted.*
   *   lazy val OrderEvents: OrderEvents = PubSub.derive[OrderEvents]
   * }}}
   */
+@scala.caps.assumeSafe
 object PubSub:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

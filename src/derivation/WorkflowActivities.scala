@@ -30,6 +30,7 @@ import scala.quoted.*
   *   DaprApp(activities = WorkflowActivities.derive[CounterActivities])
   * }}}
   */
+@scala.caps.assumeSafe
 object WorkflowActivities:
 
   inline def derive[C]: List[WorkflowActivity[?, ?]] = ${ deriveImpl[C] }

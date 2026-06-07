@@ -15,6 +15,7 @@ import scala.quoted.*
   *
   * A `Unit`-returning method with a request body is rejected (there is no such actor overload).
   */
+@scala.caps.assumeSafe
 object Actor:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

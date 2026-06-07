@@ -21,6 +21,7 @@ import scala.quoted.*
   *   val now = s.count   // Option[Int]
   * }}}
   */
+@scala.caps.assumeSafe
 object State:
 
   inline def derive[T]: T = ${ deriveImpl[T] }

@@ -30,6 +30,7 @@ import scala.quoted.*
   *   val definition = ActorDefinitions.derive[Counter]
   * }}}
   */
+@scala.caps.assumeSafe
 object ActorDefinitions:
 
   inline def derive[C]: ActorDefinition = ${ deriveImpl[C] }
