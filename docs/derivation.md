@@ -98,12 +98,12 @@ Also, is there some opportunity to improve something for Workflows using this te
 Maybe something like
 
 ```scala
-trait MyWorkflowSchema {
-  def addActivity(input: IncrRequest)(using DaprCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
+trait MyWorkflowSchema[F[_]] {
+  def addActivity(input: IncrRequest)(using DaprCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): F[CounterState]
 }
 
 @WorkflowActivityDerivation
-class MyWorkflowActivity extends MyWorkflowSchema {
+class MyWorkflowActivity extends MyWorkflowSchema[Id] {
   def addActivity(input: IncrRequest)(using DaprCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState =
    CounterState(input.amount * 2)
 }
@@ -112,12 +112,12 @@ class MyWorkflowActivity extends MyWorkflowSchema {
 would then turn into the dapr4s reified model
 
 ```scala
-object MyWorkflowActivity extends MyWorkflowSchema {
+object MyWorkflowActivity extends MyWorkflowSchema[Task] {
   class AddActivity(JsonCodec[IncrRequest], JsonCodec[CounterState]) extends WorkflowActivity[IncrRequest, CounterState]:
     def execute(input: IncrRequest)(using DaprCapability): CounterState =
       CounterState(input.amount * 2)
 
-  def addActivity(input: IncrRequest)(using DaprCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState =
+  def addActivity(input: IncrRequest)(using DaprCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): Task[CounterState] =
     WorkflowContext.callActivity[AddActivity](input)
 }
 ```
