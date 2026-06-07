@@ -498,6 +498,10 @@ trait WorkflowCapability extends scala.caps.ExclusiveCapability:
   *       order,
   *     )
   * }}}
+  *
+  * Operations that target an existing instance (status, suspend, resume, terminate, raiseEvent, waitForCompletion,
+  * purge) are also available as fluent extension methods on [[WorkflowInstanceId]] — e.g. `id.suspend()` — which read as
+  * a method on the instance rather than `WorkflowCapability.suspend(id)`.
   */
 @scala.caps.assumeSafe
 object WorkflowCapability:
