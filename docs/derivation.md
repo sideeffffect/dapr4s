@@ -289,3 +289,108 @@ method. Two non-obvious constraints shaped the body:
   remote calls through a derived service, confirming the slice compiles under
   `language.experimental.safe` + capture checking and behaves identically over a
   real sidecar.
+
+---
+
+# Implementation status — full build (2026-06-07)
+
+After the ServiceInvocation slice was proven, the rest of the doc's list was implemented.
+This section records what shipped, how, and what didn't work.
+
+## What shipped
+
+All in package `dapr4s.derivation`. Every client facade follows the same shape: an `object X`
+with `inline def derive[…]: T`, an `X.Derived[T]` inline mixin, and a private macro built on the
+shared `MacroSupport` scaffold; each forwards through `@assumeSafe` runtime helpers
+(`Forwarders` / `ServiceInvocationDerivationRuntime`). Method name → Dapr name is **verbatim**,
+overridable per member with `@name`.
+
+| Engine | Capability | Method → name | Notes |
+|---|---|---|---|
+| `ServiceInvocation.derive[T](appId)` | `ServiceInvocationCapability` | `InvocationMethodName` | body + optional `httpMethod`/`metadata`; no-body overload |
+| `Bindings.derive[T]` | `BindingsCapability` | `BindingOperation` | `Option[Resp]`→`invoke`, `Unit`→`invokeOneWay` |
+| `Actor.derive[T]` | `ActorCapability` | `ActorMethodName` | body / no-body / `invokeVoid` (no-body `Unit`) |
+| `PubSub.derive[T]` | `PubSubCapability` | `Topic` | `publish` / `publishWithMetadata` |
+| `Secrets.derive[T]` | `SecretsCapability` | `SecretKey` | `Option[SecretValue]`, optional `metadata` |
+| `Configuration.derive[T]` | `ConfigurationCapability` | `ConfigKey` | single-key `Option[ConfigItem]` |
+| `Crypto.derive[T]` | `CryptoCapability` | `CryptoKeyName` | `encrypt` (bytes) / `encryptString` (String) |
+| `Jobs.derive[T]` | `JobsCapability` | `JobName` | `schedule` / `scheduleOnce` / `get` |
+| `Workflow.derive[T]` | `WorkflowCapability` | `WorkflowName` | `start`/`startWithId` × input |
+| `State.derive[T]` | `StateCapability` | `StateStoreKey` | getter/setter (`def x` / `def x_=`) |
+| `ActorState.derive[T]` | `ActorContext` | `ActorStateKey` | getter/setter |
+| `WorkflowEvents.derive[T]` | `WorkflowContext` | `EventName` | `waitForExternalEvent`, returns `Task[T]^{ctx}` |
+| `ActorDefinitions.derive[C]` | — (server-side) | `ActorType` + route names | reifies an actor class to `ActorDefinition` |
+
+Each has a Docker-free unit test (`CapabilityDerivationTest`, `ServiceInvocationDerivationTest`,
+`WorkflowEventsTest`, `ActorDefinitionsTest`) using recording fakes, plus the ServiceInvocation
+real-sidecar round-trip.
+
+## The shared scaffold (`MacroSupport`)
+
+`deriveTrait[T](engine)(bodyFn)` owns the common skeleton: validate `T` is a trait of abstract
+methods, synthesise `T$Derived` via `Symbol.newClass`, and emit one `DefDef` per method whose
+body is built by the capability's `bodyFn`. The `bodyFn` callback is typed against the same
+`Quotes` instance (`(using q: Quotes)(bodyFn: (q.reflect.Symbol, …) => q.reflect.Term)`), which
+is what lets the path-dependent reflection types line up across the call. Helpers `paramInfo`
+(name/ref/type/given per parameter), `wireName`/`nameOverride`, `jsonCodecArg`, `optionArg`,
+`isUnit`, and `fail` cover the per-method analysis. This kept each of the 11 client engines to
+~40–80 lines.
+
+## Getter/setter convention (State, ActorContext)
+
+A member whose Scala name ends in `_=` is the setter (`save`/`set`); otherwise it is the getter
+(`get`, returning `Option[T]`). The key is the name with `_=` stripped (so `def count` and
+`def count_=` share key `"count"`), and `@name` overrides it independently of setter detection.
+`svc.count = 5` / `val n = svc.count` then read and write Dapr state.
+
+## Server-side actor reification (`ActorDefinitions.derive[C]`)
+
+Turns an actor *class* into a `dapr4s.ActorDefinition`. The `ActorType` is the class's simple
+name (or `@name`). Methods with a `(using ActorContext)` clause become routes:
+`@reminder`/`@timer` → reminder/timer routes (result discarded), everything else → method
+routes. Input type is the first value parameter (or `Unit`); output is the return type;
+`JsonCodec[I]`/`JsonCodec[O]` are **summoned at the `derive` call site** (not declared on the
+method).
+
+How it is built: the macro emits
+`ActorDefinition(ActorType(name)) { (id: ActorId) => (ctx: ActorContext) ?=> <routes> }` as a
+quote, using the `'{ (id) => … ${ f('id, 'ctx) } }` technique to obtain `id`/`ctx` as `Expr`s
+inside the nested splice. It then `new C(id)` (the class must have a no-arg or single-`ActorId`
+constructor) and, per method, builds a handler via `quotes.reflect.Lambda` that calls
+`inst.m(in)(using ctx)` — applying each parameter clause explicitly so the `ActorContext` is
+threaded in by hand rather than by implicit search. Handlers are stored through the existing
+`@assumeSafe` route factories (via `Forwarders.actorMethodRoute/...`), whose `AnyRef` erasure
+absorbs the `ctx` capture, so no capture-checking annotations leak into generated code.
+
+**Deviation from the doc sketch:** the doc wrote `private def actorId: ActorId`. A `private`
+member cannot be overridden by a synthesised subclass, so the contract is instead a constructor
+parameter (`class Counter(actorId: ActorId)`) — the macro does `new C(id)`.
+
+## What did not work / was not implemented
+
+* **`@ServiceInvocationDerivation` and any macro-annotation form.** Scala 3 `MacroAnnotation`
+  expands *after* the typer, so members it generates are invisible to references compiled in the
+  same run (verified: both synthesising and augmenting a companion fail with `value derive is not
+  a member`). Replaced everywhere by the `X.Derived[T]` inline mixin, which is a genuine
+  inherited member at typer time. The annotation could only ever work for a downstream,
+  separately-compiled consumer.
+
+* **`@WorkflowActivityDerivation` (workflow-activity reification).** Not implemented. It hits the
+  same macro-annotation wall *and* is structurally worse: its transformation must synthesise a
+  `WorkflowActivity[I, O]` *type* that the orchestration then references by name
+  (`WorkflowContext.callActivity[GeneratedActivity]`). A generated type referenced elsewhere in
+  the same module cannot be surfaced at typer time, and the transformation is not expressible as
+  a single-value `derive[T]: X` either (it produces a class + registrations + a schema-implementing
+  object). Left as designed-but-deferred; the manual `WorkflowActivity` + `callActivity` API
+  remains the way to write activities.
+
+* **Local `given`s in generated bodies (all engines).** Synthesising
+  `given JsonCodec[…] = <param>` inside generated methods caused the compiler to lift and capture
+  them into the enclosing class (a 30-argument constructor on the host test class; munit could
+  not instantiate it). Every engine therefore routes through `@assumeSafe` runtime forwarders
+  that take the capability and codecs as plain explicit arguments — no generated givens, and the
+  capability `using` parameter is passed straight through (capture-checking forbids rebinding an
+  `ExclusiveCapability` into a fresh `given`).
+
+* **dapr4s-examples.** Per the agreed plan, the slice was proven inside dapr4s's own test apps;
+  the separate `dapr4s-examples` repo was intentionally left untouched in this pass.

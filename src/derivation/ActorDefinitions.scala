@@ -1,0 +1,165 @@
+package dapr4s.derivation
+
+import dapr4s.*
+import scala.quoted.*
+
+/** Server-side reification of a Dapr virtual actor: turn an actor class into a [[dapr4s.ActorDefinition]].
+  *
+  * `derive[C]` inspects class `C`'s methods (those with a `(using ActorContext)` clause) and builds the
+  * `ActorDefinition`/`ActorRoutes` the runtime expects. The method name maps verbatim (override with [[name `@name`]])
+  * to the route key; [[reminder `@reminder`]] and [[timer `@timer`]] turn a method into a reminder/timer route (its
+  * result is discarded). The actor's [[dapr4s.ActorType]] is the class's simple name (override with `@name` on the
+  * class).
+  *
+  * '''Contract.'''
+  *   - `C` must be a class with either a no-argument primary constructor or a single `ActorId` constructor parameter
+  *     (the macro instantiates `new C(id)` per invocation).
+  *   - Each handler method has shape `def m(input: I)(using ActorContext): O` or `def m()(using ActorContext): O`; its
+  *     `using` clause must contain exactly an `ActorContext`. The input type defaults to `Unit` when there is no value
+  *     parameter.
+  *   - `JsonCodec[I]` and `JsonCodec[O]` (just `JsonCodec[I]` for `@reminder`/`@timer`) must be resolvable at the
+  *     `derive` call site — they are summoned there, not declared on the method.
+  *
+  * {{{
+  *   class Counter(actorId: ActorId):
+  *     def increment(input: IncrRequest)(using ActorContext): CounterState = ...
+  *     def get()(using ActorContext): CounterState = ...
+  *     @reminder def scheduledReset(msg: String)(using ActorContext): Unit = ...
+  *     @timer def autoIncrement(req: IncrRequest)(using ActorContext): Unit = ...
+  *
+  *   val definition = ActorDefinitions.derive[Counter]
+  * }}}
+  */
+object ActorDefinitions:
+
+  inline def derive[C]: ActorDefinition = ${ deriveImpl[C] }
+
+  trait Derived[C]:
+    inline def derive: ActorDefinition = ActorDefinitions.derive[C]
+
+  private def deriveImpl[C: Type](using Quotes): Expr[ActorDefinition] =
+    import quotes.reflect.*
+    val typeName = MacroSupport.nameOverride(TypeRepr.of[C].typeSymbol).getOrElse(TypeRepr.of[C].typeSymbol.name)
+    '{
+      ActorDefinition(ActorType(${ Expr(typeName) })) { (id: ActorId) => (ctx: ActorContext) ?=>
+        ${ routesFor[C]('id, 'ctx) }
+      }
+    }
+
+  private def routesFor[C: Type](id: Expr[ActorId], ctx: Expr[ActorContext])(using Quotes): Expr[ActorRoutes] =
+    import quotes.reflect.*
+    val cSym = TypeRepr.of[C].typeSymbol
+    val ctor = cSym.primaryConstructor
+    val params = ctor.paramSymss.flatten.filter(_.isTerm)
+    val newC = New(TypeTree.of[C])
+    val instTerm =
+      params match
+        case Nil      => Apply(Select(newC, ctor), Nil)
+        case p :: Nil => Apply(Select(newC, ctor), List(id.asTerm))
+        case _        =>
+          report.errorAndAbort(
+            s"ActorDefinitions.derive: ${cSym.name} must have a no-arg or single-ActorId constructor.",
+          )
+    instTerm.asExprOf[C] match
+      case '{ $inst: C } => assembleRoutes[C](inst, ctx)
+
+  private def assembleRoutes[C: Type](inst: Expr[C], ctx: Expr[ActorContext])(using Quotes): Expr[ActorRoutes] =
+    import quotes.reflect.*
+    val engine = "ActorDefinitions"
+    val actorCtx = TypeRepr.of[ActorContext]
+    val reminderTpe = TypeRepr.of[reminder]
+    val timerTpe = TypeRepr.of[timer]
+    val cSym = TypeRepr.of[C].typeSymbol
+    val instTerm = inst.asTerm
+    val ctxTerm = ctx.asTerm
+
+    def hasAnnot(m: Symbol, tpe: TypeRepr): Boolean =
+      m.annotations.exists(_.tpe =:= tpe)
+
+    // term clauses of a method, as (param-types, isUsingActorContext)
+    def termClauses(dd: DefDef): List[(List[(String, TypeRepr)], Boolean)] =
+      dd.paramss.collect { case tc: TermParamClause =>
+        val ps = tc.params.map(p => (p.name, p.tpt.tpe))
+        val isCtx = tc.params.exists(_.tpt.tpe <:< actorCtx)
+        (ps, isCtx)
+      }
+
+    val methods = cSym.declaredMethods.filter { m =>
+      !m.isClassConstructor && (m.tree match
+        case dd: DefDef => termClauses(dd).exists(_._2)
+        case _          => false)
+    }
+
+    def fail(m: Symbol, msg: String): Nothing = MacroSupport.fail(engine, m, msg)
+
+    // Build the term `inst.m(<in?>)(using ctx)`, applying clauses in declaration order.
+    def callTerm(m: Symbol, dd: DefDef, inRef: Option[Term]): Term =
+      val clauses = dd.paramss.collect { case tc: TermParamClause => tc }
+      clauses.foldLeft(Select(instTerm, m): Term) { (acc, tc) =>
+        val isCtx = tc.params.exists(_.tpt.tpe <:< actorCtx)
+        val args =
+          if isCtx then
+            if tc.params.sizeIs != 1 then fail(m, "the `using` clause must contain exactly an ActorContext.")
+            List(ctxTerm)
+          else if tc.params.isEmpty then Nil
+          else if tc.params.sizeIs == 1 then List(inRef.getOrElse(fail(m, "missing input argument.")))
+          else fail(m, "an actor method takes at most one request-body parameter.")
+        Apply(acc, args)
+      }
+
+    def inputType(dd: DefDef): Option[TypeRepr] =
+      termClauses(dd).collectFirst { case (ps, false) if ps.sizeIs == 1 => ps.head._2 }
+
+    // Build a `I => R` (or `Unit => R`) handler lambda that calls the actor method.
+    def handlerLambda(m: Symbol, dd: DefDef, inTpe: TypeRepr, outTpe: TypeRepr, discard: Boolean): Term =
+      val hasInput = inputType(dd).isDefined
+      val mt = MethodType(List("in"))(_ => List(inTpe), _ => if discard then TypeRepr.of[Unit] else outTpe)
+      Lambda(
+        Symbol.spliceOwner,
+        mt,
+        (lam, args) =>
+          val inRef = if hasInput then Some(args.head.asInstanceOf[Term]) else None
+          val call = callTerm(m, dd, inRef).changeOwner(lam)
+          if discard then Block(List(call), Literal(UnitConstant())) else call,
+      )
+
+    val methodRoutes = scala.collection.mutable.ListBuffer.empty[Expr[ActorMethodRoute]]
+    val reminderRoutes = scala.collection.mutable.ListBuffer.empty[Expr[ActorReminderRoute]]
+    val timerRoutes = scala.collection.mutable.ListBuffer.empty[Expr[ActorTimerRoute]]
+
+    methods.foreach { m =>
+      val dd = m.tree.asInstanceOf[DefDef]
+      val nm = MacroSupport.wireName(m)
+      val inTpe = inputType(dd).getOrElse(TypeRepr.of[Unit])
+      val outTpe = dd.returnTpt.tpe
+      val isReminder = hasAnnot(m, reminderTpe)
+      val isTimer = hasAnnot(m, timerTpe)
+
+      def codec[X: Type]: Expr[JsonCodec[X]] =
+        Expr.summon[JsonCodec[X]].getOrElse(fail(m, s"no JsonCodec in scope for ${TypeRepr.of[X].show}."))
+
+      inTpe.asType match
+        case '[i] =>
+          if isReminder then
+            val h = handlerLambda(m, dd, inTpe, outTpe, discard = true).asExprOf[i => Unit]
+            reminderRoutes += '{ Forwarders.actorReminderRoute[i](ReminderName(${ Expr(nm) }), ${ h }, ${ codec[i] }) }
+          else if isTimer then
+            val h = handlerLambda(m, dd, inTpe, outTpe, discard = true).asExprOf[i => Unit]
+            timerRoutes += '{ Forwarders.actorTimerRoute[i](TimerName(${ Expr(nm) }), ${ h }, ${ codec[i] }) }
+          else
+            outTpe.asType match
+              case '[o] =>
+                val h = handlerLambda(m, dd, inTpe, outTpe, discard = false).asExprOf[i => o]
+                methodRoutes += '{
+                  Forwarders
+                    .actorMethodRoute[i, o](ActorMethodName(${ Expr(nm) }), ${ h }, ${ codec[i] }, ${ codec[o] })
+                }
+    }
+
+    '{
+      ActorRoutes(
+        methods = ${ Expr.ofList(methodRoutes.toList) },
+        reminders = ${ Expr.ofList(reminderRoutes.toList) },
+        timers = ${ Expr.ofList(timerRoutes.toList) },
+      )
+    }
