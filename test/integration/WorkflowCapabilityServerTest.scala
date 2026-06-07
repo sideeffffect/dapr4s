@@ -122,9 +122,9 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
   test("workflow: start with input and waitForCompletion returns doubled result"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val wf = summon[DaprCapability].workflow
+        given wf: WorkflowCapability = summon[DaprCapability].workflow
         val id = wf.start(workflowName, IncrRequest(5))
-        val snapshot = wf.waitForCompletion(id, thirtySeconds)
+        val snapshot = id.waitForCompletion(thirtySeconds)
         assert(snapshot.isDefined, "workflow should complete within 30 seconds")
         val snap = snapshot.get
         assertEquals(snap.status, WorkflowStatus.Completed)
@@ -146,21 +146,21 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
   test("workflow: getStatus for unknown id returns None"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val wf = summon[DaprCapability].workflow
+        given wf: WorkflowCapability = summon[DaprCapability].workflow
         val id = WorkflowInstanceId(s"does-not-exist-${java.util.UUID.randomUUID()}")
-        val status = wf.getStatus(id)
+        val status = id.getStatus
         assertEquals(status, None)
     }
 
   test("workflow: purge after completion returns true and getStatus returns None"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val wf = summon[DaprCapability].workflow
+        given wf: WorkflowCapability = summon[DaprCapability].workflow
         val id = wf.start(workflowName, IncrRequest(3))
-        val snapshot = wf.waitForCompletion(id, thirtySeconds)
+        val snapshot = id.waitForCompletion(thirtySeconds)
         assert(snapshot.isDefined, "workflow should complete before purge")
-        val purged = wf.purge(id)
+        val purged = id.purge()
         assert(purged, "purge should return true for a completed workflow")
-        val statusAfterPurge = wf.getStatus(id)
+        val statusAfterPurge = id.getStatus
         assertEquals(statusAfterPurge, None)
     }
