@@ -38,7 +38,7 @@ scala-cli test . --test-only 'dapr4s.test.integration.*'  # needs Docker
 ```scala
 import dapr4s.*
 
-DaprCapability.state(StoreName("statestore")):   // StateCapability^{cap} in scope
+DaprCapability.state(StateStoreName("statestore")):   // StateCapability^{cap} in scope
   StateCapability.save(key, value)
 // Using StateCapability here — outside the block — is a compile error.
 ```

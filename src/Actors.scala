@@ -25,13 +25,13 @@ trait ActorContext extends scala.caps.ExclusiveCapability:
   // --- State ------------------------------------------------------------------
 
   /** Fetch a state value by key.  Returns `None` if the key has not been set. */
-  def get[T: JsonCodec](key: StateKey): Option[T]
+  def get[T: JsonCodec](key: ActorStateKey): Option[T]
 
   /** Store a state value under `key`. */
-  def set[T: JsonCodec](key: StateKey, value: T): Unit
+  def set[T: JsonCodec](key: ActorStateKey, value: T): Unit
 
   /** Remove a state key. */
-  def remove(key: StateKey): Unit
+  def remove(key: ActorStateKey): Unit
 
   // --- Reminders (persistent — survive actor deactivation/restart) ----------
 
@@ -76,9 +76,9 @@ trait ActorContext extends scala.caps.ExclusiveCapability:
 /** Companion-object API for [[ActorContext]]. */
 @scala.caps.assumeSafe
 object ActorContext:
-  def get[T: JsonCodec](key: StateKey)(using ctx: ActorContext): Option[T] = ctx.get(key)
-  def set[T: JsonCodec](key: StateKey, value: T)(using ctx: ActorContext): Unit = ctx.set(key, value)
-  def remove(key: StateKey)(using ctx: ActorContext): Unit = ctx.remove(key)
+  def get[T: JsonCodec](key: ActorStateKey)(using ctx: ActorContext): Option[T] = ctx.get(key)
+  def set[T: JsonCodec](key: ActorStateKey, value: T)(using ctx: ActorContext): Unit = ctx.set(key, value)
+  def remove(key: ActorStateKey)(using ctx: ActorContext): Unit = ctx.remove(key)
 
   def registerReminder[T: JsonCodec](
       name: ReminderName,

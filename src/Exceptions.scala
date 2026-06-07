@@ -6,7 +6,7 @@ package dapr4s
   * Callers should re-read the key to get the current value and ETag, then retry the operation.
   */
 @scala.caps.assumeSafe
-final class ETagMismatchException(key: StateKey, etag: ETag)
+final class ETagMismatchException(key: StateStoreKey, etag: ETag)
     extends Exception(s"ETag mismatch for key '${key.value}' (provided: ${etag.value})")
 
 /** Thrown by [[JsonCodec.decodeOrThrow]] and internally by capability implementations when a JSON payload cannot be

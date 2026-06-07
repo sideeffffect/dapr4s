@@ -78,8 +78,8 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
             assert(resp.orderId.nonEmpty, "orderId must be non-empty")
 
             val savedOrder = scope
-              .state(StoreName("statestore"))
-              .get[OrderRequest](StateKey(resp.orderId))
+              .state(StateStoreName("statestore"))
+              .get[OrderRequest](StateStoreKey(resp.orderId))
             assertEquals(savedOrder, Some(req))
 
             // Simulate Dapr delivering the published event to the inventory service
@@ -199,7 +199,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
       val closed = capturedScope.asInstanceOf[DaprCapability | Null]
       if closed != null then
         intercept[Exception]:
-          closed.state(StoreName("statestore")).get[String](StateKey("k"))
+          closed.state(StateStoreName("statestore")).get[String](StateStoreKey("k"))
     }
 
   test("e2e: DaprApp composition with ++ merges routes"):

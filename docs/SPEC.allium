@@ -103,7 +103,8 @@ external entity ActorRoutes {
 ------------------------------------------------------------
 
 -- Component / store name opaque types (non-empty string; constructor validates)
-value StoreName        { value: String }   -- DAPR state store / lock store component name
+value StateStoreName   { value: String }   -- DAPR state store component name
+value LockStoreName    { value: String }   -- DAPR lock store component name
 value PubSubName       { value: String }   -- DAPR pub/sub component name
 value Topic            { value: String }   -- Pub/sub topic (non-empty)
 value AppId            { value: String }   -- Target application ID for service invocation (non-empty)
@@ -113,7 +114,8 @@ value BindingName      { value: String }   -- DAPR output binding component name
 value ETag             { value: String }   -- Optimistic-concurrency tag
 
 -- Operation key / identifier opaque types (non-empty where noted)
-value StateKey         { value: String }   -- Key in a DAPR state store
+value StateStoreKey    { value: String }   -- Key in a DAPR state store (StateCapability)
+value ActorStateKey    { value: String }   -- Key in a virtual actor's state
 value InvocationMethodName { value: String }   -- Service-invocation / inbound handler method name (non-empty)
 value ActorMethodName  { value: String }   -- Actor method name (non-empty)
 value Route            { value: String }   -- HTTP route for a pub/sub subscription (non-empty)
@@ -165,7 +167,7 @@ value StateEntry<T> {
 
 value StateKeyValue {
     -- Key-value pair used in bulk state save operations.
-    key: StateKey
+    key: StateStoreKey
     value: Any
 }
 
@@ -316,7 +318,7 @@ value BindingRoute {
 
 entity StateCapability {
     capability: DaprCapability
-    store_name: StoreName
+    store_name: StateStoreName
     status: open | closed
     -- status mirrors capability.status
 }
@@ -352,7 +354,7 @@ entity BindingsCapability {
 
 entity DistributedLockCapability {
     capability: DaprCapability
-    store_name: StoreName
+    store_name: LockStoreName
     status: open | closed
 }
 
@@ -360,7 +362,7 @@ entity DistributedLockCapability {
 -- UpsertOp always carries encoded_value (structurally non-nullable).
 entity StateOp {
     kind: UpsertOp | DeleteOp
-    key: StateKey
+    key: StateStoreKey
     etag: ETag?
 }
 
@@ -634,7 +636,7 @@ rule StateGetBulk {
     requires: cap.status = open
 
     ensures:
-        StateGetBulkCompleted(result: Map<StateKey, StateEntry>)
+        StateGetBulkCompleted(result: Map<StateStoreKey, StateEntry>)
         -- Missing keys return StateEntry with value = absent; no exception for absent keys
 }
 
@@ -1020,11 +1022,11 @@ invariant ScopeLifetime {
 
 -- Non-empty identifier constraints (not machine-expressible as a state invariant;
 -- enforced by constructors at runtime):
---   Non-empty: StoreName, PubSubName, Topic, AppId, InvocationMethodName, ActorMethodName, BindingName, SecretStoreName,
+--   Non-empty: StateStoreName, LockStoreName, PubSubName, Topic, AppId, InvocationMethodName, ActorMethodName, BindingName, SecretStoreName,
 --              ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
 --              WorkflowName, ActorType, ReminderName, TimerName, EventName — all reject the
 --              empty string at construction time via require().
---   Accept any string (including empty): StateKey, ETag, SecretKey, ConfigKey,
+--   Accept any string (including empty): StateStoreKey, ActorStateKey, ETag, SecretKey, ConfigKey,
 --              BulkEntryId, WorkflowInstanceId, ActorId.
 
 ------------------------------------------------------------
@@ -1083,13 +1085,13 @@ surface DaprCapabilitySurface {
     facing user: UserCode
 
     exposes:
-        state:   (store_name: StoreName,       body: StateCapability ?=> T)              -> T (using DaprCapability)
+        state:   (store_name: StateStoreName,       body: StateCapability ?=> T)              -> T (using DaprCapability)
         pubsub:  (pubsub_name: PubSubName,     body: PubSubCapability ?=> T)             -> T (using DaprCapability)
         invoker: (                             body: ServiceInvocationCapability ?=> T)  -> T (using DaprCapability)
         secrets: (store_name: SecretStoreName, body: SecretsCapability ?=> T)            -> T (using DaprCapability)
         config:  (store_name: ConfigStoreName, body: ConfigurationCapability ?=> T)      -> T (using DaprCapability)
         binding: (binding_name: BindingName,   body: BindingsCapability ?=> T)           -> T (using DaprCapability)
-        lock:    (store_name: StoreName,       body: DistributedLockCapability ?=> T)    -> T (using DaprCapability)
+        lock:    (store_name: LockStoreName,       body: DistributedLockCapability ?=> T)    -> T (using DaprCapability)
         -- Sub-capabilities carry the DaprCapability lifetime (CC: ^{capability}).
         -- body is a context function; the sub-capability is passed as an implicit and
         -- is not accessible outside body's lexical scope.
@@ -1119,18 +1121,18 @@ surface StateCapabilitySurface {
         demands JsonCodec
 
     exposes:
-        get: (key: StateKey) -> Any
+        get: (key: StateStoreKey) -> Any
         -- Returns Option[T]; None if key not found
-        get_with_etag: (key: StateKey) -> StateEntry
+        get_with_etag: (key: StateStoreKey) -> StateEntry
         -- Returns StateEntry with value and current ETag
-        get_bulk: (keys: List<StateKey>) -> Map<StateKey, StateEntry>
+        get_bulk: (keys: List<StateStoreKey>) -> Map<StateStoreKey, StateEntry>
         -- Batch fetch; missing keys return StateEntry with value = absent
-        save: (key: StateKey, value: Any) -> Unit
-        save_with_etag: (key: StateKey, value: Any, etag: ETag) -> Option<ETagMismatchException>
+        save: (key: StateStoreKey, value: Any) -> Unit
+        save_with_etag: (key: StateStoreKey, value: Any, etag: ETag) -> Option<ETagMismatchException>
         -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
         save_bulk: (entries: List<StateKeyValue>) -> Unit
-        delete: (key: StateKey) -> Unit
-        delete_with_etag: (key: StateKey, etag: ETag) -> Option<ETagMismatchException>
+        delete: (key: StateStoreKey) -> Unit
+        delete_with_etag: (key: StateStoreKey, etag: ETag) -> Option<ETagMismatchException>
         -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
         transaction: (ops: List<StateOp>) -> Unit
         query_state: (query: StateQuery) -> List<StateEntry>
@@ -1270,10 +1272,10 @@ surface ActorContextSurface {
 
     exposes:
         -- State
-        get:    (key: StateKey) -> Option<T>
+        get:    (key: ActorStateKey) -> Option<T>
         -- None when key absent; Some(T) when present
-        set:    (key: StateKey, value: T) -> Unit
-        remove: (key: StateKey) -> Unit
+        set:    (key: ActorStateKey, value: T) -> Unit
+        remove: (key: ActorStateKey) -> Unit
 
         -- Reminders (persistent — survive actor deactivation/restart)
         register_reminder: (name: ReminderName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit

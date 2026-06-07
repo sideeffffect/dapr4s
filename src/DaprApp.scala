@@ -8,7 +8,7 @@ package dapr4s
   * {{{
   *   Dapr(config).serve:
   *     val scope = summon[DaprCapability]
-  *     given StateCapability  = scope.state(StoreName("statestore"))
+  *     given StateCapability  = scope.state(StateStoreName("statestore"))
   *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
   *     DaprApp(
   *       subscriptions = List(

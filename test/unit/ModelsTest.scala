@@ -11,8 +11,8 @@ class ModelsTest extends FunSuite:
   // Opaque type construction and value extraction
   // -------------------------------------------------------------------------
 
-  test("StoreName round-trips through apply/value"):
-    val n = StoreName("my-store")
+  test("StateStoreName round-trips through apply/value"):
+    val n = StateStoreName("my-store")
     assertEquals(n.value, "my-store")
 
   test("PubSubName round-trips"):
@@ -48,7 +48,7 @@ class ModelsTest extends FunSuite:
     assertEquals(q.value, "{\"filter\":{}}")
 
   test("Opaque types prevent mix-up at compile time"):
-    val store: StoreName = StoreName("s")
+    val store: StateStoreName = StateStoreName("s")
     val pubsub: PubSubName = PubSubName("p")
     assertEquals(store.value, "s")
     assertEquals(pubsub.value, "p")
@@ -90,18 +90,18 @@ class ModelsTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("UpsertOp stores key and pre-encoded value"):
-    val op = StateOp.UpsertOp[String](StateKey("k"), "v")
-    assertEquals(op.key, StateKey("k"))
+    val op = StateOp.UpsertOp[String](StateStoreKey("k"), "v")
+    assertEquals(op.key, StateStoreKey("k"))
     assert(op.encodedValue.value.nonEmpty)
     assertEquals(op.etag, None)
 
   test("UpsertOp with etag"):
-    val op = StateOp.UpsertOp[String](StateKey("k"), "v", Some(ETag("e1")))
+    val op = StateOp.UpsertOp[String](StateStoreKey("k"), "v", Some(ETag("e1")))
     assertEquals(op.etag, Some(ETag("e1")))
 
   test("DeleteOp stores key"):
-    val op = StateOp.DeleteOp(StateKey("k"))
-    assertEquals(op.key, StateKey("k"))
+    val op = StateOp.DeleteOp(StateStoreKey("k"))
+    assertEquals(op.key, StateStoreKey("k"))
     assertEquals(op.etag, None)
 
   // -------------------------------------------------------------------------
@@ -153,7 +153,7 @@ class ModelsTest extends FunSuite:
   // -------------------------------------------------------------------------
 
   test("ETagMismatchException message contains key and etag"):
-    val ex = ETagMismatchException(StateKey("my-key"), ETag("abc"))
+    val ex = ETagMismatchException(StateStoreKey("my-key"), ETag("abc"))
     assert(ex.getMessage.contains("my-key"))
     assert(ex.getMessage.contains("abc"))
 
@@ -165,8 +165,8 @@ class ModelsTest extends FunSuite:
   // Non-empty validation for opaque types
   // -------------------------------------------------------------------------
 
-  test("StoreName rejects empty string"):
-    intercept[IllegalArgumentException] { StoreName("") }
+  test("StateStoreName rejects empty string"):
+    intercept[IllegalArgumentException] { StateStoreName("") }
 
   test("PubSubName rejects empty string"):
     intercept[IllegalArgumentException] { PubSubName("") }

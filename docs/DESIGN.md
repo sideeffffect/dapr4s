@@ -80,13 +80,13 @@ Note: safe mode is enabled **per-file** via `import language.experimental.safe` 
 classDiagram
     class DaprCapability {
         <<trait>>
-        +state(storeName: StoreName) StateCapability^this
+        +state(storeName: StateStoreName) StateCapability^this
         +pubsub(pubsubName: PubSubName) PubSubCapability^this
         +invoker ServiceInvocationCapability^this
         +secrets(storeName: SecretStoreName) SecretsCapability^this
         +config(storeName: ConfigStoreName) ConfigurationCapability^this
         +binding(name: BindingName) BindingsCapability^this
-        +lock(storeName: StoreName) DistributedLockCapability^this
+        +lock(storeName: LockStoreName) DistributedLockCapability^this
         +actor(actorType, actorId) ActorCapability^this
         +workflow WorkflowCapability^this
         +crypto(componentName: CryptoComponentName) CryptoCapability^this
@@ -96,14 +96,14 @@ classDiagram
     note for DaprCapability "Root capability. Companion object provides transformer API:\nDaprCapability.state(name) { ... } introduces StateCapability into body scope"
     class StateCapability {
         <<trait>>
-        +get[T](key: StateKey) Option[T]
-        +getWithETag[T](key: StateKey) StateEntry[T]
-        +getBulk[T](keys: Seq[StateKey]) Map[StateKey,StateEntry[T]]
-        +save[T](key: StateKey, value: T) Unit
-        +saveBulk[T](entries: Seq[(StateKey,T)]) Unit
-        +saveWithETag[T](key: StateKey, value: T, etag: ETag) Option[ETagMismatchException]
-        +delete(key: StateKey) Unit
-        +deleteWithETag(key: StateKey, etag: ETag) Option[ETagMismatchException]
+        +get[T](key: StateStoreKey) Option[T]
+        +getWithETag[T](key: StateStoreKey) StateEntry[T]
+        +getBulk[T](keys: Seq[StateStoreKey]) Map[StateStoreKey,StateEntry[T]]
+        +save[T](key: StateStoreKey, value: T) Unit
+        +saveBulk[T](entries: Seq[(StateStoreKey,T)]) Unit
+        +saveWithETag[T](key: StateStoreKey, value: T, etag: ETag) Option[ETagMismatchException]
+        +delete(key: StateStoreKey) Unit
+        +deleteWithETag(key: StateStoreKey, etag: ETag) Option[ETagMismatchException]
         +transaction(ops: Seq[StateOp]) Unit
         +queryState[T](query: StateQuery) List[StateEntry[T]]
     }
@@ -247,7 +247,7 @@ Pure handler methods declared with **anonymous** `using` capability parameters. 
 ```scala
 def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse =
   val orderId = java.util.UUID.randomUUID().toString
-  StateCapability.save(StateKey(orderId), req)
+  StateCapability.save(StateStoreKey(orderId), req)
   PubSubCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
   OrderResponse(orderId, "accepted")
 ```
@@ -257,9 +257,9 @@ Each capability trait has a companion object that mirrors every instance method 
 ```scala
 // src/Capabilities.scala
 object StateCapability:
-  def save[T: JsonCodec](key: StateKey, value: T)(using cap: StateCapability): Unit =
+  def save[T: JsonCodec](key: StateStoreKey, value: T)(using cap: StateCapability): Unit =
     cap.save(key, value)
-  def get[T: JsonCodec](key: StateKey)(using cap: StateCapability): Option[T] =
+  def get[T: JsonCodec](key: StateStoreKey)(using cap: StateCapability): Option[T] =
     cap.get(key)
   // ... all other methods
 ```
@@ -288,7 +288,7 @@ object OrderServiceApp:
 Transformer signature (in `src/DaprCapability.scala`):
 ```scala
 object DaprCapability:
-  def state(storeName: StoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
+  def state(storeName: StateStoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.state(storeName))
 ```
 
@@ -340,11 +340,12 @@ val combined = OrderServiceApp() ++ InventoryServiceApp()
 
 ## Opaque Domain Types
 
-All domain identifiers are opaque to prevent accidental misuse (e.g., passing a `PubSubName` where a `StoreName` is expected).
+All domain identifiers are opaque to prevent accidental misuse (e.g., passing a `PubSubName` where a `StateStoreName` is expected).
 
 | Type | Wraps | Non-empty? | Purpose |
 |---|---|---|---|
-| `StoreName` | `String` | yes | DAPR state store / lock store component name |
+| `StateStoreName` | `String` | yes | DAPR state store component name |
+| `LockStoreName` | `String` | yes | DAPR lock store component name |
 | `PubSubName` | `String` | yes | DAPR pub/sub component name |
 | `Topic` | `String` | yes | Pub/sub topic |
 | `AppId` | `String` | yes | Target application ID for service invocation |
@@ -368,7 +369,8 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `JobName` | `String` | yes | DAPR job name (routed back to `/job/<name>`) |
 | `ConversationComponentName` | `String` | yes | DAPR conversation (LLM) component name |
 | `ETag` | `String` | no | Optimistic-concurrency tag |
-| `StateKey` | `String` | no | Key in a DAPR state store |
+| `StateStoreKey` | `String` | no | Key in a DAPR state store (StateCapability) |
+| `ActorStateKey` | `String` | no | Key in a virtual actor's state |
 | `StateQuery` | `String` | no | State store query expression (JSON filter) |
 | `SecretKey` | `String` | no | Key in a DAPR secrets store |
 | `ConfigKey` | `String` | no | Key in a DAPR configuration store |
@@ -418,8 +420,8 @@ In Scala this is represented as:
 ```scala
 sealed abstract class StateOp          // entity StateOp
 object StateOp:
-  final case class UpsertOp(key: StateKey, encodedValue: SerializedJson, etag: Option[ETag]) extends StateOp
-  final case class DeleteOp(key: StateKey, etag: Option[ETag] = None)                        extends StateOp
+  final case class UpsertOp(key: StateStoreKey, encodedValue: SerializedJson, etag: Option[ETag]) extends StateOp
+  final case class DeleteOp(key: StateStoreKey, etag: Option[ETag] = None)                        extends StateOp
 ```
 
 `UpsertOp.encodedValue` is a `SerializedJson` opaque type (structurally always present, non-nullable by construction). Use the companion `UpsertOp.apply[T]` smart constructor to encode a typed value immediately; this avoids type erasure issues when the operation is dispatched in `StateCapability.transaction`.
@@ -542,7 +544,7 @@ dapr4s/
 │   ├── Actors.scala                  # ActorContext, ActorDefinition, ActorRoutes + route types
 │   ├── Workflows.scala               # Workflow, WorkflowActivity, ActivityDef, Task, WorkflowContext
 │   ├── Exceptions.scala              # ETagMismatchException, JsonDecodeException
-│   ├── optypes/                      # One opaque domain type per file (StoreName, Topic, AppId,
+│   ├── optypes/                      # One opaque domain type per file (StateStoreName, Topic, AppId,
 │   │                                 # SerializedJson, ApiToken, DaprPort, DaprDuration, ... )
 │   └── internal/
 │       ├── DaprCapabilityImpl.scala  # DaprCapability implementation
@@ -678,9 +680,9 @@ Dapr virtual actors are hosted server-side via `ActorDefinition` without extendi
 ```scala
 @scala.caps.assumeSafe trait ActorContext extends scala.caps.ExclusiveCapability:
   // State
-  def get[T: JsonCodec](key: StateKey): Option[T]
-  def set[T: JsonCodec](key: StateKey, value: T): Unit
-  def remove(key: StateKey): Unit
+  def get[T: JsonCodec](key: ActorStateKey): Option[T]
+  def set[T: JsonCodec](key: ActorStateKey, value: T): Unit
+  def remove(key: ActorStateKey): Unit
   // Reminders (persistent — survive actor deactivation)
   def registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: Duration, period: Option[Duration] = None): Unit
   def unregisterReminder(name: ReminderName): Unit

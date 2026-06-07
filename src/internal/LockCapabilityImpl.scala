@@ -9,7 +9,7 @@ import NullOps.*
 @scala.caps.assumeSafe
 private[internal] final class LockCapabilityImpl(
     scope: DaprCapabilityImpl,
-    val storeName: StoreName,
+    val storeName: LockStoreName,
 ) extends DistributedLockCapability:
 
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean =

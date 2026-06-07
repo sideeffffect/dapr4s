@@ -45,12 +45,12 @@ private object StateCapabilityImpl:
 @scala.caps.assumeSafe
 private[internal] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
-    val storeName: StoreName,
+    val storeName: StateStoreName,
 ) extends StateCapability:
 
   import StateCapabilityImpl.*
 
-  def get[T: JsonCodec](key: StateKey, consistency: StateConsistency = StateConsistency.Default): Option[T] =
+  def get[T: JsonCodec](key: StateStoreKey, consistency: StateConsistency = StateConsistency.Default): Option[T] =
     val mono =
       if consistency == StateConsistency.Default then scope.client.getState(storeName.value, key.value, classOf[String])
       else
@@ -63,7 +63,7 @@ private[internal] final class StateCapabilityImpl(
     mono.awaitResult().toOption.flatMap(s => s.getValue.toOption.filterNot(_.isEmpty)).map(decode[T])
 
   def getWithETag[T: JsonCodec](
-      key: StateKey,
+      key: StateStoreKey,
       consistency: StateConsistency = StateConsistency.Default,
   ): StateEntry[T] =
     val mono =
@@ -84,7 +84,7 @@ private[internal] final class StateCapabilityImpl(
         StateEntry(raw.map(decode[T]), etag)
       }
 
-  def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]] =
+  def getBulk[T: JsonCodec](keys: Seq[StateStoreKey]): Map[StateStoreKey, StateEntry[T]] =
     if keys.isEmpty then Map.empty
     else
       val javaKeys: java.util.List[String] = keys.map(_.value).asJava
@@ -94,18 +94,18 @@ private[internal] final class StateCapabilityImpl(
         .toOption
         .fold(keys.map(k => k -> StateEntry[T](None, None)).toMap) { results =>
           results.asScala.map { state =>
-            val key = StateKey(state.getKey.nn)
+            val key = StateStoreKey(state.getKey.nn)
             val raw = state.getValue.toOption.filterNot(_.isEmpty)
             val etag = state.getEtag.toOption.map(ETag(_))
             key -> StateEntry(raw.map(decode[T]), etag)
           }.toMap
         }
 
-  def save[T: JsonCodec](key: StateKey, value: T): Unit =
+  def save[T: JsonCodec](key: StateStoreKey, value: T): Unit =
     val json = summon[JsonCodec[T]].encode(value)
     scope.client.saveState(storeName.value, key.value, json).awaitResult(): Unit
 
-  def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit =
+  def saveBulk[T: JsonCodec](entries: Seq[(StateStoreKey, T)]): Unit =
     if entries.nonEmpty then
       val states: java.util.List[DaprState[?]] = entries.map { case (key, value) =>
         val json = summon[JsonCodec[T]].encode(value)
@@ -114,7 +114,7 @@ private[internal] final class StateCapabilityImpl(
       scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
 
   def saveWithETag[T: JsonCodec](
-      key: StateKey,
+      key: StateStoreKey,
       value: T,
       etag: ETag,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
@@ -129,11 +129,11 @@ private[internal] final class StateCapabilityImpl(
       None
     catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
 
-  def delete(key: StateKey): Unit =
+  def delete(key: StateStoreKey): Unit =
     scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
 
   def deleteWithETag(
-      key: StateKey,
+      key: StateStoreKey,
       etag: ETag,
       consistency: StateConsistency = StateConsistency.Default,
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,

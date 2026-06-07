@@ -39,16 +39,16 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[String, String](InvocationMethodName("save")) { v =>
-                  try { StateCapability.save(StateKey(k), v); "ok" }
+                  try { StateCapability.save(StateStoreKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
-                  try StateCapability.get[String](StateKey(k))
+                  try StateCapability.get[String](StateStoreKey(k))
                   catch case e: Exception => throw e
                 },
               ),
@@ -64,12 +64,12 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
   test("state: get missing key returns null"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
-                  try StateCapability.get[String](StateKey(s"absent-${java.util.UUID.randomUUID()}"))
+                  try StateCapability.get[String](StateStoreKey(s"absent-${java.util.UUID.randomUUID()}"))
                   catch case e: Exception => throw e
                 },
               ),
@@ -86,17 +86,17 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[String, String](InvocationMethodName("save")) { v =>
-                  try { StateCapability.save(StateKey(k), v); "ok" }
+                  try { StateCapability.save(StateStoreKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, String](InvocationMethodName("get-with-etag")) { _ =>
                   try
-                    val e = StateCapability.getWithETag[String](StateKey(k))
+                    val e = StateCapability.getWithETag[String](StateStoreKey(k))
                     s"${e.value.getOrElse("none")}|${e.etag.map(_.value).getOrElse("none")}"
                   catch case e: Exception => throw e
                 },
@@ -115,13 +115,13 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
   test("state: getWithETag for missing key returns none|none"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[Unit, String](InvocationMethodName("get-with-etag")) { _ =>
                   try
-                    val e = StateCapability.getWithETag[String](StateKey(s"absent-${java.util.UUID.randomUUID()}"))
+                    val e = StateCapability.getWithETag[String](StateStoreKey(s"absent-${java.util.UUID.randomUUID()}"))
                     s"${e.value.getOrElse("none")}|${e.etag.map(_.value).getOrElse("none")}"
                   catch case ex: Exception => throw ex
                 },
@@ -141,16 +141,16 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val ka = uniqueKey()
         val kb = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
-          StateCapability.save(StateKey(ka), "alpha")
-          StateCapability.save(StateKey(kb), "beta")
+        DaprCapability.state(StateStoreName("statestore")) {
+          StateCapability.save(StateStoreKey(ka), "alpha")
+          StateCapability.save(StateStoreKey(kb), "beta")
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[List[String], List[Option[String]]](InvocationMethodName("bulk-get")) { keys =>
                   try
-                    val results = StateCapability.getBulk[String](keys.map(StateKey(_)))
-                    keys.map(k => results.get(StateKey(k)).flatMap(_.value))
+                    val results = StateCapability.getBulk[String](keys.map(StateStoreKey(_)))
+                    keys.map(k => results.get(StateStoreKey(k)).flatMap(_.value))
                   catch case e: Exception => throw e
                 },
               ),
@@ -172,20 +172,20 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
         val k1 = uniqueKey()
         val k2 = uniqueKey()
         val k3 = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[Unit, String](InvocationMethodName("save-bulk")) { _ =>
                   try
                     StateCapability.saveBulk[String](
-                      List(StateKey(k1) -> "v1", StateKey(k2) -> "v2", StateKey(k3) -> "v3"),
+                      List(StateStoreKey(k1) -> "v1", StateStoreKey(k2) -> "v2", StateStoreKey(k3) -> "v3"),
                     )
                     "ok"
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[String, Option[String]](InvocationMethodName("get")) { k =>
-                  try StateCapability.get[String](StateKey(k))
+                  try StateCapability.get[String](StateStoreKey(k))
                   catch case e: Exception => throw e
                 },
               ),
@@ -208,21 +208,21 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
-                  try { StateCapability.save(StateKey(k), v); "ok" }
+                  try { StateCapability.save(StateStoreKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, String](InvocationMethodName("get-etag")) { _ =>
-                  try StateCapability.getWithETag[String](StateKey(k)).etag.map(_.value).getOrElse("none")
+                  try StateCapability.getWithETag[String](StateStoreKey(k)).etag.map(_.value).getOrElse("none")
                   catch case ex: Exception => throw ex
                 },
                 InvocationRoute[String, String](InvocationMethodName("save-with-etag")) { etag =>
                   try
-                    val err = StateCapability.saveWithETag(StateKey(k), "new-value", ETag(etag))
+                    val err = StateCapability.saveWithETag(StateStoreKey(k), "new-value", ETag(etag))
                     if err.isDefined then "conflict" else "ok"
                   catch case e: Exception => throw e
                 },
@@ -243,17 +243,17 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
-                  try { StateCapability.save(StateKey(k), v); "ok" }
+                  try { StateCapability.save(StateStoreKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, String](InvocationMethodName("save-with-wrong-etag")) { _ =>
                   try
-                    val err = StateCapability.saveWithETag(StateKey(k), "new", ETag("wrong-etag-999"))
+                    val err = StateCapability.saveWithETag(StateStoreKey(k), "new", ETag("wrong-etag-999"))
                     if err.isDefined then "conflict" else "ok"
                   catch case e: Exception => throw e
                 },
@@ -275,20 +275,20 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[String, String](InvocationMethodName("save")) { v =>
-                  try { StateCapability.save(StateKey(k), v); "ok" }
+                  try { StateCapability.save(StateStoreKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, String](InvocationMethodName("delete")) { _ =>
-                  try { StateCapability.delete(StateKey(k)); "deleted" }
+                  try { StateCapability.delete(StateStoreKey(k)); "deleted" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
-                  try StateCapability.get[String](StateKey(k))
+                  try StateCapability.get[String](StateStoreKey(k))
                   catch case e: Exception => throw e
                 },
               ),
@@ -305,26 +305,26 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
-                  try { StateCapability.save(StateKey(k), v); "ok" }
+                  try { StateCapability.save(StateStoreKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, String](InvocationMethodName("get-etag")) { _ =>
-                  try StateCapability.getWithETag[String](StateKey(k)).etag.map(_.value).getOrElse("none")
+                  try StateCapability.getWithETag[String](StateStoreKey(k)).etag.map(_.value).getOrElse("none")
                   catch case ex: Exception => throw ex
                 },
                 InvocationRoute[String, String](InvocationMethodName("del-with-etag")) { etag =>
                   try
-                    val err = StateCapability.deleteWithETag(StateKey(k), ETag(etag))
+                    val err = StateCapability.deleteWithETag(StateStoreKey(k), ETag(etag))
                     if err.isDefined then "conflict" else "ok"
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
-                  try StateCapability.get[String](StateKey(k))
+                  try StateCapability.get[String](StateStoreKey(k))
                   catch case e: Exception => throw e
                 },
               ),
@@ -343,22 +343,22 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val k = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           withServer(
             DaprApp(invocations =
               List(
                 InvocationRoute[String, String](InvocationMethodName("seed")) { v =>
-                  try { StateCapability.save(StateKey(k), v); "ok" }
+                  try { StateCapability.save(StateStoreKey(k), v); "ok" }
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, String](InvocationMethodName("del-wrong")) { _ =>
                   try
-                    val err = StateCapability.deleteWithETag(StateKey(k), ETag("bad-etag"))
+                    val err = StateCapability.deleteWithETag(StateStoreKey(k), ETag("bad-etag"))
                     if err.isDefined then "conflict" else "ok"
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[Unit, Option[String]](InvocationMethodName("get")) { _ =>
-                  try StateCapability.get[String](StateKey(k))
+                  try StateCapability.get[String](StateStoreKey(k))
                   catch case e: Exception => throw e
                 },
               ),
@@ -379,8 +379,8 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val kAdd = uniqueKey()
         val kDel = uniqueKey()
-        DaprCapability.state(StoreName("statestore")) {
-          StateCapability.save(StateKey(kDel), "gone")
+        DaprCapability.state(StateStoreName("statestore")) {
+          StateCapability.save(StateStoreKey(kDel), "gone")
           withServer(
             DaprApp(invocations =
               List(
@@ -388,15 +388,15 @@ class StateCapabilityServerTest extends FunSuite with TestContainersForAll with 
                   try
                     StateCapability.transaction(
                       Seq(
-                        StateOp.UpsertOp[String](StateKey(kAdd), "new"),
-                        StateOp.DeleteOp(StateKey(kDel)),
+                        StateOp.UpsertOp[String](StateStoreKey(kAdd), "new"),
+                        StateOp.DeleteOp(StateStoreKey(kDel)),
                       ),
                     )
                     "ok"
                   catch case e: Exception => throw e
                 },
                 InvocationRoute[String, Option[String]](InvocationMethodName("get")) { k =>
-                  try StateCapability.get[String](StateKey(k))
+                  try StateCapability.get[String](StateStoreKey(k))
                   catch case e: Exception => throw e
                 },
               ),

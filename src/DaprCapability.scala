@@ -14,14 +14,14 @@ package dapr4s
   * {{{
   *   // Direct factory style (for tests and advanced use)
   *   val cap = summon[DaprCapability]
-  *   given StateCapability = cap.state(StoreName("statestore"))
+  *   given StateCapability = cap.state(StateStoreName("statestore"))
   *
   *   // Transformer style (recommended for service handlers): a dedicated
   *   // `*App` object whose `apply` takes the capabilities it needs and
   *   // returns a [[DaprApp]] — the idiom this library promotes.
   *   object MyServiceApp:
   *     def apply()(using DaprCapability): DaprApp =
-  *       DaprCapability.state(StoreName("statestore")) {
+  *       DaprCapability.state(StateStoreName("statestore")) {
   *         DaprCapability.pubsub(PubSubName("pubsub")) {
   *           DaprApp(...)
   *         }
@@ -35,7 +35,7 @@ package dapr4s
 trait DaprCapability extends scala.caps.ExclusiveCapability:
 
   /** Obtain a [[StateCapability]] for the named state store. */
-  def state(storeName: StoreName): StateCapability^{this}
+  def state(storeName: StateStoreName): StateCapability^{this}
 
   /** Obtain a [[PubSubCapability]] for the named pub/sub component. */
   def pubsub(pubsubName: PubSubName): PubSubCapability^{this}
@@ -53,7 +53,7 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   def binding(bindingName: BindingName): BindingsCapability^{this}
 
   /** Obtain a [[DistributedLockCapability]] for the named lock store. */
-  def lock(storeName: StoreName): DistributedLockCapability^{this}
+  def lock(storeName: LockStoreName): DistributedLockCapability^{this}
 
   /** Obtain an [[ActorCapability]] for invoking methods on a specific actor instance. */
   def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this}
@@ -81,7 +81,7 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   * {{{
   *   object MyServiceApp:
   *     def apply()(using DaprCapability): DaprApp =
-  *       DaprCapability.state(StoreName("statestore")) {
+  *       DaprCapability.state(StateStoreName("statestore")) {
   *         DaprCapability.pubsub(PubSubName("pubsub")) {
   *           DaprApp(
   *             invocations = List(
@@ -108,7 +108,7 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
 @scala.caps.assumeSafe
 object DaprCapability:
 
-  def state(storeName: StoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
+  def state(storeName: StateStoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.state(storeName).asInstanceOf[StateCapability])
 
   def pubsub(pubsubName: PubSubName)[T](body: PubSubCapability ?=> T)(using cap: DaprCapability): T =
@@ -126,7 +126,7 @@ object DaprCapability:
   def binding(bindingName: BindingName)[T](body: BindingsCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.binding(bindingName).asInstanceOf[BindingsCapability])
 
-  def lock(storeName: StoreName)[T](body: DistributedLockCapability ?=> T)(using cap: DaprCapability): T =
+  def lock(storeName: LockStoreName)[T](body: DistributedLockCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.lock(storeName).asInstanceOf[DistributedLockCapability])
 
   def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability ?=> T)(using cap: DaprCapability): T =

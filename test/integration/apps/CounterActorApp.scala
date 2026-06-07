@@ -25,7 +25,7 @@ import scala.concurrent.duration.FiniteDuration
 object CounterActorApp:
 
   val ActorTypeName = ActorType("Counter")
-  private val CountKey = StateKey("count")
+  private val CountKey = ActorStateKey("count")
   private val ResetReminder = ReminderName("scheduled-reset")
   private val IncrTimer = TimerName("auto-increment")
 

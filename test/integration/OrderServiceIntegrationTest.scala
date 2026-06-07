@@ -49,8 +49,8 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
           assert(resp.orderId.nonEmpty)
 
           val saved = scope
-            .state(StoreName("statestore"))
-            .get[OrderRequest](StateKey(resp.orderId))
+            .state(StateStoreName("statestore"))
+            .get[OrderRequest](StateStoreKey(resp.orderId))
           assertEquals(saved, Some(req))
         }
     }
@@ -118,9 +118,9 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
             resp.orderId
           }
 
-          val stateStore = scope.state(StoreName("statestore"))
+          val stateStore = scope.state(StateStoreName("statestore"))
           ids.zip(items).foreach { (id, item) =>
-            val saved = stateStore.get[OrderRequest](StateKey(id))
+            val saved = stateStore.get[OrderRequest](StateStoreKey(id))
             assertEquals(saved.map(_.item), Some(item))
           }
         }

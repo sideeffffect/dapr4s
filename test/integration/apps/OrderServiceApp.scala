@@ -13,7 +13,7 @@ import language.experimental.safe
   *
   * {{{
   *   def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse =
-  *     StateCapability.save(StateKey(orderId), req)
+  *     StateCapability.save(StateStoreKey(orderId), req)
   *     PubSubCapability.publish(OrdersTopic, event)
   * }}}
   *
@@ -29,7 +29,7 @@ import language.experimental.safe
   */
 object OrderServiceApp:
 
-  val StateName = StoreName("statestore")
+  val StateName = StateStoreName("statestore")
   val PubSubComp = PubSubName("pubsub")
   val OrdersTopic = Topic("orders")
 
@@ -42,13 +42,13 @@ object OrderServiceApp:
     */
   def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse =
     val orderId = java.util.UUID.randomUUID().toString
-    StateCapability.save(StateKey(orderId), req)
+    StateCapability.save(StateStoreKey(orderId), req)
     PubSubCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
     OrderResponse(orderId, "accepted")
 
   /** Retrieve a previously placed order by ID.  Returns `None` if not found. */
   def getOrder(orderId: String)(using StateCapability): Option[OrderRequest] =
-    StateCapability.get[OrderRequest](StateKey(orderId))
+    StateCapability.get[OrderRequest](StateStoreKey(orderId))
 
   /** Query orders using a raw JSON filter expression. Returns a JSON array of `{"value": ..., "etag": ...}` objects.
     */

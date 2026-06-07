@@ -141,7 +141,7 @@ The wiki's `scala-type-safety/` section is the primary reference for Scala codin
 
 - **`wiki/scala-type-safety/scala-best-practices-nrinaudo.md`** — comprehensive rule set: sealed types must have `final` subtypes, case classes must be `final`, avoid unsafe partial ops (`head`/`get`/`reduce` on possibly-empty collections → use `headOption`/`getOrElse`/`reduceOption`), avoid `null` (use `Option`), prefer `sealed abstract class` over `sealed trait` for ADT root types, add explicit types to all public members, always use `override`.
 
-- **`wiki/scala-type-safety/primitive-obsession-opaque-types.md`** — use opaque types for every domain string/int value (e.g. `StoreName`, `PubSubName`). Zero-cost at runtime. Smart constructors validate at the boundary; downstream code trusts the type. Prefer opaque types over `case class` wrappers (no boxing) or `AnyVal` (allocates in generic contexts).
+- **`wiki/scala-type-safety/primitive-obsession-opaque-types.md`** — use opaque types for every domain string/int value (e.g. `StateStoreName`, `PubSubName`). Zero-cost at runtime. Smart constructors validate at the boundary; downstream code trusts the type. Prefer opaque types over `case class` wrappers (no boxing) or `AnyVal` (allocates in generic contexts).
 
 - **`wiki/scala-type-safety/parse-dont-validate.md`** — encode validation results in the type; don't validate-and-discard. Parse at system boundaries; downstream code uses well-typed values.
 
@@ -153,7 +153,10 @@ Specific rules currently active in this codebase:
 - `UnlockStatus` and `SubscriptionResult` are `enum` (not `case class` with int codes).
 - `StateOp` root is `sealed abstract class` (not `sealed trait`) — proper ADT root.
 - Do not call `.head`, `.tail`, `.last`, `.get` on collections or `Option`/`Try`/`Either` without a prior length/presence check; use `headOption`, `getOrElse`, `getOrElse(fail(...))` in tests.
-- Method names are domain-split, **not** a single shared `MethodName` type. Use `InvocationMethodName` for service invocation (`ServiceInvocationCapability.invoke`, `InvocationRoute`, `InvocationRequest`) and `ActorMethodName` for actor methods (`ActorCapability.invoke`/`invokeVoid`, `ActorMethodRoute`). These address genuinely different things (an HTTP route on a remote app vs. a method on a stateful actor instance) and the type wall prevents passing one where the other is expected. Do not reintroduce a unified `MethodName`. (Actor timer/reminder callbacks use `TimerName`/`ReminderName`, not a method-name type.)
+- Domain identifiers are split per Dapr building block — **never** unify a name/key type across two building blocks just because both are `String` underneath. The test: if a doc comment would have to say "X *or* Y", it's two types. Current splits to preserve (do not re-merge):
+  - **Method names**: `InvocationMethodName` for service invocation (`ServiceInvocationCapability.invoke`, `InvocationRoute`, `InvocationRequest`) vs. `ActorMethodName` for actor methods (`ActorCapability.invoke`/`invokeVoid`, `ActorMethodRoute`) — an HTTP route on a remote app vs. a method on a stateful actor. (Actor timer/reminder callbacks use `TimerName`/`ReminderName`, not a method-name type.)
+  - **Store names**: `StateStoreName` (`DaprCapability.state`) vs. `LockStoreName` (`DaprCapability.lock`) — distinct Dapr components with distinct YAML. (Mirrors the existing `ConfigStoreName`/`SecretStoreName` split.)
+  - **State keys**: `StateStoreKey` (app-level `StateCapability`) vs. `ActorStateKey` (per-instance `ActorContext`/`ActorState`).
 
 ### Java interop boundary
 Everything in `src/internal/` is marked `@scala.caps.assumeSafe`. This is the only place Java

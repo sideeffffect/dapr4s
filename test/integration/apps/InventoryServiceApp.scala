@@ -26,10 +26,10 @@ import language.experimental.safe
   */
 object InventoryServiceApp:
 
-  val StateName = StoreName("statestore")
+  val StateName = StateStoreName("statestore")
   val PubSubComp = PubSubName("pubsub")
   val OrdersTopic = Topic("orders")
-  val LockStoreName = StoreName("lockstore")
+  val LockName = LockStoreName("lockstore")
 
   /** Default stock level when no seed has been set. */
   val DefaultStock = 100
@@ -49,7 +49,7 @@ object InventoryServiceApp:
   ): SubscriptionResult =
     val item = event.data.item
     val qty = event.data.quantity
-    val key = StateKey(s"stock-$item")
+    val key = StateStoreKey(s"stock-$item")
     val owner = LockOwner(s"inv-${event.id.value}")
 
     if DistributedLockCapability.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
@@ -63,12 +63,12 @@ object InventoryServiceApp:
 
   /** Return current stock level for the given item name. */
   def getStock(item: String)(using StateCapability): StockLevel =
-    val available = StateCapability.get[Int](StateKey(s"stock-$item")).getOrElse(DefaultStock)
+    val available = StateCapability.get[Int](StateStoreKey(s"stock-$item")).getOrElse(DefaultStock)
     StockLevel(item, available)
 
   /** Seed the stock level for an item (test helper and k8s init). */
   def seedStock(stock: StockLevel)(using StateCapability): StockLevel =
-    StateCapability.save(StateKey(s"stock-${stock.item}"), stock.available)
+    StateCapability.save(StateStoreKey(s"stock-${stock.item}"), stock.available)
     stock
 
   // ---------------------------------------------------------------------------
@@ -78,7 +78,7 @@ object InventoryServiceApp:
   /** Build a [[DaprApp]] with all inbound routes for the Inventory service. */
   def apply()(using DaprCapability): DaprApp =
     DaprCapability.state(StateName) {
-      DaprCapability.lock(LockStoreName) {
+      DaprCapability.lock(LockName) {
         DaprApp(
           subscriptions = List(
             Subscription[OrderEvent](PubSubComp, OrdersTopic)(handleOrderEvent),

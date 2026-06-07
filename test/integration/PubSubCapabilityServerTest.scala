@@ -143,19 +143,19 @@ class PubSubCapabilityServerTest extends FunSuite with TestContainersForAll with
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val topic = uniqueTopic()
         val stateKey = s"recv-${java.util.UUID.randomUUID()}"
-        DaprCapability.state(StoreName("statestore")) {
+        DaprCapability.state(StateStoreName("statestore")) {
           DaprCapability.pubsub(PubSubName("pubsub")) {
             withServer(
               DaprApp(
                 subscriptions = List(
                   Subscription[String](PubSubName("pubsub"), Topic(topic)) { event =>
-                    try { StateCapability.save(StateKey(stateKey), event.data); SubscriptionResult.Success }
+                    try { StateCapability.save(StateStoreKey(stateKey), event.data); SubscriptionResult.Success }
                     catch case e: Exception => throw e
                   },
                 ),
                 invocations = List(
                   InvocationRoute[Unit, Option[String]](InvocationMethodName("get-recv")) { _ =>
-                    try StateCapability.get[String](StateKey(stateKey))
+                    try StateCapability.get[String](StateStoreKey(stateKey))
                     catch case e: Exception => throw e
                   },
                 ),

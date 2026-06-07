@@ -27,7 +27,7 @@ private[internal] final class HttpActorContext(
 
   // ---- URL helpers -----------------------------------------------------------
 
-  private def stateUrl(key: StateKey): String =
+  private def stateUrl(key: ActorStateKey): String =
     s"$sidecarHttpEndpoint/v1.0/actors/${actorType.value}/${actorId.value}/state/${key.value}"
 
   private def bulkStateUrl: String =
@@ -41,7 +41,7 @@ private[internal] final class HttpActorContext(
 
   // ---- State -----------------------------------------------------------------
 
-  def get[T: JsonCodec](key: StateKey): Option[T] =
+  def get[T: JsonCodec](key: ActorStateKey): Option[T] =
     val conn = openConn(stateUrl(key))
     try
       conn.setRequestMethod("GET")
@@ -53,7 +53,7 @@ private[internal] final class HttpActorContext(
         summon[JsonCodec[T]].decode(json).toOption
     finally conn.disconnect()
 
-  def set[T: JsonCodec](key: StateKey, value: T): Unit =
+  def set[T: JsonCodec](key: ActorStateKey, value: T): Unit =
     val requestInner = Json.mapper.createObjectNode()
     requestInner.put("key", key.value)
     requestInner.set("value", Json.mapper.readTree(summon[JsonCodec[T]].encode(value)))
@@ -63,7 +63,7 @@ private[internal] final class HttpActorContext(
     val body = Json.mapper.writeValueAsString(Json.mapper.createArrayNode().add(requestObj))
     postJson(bulkStateUrl, body)
 
-  def remove(key: StateKey): Unit =
+  def remove(key: ActorStateKey): Unit =
     val requestInner = Json.mapper.createObjectNode()
     requestInner.put("key", key.value)
     val requestObj = Json.mapper.createObjectNode()

@@ -57,7 +57,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
-        DaprCapability.lock(StoreName("lockstore")) {
+        DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
             DaprApp(invocations =
               List(
@@ -78,7 +78,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
-        DaprCapability.lock(StoreName("lockstore")) {
+        DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
             DaprApp(invocations =
               List(
@@ -104,7 +104,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
-        DaprCapability.lock(StoreName("lockstore")) {
+        DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
             DaprApp(invocations =
               List(
@@ -131,7 +131,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
-        DaprCapability.lock(StoreName("lockstore")) {
+        DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
             DaprApp(invocations =
               List(
@@ -153,7 +153,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val realOwner = uniqueOwner()
-        DaprCapability.lock(StoreName("lockstore")) {
+        DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
             DaprApp(invocations =
               List(
@@ -182,7 +182,7 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         val res = uniqueResource()
         val own = uniqueOwner()
-        DaprCapability.lock(StoreName("lockstore")) {
+        DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
             DaprApp(invocations =
               List(

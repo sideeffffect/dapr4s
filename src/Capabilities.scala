@@ -13,30 +13,30 @@ import scala.concurrent.duration.FiniteDuration
   */
 @scala.caps.assumeSafe
 trait StateCapability extends scala.caps.ExclusiveCapability:
-  val storeName: StoreName
+  val storeName: StateStoreName
 
   /** Fetch a value; returns `None` if the key does not exist.
     *
     * @param consistency
     *   read consistency level; [[StateConsistency.Default]] uses the store's own default
     */
-  def get[T: JsonCodec](key: StateKey, consistency: StateConsistency = StateConsistency.Default): Option[T]
+  def get[T: JsonCodec](key: StateStoreKey, consistency: StateConsistency = StateConsistency.Default): Option[T]
 
   /** Fetch a value together with the current server-side ETag.
     *
     * @param consistency
     *   read consistency level; [[StateConsistency.Default]] uses the store's own default
     */
-  def getWithETag[T: JsonCodec](key: StateKey, consistency: StateConsistency = StateConsistency.Default): StateEntry[T]
+  def getWithETag[T: JsonCodec](key: StateStoreKey, consistency: StateConsistency = StateConsistency.Default): StateEntry[T]
 
   /** Fetch multiple values by key in a single call. */
-  def getBulk[T: JsonCodec](keys: Seq[StateKey]): Map[StateKey, StateEntry[T]]
+  def getBulk[T: JsonCodec](keys: Seq[StateStoreKey]): Map[StateStoreKey, StateEntry[T]]
 
   /** Unconditionally save a value. */
-  def save[T: JsonCodec](key: StateKey, value: T): Unit
+  def save[T: JsonCodec](key: StateStoreKey, value: T): Unit
 
   /** Save multiple key-value pairs in a single call. */
-  def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)]): Unit
+  def saveBulk[T: JsonCodec](entries: Seq[(StateStoreKey, T)]): Unit
 
   /** Save a value only if the provided ETag matches the server-side ETag. Returns `None` on success, `Some(e)` if the
     * ETag did not match.
@@ -49,7 +49,7 @@ trait StateCapability extends scala.caps.ExclusiveCapability:
     *   concurrency control; [[StateConcurrency.FirstWrite]] is the typical safe default for optimistic locking
     */
   def saveWithETag[T: JsonCodec](
-      key: StateKey,
+      key: StateStoreKey,
       value: T,
       etag: ETag,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
@@ -58,7 +58,7 @@ trait StateCapability extends scala.caps.ExclusiveCapability:
   ): Option[ETagMismatchException]
 
   /** Unconditionally delete a key (no-op if the key is absent). */
-  def delete(key: StateKey): Unit
+  def delete(key: StateStoreKey): Unit
 
   /** Delete a key only if the provided ETag matches. Returns `None` on success, `Some(e)` if the ETag did not match.
     *
@@ -68,7 +68,7 @@ trait StateCapability extends scala.caps.ExclusiveCapability:
     *   concurrency control; [[StateConcurrency.FirstWrite]] is the typical safe default for optimistic locking
     */
   def deleteWithETag(
-      key: StateKey,
+      key: StateStoreKey,
       etag: ETag,
       consistency: StateConsistency = StateConsistency.Default,
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,
@@ -85,32 +85,32 @@ trait StateCapability extends scala.caps.ExclusiveCapability:
   * Each method forwards to the `StateCapability` provided by the enclosing `using` context, so callers never need to
   * name the capability:
   * {{{
-  *   def myHandler(key: StateKey)(using StateCapability): String throws Exception =
+  *   def myHandler(key: StateStoreKey)(using StateCapability): String throws Exception =
   *     StateCapability.get[String](key).getOrElse("default")
   * }}}
   */
 @scala.caps.assumeSafe
 object StateCapability:
   def get[T: JsonCodec](
-      key: StateKey,
+      key: StateStoreKey,
       consistency: StateConsistency = StateConsistency.Default,
   )(using cap: StateCapability): Option[T] =
     cap.get(key, consistency)
   def getWithETag[T: JsonCodec](
-      key: StateKey,
+      key: StateStoreKey,
       consistency: StateConsistency = StateConsistency.Default,
   )(using cap: StateCapability): StateEntry[T] =
     cap.getWithETag(key, consistency)
-  def getBulk[T: JsonCodec](keys: Seq[StateKey])(using
+  def getBulk[T: JsonCodec](keys: Seq[StateStoreKey])(using
       cap: StateCapability,
-  ): Map[StateKey, StateEntry[T]] =
+  ): Map[StateStoreKey, StateEntry[T]] =
     cap.getBulk(keys)
-  def save[T: JsonCodec](key: StateKey, value: T)(using cap: StateCapability): Unit =
+  def save[T: JsonCodec](key: StateStoreKey, value: T)(using cap: StateCapability): Unit =
     cap.save(key, value)
-  def saveBulk[T: JsonCodec](entries: Seq[(StateKey, T)])(using cap: StateCapability): Unit =
+  def saveBulk[T: JsonCodec](entries: Seq[(StateStoreKey, T)])(using cap: StateCapability): Unit =
     cap.saveBulk(entries)
   def saveWithETag[T: JsonCodec](
-      key: StateKey,
+      key: StateStoreKey,
       value: T,
       etag: ETag,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
@@ -118,10 +118,10 @@ object StateCapability:
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,
   )(using cap: StateCapability): Option[ETagMismatchException] =
     cap.saveWithETag(key, value, etag, metadata, consistency, concurrency)
-  def delete(key: StateKey)(using cap: StateCapability): Unit =
+  def delete(key: StateStoreKey)(using cap: StateCapability): Unit =
     cap.delete(key)
   def deleteWithETag(
-      key: StateKey,
+      key: StateStoreKey,
       etag: ETag,
       consistency: StateConsistency = StateConsistency.Default,
       concurrency: StateConcurrency = StateConcurrency.FirstWrite,
@@ -375,7 +375,7 @@ object BindingsCapability:
 /** Capability for DAPR distributed locking against a named lock store. */
 @scala.caps.assumeSafe
 trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
-  val storeName: StoreName
+  val storeName: LockStoreName
 
   /** Try to acquire a lock. Returns true if acquired, false if already held. */
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean

@@ -40,7 +40,7 @@ private[dapr4s] final class DaprCapabilityImpl(
   // Explicit ^{this} here overrides the ^{fresh} inference and satisfies the override check.
   // The asInstanceOf cast then erases the capture set so internal Impl types stay package-private.
 
-  def state(storeName: StoreName): StateCapability^{this} =
+  def state(storeName: StateStoreName): StateCapability^{this} =
     new StateCapabilityImpl(this, storeName).asInstanceOf[StateCapability]
 
   def pubsub(pubsubName: PubSubName): PubSubCapability^{this} =
@@ -58,7 +58,7 @@ private[dapr4s] final class DaprCapabilityImpl(
   def binding(bindingName: BindingName): BindingsCapability^{this} =
     new BindingsCapabilityImpl(this, bindingName).asInstanceOf[BindingsCapability]
 
-  def lock(storeName: StoreName): DistributedLockCapability^{this} =
+  def lock(storeName: LockStoreName): DistributedLockCapability^{this} =
     new LockCapabilityImpl(this, storeName).asInstanceOf[DistributedLockCapability]
 
   def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this} =
