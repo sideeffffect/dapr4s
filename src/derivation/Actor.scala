@@ -19,9 +19,6 @@ object Actor:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
 
-  trait Derived[T]:
-    inline def derive: T = Actor.derive[T]
-
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Actor"

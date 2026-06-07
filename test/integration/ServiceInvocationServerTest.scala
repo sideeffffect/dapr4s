@@ -132,7 +132,7 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.invoker:
-          val svc = EchoService.derive(selfAppId)
+          val svc = EchoService(selfAppId)
           assertEquals(svc.echo("hello"), "hello")
           assertEquals(svc.double(IncrRequest(6)), CounterState(12))
     }

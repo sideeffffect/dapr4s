@@ -19,12 +19,12 @@ class AddActivities:
 /** Typed caller facade derived from [[AddActivities]]; `add` schedules the activity and returns a `Task`. */
 trait AddCalls:
   def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
-object AddCalls extends WorkflowActivityCalls.Derived[AddCalls, AddActivities]
+lazy val AddCalls: AddCalls = WorkflowActivityCalls.derive[AddCalls, AddActivities]
 
 class AddingWorkflow extends Workflow:
   def run(using WorkflowContext): Unit =
     val input  = WorkflowContext.getInput[IncrRequest].getOrElse(IncrRequest(0))
-    val acts   = AddCalls.derive
+    val acts   = AddCalls
     val result = acts.add(input).await()
     WorkflowContext.complete(result)
 

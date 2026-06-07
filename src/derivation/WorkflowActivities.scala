@@ -34,9 +34,6 @@ object WorkflowActivities:
 
   inline def derive[C]: List[WorkflowActivity[?, ?]] = ${ deriveImpl[C] }
 
-  trait Derived[C]:
-    inline def derive: List[WorkflowActivity[?, ?]] = WorkflowActivities.derive[C]
-
   private def deriveImpl[C: Type](using Quotes): Expr[List[WorkflowActivity[?, ?]]] =
     import quotes.reflect.*
     val engine = "WorkflowActivities"

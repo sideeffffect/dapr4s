@@ -16,9 +16,6 @@ object Workflow:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
 
-  trait Derived[T]:
-    inline def derive: T = Workflow.derive[T]
-
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Workflow"

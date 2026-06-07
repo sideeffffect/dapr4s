@@ -17,15 +17,12 @@ import scala.quoted.*
   * {{{
   *   trait EmailBinding:
   *     def create(req: EmailRequest)(using BindingsCapability, JsonCodec[EmailRequest]): Unit
-  *   object EmailBinding extends Bindings.Derived[EmailBinding]
+  *   lazy val EmailBinding: EmailBinding = Bindings.derive[EmailBinding]
   * }}}
   */
 object Bindings:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
-
-  trait Derived[T]:
-    inline def derive: T = Bindings.derive[T]
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*

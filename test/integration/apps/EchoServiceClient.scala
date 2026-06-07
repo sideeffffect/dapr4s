@@ -18,4 +18,4 @@ trait EchoService:
       req: IncrRequest,
   )(using ServiceInvocationCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
 
-object EchoService extends ServiceInvocation.Derived[EchoService]
+def EchoService(appId: AppId): EchoService = ServiceInvocation.derive[EchoService](appId)

@@ -12,15 +12,12 @@ import scala.quoted.*
   * {{{
   *   trait OrderEvents:
   *     def orders(event: OrderEvent)(using PubSubCapability, JsonCodec[OrderEvent]): Unit
-  *   object OrderEvents extends PubSub.Derived[OrderEvents]
+  *   lazy val OrderEvents: OrderEvents = PubSub.derive[OrderEvents]
   * }}}
   */
 object PubSub:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
-
-  trait Derived[T]:
-    inline def derive: T = PubSub.derive[T]
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*

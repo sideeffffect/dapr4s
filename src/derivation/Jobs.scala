@@ -17,9 +17,6 @@ object Jobs:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
 
-  trait Derived[T]:
-    inline def derive: T = Jobs.derive[T]
-
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Jobs"

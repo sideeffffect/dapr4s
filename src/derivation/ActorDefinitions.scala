@@ -34,9 +34,6 @@ object ActorDefinitions:
 
   inline def derive[C]: ActorDefinition = ${ deriveImpl[C] }
 
-  trait Derived[C]:
-    inline def derive: ActorDefinition = ActorDefinitions.derive[C]
-
   private def deriveImpl[C: Type](using Quotes): Expr[ActorDefinition] =
     import quotes.reflect.*
     val typeName = MacroSupport.nameOverride(TypeRepr.of[C].typeSymbol).getOrElse(TypeRepr.of[C].typeSymbol.name)

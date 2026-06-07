@@ -46,8 +46,8 @@ trait Greeter:
   // Req and Resp are the same type — exercises the single-codec branch
   def echo(req: Resp)(using ServiceInvocationCapability, JsonCodec[Resp]): Resp
 
-/** Same shape as [[Greeter]] but driven through the `ServiceInvocation.Derived` mixin sugar, which exposes a
-  * `MixinGreeter.derive(appId)` companion factory.
+/** Same shape as [[Greeter]] but exposed through a `MixinGreeter(appId)` factory built on
+  * [[dapr4s.derivation.ServiceInvocation.derive]].
   */
 trait MixinGreeter:
   def plain(req: Req)(using ServiceInvocationCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
@@ -55,7 +55,7 @@ trait MixinGreeter:
   @name("get-stats")
   def stats()(using ServiceInvocationCapability, JsonCodec[Resp]): Resp
 
-object MixinGreeter extends ServiceInvocation.Derived[MixinGreeter]
+def MixinGreeter(appId: AppId): MixinGreeter = ServiceInvocation.derive[MixinGreeter](appId)
 
 /** Recording fake capability: logs each call and returns a fixed response payload. */
 @scala.caps.assumeSafe

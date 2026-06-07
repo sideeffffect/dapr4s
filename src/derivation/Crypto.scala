@@ -16,9 +16,6 @@ object Crypto:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
 
-  trait Derived[T]:
-    inline def derive: T = Crypto.derive[T]
-
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Crypto"

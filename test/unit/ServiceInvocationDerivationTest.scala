@@ -46,10 +46,10 @@ class ServiceInvocationDerivationTest extends FunSuite:
     assertEquals(out, Resp("echoed"))
     assertEquals(rec.calls.toList, List("body|greeting-service|echo|hi|Post|0"))
 
-  test("ServiceInvocation.Derived mixin exposes a derive companion factory"):
+  test("ServiceInvocation derive exposes a factory function"):
     val rec = RecordingInvoker("pong")
     given ServiceInvocationCapability = rec
-    val svc = MixinGreeter.derive(AppId("mixin-service"))
+    val svc = MixinGreeter(AppId("mixin-service"))
     assertEquals(svc.plain(Req(3)), Resp("pong"))
     assertEquals(svc.stats(), Resp("pong"))
     assertEquals(

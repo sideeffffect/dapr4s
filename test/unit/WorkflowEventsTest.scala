@@ -10,7 +10,7 @@ import scala.concurrent.duration.*
 trait Events:
   def approval(timeout: FiniteDuration)(using ctx: WorkflowContext, c: JsonCodec[Resp]): Task[Resp]^{ctx}
   def signal()(using ctx: WorkflowContext, c: JsonCodec[Resp]): Task[Resp]^{ctx}
-object Events extends WorkflowEvents.Derived[Events]
+lazy val Events: Events = WorkflowEvents.derive[Events]
 
 /** A constant, already-complete [[Task]] used by the fake context. */
 @scala.caps.assumeSafe
@@ -49,7 +49,7 @@ class WorkflowEventsTest extends FunSuite:
   test("WorkflowEvents: waitForExternalEvent with and without timeout"):
     val fake              = FakeWorkflowContext("res")
     given WorkflowContext = fake
-    val client            = Events.derive
+    val client            = Events
     assertEquals(client.approval(5.seconds).await(), Resp("res"))
     assertEquals(client.signal().await(), Resp("res"))
     assertEquals(fake.log.toList, List("wait|approval|5 seconds", "wait|signal"))

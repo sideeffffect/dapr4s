@@ -15,15 +15,12 @@ import scala.quoted.*
   * {{{
   *   trait Events:
   *     def approval(timeout: FiniteDuration)(using ctx: WorkflowContext, c: JsonCodec[Approval]): Task[Approval]^{ctx}
-  *   object Events extends WorkflowEvents.Derived[Events]
+  *   lazy val Events: Events = WorkflowEvents.derive[Events]
   * }}}
   */
 object WorkflowEvents:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
-
-  trait Derived[T]:
-    inline def derive: T = WorkflowEvents.derive[T]
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*

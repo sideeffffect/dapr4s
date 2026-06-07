@@ -14,7 +14,7 @@ import scala.concurrent.duration.FiniteDuration
 trait BindingClient:
   def create(req: Req)(using BindingsCapability, JsonCodec[Req]): Unit
   def query(req: Req)(using BindingsCapability, JsonCodec[Req], JsonCodec[Resp]): Option[Resp]
-object BindingClient extends Bindings.Derived[BindingClient]
+lazy val BindingClient: BindingClient = Bindings.derive[BindingClient]
 
 @scala.caps.assumeSafe
 final class FakeBindings(resp: String) extends BindingsCapability:
@@ -34,7 +34,7 @@ trait ActorClient:
   def increment(req: Req)(using ActorCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
   def get()(using ActorCapability, JsonCodec[Resp]): Resp
   def reset()(using ActorCapability): Unit
-object ActorClient extends Actor.Derived[ActorClient]
+lazy val ActorClient: ActorClient = Actor.derive[ActorClient]
 
 @scala.caps.assumeSafe
 final class FakeActor(resp: String) extends ActorCapability:
@@ -55,7 +55,7 @@ final class FakeActor(resp: String) extends ActorCapability:
 trait Publisher:
   def orders(event: Req)(using PubSubCapability, JsonCodec[Req]): Unit
   def audit(event: Req, metadata: Map[MetadataKey, MetadataValue])(using PubSubCapability, JsonCodec[Req]): Unit
-object Publisher extends PubSub.Derived[Publisher]
+lazy val Publisher: Publisher = PubSub.derive[Publisher]
 
 @scala.caps.assumeSafe
 final class FakePubSub extends PubSubCapability:
@@ -71,7 +71,7 @@ final class FakePubSub extends PubSubCapability:
 
 trait SecretClient:
   @name("db-password") def dbPassword()(using SecretsCapability): Option[SecretValue]
-object SecretClient extends Secrets.Derived[SecretClient]
+lazy val SecretClient: SecretClient = Secrets.derive[SecretClient]
 
 @scala.caps.assumeSafe
 final class FakeSecrets extends SecretsCapability:
@@ -86,7 +86,7 @@ final class FakeSecrets extends SecretsCapability:
 
 trait ConfigClient:
   @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigItem]
-object ConfigClient extends Configuration.Derived[ConfigClient]
+lazy val ConfigClient: ConfigClient = Configuration.derive[ConfigClient]
 
 @scala.caps.assumeSafe
 final class FakeConfig extends ConfigurationCapability:
@@ -104,7 +104,7 @@ final class FakeConfig extends ConfigurationCapability:
 trait CryptoClient:
   def rawKey(plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
   @name("text-key") def textKey(plaintext: String, algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
-object CryptoClient extends Crypto.Derived[CryptoClient]
+lazy val CryptoClient: CryptoClient = Crypto.derive[CryptoClient]
 
 @scala.caps.assumeSafe
 final class FakeCrypto extends CryptoCapability:
@@ -121,7 +121,7 @@ trait JobClient:
   def recur(data: Req, schedule: JobSchedule)(using JobsCapability, JsonCodec[Req]): Unit
   def once(data: Req, dueTime: java.time.Instant)(using JobsCapability, JsonCodec[Req]): Unit
   @name("recur") def fetch()(using JobsCapability): Option[JobDetails]
-object JobClient extends Jobs.Derived[JobClient]
+lazy val JobClient: JobClient = Jobs.derive[JobClient]
 
 @scala.caps.assumeSafe
 final class FakeJobs extends JobsCapability:
@@ -149,7 +149,7 @@ trait WorkflowClient:
   def orderInput(input: Req)(using WorkflowCapability, JsonCodec[Req]): WorkflowInstanceId
   def orderWithId(instanceId: WorkflowInstanceId)(using WorkflowCapability): WorkflowInstanceId
   def orderFull(instanceId: WorkflowInstanceId, input: Req)(using WorkflowCapability, JsonCodec[Req]): WorkflowInstanceId
-object WorkflowClient extends Workflow.Derived[WorkflowClient]
+lazy val WorkflowClient: WorkflowClient = Workflow.derive[WorkflowClient]
 
 @scala.caps.assumeSafe
 final class FakeWorkflow extends WorkflowCapability:
@@ -175,7 +175,7 @@ final class FakeWorkflow extends WorkflowCapability:
 trait StateClient:
   def counter(using StateCapability, JsonCodec[Int]): Option[Int]
   def counter_=(value: Int)(using StateCapability, JsonCodec[Int]): Unit
-object StateClient extends State.Derived[StateClient]
+lazy val StateClient: StateClient = State.derive[StateClient]
 
 @scala.caps.assumeSafe
 final class FakeState extends StateCapability:
@@ -211,7 +211,7 @@ final class FakeState extends StateCapability:
 trait ActorStateClient:
   def count(using ActorContext, JsonCodec[Int]): Option[Int]
   def count_=(value: Int)(using ActorContext, JsonCodec[Int]): Unit
-object ActorStateClient extends ActorState.Derived[ActorStateClient]
+lazy val ActorStateClient: ActorStateClient = ActorState.derive[ActorStateClient]
 
 @scala.caps.assumeSafe
 final class FakeActorContext extends ActorContext:

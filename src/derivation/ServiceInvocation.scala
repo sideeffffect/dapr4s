@@ -44,25 +44,6 @@ object ServiceInvocation:
   /** Derive an implementation of trait `T` that routes its methods to `appId`. */
   inline def derive[T](appId: AppId): T = ${ deriveImpl[T]('appId) }
 
-  /** Companion-object mixin sugar for [[derive]].
-    *
-    * Mix into a trait's companion to expose a `derive(appId)` factory without naming the trait twice at every call
-    * site:
-    *
-    * {{{
-    *   trait MyService:
-    *     def double(req: IncrRequest)(using ServiceInvocationCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
-    *   object MyService extends ServiceInvocation.Derived[MyService]
-    *
-    *   val svc = MyService.derive(AppId("doubler"))
-    * }}}
-    *
-    * `derive` is `inline`, so it expands to the [[ServiceInvocation.derive]] engine at the call site — and, unlike a
-    * macro-annotation-generated member, it is a genuine inherited member visible within the same compilation run.
-    */
-  trait Derived[T]:
-    inline def derive(appId: AppId): T = ServiceInvocation.derive[T](appId)
-
   private def deriveImpl[T: Type](appId: Expr[AppId])(using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "ServiceInvocation"

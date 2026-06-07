@@ -12,15 +12,12 @@ import scala.quoted.*
   * {{{
   *   trait Secrets:
   *     @name("db-password") def dbPassword()(using SecretsCapability): Option[SecretValue]
-  *   object Secrets extends Secrets.Derived[Secrets]
+  *   lazy val Secrets: Secrets = Secrets.derive[Secrets]
   * }}}
   */
 object Secrets:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
-
-  trait Derived[T]:
-    inline def derive: T = Secrets.derive[T]
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*

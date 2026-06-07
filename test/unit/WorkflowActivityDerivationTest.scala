@@ -36,7 +36,7 @@ class WorkflowActivityDerivationTest extends FunSuite:
   test("WorkflowActivityCalls.derive forwards to callActivity under the same name as the reified activity"):
     val fake = FakeActivityContext("scheduled")
     given WorkflowContext = fake
-    val calls = CounterCalls.derive
+    val calls = CounterCalls
 
     assertEquals(calls.add(Req(7)).await(), Resp("scheduled"))
     assertEquals(calls.reset().await(), Resp("scheduled"))

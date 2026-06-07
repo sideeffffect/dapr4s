@@ -22,20 +22,17 @@ import scala.quoted.*
   * {{{
   *   trait CounterActivityCalls:
   *     def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
-  *   object CounterActivityCalls extends WorkflowActivityCalls.Derived[CounterActivityCalls, CounterActivities]
+  *   lazy val CounterActivityCalls: CounterActivityCalls = WorkflowActivityCalls.derive[CounterActivityCalls, CounterActivities]
   *
   *   class AddingWorkflow extends Workflow:
   *     def run(using WorkflowContext): Unit =
-  *       val acts = CounterActivityCalls.derive
+  *       val acts = CounterActivityCalls
   *       WorkflowContext.complete(acts.add(IncrRequest(21)).await())
   * }}}
   */
 object WorkflowActivityCalls:
 
   inline def derive[Calls, Impl]: Calls = ${ deriveImpl[Calls, Impl] }
-
-  trait Derived[Calls, Impl]:
-    inline def derive: Calls = WorkflowActivityCalls.derive[Calls, Impl]
 
   private def deriveImpl[Calls: Type, Impl: Type](using Quotes): Expr[Calls] =
     import quotes.reflect.*

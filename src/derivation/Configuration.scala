@@ -12,15 +12,12 @@ import scala.quoted.*
   * {{{
   *   trait Config:
   *     @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigItem]
-  *   object Config extends Configuration.Derived[Config]
+  *   lazy val Config: Config = Configuration.derive[Config]
   * }}}
   */
 object Configuration:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
-
-  trait Derived[T]:
-    inline def derive: T = Configuration.derive[T]
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*

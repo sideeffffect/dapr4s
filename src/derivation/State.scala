@@ -14,9 +14,9 @@ import scala.quoted.*
   *   trait CounterState:
   *     def count(using StateCapability, JsonCodec[Int]): Option[Int]
   *     def count_=(value: Int)(using StateCapability, JsonCodec[Int]): Unit
-  *   object CounterState extends State.Derived[CounterState]
+  *   lazy val CounterState: CounterState = State.derive[CounterState]
   *
-  *   val s = CounterState.derive
+  *   val s = CounterState
   *   s.count = 5
   *   val now = s.count   // Option[Int]
   * }}}
@@ -24,9 +24,6 @@ import scala.quoted.*
 object State:
 
   inline def derive[T]: T = ${ deriveImpl[T] }
-
-  trait Derived[T]:
-    inline def derive: T = State.derive[T]
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*

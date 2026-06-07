@@ -238,7 +238,7 @@ object ServiceInvocation:
 body forwards to the `ServiceInvocationCapability` companion. The `appId`
 argument is captured by reference (it is a plain value, CC-safe).
 
-## Sugar — `ServiceInvocation.Derived` mixin (not a macro annotation)
+## Calling the engine — a plain factory (not a macro annotation, not a mixin)
 
 The doc sketched a `@ServiceInvocationDerivation` macro annotation that would synthesise a
 companion `derive`. **That form was prototyped and rejected.** Scala 3 macro annotations
@@ -248,18 +248,31 @@ synthesising a fresh companion and augmenting an existing one failed (`value der
 member` / `Not found`). The annotation would only deliver usable sugar to a *downstream*,
 separately-compiled module, which is a footgun for same-module use.
 
-The shipped sugar is an `inline` mixin instead. `derive` is a genuine inherited member at
-typer time (only its body expands later), so it resolves within the same compilation run:
+An interim `X.Derived[T]` `inline` mixin was then shipped, but it added a layer with no
+value over calling `X.derive[T]` directly. It has been removed. The engine's `inline def
+derive[T]` already expands at any concrete-type call site, so the idiomatic form is a plain
+top-level factory next to the trait — a `lazy val` when `derive` is parameterless (it caches
+the single facade instance), or a `def` for `ServiceInvocation`, whose `derive` takes the
+target `appId`:
 
 ```scala
 trait MyService:
   def double(input: IncrRequest)(using ServiceInvocationCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
-object MyService extends ServiceInvocation.Derived[MyService]
+def MyService(appId: AppId): MyService = ServiceInvocation.derive[MyService](appId)
 
-val svc = MyService.derive(AppId("doubler"))
+val svc = MyService(AppId("doubler"))
 ```
 
-`Derived[T]` is just `trait Derived[T] { inline def derive(appId: AppId): T = ServiceInvocation.derive[T](appId) }`.
+```scala
+trait OrderEvents:
+  def orders(event: OrderEvent)(using PubSubCapability, JsonCodec[OrderEvent]): Unit
+lazy val OrderEvents: OrderEvents = PubSub.derive[OrderEvents]   // parameterless → cached lazy val
+```
+
+The trait name (a type) and the factory name (a term) share an identifier the same way a
+class and its companion object do, so there is no clash. The macro expands at the factory's
+body, where `T` is concrete; a `lazy val` cannot itself be `inline`, but it does not need to
+be — only the engine `derive` it calls is.
 
 ## How the generated body is built (implementation note)
 
@@ -300,7 +313,7 @@ This section records what shipped, how, and what didn't work.
 ## What shipped
 
 All in package `dapr4s.derivation`. Every client facade follows the same shape: an `object X`
-with `inline def derive[…]: T`, an `X.Derived[T]` inline mixin, and a private macro built on the
+with `inline def derive[…]: T` and a private macro built on the
 shared `MacroSupport` scaffold; each forwards through `@assumeSafe` runtime helpers
 (`Forwarders` / `ServiceInvocationDerivationRuntime`). Method name → Dapr name is **verbatim**,
 overridable per member with `@name`.
@@ -371,8 +384,8 @@ parameter (`class Counter(actorId: ActorId)`) — the macro does `new C(id)`.
 * **`@ServiceInvocationDerivation` and any macro-annotation form.** Scala 3 `MacroAnnotation`
   expands *after* the typer, so members it generates are invisible to references compiled in the
   same run (verified: both synthesising and augmenting a companion fail with `value derive is not
-  a member`). Replaced everywhere by the `X.Derived[T]` inline mixin, which is a genuine
-  inherited member at typer time. The annotation could only ever work for a downstream,
+  a member`). Replaced everywhere by a plain `X.derive[T]` factory (`lazy val`/`def`) next to
+  the trait, which resolves at typer time. The annotation could only ever work for a downstream,
   separately-compiled consumer.
 
 * **`@WorkflowActivityDerivation` (workflow-activity reification).** ~~Not implemented.~~ **Shipped
@@ -458,7 +471,7 @@ A *generated, typed, named* caller facade with no user-written trait is not expr
 
 Two engines, mirroring the existing server/client split (`ActorDefinitions` vs the client facades):
 
-* **Server — `WorkflowActivities.derive[C]: List[WorkflowActivity[?, ?]]`** (also `…Derived[C]` mixin).
+* **Server — `WorkflowActivities.derive[C]: List[WorkflowActivity[?, ?]]`.**
   Reifies a plain class `C` (no-arg constructor) into one `WorkflowActivity` per `(using DaprCapability)`
   method, ready for `DaprApp.activities`. Input = first value parameter (or `Unit`); output = return type;
   `JsonCodec[I]`/`JsonCodec[O]` summoned at the `derive` site. Any *extra* `using` params on a method beyond
@@ -472,7 +485,7 @@ Two engines, mirroring the existing server/client split (`ActorDefinitions` vs t
   capture-erases the handler to `AnyRef` (the `Subscription.rawHandler` trick) so the activity has an empty
   capture set and lives in a plain `List`.
 
-* **Client — `WorkflowActivityCalls.derive[Calls, Impl]: Calls`** (also `…Derived[Calls, Impl]` mixin).
+* **Client — `WorkflowActivityCalls.derive[Calls, Impl]: Calls`.**
   Implements a user trait `Calls` of methods `def m(input: I)(using ctx: WorkflowContext): Task[O]^{ctx}`
   (the `Task` captures the per-call context, exactly like `WorkflowEvents`). Each forwards to
   `WorkflowContext.callActivityByName(name, input)` under the **same** name computed from `Impl`. The macro
@@ -500,11 +513,11 @@ class CounterActivities:
 // typed caller — a small trait bound to the impl by the macro
 trait CounterCalls:
   def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
-object CounterCalls extends WorkflowActivityCalls.Derived[CounterCalls, CounterActivities]
+lazy val CounterCalls: CounterCalls = WorkflowActivityCalls.derive[CounterCalls, CounterActivities]
 
 class AddingWorkflow extends Workflow:
   def run(using WorkflowContext): Unit =
-    val acts = CounterCalls.derive
+    val acts = CounterCalls
     WorkflowContext.complete(acts.add(WorkflowContext.getInput[IncrRequest].get).await())
 
 object MyApp:

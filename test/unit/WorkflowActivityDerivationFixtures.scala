@@ -22,7 +22,7 @@ class CounterActivities:
 trait CounterCalls:
   def add(input: Req)(using ctx: WorkflowContext): Task[Resp]^{ctx}
   def reset()(using ctx: WorkflowContext): Task[Resp]^{ctx}
-object CounterCalls extends WorkflowActivityCalls.Derived[CounterCalls, CounterActivities]
+lazy val CounterCalls: CounterCalls = WorkflowActivityCalls.derive[CounterCalls, CounterActivities]
 
 /** Recording fake context: logs each name-based `callActivity` and returns a fixed response. */
 @scala.caps.assumeSafe
