@@ -6,6 +6,30 @@ on:
   pull_request:
 
 jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - uses: coursier/cache-action@v8
+    - uses: VirtusLab/scala-cli-setup@v1
+      with:
+        power: true
+    - name: Check formatting (scalafmt)
+      run: |
+        # `scala-cli fmt --check` reports a scalafmt parse error but still exits 0,
+        # which would silently mask unformatted files (a parse error aborts the scan
+        # early). Files using experimental capture-checking `^{...}` syntax that
+        # scalafmt can't parse are listed in .scalafmt.conf project.excludeFilters;
+        # if a new such file is added without excluding it, fail loudly here rather
+        # than let the whole check pass blind.
+        scala-cli fmt --check . 2>&1 | tee fmt.log
+        if grep -qiE 'ParseError|illegal start of' fmt.log; then
+          echo "::error::scalafmt hit a parse error — add the offending file to .scalafmt.conf project.excludeFilters"
+          exit 1
+        fi
+
   test:
     runs-on: ubuntu-latest
     steps:
@@ -39,7 +63,7 @@ jobs:
       run: scala-cli test . --test-only 'dapr4s.test.integration.*'
 
   publish:
-    needs: [test, integration-test]
+    needs: [format, test, integration-test]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:

@@ -174,11 +174,18 @@ The project uses scalafmt. Config is in `.scalafmt.conf` (version 3.10.4, dialec
 Run the formatter: `scala-cli fmt .`
 Check without writing: `scala-cli fmt --check .`
 
-**Always format before committing.** If `--check` fails, CI is broken.
+**Always format before committing.** The CI `format` job runs `scala-cli fmt --check .` and
+blocks the build (and `publish`) on any unformatted file, so a missed format fails CI.
 
-One file is intentionally excluded from formatting: `src/DaprCapability.scala` uses experimental
-capture-checking `^{this}` return-type annotations that scalafmt's parser does not yet support.
-Format it manually (or leave it) until scalafmt gains nightly CC syntax support.
+Some files are intentionally excluded from formatting via `project.excludeFilters` in
+`.scalafmt.conf`: they use experimental capture-checking `^{...}` return-type annotations in a
+position scalafmt's parser does not yet support. Files that merely *use* `^{...}` but still parse
+(e.g. `src/derivation/WorkflowEvents.scala`, `test/unit/CCTest.scala`) stay formatted normally.
+
+⚠️ `scala-cli fmt --check` reports a scalafmt parse error but still **exits 0**, silently masking
+unformatted files. So when you add a new file with CC syntax scalafmt can't parse, add it to
+`project.excludeFilters` — otherwise it hides real formatting failures. The CI job greps the
+output for parse errors and fails loudly to catch this.
 
 ---
 
