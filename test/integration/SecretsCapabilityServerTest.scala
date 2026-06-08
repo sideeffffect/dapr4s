@@ -43,9 +43,9 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[String, Option[SecretValue]](InvocationMethodName("get")) { key =>
+                InvokeRoute[String, Option[SecretValue]](InvokeMethodName("get")) { key =>
                   try SecretsCapability.get(SecretKey(key))
                   catch case e: Exception => throw e
                 },
@@ -65,9 +65,9 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[String, Option[SecretValue]](InvocationMethodName("get")) { key =>
+                InvokeRoute[String, Option[SecretValue]](InvokeMethodName("get")) { key =>
                   try SecretsCapability.get(SecretKey(key))
                   catch case e: Exception => throw e
                 },
@@ -93,9 +93,9 @@ class SecretsCapabilityServerTest extends FunSuite with TestContainersForAll wit
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.secrets(SecretStoreName("envstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[Unit, Map[String, String]](InvocationMethodName("bulk")) { _ =>
+                InvokeRoute[Unit, Map[String, String]](InvokeMethodName("bulk")) { _ =>
                   try SecretsCapability.getBulk().map { case (k, v) => k.value -> v.value }
                   catch case e: Exception => throw e
                 },

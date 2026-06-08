@@ -18,7 +18,7 @@ enum DaprAppValidationError:
   /** Two or more subscriptions map to the same HTTP route path. */
   case DuplicateSubscriptionRoute(path: String, count: Int)
 
-  /** Two or more invocations register under the same method name. */
+  /** Two or more invokeRoutes register under the same method name. */
   case DuplicateInvocationMethod(name: String, count: Int)
 
   /** Two or more input bindings register under the same name. */
@@ -57,7 +57,7 @@ enum DaprAppValidationError:
     case DuplicateSubscriptionRoute(path, count) =>
       s"$count subscriptions map to the same route '$path'; only one would receive events."
     case DuplicateInvocationMethod(name, count) =>
-      s"$count invocations register under the same method name '$name'; only one would be reachable."
+      s"$count invokeRoutes register under the same method name '$name'; only one would be reachable."
     case DuplicateBindingName(name, count) =>
       s"$count input bindings register under the same name '$name'; only one would be reachable."
     case DuplicateJobName(name, count) =>
@@ -102,7 +102,7 @@ private[dapr4s] object DaprAppValidation:
     if s.route.value.startsWith("/") then s.route.value else "/" + s.route.value
 
   private def bindingPath(b: BindingRoute): String = "/" + b.bindingName.value
-  private def invocationPath(i: InvocationRoute): String = "/" + i.methodName.value
+  private def invocationPath(i: InvokeRoute): String = "/" + i.methodName.value
 
   private def reservedHitFor(path: String): Option[String] =
     reservedPaths.find(r => path == r || path.startsWith(r + "/"))
@@ -121,7 +121,7 @@ private[dapr4s] object DaprAppValidation:
       duplicates(app.subscriptions.map(subscriptionPath)).map((p, c) => DuplicateSubscriptionRoute(p, c))
 
     val invocationErrors =
-      duplicates(app.invocations.map(_.methodName.value)).map((n, c) => DuplicateInvocationMethod(n, c))
+      duplicates(app.invokeRoutes.map(_.methodName.value)).map((n, c) => DuplicateInvocationMethod(n, c))
 
     val bindingErrors =
       duplicates(app.bindings.map(_.bindingName.value)).map((n, c) => DuplicateBindingName(n, c))
@@ -136,7 +136,7 @@ private[dapr4s] object DaprAppValidation:
     val rootHandlers: List[(String, String)] =
       app.subscriptions.map(s => subscriptionPath(s) -> "pub/sub") :::
         app.bindings.map(b => bindingPath(b) -> "binding") :::
-        app.invocations.map(i => invocationPath(i) -> "invocation")
+        app.invokeRoutes.map(i => invocationPath(i) -> "invocation")
 
     val routeCollisionErrors =
       rootHandlers

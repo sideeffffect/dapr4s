@@ -8,7 +8,7 @@ import munit.FunSuite
 
 import java.util.Collections
 
-/** Integration tests for [[PubSubCapability]] using a real DAPR sidecar in Docker via Testcontainers.
+/** Integration tests for [[PublishCapability]] using a real DAPR sidecar in Docker via Testcontainers.
   */
 @scala.caps.assumeSafe
 class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
@@ -36,14 +36,14 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
   test("integration: publish string payload does not throw"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val ps = summon[DaprCapability].pubsub(PubSubName("pubsub"))
+        val ps = summon[DaprCapability].publish(PubSubName("pubsub"))
         ps.publish(Topic("test-topic"), "hello-pubsub")
     }
 
   test("integration: publishWithMetadata does not throw"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val ps = summon[DaprCapability].pubsub(PubSubName("pubsub"))
+        val ps = summon[DaprCapability].publish(PubSubName("pubsub"))
         ps.publishWithMetadata(
           Topic("test-topic"),
           "with-metadata",
@@ -54,6 +54,6 @@ class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
   test("integration: publish Int payload does not throw"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val ps = summon[DaprCapability].pubsub(PubSubName("pubsub"))
+        val ps = summon[DaprCapability].publish(PubSubName("pubsub"))
         ps.publish(Topic("numbers"), 42)
     }

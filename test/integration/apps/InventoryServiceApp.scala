@@ -7,7 +7,7 @@ import language.experimental.safe
 /** Business logic for the Inventory microservice.
   *
   * Each handler method declares its capability requirements via anonymous `using` parameters, calling companion-object
-  * methods ([[StateCapability.get]], [[DistributedLockCapability.tryLock]], etc.) rather than naming a capability. See
+  * methods ([[StateCapability.get]], [[LockCapability.tryLock]], etc.) rather than naming a capability. See
   * [[OrderServiceApp]] for a full explanation of the capability-as-effect-system pattern.
   *
   * Subscribes to [[OrderEvent]] messages on the `orders` pub/sub topic and decrements the corresponding item's stock
@@ -45,19 +45,19 @@ object InventoryServiceApp:
     */
   def handleOrderEvent(event: CloudEvent[OrderEvent])(using
       StateCapability,
-      DistributedLockCapability,
+      LockCapability,
   ): SubscriptionResult =
     val item = event.data.item
     val qty = event.data.quantity
     val key = StateStoreKey(s"stock-$item")
     val owner = LockOwner(s"inv-${event.id.value}")
 
-    if DistributedLockCapability.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
+    if LockCapability.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
       try
         val current = StateCapability.get[Int](key).getOrElse(DefaultStock)
         val updated = math.max(0, current - qty)
         StateCapability.save(key, updated)
-      finally DistributedLockCapability.unlock(LockResourceId(item), owner)
+      finally LockCapability.unlock(LockResourceId(item), owner)
       SubscriptionResult.Success
     else SubscriptionResult.Retry
 
@@ -83,9 +83,9 @@ object InventoryServiceApp:
           subscriptions = List(
             Subscription[OrderEvent](PubSubComp, OrdersTopic)(handleOrderEvent),
           ),
-          invocations = List(
-            InvocationRoute[String, StockLevel](InvocationMethodName("get-stock"))(getStock),
-            InvocationRoute[StockLevel, StockLevel](InvocationMethodName("seed-stock"))(seedStock),
+          invokeRoutes = List(
+            InvokeRoute[String, StockLevel](InvokeMethodName("get-stock"))(getStock),
+            InvokeRoute[StockLevel, StockLevel](InvokeMethodName("seed-stock"))(seedStock),
           ),
         )
       }

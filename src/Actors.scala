@@ -108,7 +108,7 @@ object ActorContext:
 
 /** Existential wrapper for a single actor method handler.
   *
-  * Follows the same `AnyRef`-erasure pattern as [[InvocationRoute]].
+  * Follows the same `AnyRef`-erasure pattern as [[InvokeRoute]].
   *
   * Use [[ActorMethodRoute.apply]] to construct instances.
   */
@@ -123,7 +123,7 @@ sealed abstract class ActorMethodRoute:
 
 /** Factory for [[ActorMethodRoute]] values.
   *
-  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[InvocationRoute]].
+  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[InvokeRoute]].
   */
 @scala.caps.assumeSafe
 object ActorMethodRoute:
@@ -279,7 +279,7 @@ final class ActorDefinition(
 /** Factory for [[ActorDefinition]] values.
   *
   * WHY @assumeSafe: the build lambda captures DAPR capabilities. We store it as `AnyRef` (`.asInstanceOf[AnyRef]`) to
-  * erase its CC capture set — the same pattern used by [[Subscription]], [[InvocationRoute]], and [[ActorMethodRoute]].
+  * erase its CC capture set — the same pattern used by [[Subscription]], [[InvokeRoute]], and [[ActorMethodRoute]].
   */
 @scala.caps.assumeSafe
 object ActorDefinition:

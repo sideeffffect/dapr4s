@@ -4,7 +4,7 @@ import dapr4s.*
 import dapr4s.derivation.*
 import scala.collection.mutable
 
-// Fixtures for ServiceInvocationDerivationTest. Kept in their own file so the
+// Fixtures for InvokeDerivationTest. Kept in their own file so the
 // top-level `given`/`trait`/`class` definitions do not interfere with munit's
 // reflective instantiation of the test class.
 
@@ -27,44 +27,44 @@ given JsonCodec[Resp] with
   def decode(json: String | Null): Either[JsonDecodeException, Resp] =
     if json == null then Left(JsonDecodeException("null input")) else Right(Resp(json))
 
-/** Trait describing remote calls; implemented by [[dapr4s.derivation.ServiceInvocation.derive]]. */
+/** Trait describing remote calls; implemented by [[dapr4s.derivation.Invoke.derive]]. */
 trait Greeter:
   // body-bearing, with the optional knobs declared
   def double(
       req: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
-  )(using ServiceInvocationCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
+  )(using InvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
 
   // body-bearing, no knobs at all
-  def plain(req: Req)(using ServiceInvocationCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def plain(req: Req)(using InvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
 
   // no-body, with a wire-name override
   @name("get-stats")
-  def stats()(using ServiceInvocationCapability, JsonCodec[Resp]): Resp
+  def stats()(using InvokeCapability, JsonCodec[Resp]): Resp
 
   // Req and Resp are the same type — exercises the single-codec branch
-  def echo(req: Resp)(using ServiceInvocationCapability, JsonCodec[Resp]): Resp
+  def echo(req: Resp)(using InvokeCapability, JsonCodec[Resp]): Resp
 
 /** Same shape as [[Greeter]] but exposed through a `MixinGreeter(appId)` factory built on
-  * [[dapr4s.derivation.ServiceInvocation.derive]].
+  * [[dapr4s.derivation.Invoke.derive]].
   */
 trait MixinGreeter:
-  def plain(req: Req)(using ServiceInvocationCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def plain(req: Req)(using InvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
 
   @name("get-stats")
-  def stats()(using ServiceInvocationCapability, JsonCodec[Resp]): Resp
+  def stats()(using InvokeCapability, JsonCodec[Resp]): Resp
 
-def MixinGreeter(appId: AppId): MixinGreeter = ServiceInvocation.derive[MixinGreeter](appId)
+def MixinGreeter(appId: AppId): MixinGreeter = Invoke.derive[MixinGreeter](appId)
 
 /** Recording fake capability: logs each call and returns a fixed response payload. */
 @scala.caps.assumeSafe
-final class RecordingInvoker(response: String) extends ServiceInvocationCapability:
+final class RecordingInvoker(response: String) extends InvokeCapability:
   val calls: mutable.ListBuffer[String] = mutable.ListBuffer.empty
 
   def invoke[Req: JsonCodec](
       appId: AppId,
-      method: InvocationMethodName,
+      method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod,
       metadata: Map[MetadataKey, MetadataValue],
@@ -72,6 +72,6 @@ final class RecordingInvoker(response: String) extends ServiceInvocationCapabili
     calls += s"body|${appId.value}|${method.value}|${summon[JsonCodec[Req]].encode(data)}|$httpMethod|${metadata.size}"
     JsonCodec.decodeOrThrow[Resp](response)
 
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvocationMethodName): Resp =
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
     calls += s"nobody|${appId.value}|${method.value}"
     JsonCodec.decodeOrThrow[Resp](response)

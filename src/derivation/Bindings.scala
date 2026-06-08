@@ -6,7 +6,7 @@ import scala.quoted.*
 /** Derivation of [[dapr4s.BindingsCapability]] client facades from a trait.
   *
   * The Scala method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.BindingOperation]]. The binding
-  * component itself is fixed by the per-call `BindingsCapability` (obtained via `DaprCapability.binding(name)`), so
+  * component itself is fixed by the per-call `BindingsCapability` (obtained via `DaprCapability.bindings(name)`), so
   * `derive` takes no argument.
   *
   * Each method takes the request body as its first value parameter, plus an optional
@@ -27,7 +27,7 @@ object Bindings:
     *
     * Each method's Scala name is the [[dapr4s.BindingOperation]] it performs — `def create` issues the binding
     * operation `"create"` — overridable per method with [[name `@name`]]. The binding component itself is fixed by the
-    * per-call [[dapr4s.BindingsCapability]] (from `DaprCapability.binding(name)`), so `derive` takes no argument.
+    * per-call [[dapr4s.BindingsCapability]] (from `DaprCapability.bindings(name)`), so `derive` takes no argument.
     *
     * {{{
     *   trait EmailBinding:
@@ -35,7 +35,7 @@ object Bindings:
     *     def fetch(req: Query)(using BindingsCapability, JsonCodec[Query], JsonCodec[Message]): Option[Message]
     *   lazy val EmailBinding: EmailBinding = Bindings.derive[EmailBinding]
     *
-    *   DaprCapability.binding(BindingName("email")) {
+    *   DaprCapability.bindings(BindingName("email")) {
     *     EmailBinding.create(EmailRequest(...)) // → invokeOneWay(BindingOperation("create"), …)  (Unit ⇒ fire-and-forget)
     *     EmailBinding.fetch(Query(...))         // → invoke(BindingOperation("fetch"), …): Option[Message]
     *   }

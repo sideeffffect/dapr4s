@@ -14,8 +14,8 @@ import munit.FunSuite
 import unsafeExceptions.canThrowAny
 import scala.concurrent.duration.DurationInt
 
-/** Tests for every [[DistributedLockCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch,
-  * backed by a real `lock.redis` component via Testcontainers.
+/** Tests for every [[LockCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed by a
+  * real `lock.redis` component via Testcontainers.
   *
   * Each test uses a unique resource ID (UUID) so tests sharing the same Dapr sidecar container do not interfere.
   */
@@ -59,10 +59,10 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val own = uniqueOwner()
         DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[Unit, Boolean](InvocationMethodName("lock")) { _ =>
-                  try DistributedLockCapability.tryLock(res, own, 30.seconds)
+                InvokeRoute[Unit, Boolean](InvokeMethodName("lock")) { _ =>
+                  try LockCapability.tryLock(res, own, 30.seconds)
                   catch case e: Exception => throw e
                 },
               ),
@@ -80,10 +80,10 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val res = uniqueResource()
         DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[String, Boolean](InvocationMethodName("lock")) { ownerStr =>
-                  try DistributedLockCapability.tryLock(res, LockOwner(ownerStr), 30.seconds)
+                InvokeRoute[String, Boolean](InvokeMethodName("lock")) { ownerStr =>
+                  try LockCapability.tryLock(res, LockOwner(ownerStr), 30.seconds)
                   catch case e: Exception => throw e
                 },
               ),
@@ -106,14 +106,14 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val own = uniqueOwner()
         DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[Unit, Boolean](InvocationMethodName("acquire")) { _ =>
-                  try DistributedLockCapability.tryLock(res, own, 30.seconds)
+                InvokeRoute[Unit, Boolean](InvokeMethodName("acquire")) { _ =>
+                  try LockCapability.tryLock(res, own, 30.seconds)
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](InvocationMethodName("release")) { _ =>
-                  try DistributedLockCapability.unlock(res, own).toString
+                InvokeRoute[Unit, String](InvokeMethodName("release")) { _ =>
+                  try LockCapability.unlock(res, own).toString
                   catch case e: Exception => throw e
                 },
               ),
@@ -133,10 +133,10 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val own = uniqueOwner()
         DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[Unit, String](InvocationMethodName("release")) { _ =>
-                  try DistributedLockCapability.unlock(res, own).toString
+                InvokeRoute[Unit, String](InvokeMethodName("release")) { _ =>
+                  try LockCapability.unlock(res, own).toString
                   catch case e: Exception => throw e
                 },
               ),
@@ -155,14 +155,14 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val realOwner = uniqueOwner()
         DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[Unit, Boolean](InvocationMethodName("acquire")) { _ =>
-                  try DistributedLockCapability.tryLock(res, realOwner, 30.seconds)
+                InvokeRoute[Unit, Boolean](InvokeMethodName("acquire")) { _ =>
+                  try LockCapability.tryLock(res, realOwner, 30.seconds)
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](InvocationMethodName("release-wrong")) { _ =>
-                  try DistributedLockCapability.unlock(res, LockOwner("intruder")).toString
+                InvokeRoute[Unit, String](InvokeMethodName("release-wrong")) { _ =>
+                  try LockCapability.unlock(res, LockOwner("intruder")).toString
                   catch case e: Exception => throw e
                 },
               ),
@@ -184,14 +184,14 @@ class LockCapabilityServerTest extends FunSuite with TestContainersForAll with D
         val own = uniqueOwner()
         DaprCapability.lock(LockStoreName("lockstore")) {
           withServer(
-            DaprApp(invocations =
+            DaprApp(invokeRoutes =
               List(
-                InvocationRoute[Unit, Boolean](InvocationMethodName("lock")) { _ =>
-                  try DistributedLockCapability.tryLock(res, own, 30.seconds)
+                InvokeRoute[Unit, Boolean](InvokeMethodName("lock")) { _ =>
+                  try LockCapability.tryLock(res, own, 30.seconds)
                   catch case e: Exception => throw e
                 },
-                InvocationRoute[Unit, String](InvocationMethodName("unlock")) { _ =>
-                  try DistributedLockCapability.unlock(res, own).toString
+                InvokeRoute[Unit, String](InvokeMethodName("unlock")) { _ =>
+                  try LockCapability.unlock(res, own).toString
                   catch case e: Exception => throw e
                 },
               ),

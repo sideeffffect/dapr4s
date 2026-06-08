@@ -35,7 +35,7 @@ object TestDaprApp:
     * `inv.Req`/`inv.Resp` types without `asInstanceOf`. Fails fast if no handler is registered for `method`.
     */
   def call[Req: JsonCodec](app: DaprApp, method: String, request: Req)[Resp: JsonCodec]: Resp =
-    val inv = app.invocations
+    val inv = app.invokeRoutes
       .find(_.methodName.value == method)
       .getOrElse(
         throw java.util.NoSuchElementException(s"TestDaprApp: no invocation route for '$method'"),

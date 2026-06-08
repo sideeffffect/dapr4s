@@ -24,8 +24,8 @@ import java.util.Collections
   *
   * Showcases how multiple dapr4s capabilities work together:
   *   - [[StateCapability]] — persisting orders and stock levels
-  *   - [[PubSubCapability]] — publishing order events (fire-and-forget to real Dapr sidecar)
-  *   - [[DistributedLockCapability]] — serialising concurrent stock updates
+  *   - [[PublishCapability]] — publishing order events (fire-and-forget to real Dapr sidecar)
+  *   - [[LockCapability]] — serialising concurrent stock updates
   *   - [[DaprApp]] — declarative handler composition
   */
 @scala.caps.assumeSafe
@@ -210,7 +210,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
         val inventoryApp = InventoryServiceApp()(using scope)
         val combined = orderApp ++ inventoryApp
 
-        assert(combined.invocations.exists(_.methodName.value == "place-order"))
-        assert(combined.invocations.exists(_.methodName.value == "get-stock"))
+        assert(combined.invokeRoutes.exists(_.methodName.value == "place-order"))
+        assert(combined.invokeRoutes.exists(_.methodName.value == "get-stock"))
         assert(combined.subscriptions.exists(_.topic.value == "orders"))
     }

@@ -34,7 +34,7 @@ private[internal] final class BindingsCapabilityImpl(
   // response as String) would make the SDK's Jackson serializer encode the JSON a SECOND time,
   // so the binding target receives `"{\"k\":..}"` instead of `{"k":..}` (e.g. an HTTP binding
   // POSTs a quoted string and the endpoint rejects it). byte[]-in + TypeRef.BYTE_ARRAY-out skips
-  // serialization entirely; dapr4s owns the JSON. Same fix as InvokerCapabilityImpl.invoke.
+  // serialization entirely; dapr4s owns the JSON. Same fix as InvokeCapabilityImpl.invoke.
   private def invokeRaw[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,

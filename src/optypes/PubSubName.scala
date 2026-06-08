@@ -5,7 +5,7 @@ import language.experimental.safe
 /** Name of a Dapr pub/sub component.
   *
   * Must not be empty. Must match the `name` field in the pub/sub component's metadata YAML. Used when constructing a
-  * [[PubSubCapability]] via [[DaprCapability.pubsub]] and appears in incoming [[CloudEvent]] messages as the
+  * [[PublishCapability]] via [[DaprCapability.publish]] and appears in incoming [[CloudEvent]] messages as the
   * `pubSubName` field.
   */
 opaque type PubSubName = String

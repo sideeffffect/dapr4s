@@ -17,7 +17,7 @@ final case class StateEntry[T](value: Option[T], etag: Option[ETag])
 /** A single configuration item returned by [[ConfigurationCapability.get]] or delivered via subscription.
   *
   * @param key
-  *   The [[ConfigKey]] identifying this item.
+  *   The [[ConfigurationKey]] identifying this item.
   * @param value
   *   The current configuration value.
   * @param version
@@ -25,10 +25,10 @@ final case class StateEntry[T](value: Option[T], etag: Option[ETag])
   * @param metadata
   *   Additional key-value metadata attached to the item by the configuration store.
   */
-final case class ConfigItem(
-    key: ConfigKey,
-    value: ConfigValue,
-    version: ConfigVersion,
+final case class ConfigurationItem(
+    key: ConfigurationKey,
+    value: ConfigurationValue,
+    version: ConfigurationVersion,
     metadata: Map[MetadataKey, MetadataValue] = Map.empty,
 )
 
@@ -84,7 +84,7 @@ final case class BulkPublishResult(failedEntries: List[BulkEntryId])
 // ---------------------------------------------------------------------------
 
 /** Represents a configuration update notification. */
-final case class ConfigUpdate(storeName: ConfigStoreName, items: Map[ConfigKey, ConfigItem])
+final case class ConfigurationUpdate(storeName: ConfigurationStoreName, items: Map[ConfigurationKey, ConfigurationItem])
 
 // ---------------------------------------------------------------------------
 // Pub/Sub subscription (incoming messages)
@@ -141,8 +141,8 @@ final case class CloudEvent[T](
 /** An incoming service invocation request. `httpMethod` is the HTTP verb (GET, POST, PUT, DELETE, etc.) used by the
   * calling app.
   */
-final case class InvocationRequest[T](
-    methodName: InvocationMethodName,
+final case class InvokeRequest[T](
+    methodName: InvokeMethodName,
     httpMethod: HttpMethod,
     data: T,
 )
@@ -259,7 +259,7 @@ final case class JobDetails(
 enum ConversationMessageRole:
   case System, User, Assistant, Tool, Developer
 
-/** Why the model stopped generating a [[ConversationResultChoices]].
+/** Why the model stopped generating a [[ConversationResultChoice]].
   *
   * Providers report this as a free-form string; values outside the recognised set are preserved verbatim in
   * [[FinishReason.Other]].
@@ -334,16 +334,16 @@ object ConversationMessage:
   * @param parametersJson
   *   The function's parameter schema as a JSON object (typically a JSON Schema describing the arguments).
   */
-final case class ConversationTools(name: ToolName, description: Option[String], parametersJson: SerializedJson)
+final case class ConversationTool(name: ToolName, description: Option[String], parametersJson: SerializedJson)
 
 /** A tool/function call the model emitted in its response. */
-final case class ConversationToolCalls(id: ToolCallId, functionName: ToolName, arguments: SerializedJson)
+final case class ConversationToolCall(id: ToolCallId, functionName: ToolName, arguments: SerializedJson)
 
-/** The assistant message of a single [[ConversationResultChoices]]. */
-final case class ConversationResultMessage(content: String, toolCalls: List[ConversationToolCalls])
+/** The assistant message of a single [[ConversationResultChoice]]. */
+final case class ConversationResultMessage(content: String, toolCalls: List[ConversationToolCall])
 
 /** One candidate completion within a [[ConversationResult]]. */
-final case class ConversationResultChoices(
+final case class ConversationResultChoice(
     finishReason: Option[FinishReason],
     index: Long,
     message: ConversationResultMessage,
@@ -358,7 +358,7 @@ final case class ConversationResultCompletionUsage(
 
 /** One output of a [[ConversationResponse]] (one per conversation input). */
 final case class ConversationResult(
-    choices: List[ConversationResultChoices],
+    choices: List[ConversationResultChoice],
     model: Option[ModelName],
     usage: Option[ConversationResultCompletionUsage],
 )

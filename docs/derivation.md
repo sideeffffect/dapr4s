@@ -9,13 +9,13 @@ cap.invoke(AppId("svc-invoke-test"), MethodName("double"), IncrRequest(5))[Count
 
 instead, it would be nicer to be able to have
 ```scala
-@ServiceInvocationDerivation
+@InvokeDerivation
 trait MyService {
   def double(
     input: IncrRequest,
     httpMethod: HttpMethod = HttpMethod.Post,
     metadata: Map[MetadataKey, MetadataValue] = Map.empty
-  )(using ServiceInvocationCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
+  )(using InvokeCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
 }
 ```
 and have it generate a class that would look something like this
@@ -25,19 +25,19 @@ class MyServiceImpl(appId: AppId) extends MyService {
     input: IncrRequest,
     httpMethod: HttpMethod = HttpMethod.Post,
     metadata: Map[MetadataKey, MetadataValue] = Map.empty
-  )(using cap: ServiceInvocationCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState =
+  )(using cap: InvokeCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState =
     cap.invoke(appId, MethodName("double"), input, httpMethod, metadata)[CounterState]
 }
 ```
 
 We coudld do this for
 * StateCapability#get, StateCapability#save, Scala method name represents StateKey (use the `def x = ???` and `def x_=(value: Value) = ???`) trick
-* PubSubCapability#publish, Scala method name represents Topic
-* ServiceInvocationCapability#invoke (both overloads), Scala method name represents InvocationMethodName
+* PublishCapability#publish, Scala method name represents Topic
+* InvokeCapability#invoke (both overloads), Scala method name represents InvokeMethodName
 * SecretsCapability#get, Scala method name represents SecretKey
-* ConfigurationCapability#get, Scala method name represents a single ConfigKey
-* BindingsCapability#invoke and BindingsCapability#invokeOneWay, Scala method name represents BindingOperation, very similar to ServiceInvocationCapability
-* ActorCapability#invoke (both overloads) and ActorCapability#invokeVoid, Scala method name represents ActorMethodName, very similar to ServiceInvocationCapability
+* ConfigurationCapability#get, Scala method name represents a single ConfigurationKey
+* BindingsCapability#invoke and BindingsCapability#invokeOneWay, Scala method name represents BindingOperation, very similar to InvokeCapability
+* ActorCapability#invoke (both overloads) and ActorCapability#invokeVoid, Scala method name represents ActorMethodName, very similar to InvokeCapability
 * WorkflowCapability#start, WorkflowCapability#startWithId (all overloads), Scala method name represents WorkflowName
 * CryptoCapability#encrypt and CryptoCapability#encryptString, Scala method name represents CryptoKeyName
 * JobsCapability#schedule, JobsCapability#scheduleOnce and JobsCapability#get, Scala method name represents JobName
@@ -144,26 +144,26 @@ It supersedes the loose sketch above where they disagree.
 
    ```scala
    import dapr4s.derivation.*
-   val svc: MyService = ServiceInvocation.derive[MyService](AppId("greeting-service"))
+   val svc: MyService = Invoke.derive[MyService](AppId("greeting-service"))
    ```
 
-   The `@ServiceInvocationDerivation` annotation (Scala 3 experimental
+   The `@InvokeDerivation` annotation (Scala 3 experimental
    `MacroAnnotation`) is *thin sugar*: it adds a companion `derive`/`apply` that
    delegates to the inline engine. The engine must stand on its own; the
    annotation is optional convenience.
 
 2. **Scope of this iteration — one vertical slice.**
-   Only `ServiceInvocationCapability` *client-side* derivation. It is built end
+   Only `InvokeCapability` *client-side* derivation. It is built end
    to end: macro + compile-time validation + Docker-free unit test + wired into a
    dapr4s test app that runs under capture-checking and safe mode. The other
-   capabilities (State, PubSub, Secrets, Config, Bindings, Actor, Workflow,
+   capabilities (State, Publish, Secrets, Config, Bindings, Actor, Workflow,
    Crypto, Jobs, ActorContext, WorkflowContext) and the server-side reification
    (`@ActorDefinitionDerivation`, `@WorkflowActivityDerivation`) follow in later
    iterations once the skeleton is proven. They are explicitly **out of scope**
    here.
 
 3. **Name mapping — verbatim, with `@name` override.**
-   The Scala method name is used as the `InvocationMethodName` exactly as
+   The Scala method name is used as the `InvokeMethodName` exactly as
    written (`double` → `"double"`). A per-method
    `@dapr4s.derivation.name("custom-wire-name")` annotation overrides it when a
    different wire name is required. No automatic case conversion.
@@ -174,7 +174,7 @@ It supersedes the loose sketch above where they disagree.
 
 ## Why the trait must be "faithful" (capture-checking)
 
-`ServiceInvocationCapability` is an `ExclusiveCapability`. The capture checker
+`InvokeCapability` is an `ExclusiveCapability`. The capture checker
 forbids storing it in the derived instance, so it cannot be captured at
 `derive` time. Therefore the capability — and likewise the `JsonCodec`s — must
 arrive *per call* via each method's `using` clause, exactly as the doc sketch
@@ -200,13 +200,13 @@ def <name>(
   <bodyParam>: <Req>,
   httpMethod: HttpMethod = HttpMethod.Post,          // OPTIONAL
   metadata: Map[MetadataKey, MetadataValue] = Map.empty,  // OPTIONAL
-)(using ServiceInvocationCapability, JsonCodec[<Req>], JsonCodec[<Resp>]): <Resp>
+)(using InvokeCapability, JsonCodec[<Req>], JsonCodec[<Resp>]): <Resp>
 ```
 
 **No-body** (maps to `invoke[Resp](appId, method)`):
 
 ```scala
-def <name>()(using ServiceInvocationCapability, JsonCodec[<Resp>]): <Resp>
+def <name>()(using InvokeCapability, JsonCodec[<Resp>]): <Resp>
 ```
 
 Rules enforced by the macro (clear compile error otherwise):
@@ -218,7 +218,7 @@ Rules enforced by the macro (clear compile error otherwise):
   `metadata: Map[MetadataKey, MetadataValue]`, in that order, after the body.
   Either or both may be omitted; when omitted the corresponding default
   (`HttpMethod.Post`, `Map.empty`) is supplied by the macro.
-* The using clause must provide a `ServiceInvocationCapability`. The required
+* The using clause must provide a `InvokeCapability`. The required
   `JsonCodec`s (`JsonCodec[Req]` when there is a body, `JsonCodec[Resp]` always)
   must be resolvable — they are taken from the using clause / ambient givens.
 * Only abstract methods are derived. A concrete (already-implemented) member is
@@ -229,18 +229,18 @@ Rules enforced by the macro (clear compile error otherwise):
 ```scala
 package dapr4s.derivation
 
-object ServiceInvocation:
+object Invoke:
   transparent inline def derive[T](appId: AppId): T = ${ … }
 ```
 
 `derive` returns an anonymous class `extends T`, generated with
 `quotes.reflect.Symbol.newClass`, with one `DefDef` per abstract method whose
-body forwards to the `ServiceInvocationCapability` companion. The `appId`
+body forwards to the `InvokeCapability` companion. The `appId`
 argument is captured by reference (it is a plain value, CC-safe).
 
 ## Calling the engine — a plain factory (not a macro annotation, not a mixin)
 
-The doc sketched a `@ServiceInvocationDerivation` macro annotation that would synthesise a
+The doc sketched a `@InvokeDerivation` macro annotation that would synthesise a
 companion `derive`. **That form was prototyped and rejected.** Scala 3 macro annotations
 (`scala.annotation.MacroAnnotation`) expand in a phase that runs *after* the typer, so any
 member they generate is invisible to references in the *same* compilation run — both
@@ -252,21 +252,21 @@ An interim `X.Derived[T]` `inline` mixin was then shipped, but it added a layer 
 value over calling `X.derive[T]` directly. It has been removed. The engine's `inline def
 derive[T]` already expands at any concrete-type call site, so the idiomatic form is a plain
 top-level factory next to the trait — a `lazy val` when `derive` is parameterless (it caches
-the single facade instance), or a `def` for `ServiceInvocation`, whose `derive` takes the
+the single facade instance), or a `def` for `Invoke`, whose `derive` takes the
 target `appId`:
 
 ```scala
 trait MyService:
-  def double(input: IncrRequest)(using ServiceInvocationCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
-def MyService(appId: AppId): MyService = ServiceInvocation.derive[MyService](appId)
+  def double(input: IncrRequest)(using InvokeCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
+def MyService(appId: AppId): MyService = Invoke.derive[MyService](appId)
 
 val svc = MyService(AppId("doubler"))
 ```
 
 ```scala
 trait OrderEvents:
-  def orders(event: OrderEvent)(using PubSubCapability, JsonCodec[OrderEvent]): Unit
-lazy val OrderEvents: OrderEvents = PubSub.derive[OrderEvents]   // parameterless → cached lazy val
+  def orders(event: OrderEvent)(using PublishCapability, JsonCodec[OrderEvent]): Unit
+lazy val OrderEvents: OrderEvents = Publish.derive[OrderEvents]   // parameterless → cached lazy val
 ```
 
 The trait name (a type) and the factory name (a term) share an identifier the same way a
@@ -290,7 +290,7 @@ method. Two non-obvious constraints shaped the body:
    `given JsonCodec[...] = <param>` locals inside each method; the compiler lifted them and
    captured them into the enclosing class — the host test class ended up with a 30-argument
    constructor and munit could not instantiate it. The fix routes every call through a tiny
-   hand-written runtime forwarder (`ServiceInvocationDerivationRuntime.invokeBody/invokeNoBody`)
+   hand-written runtime forwarder (`InvokeDerivationRuntime.invokeBody/invokeNoBody`)
    that takes the capability and codecs as plain explicit arguments. This also removes any
    need to reconstruct `invoke`'s interleaved type/`using` clause order by hand, and dissolves
    the `Req == Resp` ambiguity (the codecs are arguments, not givens).
@@ -301,7 +301,7 @@ method. Two non-obvious constraints shaped the body:
 ## Testing
 
 * **Unit (no Docker, `dapr4s.test.unit.*`):** a hand-written fake
-  `ServiceInvocationCapability` records `(appId, method, data, httpMethod,
+  `InvokeCapability` records `(appId, method, data, httpMethod,
   metadata)` and the requested `Resp`. Derive a small trait, call its methods
   with stub codecs, assert the recorded values — proves name mapping, overload
   selection, and argument forwarding.
@@ -314,7 +314,7 @@ method. Two non-obvious constraints shaped the body:
 
 # Implementation status — full build (2026-06-07)
 
-After the ServiceInvocation slice was proven, the rest of the doc's list was implemented.
+After the Invoke slice was proven, the rest of the doc's list was implemented.
 This section records what shipped, how, and what didn't work.
 
 ## What shipped
@@ -322,17 +322,17 @@ This section records what shipped, how, and what didn't work.
 All in package `dapr4s.derivation`. Every client facade follows the same shape: an `object X`
 with `inline def derive[…]: T` and a private macro built on the
 shared `MacroSupport` scaffold; each forwards through `@assumeSafe` runtime helpers
-(`Forwarders` / `ServiceInvocationDerivationRuntime`). Method name → Dapr name is **verbatim**,
+(`Forwarders` / `InvokeDerivationRuntime`). Method name → Dapr name is **verbatim**,
 overridable per member with `@name`.
 
 | Engine | Capability | Method → name | Notes |
 |---|---|---|---|
-| `ServiceInvocation.derive[T](appId)` | `ServiceInvocationCapability` | `InvocationMethodName` | body + optional `httpMethod`/`metadata`; no-body overload |
+| `Invoke.derive[T](appId)` | `InvokeCapability` | `InvokeMethodName` | body + optional `httpMethod`/`metadata`; no-body overload |
 | `Bindings.derive[T]` | `BindingsCapability` | `BindingOperation` | `Option[Resp]`→`invoke`, `Unit`→`invokeOneWay` |
 | `Actor.derive[T]` | `ActorCapability` | `ActorMethodName` | body / no-body / `invokeVoid` (no-body `Unit`) |
-| `PubSub.derive[T]` | `PubSubCapability` | `Topic` | `publish` / `publishWithMetadata` |
+| `Publish.derive[T]` | `PublishCapability` | `Topic` | `publish` / `publishWithMetadata` |
 | `Secrets.derive[T]` | `SecretsCapability` | `SecretKey` | `Option[SecretValue]`, optional `metadata` |
-| `Configuration.derive[T]` | `ConfigurationCapability` | `ConfigKey` | single-key `Option[ConfigItem]` |
+| `Configuration.derive[T]` | `ConfigurationCapability` | `ConfigurationKey` | single-key `Option[ConfigurationItem]` |
 | `Crypto.derive[T]` | `CryptoCapability` | `CryptoKeyName` | `encrypt` (bytes) / `encryptString` (String) |
 | `Jobs.derive[T]` | `JobsCapability` | `JobName` | `schedule` / `scheduleOnce` / `get` |
 | `Workflow.derive[T]` | `WorkflowCapability` | `WorkflowName` | `start`/`startWithId` × input |
@@ -341,8 +341,8 @@ overridable per member with `@name`.
 | `WorkflowEvents.derive[T]` | `WorkflowContext` | `EventName` | `waitForExternalEvent`, returns `Task[T]^{ctx}` |
 | `ActorDefinitions.derive[C]` | — (server-side) | `ActorType` + route names | reifies an actor class to `ActorDefinition` |
 
-Each has a Docker-free unit test (`CapabilityDerivationTest`, `ServiceInvocationDerivationTest`,
-`WorkflowEventsTest`, `ActorDefinitionsTest`) using recording fakes, plus the ServiceInvocation
+Each has a Docker-free unit test (`CapabilityDerivationTest`, `InvokeDerivationTest`,
+`WorkflowEventsTest`, `ActorDefinitionsTest`) using recording fakes, plus the Invoke
 real-sidecar round-trip.
 
 ## The shared scaffold (`MacroSupport`)
@@ -388,7 +388,7 @@ parameter (`class Counter(actorId: ActorId)`) — the macro does `new C(id)`.
 
 ## What did not work / was not implemented
 
-* **`@ServiceInvocationDerivation` and any macro-annotation form.** Scala 3 `MacroAnnotation`
+* **`@InvokeDerivation` and any macro-annotation form.** Scala 3 `MacroAnnotation`
   expands *after* the typer, so members it generates are invisible to references compiled in the
   same run (verified: both synthesising and augmenting a companion fail with `value derive is not
   a member`). Replaced everywhere by a plain `X.derive[T]` factory (`lazy val`/`def`) next to
@@ -421,8 +421,8 @@ parameter (`class Counter(actorId: ActorId)`) — the macro does `new C(id)`.
 To let a server app be written without hand-listing its routes, two more engines reify the
 *inbound* side from a handler type (an `object` of handlers, or a class with a no-arg ctor):
 
-- `InvocationRoutes.derive[T]: List[InvocationRoute]` — each method → an `InvocationRoute`
-  (name verbatim or `@name` → `InvocationMethodName`; first value param = request, return = response).
+- `InvokeRoutes.derive[T]: List[InvokeRoute]` — each method → an `InvokeRoute`
+  (name verbatim or `@name` → `InvokeMethodName`; first value param = request, return = response).
 - `Subscriptions.derive[T](pubsubName): List[Subscription]` — each method (taking `CloudEvent[P]`,
   returning `SubscriptionResult`) → a `Subscription`; name → `Topic`, `@deadLetter("…")` sets the
   dead-letter topic.

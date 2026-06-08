@@ -25,16 +25,16 @@ graph TB
     subgraph "Public API (capability traits)"
         DS["DaprCapability (root capability)"]
         SC["StateCapability^scope"]
-        PC["PubSubCapability^scope"]
-        IC["ServiceInvocationCapability^scope"]
+        PC["PublishCapability^scope"]
+        IC["InvokeCapability^scope"]
         SEC["SecretsCapability^scope"]
         CC["ConfigurationCapability^scope"]
         BC["BindingsCapability^scope"]
-        LC["DistributedLockCapability^scope"]
+        LC["LockCapability^scope"]
     end
 
     subgraph "Public API — subscriber side"
-        DA["DaprApp (case class)\n+ Subscription / InvocationRoute / BindingRoute"]
+        DA["DaprApp (case class)\n+ Subscription / InvokeRoute / BindingRoute"]
     end
 
     subgraph "Internal Layer (@assumeSafe boundaries)"
@@ -81,12 +81,12 @@ classDiagram
     class DaprCapability {
         <<trait>>
         +state(storeName: StateStoreName) StateCapability^this
-        +pubsub(pubsubName: PubSubName) PubSubCapability^this
-        +invoker ServiceInvocationCapability^this
+        +publish(pubsubName: PubSubName) PublishCapability^this
+        +invoke InvokeCapability^this
         +secrets(storeName: SecretStoreName) SecretsCapability^this
-        +config(storeName: ConfigStoreName) ConfigurationCapability^this
-        +binding(name: BindingName) BindingsCapability^this
-        +lock(storeName: LockStoreName) DistributedLockCapability^this
+        +configuration(storeName: ConfigurationStoreName) ConfigurationCapability^this
+        +bindings(name: BindingName) BindingsCapability^this
+        +lock(storeName: LockStoreName) LockCapability^this
         +actor(actorType, actorId) ActorCapability^this
         +workflow WorkflowCapability^this
         +crypto(componentName: CryptoComponentName) CryptoCapability^this
@@ -108,16 +108,16 @@ classDiagram
         +queryState[T](query: StateQuery) List[StateEntry[T]]
     }
     note for StateCapability "getBulk and saveBulk use DAPR batch APIs (getBulkState / saveBulkState) — single sidecar call each"
-    class PubSubCapability {
+    class PublishCapability {
         <<trait>>
         +publish[T](topic: Topic, data: T) Unit
         +publishWithMetadata[T](topic, data, meta) Unit
         +bulkPublish[T](topic, entries: Seq[BulkPublishEntry[T]]) BulkPublishResult
     }
-    class ServiceInvocationCapability {
+    class InvokeCapability {
         <<trait>>
-        +invoke[Req,Resp](appId: AppId, method: InvocationMethodName, data: Req) Resp
-        +invokeGet[Resp](appId: AppId, method: InvocationMethodName) Resp
+        +invoke[Req,Resp](appId: AppId, method: InvokeMethodName, data: Req) Resp
+        +invokeGet[Resp](appId: AppId, method: InvokeMethodName) Resp
     }
     class SecretsCapability {
         <<trait>>
@@ -126,13 +126,13 @@ classDiagram
     }
     class ConfigurationCapability {
         <<trait>>
-        +get(keys: Seq[ConfigKey]) Map[ConfigKey,ConfigItem]
-        +subscribe(keys: Seq[ConfigKey])(onChange) AutoCloseable
+        +get(keys: Seq[ConfigurationKey]) Map[ConfigurationKey,ConfigurationItem]
+        +subscribe(keys: Seq[ConfigurationKey])(onChange) AutoCloseable
     }
     class DaprApp {
         <<case class>>
         +subscriptions: List[Subscription]
-        +invocations: List[InvocationRoute]
+        +invokeRoutes: List[InvokeRoute]
         +bindings: List[BindingRoute]
         +workflows: List[Workflow]
         +activities: List[WorkflowActivity[?,?]]
@@ -145,7 +145,7 @@ classDiagram
         +invoke[Req,Resp](operation: BindingOperation, data: Req) Option[Resp]
         +invokeOneWay[Req](operation: BindingOperation, data: Req) Unit
     }
-    class DistributedLockCapability {
+    class LockCapability {
         <<trait>>
         +tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int) Boolean
         +unlock(resourceId: LockResourceId, lockOwner: LockOwner) UnlockStatus
@@ -170,12 +170,12 @@ classDiagram
     }
 
     DaprCapability --> StateCapability : .state()
-    DaprCapability --> PubSubCapability : .pubsub()
-    DaprCapability --> ServiceInvocationCapability : .invoker
+    DaprCapability --> PublishCapability : .publish()
+    DaprCapability --> InvokeCapability : .invoke
     DaprCapability --> SecretsCapability : .secrets()
-    DaprCapability --> ConfigurationCapability : .config()
-    DaprCapability --> BindingsCapability : .binding()
-    DaprCapability --> DistributedLockCapability : .lock()
+    DaprCapability --> ConfigurationCapability : .configuration()
+    DaprCapability --> BindingsCapability : .bindings()
+    DaprCapability --> LockCapability : .lock()
     DaprCapability --> CryptoCapability : .crypto()
     DaprCapability --> JobsCapability : .jobs
     DaprCapability --> ConversationCapability : .conversation()
@@ -195,7 +195,7 @@ sequenceDiagram
     participant Sidecar
 
     App->>Dapr: Dapr(config).serve { ... returns DaprApp }
-    Note over App: body builds DaprApp with\nSubscription / InvocationRoute / BindingRoute
+    Note over App: body builds DaprApp with\nSubscription / InvokeRoute / BindingRoute
     Dapr->>DaprAppServer: new DaprAppServer(body)
     Dapr->>DaprAppServer: startAndBlock(config.appServer.port)
     Note over DaprAppServer: builds dispatch tables\nfrom DaprApp fields
@@ -218,7 +218,7 @@ A `Subscription` may declare an optional `deadLetterTopic: Option[Topic]`; when 
 
 ### Service-invocation routes
 
-`InvocationRoute.apply` builds a route whose handler receives only the decoded request body (`Q => R`).  `InvocationRoute.withRequest` is an HTTP-method-aware overload whose handler receives the full `InvocationRequest[Q]` envelope (method name, `httpMethod: HttpMethod`, decoded body), letting one route branch on the incoming HTTP verb.
+`InvokeRoute.apply` builds a route whose handler receives only the decoded request body (`Q => R`).  `InvokeRoute.withRequest` is an HTTP-method-aware overload whose handler receives the full `InvokeRequest[Q]` envelope (method name, `httpMethod: HttpMethod`, decoded body), letting one route branch on the incoming HTTP verb.
 
 ### Route collision
 
@@ -242,13 +242,13 @@ Handler objects follow a two-layer structure that maximises capability tracking 
 
 ### Layer 1 — Business logic methods
 
-Pure handler methods declared with **anonymous** `using` capability parameters.  Business logic calls **companion-object methods** on the capability types (`StateCapability.save(...)`, `PubSubCapability.publish(...)`) rather than naming the capability value — the compiler resolves the implicit from the anonymous `using` context:
+Pure handler methods declared with **anonymous** `using` capability parameters.  Business logic calls **companion-object methods** on the capability types (`StateCapability.save(...)`, `PublishCapability.publish(...)`) rather than naming the capability value — the compiler resolves the implicit from the anonymous `using` context:
 
 ```scala
-def placeOrder(req: OrderRequest)(using StateCapability, PubSubCapability): OrderResponse =
+def placeOrder(req: OrderRequest)(using StateCapability, PublishCapability): OrderResponse =
   val orderId = java.util.UUID.randomUUID().toString
   StateCapability.save(StateStoreKey(orderId), req)
-  PubSubCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
+  PublishCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
   OrderResponse(orderId, "accepted")
 ```
 
@@ -274,11 +274,11 @@ The promoted idiom is a dedicated `*App` object whose `apply` method takes the c
 object OrderServiceApp:
   def apply()(using DaprCapability): DaprApp =
     DaprCapability.state(StateName) {
-      DaprCapability.pubsub(PubSubComp) {
+      DaprCapability.publish(PubSubComp) {
         DaprApp(
-          invocations = List(
-            InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order"))(placeOrder),
-            InvocationRoute[String, Option[OrderRequest]](InvocationMethodName("get-order"))(getOrder)
+          invokeRoutes = List(
+            InvokeRoute[OrderRequest, OrderResponse](InvokeMethodName("place-order"))(placeOrder),
+            InvokeRoute[String, Option[OrderRequest]](InvokeMethodName("get-order"))(getOrder)
           )
         )
       }
@@ -292,22 +292,22 @@ object DaprCapability:
     body(using cap.state(storeName))
 ```
 
-**Capability injection lifetime**: Capabilities are bound once per `apply` call and shared across all handler invocations for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
+**Capability injection lifetime**: Capabilities are bound once per `apply` call and shared across all handler invokeRoutes for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
 
-**`DaprApp` stores handlers as `AnyRef`**: Handler lambdas capture DAPR capabilities.  `Subscription`, `InvocationRoute`, and `BindingRoute` store them as `rawHandler: AnyRef` (CC-opaque) so the instances have an empty capture set and can live in a plain `List`.  Internal dispatch code (`DaprAppServer`, `TestDaprApp`) casts them back via path-dependent types under `@assumeSafe`.
+**`DaprApp` stores handlers as `AnyRef`**: Handler lambdas capture DAPR capabilities.  `Subscription`, `InvokeRoute`, and `BindingRoute` store them as `rawHandler: AnyRef` (CC-opaque) so the instances have an empty capture set and can live in a plain `List`.  Internal dispatch code (`DaprAppServer`, `TestDaprApp`) casts them back via path-dependent types under `@assumeSafe`.
 
 ### Diagram
 
 ```mermaid
 graph LR
     subgraph "*App object (no @assumeSafe)"
-        BL["Business logic def methods\nusing StateCapability\nusing PubSubCapability\n→ calls StateCapability.save/get/...\n→ calls PubSubCapability.publish/..."]
+        BL["Business logic def methods\nusing StateCapability\nusing PublishCapability\n→ calls StateCapability.save/get/...\n→ calls PublishCapability.publish/..."]
         CFG["apply()\nusing DaprCapability\nreturns DaprApp"]
-        CFG -->|"DaprCapability.state(name) { ... }\nDaprCapability.pubsub(name) { ... }"| BL
+        CFG -->|"DaprCapability.state(name) { ... }\nDaprCapability.publish(name) { ... }"| BL
     end
 
     subgraph "DaprApp (immutable, declarative)"
-        DA["DaprApp\nList[Subscription]\nList[InvocationRoute]\nList[BindingRoute]"]
+        DA["DaprApp\nList[Subscription]\nList[InvokeRoute]\nList[BindingRoute]"]
     end
 
     subgraph "Library internals (@assumeSafe)"
@@ -315,7 +315,7 @@ graph LR
         TST["TestDaprApp\ncall / deliver"]
     end
 
-    CFG -->|"InvocationRoute(BL-method)"| DA
+    CFG -->|"InvokeRoute(BL-method)"| DA
     DA -->|"passed to constructor"| SRV
     DA -->|"passed to test helpers"| TST
 ```
@@ -350,9 +350,9 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `Topic` | `String` | yes | Pub/sub topic |
 | `AppId` | `String` | yes | Target application ID for service invocation |
 | `SecretStoreName` | `String` | yes | DAPR secrets store component name |
-| `ConfigStoreName` | `String` | yes | DAPR configuration store component name |
+| `ConfigurationStoreName` | `String` | yes | DAPR configuration store component name |
 | `BindingName` | `String` | yes | DAPR output binding component name |
-| `InvocationMethodName` | `String` | yes | Service-invocation / inbound handler method name |
+| `InvokeMethodName` | `String` | yes | Service-invocation / inbound handler method name |
 | `ActorMethodName` | `String` | yes | Actor method name |
 | `Route` | `String` | yes | HTTP route for a pub/sub subscription |
 | `BindingOperation` | `String` | yes | Operation name for an output binding |
@@ -373,7 +373,7 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `ActorStateKey` | `String` | no | Key in a virtual actor's state |
 | `StateQuery` | `String` | no | State store query expression (JSON filter) |
 | `SecretKey` | `String` | no | Key in a DAPR secrets store |
-| `ConfigKey` | `String` | no | Key in a DAPR configuration store |
+| `ConfigurationKey` | `String` | no | Key in a DAPR configuration store |
 | `BulkEntryId` | `String` | no | Caller-assigned ID for bulk-publish correlation |
 | `WorkflowInstanceId` | `String` | no | Dapr workflow instance ID |
 | `ActorId` | `String` | no | Dapr virtual actor instance ID |
@@ -390,14 +390,14 @@ Structured data without identity, compared by value. Defined in `Models.scala`. 
 | Type | Scala form | Purpose |
 |---|---|---|
 | `StateEntry[T]` | `case class` | Result of a state fetch; holds `value: Option[T]` and `etag: Option[ETag]` |
-| `ConfigItem` | `case class` | Single configuration item: key, value, version, metadata |
-| `ConfigUpdate` | `case class` | Config update notification from sidecar: `storeName: ConfigStoreName`, `items: Map[ConfigKey, ConfigItem]` |
+| `ConfigurationItem` | `case class` | Single configuration item: key, value, version, metadata |
+| `ConfigurationUpdate` | `case class` | Config update notification from sidecar: `storeName: ConfigurationStoreName`, `items: Map[ConfigurationKey, ConfigurationItem]` |
 | `BulkPublishEntry[T]` | `case class` | Entry in a bulk publish request: `entryId: BulkEntryId`, `event: T` |
 | `BulkPublishResult` | `case class` | Result of a bulk publish: `failedEntries: List[BulkEntryId]` |
 | `UnlockStatus` | `enum` | Result of a distributed lock unlock: `Success`, `LockNotFound`, `InternalError` |
 | `SubscriptionResult` | `enum` | What a pub/sub handler returns to sidecar: `Success`, `Retry`, `Drop` |
 | `CloudEvent[T]` | `case class` | Incoming CloudEvent from sidecar: envelope fields + `data: T` |
-| `InvocationRequest[T]` | `case class` | Incoming service invocation: `methodName`, `httpMethod: HttpMethod`, `data: T` |
+| `InvokeRequest[T]` | `case class` | Incoming service invocation: `methodName`, `httpMethod: HttpMethod`, `data: T` |
 | `HttpMethod` | `enum` | HTTP verb: `Get`, `Post`, `Put`, `Patch`, `Delete`, `Head`, `Options` |
 | `StateOp` | `sealed abstract class` | Base of the state transaction ADT (see below) |
 | `WorkflowSnapshot` | `case class` | Snapshot of a workflow instance's current state |
@@ -406,7 +406,7 @@ Structured data without identity, compared by value. Defined in `Models.scala`. 
 | `JobDetails` | `case class` | Stored job definition returned by `JobsCapability.get` |
 | `ConversationMessage` | `case class` | A conversation message with `role: ConversationMessageRole` + text; smart constructors `user`/`system`/`assistant`/`developer`/`tool` |
 | `ConversationMessageRole` | `enum` | Conversation message role: `System`, `User`, `Assistant`, `Tool`, `Developer` |
-| `ConversationTools` / `ConversationToolCalls` | `case class` | Tool (function) definition and an assistant's tool-call request |
+| `ConversationTool` / `ConversationToolCall` | `case class` | Tool (function) definition and an assistant's tool-call request |
 | `ConversationResponse` | `case class` | Result of `converse`: `outputs: List[ConversationResult]` (choices + usage) |
 
 ### StateOp — sealed ADT (entity + variants in spec)
@@ -444,7 +444,7 @@ object JsonCodec:
   given [T: upickle.default.ReadWriter]: JsonCodec[T] = ...
 ```
 
-**Raw-bytes outbound payloads**: pub/sub publish and service invocation encode the value with the `JsonCodec[T]` and hand the result to the Java SDK as **raw bytes** (`byte[]`), not as a `String`. The SDK's serializer passes `byte[]` through untouched but would re-serialize a `String`, double-encoding the JSON into a JSON-string. Exchanging bytes in both directions keeps dapr4s the sole owner of the JSON encoding. See `PubSubCapabilityImpl` and `InvokerCapabilityImpl`.
+**Raw-bytes outbound payloads**: pub/sub publish and service invocation encode the value with the `JsonCodec[T]` and hand the result to the Java SDK as **raw bytes** (`byte[]`), not as a `String`. The SDK's serializer passes `byte[]` through untouched but would re-serialize a `String`, double-encoding the JSON into a JSON-string. Exchanging bytes in both directions keeps dapr4s the sole owner of the JSON encoding. See `PublishCapabilityImpl` and `InvokeCapabilityImpl`.
 
 ---
 
@@ -533,11 +533,11 @@ Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM err
 dapr4s/
 ├── project.scala                     # Scala CLI directives (deps, compiler options; nightly Scala)
 ├── src/
-│   ├── Models.scala                  # Value types: StateEntry, ConfigItem, StateOp, SubscriptionResult,
-│   │                                 # CloudEvent, InvocationRequest, WorkflowSnapshot/Status [safe mode]
+│   ├── Models.scala                  # Value types: StateEntry, ConfigurationItem, StateOp, SubscriptionResult,
+│   │                                 # CloudEvent, InvokeRequest, WorkflowSnapshot/Status [safe mode]
 │   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe]
 │   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes + WorkflowCapability) [safe mode]
-│   ├── DaprApp.scala                 # DaprApp case class + Subscription/InvocationRoute/BindingRoute [@assumeSafe companions]
+│   ├── DaprApp.scala                 # DaprApp case class + Subscription/InvokeRoute/BindingRoute [@assumeSafe companions]
 │   ├── DaprCapability.scala          # DaprCapability trait with ^{this} return types [safe mode]
 │   ├── Dapr.scala                    # class Dapr(config) with .run + .serve entry points [@assumeSafe]
 │   ├── DaprConfig.scala              # DaprConfig / SidecarConfig / AppServerConfig / ActorRuntimeConfig
@@ -552,10 +552,10 @@ dapr4s/
 │       ├── NullOps.scala             # null-handling helpers
 │       ├── DaprAppServer.scala       # HTTP server (OpenJDK jdk.httpserver); workflow/actor registration
 │       ├── StateCapabilityImpl.scala
-│       ├── PubSubCapabilityImpl.scala
-│       ├── InvokerCapabilityImpl.scala
+│       ├── PublishCapabilityImpl.scala
+│       ├── InvokeCapabilityImpl.scala
 │       ├── SecretsCapabilityImpl.scala
-│       ├── ConfigCapabilityImpl.scala
+│       ├── ConfigurationCapabilityImpl.scala
 │       ├── BindingsCapabilityImpl.scala
 │       ├── LockCapabilityImpl.scala
 │       ├── ActorCapabilityImpl.scala
@@ -581,17 +581,17 @@ dapr4s/
         ├── DaprTestContainer.scala    # Testcontainers bridge
         ├── StateIntegrationTest.scala
         ├── PubSubIntegrationTest.scala
-        ├── InvokerIntegrationTest.scala
+        ├── InvokeIntegrationTest.scala
         ├── OrderServiceIntegrationTest.scala
         ├── InventoryServiceIntegrationTest.scala
         ├── EndToEndIntegrationTest.scala
         ├── SecretsIntegrationTest.scala
         ├── StateCapabilityServerTest.scala       # *CapabilityServerTest: live-sidecar capability tests
-        ├── PubSubCapabilityServerTest.scala
+        ├── PublishCapabilityServerTest.scala
         ├── SecretsCapabilityServerTest.scala
         ├── LockCapabilityServerTest.scala
         ├── ActorCapabilityServerTest.scala
-        ├── ServiceInvocationServerTest.scala
+        ├── InvokeCapabilityServerTest.scala
         ├── WorkflowCapabilityServerTest.scala
         └── apps/
             ├── Shared.scala           # Shared domain models (OrderRequest, OrderEvent, etc.)
@@ -657,8 +657,8 @@ Extend `WorkflowActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]
 ```scala
 class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
   def execute(input: OrderRequest)(using DaprCapability): PaymentResult =
-    DaprCapability.invoker:
-      ServiceInvocationCapability.invoke(PaymentService, InvocationMethodName("charge"), input)[PaymentResult]
+    DaprCapability.invoke:
+      InvokeCapability.invoke(PaymentService, InvokeMethodName("charge"), input)[PaymentResult]
 ```
 
 `WorkflowActivity[I, O]` is a pure Scala abstract class. Internally, `WorkflowActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[dapr4s]` on the abstract class.

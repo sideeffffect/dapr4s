@@ -52,9 +52,9 @@ Each block follows the established idiom exactly:
   - alpha2: `converseAlpha2(ConversationRequestAlpha2): Mono<ConversationResponseAlpha2>`.
     Inputs are `ConversationInputAlpha2(List<ConversationMessage>)`; `ConversationMessage`
     is a bare interface (role/name/content) with **no shipped impl** — we provide one.
-    Tools via `ConversationTools(ConversationToolsFunction(name, Map params))`.
+    Tools via `ConversationTool(ConversationToolsFunction(name, Map params))`.
     Results: `getOutputs(): List<ConversationResultAlpha2>` →
-    `getChoices(): List<ConversationResultChoices>` → `getMessage(): ConversationResultMessage`
+    `getChoices(): List<ConversationResultChoice>` → `getMessage(): ConversationResultMessage`
     (`getContent`, `getToolCalls`).
 
 `AbstractDaprClient implements DaprClient, DaprPreviewClient`, so the single
@@ -84,7 +84,7 @@ New optype: `JobName`. New value type `JobSchedule` (smart constructors:
 `JobSchedule.cron(expr)`, `JobSchedule.every(FiniteDuration)`,
 `JobSchedule.daily/hourly/weekly/monthly/yearly`). New model `JobDetails`.
 
-Client capability (no component name; like `invoker`/`workflow`):
+Client capability (no component name; like `invoke`/`workflow`):
 ```
 trait JobsCapability:
   def schedule[T: JsonCodec](name: JobName, data: T, schedule: JobSchedule,

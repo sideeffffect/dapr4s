@@ -69,7 +69,7 @@ real registration key (`getSimpleName`) so it detects exactly what would collide
 
 `pubSubRoutes`, `bindingRoutes`, `invokeRoutes`, `jobRoutes`, and `actorDefs` are
 all `HashMap`s populated by `put`. Two subscriptions on the same route, two
-invocations with the same method name, two bindings/jobs/actor-types with the same
+invokeRoutes with the same method name, two bindings/jobs/actor-types with the same
 name → last wins.
 
 ### Cross-type root-route collisions — `internal/DaprAppServer.scala:236-287`
@@ -207,10 +207,10 @@ private[dapr4s] def build(id: ActorId, ctx: ActorContext): ActorRoutes =
    - activities by `activityName`
    - workflows by `getClass.getSimpleName`
    - subscriptions by normalised route path
-   - invocations by method name
+   - invokeRoutes by method name
    - bindings by name; jobs by name; actors by `actorType`
 2. **Root-route map**: build `path -> List[kind]` over subscriptions, bindings,
-   and invocations (using the effective-path table above). Any path with more than
+   and invokeRoutes (using the effective-path table above). Any path with more than
    one *distinct* kind → `RouteCollision`. (Same-kind duplicates are already
    covered by step 1, so they are not double-reported here.)
 3. **Reserved-path scan**: for each subscription / binding / invocation effective

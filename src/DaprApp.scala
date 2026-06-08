@@ -2,20 +2,20 @@ package dapr4s
 
 /** Immutable, declarative description of all inbound handlers an application exposes.
   *
-  * Build a `DaprApp` using the [[Subscription]], [[InvocationRoute]], [[BindingRoute]], and [[ActorDefinition]] factory
+  * Build a `DaprApp` using the [[Subscription]], [[InvokeRoute]], [[BindingRoute]], and [[ActorDefinition]] factory
   * objects, then return it from the [[Dapr.serve]] body:
   *
   * {{{
   *   Dapr(config).serve:
   *     val scope = summon[DaprCapability]
   *     given StateCapability  = scope.state(StateStoreName("statestore"))
-  *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
+  *     given PublishCapability = scope.publish(PubSubName("pubsub"))
   *     DaprApp(
   *       subscriptions = List(
   *         Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event => ... }
   *       ),
-  *       invocations = List(
-  *         InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order")) { req => ... }
+  *       invokeRoutes = List(
+  *         InvokeRoute[OrderRequest, OrderResponse](InvokeMethodName("place-order")) { req => ... }
   *       ),
   *       actors = List(
   *         ActorDefinition(ActorType("Counter")) { id =>
@@ -30,7 +30,7 @@ package dapr4s
   */
 final case class DaprApp(
     subscriptions: List[Subscription] = Nil,
-    invocations: List[InvocationRoute] = Nil,
+    invokeRoutes: List[InvokeRoute] = Nil,
     bindings: List[BindingRoute] = Nil,
     workflows: List[Workflow] = Nil,
     activities: List[WorkflowActivity[?, ?]] = Nil,
@@ -39,7 +39,7 @@ final case class DaprApp(
 ):
   def ++(other: DaprApp): DaprApp = DaprApp(
     subscriptions ++ other.subscriptions,
-    invocations ++ other.invocations,
+    invokeRoutes ++ other.invokeRoutes,
     bindings ++ other.bindings,
     workflows ++ other.workflows,
     activities ++ other.activities,
@@ -139,35 +139,35 @@ object Subscription:
   * `Req` and `Resp` type members bind [[reqCodec]] and [[respCodec]] to concrete types. The handler is stored as
   * `AnyRef` for the same reasons as [[Subscription.rawHandler]].
   *
-  * Use [[InvocationRoute.apply]] or [[InvocationRoute.withRequest]] to construct instances.
+  * Use [[InvokeRoute.apply]] or [[InvokeRoute.withRequest]] to construct instances.
   */
-sealed abstract class InvocationRoute:
+sealed abstract class InvokeRoute:
   type Req
   type Resp
-  val methodName: InvocationMethodName
+  val methodName: InvokeMethodName
   val reqCodec: JsonCodec[Req]
   val respCodec: JsonCodec[Resp]
   // WHY AnyRef: see Subscription.rawHandler — same capture-set erasure pattern.
   private[dapr4s] val rawHandler: AnyRef
-  // true when the handler expects InvocationRequest[Req] rather than plain Req.
+  // true when the handler expects InvokeRequest[Req] rather than plain Req.
   private[dapr4s] val usesRequestEnvelope: Boolean
 
-/** Factory for [[InvocationRoute]] values.
+/** Factory for [[InvokeRoute]] values.
   *
   * WHY @assumeSafe: see [[Subscription]] companion — same capturing-lambda boundary pattern.
   */
 @scala.caps.assumeSafe
-object InvocationRoute:
+object InvokeRoute:
 
   /** Handler receives only the decoded request body. */
-  def apply[Q: JsonCodec, R: JsonCodec](methodName: InvocationMethodName)(
+  def apply[Q: JsonCodec, R: JsonCodec](methodName: InvokeMethodName)(
       handler: Q => R,
-  ): InvocationRoute =
+  ): InvokeRoute =
     // WHY RENAME: avoid val x = x self-reference — see Subscription.apply comment.
     val mn = methodName
     val rc = summon[JsonCodec[Q]]
     val wc = summon[JsonCodec[R]]
-    new InvocationRoute:
+    new InvokeRoute:
       type Req = Q
       type Resp = R
       val methodName = mn
@@ -176,14 +176,14 @@ object InvocationRoute:
       val rawHandler = handler.asInstanceOf[AnyRef]
       val usesRequestEnvelope = false
 
-  /** Handler receives the full [[InvocationRequest]] envelope (method name, HTTP verb, and decoded body). */
-  def withRequest[Q: JsonCodec, R: JsonCodec](methodName: InvocationMethodName)(
-      handler: InvocationRequest[Q] => R,
-  ): InvocationRoute =
+  /** Handler receives the full [[InvokeRequest]] envelope (method name, HTTP verb, and decoded body). */
+  def withRequest[Q: JsonCodec, R: JsonCodec](methodName: InvokeMethodName)(
+      handler: InvokeRequest[Q] => R,
+  ): InvokeRoute =
     val mn = methodName
     val rc = summon[JsonCodec[Q]]
     val wc = summon[JsonCodec[R]]
-    new InvocationRoute:
+    new InvokeRoute:
       type Req = Q
       type Resp = R
       val methodName = mn

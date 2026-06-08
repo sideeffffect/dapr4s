@@ -162,6 +162,6 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
         val app = InventoryServiceApp()(using scope)
 
         assert(app.subscriptions.exists(_.topic.value == "orders"))
-        assert(app.invocations.exists(_.methodName.value == "get-stock"))
-        assert(app.invocations.exists(_.methodName.value == "seed-stock"))
+        assert(app.invokeRoutes.exists(_.methodName.value == "get-stock"))
+        assert(app.invokeRoutes.exists(_.methodName.value == "seed-stock"))
     }

@@ -1,6 +1,6 @@
 package dapr4s
 
-/** The provider-assigned id of a tool call, used to correlate a [[ConversationToolCalls]] with the tool result message
+/** The provider-assigned id of a tool call, used to correlate a [[ConversationToolCall]] with the tool result message
   * sent back in a follow-up turn.
   */
 opaque type ToolCallId = String

@@ -50,15 +50,15 @@ final class FakeActor(resp: String) extends ActorCapability:
   def invokeVoid(method: ActorMethodName): Unit =
     log += s"void|${method.value}"
 
-// ---- PubSub -----------------------------------------------------------------
+// ---- Publish -----------------------------------------------------------------
 
 trait Publisher:
-  def orders(event: Req)(using PubSubCapability, JsonCodec[Req]): Unit
-  def audit(event: Req, metadata: Map[MetadataKey, MetadataValue])(using PubSubCapability, JsonCodec[Req]): Unit
-lazy val Publisher: Publisher = PubSub.derive[Publisher]
+  def orders(event: Req)(using PublishCapability, JsonCodec[Req]): Unit
+  def audit(event: Req, metadata: Map[MetadataKey, MetadataValue])(using PublishCapability, JsonCodec[Req]): Unit
+lazy val Publisher: Publisher = Publish.derive[Publisher]
 
 @scala.caps.assumeSafe
-final class FakePubSub extends PubSubCapability:
+final class FakePubSub extends PublishCapability:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   val pubsubName: PubSubName           = PubSubName("ps")
   def publish[T: JsonCodec](topic: Topic, data: T): Unit =
@@ -84,19 +84,19 @@ final class FakeSecrets extends SecretsCapability:
 
 // ---- Configuration ----------------------------------------------------------
 
-trait ConfigClient:
-  @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigItem]
-lazy val ConfigClient: ConfigClient = Configuration.derive[ConfigClient]
+trait ConfigurationClient:
+  @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigurationItem]
+lazy val ConfigurationClient: ConfigurationClient = Configuration.derive[ConfigurationClient]
 
 @scala.caps.assumeSafe
 final class FakeConfig extends ConfigurationCapability:
   val log: mutable.ListBuffer[String]  = mutable.ListBuffer.empty
-  val storeName: ConfigStoreName       = ConfigStoreName("c")
-  def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue]): Map[ConfigKey, ConfigItem] =
+  val storeName: ConfigurationStoreName       = ConfigurationStoreName("c")
+  def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue]): Map[ConfigurationKey, ConfigurationItem] =
     log += s"get|${keys.map(_.value).mkString(",")}|${metadata.size}"
-    keys.map(k => k -> ConfigItem(k, ConfigValue("v"), ConfigVersion(""), Map.empty)).toMap
-  def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue])(
-      onChange: ConfigUpdate => Unit,
+    keys.map(k => k -> ConfigurationItem(k, ConfigurationValue("v"), ConfigurationVersion(""), Map.empty)).toMap
+  def subscribe(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue])(
+      onChange: ConfigurationUpdate => Unit,
   ): AutoCloseable^{this} = ???
 
 // ---- Crypto -----------------------------------------------------------------

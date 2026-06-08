@@ -11,17 +11,17 @@ import munit.FunSuite
 import unsafeExceptions.canThrowAny
 import java.util.Collections
 
-/** Integration tests for [[ServiceInvocationCapability]] using the self-invoke pattern.
+/** Integration tests for [[InvokeCapability]] using the self-invoke pattern.
   *
-  * A [[DaprAppServer]] registers several [[InvocationRoute]] handlers. The Dapr sidecar is configured to route to the
-  * same app server. Tests then call [[ServiceInvocationCapability.invoke]] via the sidecar, which proxies the request
-  * back to the app — exercising the full sidecar ↔ app invocation path.
+  * A [[DaprAppServer]] registers several [[InvokeRoute]] handlers. The Dapr sidecar is configured to route to the same
+  * app server. Tests then call [[InvokeCapability.invoke]] via the sidecar, which proxies the request back to the app —
+  * exercising the full sidecar ↔ app invocation path.
   *
   * Because the sidecar needs a reachable target, the app server must be started before the sidecar (same two-phase
   * pattern as [[ActorCapabilityServerTest]]).
   */
 @scala.caps.assumeSafe
-class ServiceInvocationServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
+class InvokeCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
 
   type Containers = DaprTestContainer
 
@@ -39,9 +39,9 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
 
   // The set of routes registered on the app server used for all tests in this suite.
   private val echoApp = DaprApp(
-    invocations = List(
-      InvocationRoute[String, String](InvocationMethodName("echo")) { s => s },
-      InvocationRoute[IncrRequest, CounterState](InvocationMethodName("double")) { req =>
+    invokeRoutes = List(
+      InvokeRoute[String, String](InvokeMethodName("echo")) { s => s },
+      InvokeRoute[IncrRequest, CounterState](InvokeMethodName("double")) { req =>
         CounterState(req.amount * 2)
       },
     ),
@@ -51,7 +51,7 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
     // Make the host-side app server reachable from inside Docker containers.
     org.testcontainers.Testcontainers.exposeHostPorts(appPort)
 
-    // Start the app server BEFORE the sidecar so the sidecar can call /dapr/config and route invocations.
+    // Start the app server BEFORE the sidecar so the sidecar can call /dapr/config and route invokeRoutes.
     val server = new DaprAppServer(echoApp)
     appServerThread = Some(
       Thread.ofVirtual().start(() => server.startAndBlock(appPort, TestDapr.placeholderCapability)),
@@ -105,33 +105,33 @@ class ServiceInvocationServerTest extends FunSuite with TestContainersForAll wit
   test("invoke: POST self-invocation round-trips string payload"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val invoker = summon[DaprCapability].invoker
-        val result = invoker.invoke(selfAppId, InvocationMethodName("echo"), "hello")[String]
+        val invoke = summon[DaprCapability].invoke
+        val result = invoke.invoke(selfAppId, InvokeMethodName("echo"), "hello")[String]
         assertEquals(result, "hello")
     }
 
   test("invoke: POST self-invocation with structured data"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val invoker = summon[DaprCapability].invoker
-        val result = invoker.invoke(selfAppId, InvocationMethodName("double"), IncrRequest(5))[CounterState]
+        val invoke = summon[DaprCapability].invoke
+        val result = invoke.invoke(selfAppId, InvokeMethodName("double"), IncrRequest(5))[CounterState]
         assertEquals(result, CounterState(10))
     }
 
   test("invoke: POST self-invocation returns correct structured response for another value"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val invoker = summon[DaprCapability].invoker
-        val result = invoker.invoke(selfAppId, InvocationMethodName("double"), IncrRequest(7))[CounterState]
+        val invoke = summon[DaprCapability].invoke
+        val result = invoke.invoke(selfAppId, InvokeMethodName("double"), IncrRequest(7))[CounterState]
         assertEquals(result, CounterState(14))
     }
 
-  // ---- derived client (dapr4s.derivation.ServiceInvocation) -------------------
+  // ---- derived client (dapr4s.derivation.Invoke) -------------------
 
   test("invoke: derived EchoService round-trips through the sidecar"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        DaprCapability.invoker:
+        DaprCapability.invoke:
           val svc = EchoService(selfAppId)
           assertEquals(svc.echo("hello"), "hello")
           assertEquals(svc.double(IncrRequest(6)), CounterState(12))

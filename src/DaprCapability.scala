@@ -22,7 +22,7 @@ package dapr4s
   *   object MyServiceApp:
   *     def apply()(using DaprCapability): DaprApp =
   *       DaprCapability.state(StateStoreName("statestore")) {
-  *         DaprCapability.pubsub(PubSubName("pubsub")) {
+  *         DaprCapability.publish(PubSubName("pubsub")) {
   *           DaprApp(...)
   *         }
   *       }
@@ -37,23 +37,23 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   /** Obtain a [[StateCapability]] for the named state store. */
   def state(storeName: StateStoreName): StateCapability^{this}
 
-  /** Obtain a [[PubSubCapability]] for the named pub/sub component. */
-  def pubsub(pubsubName: PubSubName): PubSubCapability^{this}
+  /** Obtain a [[PublishCapability]] for the named pub/sub component. */
+  def publish(pubsubName: PubSubName): PublishCapability^{this}
 
-  /** Obtain the [[ServiceInvocationCapability]] (shared; no named store). */
-  def invoker: ServiceInvocationCapability^{this}
+  /** Obtain the [[InvokeCapability]] (shared; no named store). */
+  def invoke: InvokeCapability^{this}
 
   /** Obtain a [[SecretsCapability]] for the named secrets store. */
   def secrets(storeName: SecretStoreName): SecretsCapability^{this}
 
   /** Obtain a [[ConfigurationCapability]] for the named configuration store. */
-  def config(storeName: ConfigStoreName): ConfigurationCapability^{this}
+  def configuration(storeName: ConfigurationStoreName): ConfigurationCapability^{this}
 
   /** Obtain a [[BindingsCapability]] for the named output binding. */
-  def binding(bindingName: BindingName): BindingsCapability^{this}
+  def bindings(bindingName: BindingName): BindingsCapability^{this}
 
-  /** Obtain a [[DistributedLockCapability]] for the named lock store. */
-  def lock(storeName: LockStoreName): DistributedLockCapability^{this}
+  /** Obtain a [[LockCapability]] for the named lock store. */
+  def lock(storeName: LockStoreName): LockCapability^{this}
 
   /** Obtain an [[ActorCapability]] for invoking methods on a specific actor instance. */
   def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this}
@@ -82,10 +82,10 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   *   object MyServiceApp:
   *     def apply()(using DaprCapability): DaprApp =
   *       DaprCapability.state(StateStoreName("statestore")) {
-  *         DaprCapability.pubsub(PubSubName("pubsub")) {
+  *         DaprCapability.publish(PubSubName("pubsub")) {
   *           DaprApp(
-  *             invocations = List(
-  *               InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order")) { req =>
+  *             invokeRoutes = List(
+  *               InvokeRoute[OrderRequest, OrderResponse](InvokeMethodName("place-order")) { req =>
   *                 try placeOrder(req)
   *                 catch case e: Exception => throw e
   *               }
@@ -100,7 +100,7 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   * a `^{cap}` capture set, but the `body` parameter uses a plain `StateCapability ?=> T`
   * (no `^`) so that handler lambdas inside the body can remain CC-pure and capture
   * the capability freely via the `@assumeSafe` AnyRef-erasure pattern in
-  * `InvocationRoute`/`Subscription` companions.  `@assumeSafe` here asserts that
+  * `InvokeRoute`/`Subscription` companions.  `@assumeSafe` here asserts that
   * passing a `StateCapability^{cap}` to a context function expecting `StateCapability`
   * (widening the capture set) is safe, because the `^{this}` return types on the
   * trait methods prevent sub-capabilities from outliving the root scope.
@@ -111,23 +111,23 @@ object DaprCapability:
   def state(storeName: StateStoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.state(storeName).asInstanceOf[StateCapability])
 
-  def pubsub(pubsubName: PubSubName)[T](body: PubSubCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.pubsub(pubsubName).asInstanceOf[PubSubCapability])
+  def publish(pubsubName: PubSubName)[T](body: PublishCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.publish(pubsubName).asInstanceOf[PublishCapability])
 
-  def invoker[T](body: ServiceInvocationCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.invoker.asInstanceOf[ServiceInvocationCapability])
+  def invoke[T](body: InvokeCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.invoke.asInstanceOf[InvokeCapability])
 
   def secrets(storeName: SecretStoreName)[T](body: SecretsCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.secrets(storeName).asInstanceOf[SecretsCapability])
 
-  def config(storeName: ConfigStoreName)[T](body: ConfigurationCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.config(storeName).asInstanceOf[ConfigurationCapability])
+  def configuration(storeName: ConfigurationStoreName)[T](body: ConfigurationCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.configuration(storeName).asInstanceOf[ConfigurationCapability])
 
-  def binding(bindingName: BindingName)[T](body: BindingsCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.binding(bindingName).asInstanceOf[BindingsCapability])
+  def bindings(bindingName: BindingName)[T](body: BindingsCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.bindings(bindingName).asInstanceOf[BindingsCapability])
 
-  def lock(storeName: LockStoreName)[T](body: DistributedLockCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.lock(storeName).asInstanceOf[DistributedLockCapability])
+  def lock(storeName: LockStoreName)[T](body: LockCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.lock(storeName).asInstanceOf[LockCapability])
 
   def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.actor(actorType, actorId).asInstanceOf[ActorCapability])

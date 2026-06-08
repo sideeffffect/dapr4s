@@ -11,7 +11,7 @@ import scala.concurrent.duration.{FiniteDuration, Duration, DurationInt}
   * @param sidecar
   *   Connection settings for the Dapr sidecar (HTTP/gRPC endpoints, timeouts, TLS, retries).
   * @param appServer
-  *   HTTP server settings for the inbound Dapr app channel (pub/sub, invocations, bindings, actors).
+  *   HTTP server settings for the inbound Dapr app channel (pub/sub, service invocation, bindings, actors).
   * @param actors
   *   Actor runtime settings reported to the sidecar via `GET /dapr/config`.
   */

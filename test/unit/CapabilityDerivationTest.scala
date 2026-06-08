@@ -25,9 +25,9 @@ class CapabilityDerivationTest extends FunSuite:
     client.reset()
     assertEquals(fake.log.toList, List("invokeBody|increment|5", "invoke|get", "void|reset"))
 
-  test("PubSub: publish and publishWithMetadata"):
+  test("Publish: publish and publishWithMetadata"):
     val fake = FakePubSub()
-    given PubSubCapability = fake
+    given PublishCapability = fake
     val client = Publisher
     client.orders(Req(1))
     client.audit(Req(2), Map(MetadataKey("k") -> MetadataValue("v")))
@@ -40,11 +40,11 @@ class CapabilityDerivationTest extends FunSuite:
     assertEquals(client.dbPassword(), Some(SecretValue("sealed")))
     assertEquals(fake.log.toList, List("get|db-password|0"))
 
-  test("Configuration: single-key get returns Option[ConfigItem]"):
+  test("Configuration: single-key get returns Option[ConfigurationItem]"):
     val fake = FakeConfig()
     given ConfigurationCapability = fake
-    val client = ConfigClient
-    assertEquals(client.featureX().map(_.value), Some(ConfigValue("v")))
+    val client = ConfigurationClient
+    assertEquals(client.featureX().map(_.value), Some(ConfigurationValue("v")))
     assertEquals(fake.log.toList, List("get|feature-x|0"))
 
   test("Crypto: encrypt (bytes) and encryptString (String)"):

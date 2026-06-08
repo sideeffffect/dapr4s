@@ -26,7 +26,7 @@ private[internal] final class ConversationCapabilityImpl(
 
   def converse(
       messages: Seq[ConversationMessage],
-      tools: Seq[ConversationTools] = Nil,
+      tools: Seq[ConversationTool] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
@@ -54,16 +54,16 @@ private object ConversationCapabilityImpl:
     }
 
   private def toResult(out: JConversationResult): ConversationResult =
-    val choices = Option(out.getChoices).fold(List.empty[ConversationResultChoices]) {
+    val choices = Option(out.getChoices).fold(List.empty[ConversationResultChoice]) {
       _.asScala.toList.map { c =>
         val msg = c.getMessage.nn
-        val toolCalls = Option(msg.getToolCalls).fold(List.empty[ConversationToolCalls]) {
+        val toolCalls = Option(msg.getToolCalls).fold(List.empty[ConversationToolCall]) {
           _.asScala.toList.map { tc =>
             val fn = tc.getFunction.nn
-            ConversationToolCalls(ToolCallId(tc.getId.nn), ToolName(fn.getName.nn), SerializedJson(fn.getArguments.nn))
+            ConversationToolCall(ToolCallId(tc.getId.nn), ToolName(fn.getName.nn), SerializedJson(fn.getArguments.nn))
           }
         }
-        ConversationResultChoices(
+        ConversationResultChoice(
           Option(c.getFinishReason).map(FinishReason.fromWire),
           c.getIndex,
           ConversationResultMessage(msg.getContent.nn, toolCalls),
@@ -85,7 +85,7 @@ private object ConversationCapabilityImpl:
     val contents = java.util.List.of(new ConversationMessageContent(m.text))
     new SimpleMessage(role, m.name.orNull, contents)
 
-  private def toJavaTool(t: ConversationTools): JConversationTools =
+  private def toJavaTool(t: ConversationTool): JConversationTools =
     val params = Json.mapper
       .readValue(t.parametersJson.value, classOf[java.util.Map[?, ?]])
       .asInstanceOf[java.util.Map[String, Object]]

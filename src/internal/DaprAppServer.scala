@@ -64,15 +64,15 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         parseCloudEvent(bodyJson, sub.codec, sub.pubsubName, sub.topic, handler)
       pubSubRoutes.put(path, fn.asInstanceOf[AnyRef])
 
-    for inv <- app.invocations do
+    for inv <- app.invokeRoutes do
       val path = "/" + inv.methodName.value
       val fn: (String, String) => String =
         if inv.usesRequestEnvelope then
-          val handler = inv.rawHandler.asInstanceOf[InvocationRequest[inv.Req] => inv.Resp]
+          val handler = inv.rawHandler.asInstanceOf[InvokeRequest[inv.Req] => inv.Resp]
           (methodStr, bodyJson) =>
             inv.reqCodec.decode(if bodyJson.isEmpty then "null" else bodyJson) match
               case Right(req) =>
-                inv.respCodec.encode(handler(InvocationRequest(inv.methodName, parseHttpMethod(methodStr), req)))
+                inv.respCodec.encode(handler(InvokeRequest(inv.methodName, parseHttpMethod(methodStr), req)))
               case Left(e) =>
                 throw RuntimeException(
                   s"Cannot decode invocation request for '${inv.methodName.value}': ${e.getMessage}",

@@ -6,20 +6,20 @@ import io.dapr.testcontainers.DaprContainer
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 
-/** Integration tests for [[ServiceInvocationCapability]].
+/** Integration tests for [[InvokeCapability]].
   *
   * Service invocation requires a running target application. These tests verify that the wrapper correctly propagates
   * the [[DaprException]] from the sidecar when no target is available (expected in CI without a real peer app).
   */
 @scala.caps.assumeSafe
-class InvokerIntegrationTest extends FunSuite with TestContainersForAll:
+class InvokeIntegrationTest extends FunSuite with TestContainersForAll:
 
   type Containers = DaprTestContainer
 
   override def startContainers(): DaprTestContainer =
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
-        .withAppName("invoker-test-app")
+        .withAppName("invoke-test-app")
         .withAppPort(0),
     )
     c.start()
@@ -30,15 +30,15 @@ class InvokerIntegrationTest extends FunSuite with TestContainersForAll:
   test("integration: invoke non-existent app throws DaprException"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val invoker = summon[DaprCapability].invoker
+        val invoke = summon[DaprCapability].invoke
         intercept[io.dapr.exceptions.DaprException]:
-          invoker.invoke(AppId("no-such-app"), InvocationMethodName("method"), "data")[String]
+          invoke.invoke(AppId("no-such-app"), InvokeMethodName("method"), "data")[String]
     }
 
   test("integration: invokeGet non-existent app throws DaprException"):
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
-        val invoker = summon[DaprCapability].invoker
+        val invoke = summon[DaprCapability].invoke
         intercept[io.dapr.exceptions.DaprException]:
-          invoker.invoke[String](AppId("no-such-app"), InvocationMethodName("method"))
+          invoke.invoke[String](AppId("no-such-app"), InvokeMethodName("method"))
     }

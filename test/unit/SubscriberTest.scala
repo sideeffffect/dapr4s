@@ -154,8 +154,8 @@ class SubscriberTest extends FunSuite:
 
   test("unit: DaprAppServer dispatches invocation and returns response from DaprApp"):
     val app = DaprApp(
-      invocations = List(
-        InvocationRoute[String, String](InvocationMethodName("echo")) { req => "echo:" + req },
+      invokeRoutes = List(
+        InvokeRoute[String, String](InvokeMethodName("echo")) { req => "echo:" + req },
       ),
     )
     val server = new dapr4s.internal.DaprAppServer(app)
@@ -204,19 +204,19 @@ class SubscriberTest extends FunSuite:
       thread.interrupt()
       thread.join(2000)
 
-  test("unit: DaprApp ++ merges subscriptions and invocations"):
+  test("unit: DaprApp ++ merges subscriptions and invokeRoutes"):
     val app1 = DaprApp(
       subscriptions = List(Subscription[String](PubSubName("p"), Topic("t1")) { _ => SubscriptionResult.Success }),
-      invocations = List(InvocationRoute[String, String](InvocationMethodName("m1")) { s => s }),
+      invokeRoutes = List(InvokeRoute[String, String](InvokeMethodName("m1")) { s => s }),
     )
     val app2 = DaprApp(
-      invocations = List(InvocationRoute[Int, Int](InvocationMethodName("m2")) { n => n + 1 }),
+      invokeRoutes = List(InvokeRoute[Int, Int](InvokeMethodName("m2")) { n => n + 1 }),
     )
     val combined = app1 ++ app2
     assertEquals(combined.subscriptions.size, 1)
-    assertEquals(combined.invocations.size, 2)
-    assert(combined.invocations.exists(_.methodName.value == "m1"))
-    assert(combined.invocations.exists(_.methodName.value == "m2"))
+    assertEquals(combined.invokeRoutes.size, 2)
+    assert(combined.invokeRoutes.exists(_.methodName.value == "m1"))
+    assert(combined.invokeRoutes.exists(_.methodName.value == "m2"))
 
   // -------------------------------------------------------------------------
   // Helpers

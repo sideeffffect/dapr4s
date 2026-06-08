@@ -39,10 +39,10 @@ class ServerRouteDerivationTest extends FunSuite:
       data,
     )
 
-  test("InvocationRoutes.derive: names, pure + capability handlers, @name, Unit input"):
+  test("InvokeRoutes.derive: names, pure + capability handlers, @name, Unit input"):
     val rec = new Recorder { val log = mutable.ListBuffer.empty[String] }
     given Recorder = rec
-    val routes = InvocationRoutes.derive[InvHandlers.type]
+    val routes = InvokeRoutes.derive[InvHandlers.type]
     assertEquals(routes.map(_.methodName.value).sorted, List("echo", "get-thing", "store"))
 
     val echo = routes.find(_.methodName.value == "echo").get

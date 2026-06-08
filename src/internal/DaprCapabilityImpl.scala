@@ -43,23 +43,23 @@ private[dapr4s] final class DaprCapabilityImpl(
   def state(storeName: StateStoreName): StateCapability^{this} =
     new StateCapabilityImpl(this, storeName).asInstanceOf[StateCapability]
 
-  def pubsub(pubsubName: PubSubName): PubSubCapability^{this} =
-    new PubSubCapabilityImpl(this, pubsubName).asInstanceOf[PubSubCapability]
+  def publish(pubsubName: PubSubName): PublishCapability^{this} =
+    new PublishCapabilityImpl(this, pubsubName).asInstanceOf[PublishCapability]
 
-  def invoker: ServiceInvocationCapability^{this} =
-    new InvokerCapabilityImpl(this).asInstanceOf[ServiceInvocationCapability]
+  def invoke: InvokeCapability^{this} =
+    new InvokeCapabilityImpl(this).asInstanceOf[InvokeCapability]
 
   def secrets(storeName: SecretStoreName): SecretsCapability^{this} =
     new SecretsCapabilityImpl(this, storeName).asInstanceOf[SecretsCapability]
 
-  def config(storeName: ConfigStoreName): ConfigurationCapability^{this} =
-    new ConfigCapabilityImpl(this, storeName).asInstanceOf[ConfigurationCapability]
+  def configuration(storeName: ConfigurationStoreName): ConfigurationCapability^{this} =
+    new ConfigurationCapabilityImpl(this, storeName).asInstanceOf[ConfigurationCapability]
 
-  def binding(bindingName: BindingName): BindingsCapability^{this} =
+  def bindings(bindingName: BindingName): BindingsCapability^{this} =
     new BindingsCapabilityImpl(this, bindingName).asInstanceOf[BindingsCapability]
 
-  def lock(storeName: LockStoreName): DistributedLockCapability^{this} =
-    new LockCapabilityImpl(this, storeName).asInstanceOf[DistributedLockCapability]
+  def lock(storeName: LockStoreName): LockCapability^{this} =
+    new LockCapabilityImpl(this, storeName).asInstanceOf[LockCapability]
 
   def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this} =
     val ac = actorClientRef.get() match

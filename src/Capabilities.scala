@@ -138,7 +138,7 @@ object StateCapability:
 
 /** Capability for DAPR pub/sub publish operations against a named component. */
 @scala.caps.assumeSafe
-trait PubSubCapability extends scala.caps.ExclusiveCapability:
+trait PublishCapability extends scala.caps.ExclusiveCapability:
   val pubsubName: PubSubName
 
   /** Publish `data` to `topic`. */
@@ -154,26 +154,26 @@ trait PubSubCapability extends scala.caps.ExclusiveCapability:
   /** Publish multiple entries to `topic` in a single call. */
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult
 
-/** Companion-object API for [[PubSubCapability]].
+/** Companion-object API for [[PublishCapability]].
   *
-  * Forwards to the `PubSubCapability` in the enclosing `using` context:
+  * Forwards to the `PublishCapability` in the enclosing `using` context:
   * {{{
-  *   def placeOrder(order: Order)(using PubSubCapability): Unit =
-  *     PubSubCapability.publish(Topic("orders"), order)
+  *   def placeOrder(order: Order)(using PublishCapability): Unit =
+  *     PublishCapability.publish(Topic("orders"), order)
   * }}}
   */
 @scala.caps.assumeSafe
-object PubSubCapability:
-  def publish[T: JsonCodec](topic: Topic, data: T)(using cap: PubSubCapability): Unit =
+object PublishCapability:
+  def publish[T: JsonCodec](topic: Topic, data: T)(using cap: PublishCapability): Unit =
     cap.publish(topic, data)
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
-  )(using cap: PubSubCapability): Unit =
+  )(using cap: PublishCapability): Unit =
     cap.publishWithMetadata(topic, data, metadata)
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]])(using
-      cap: PubSubCapability,
+      cap: PublishCapability,
   ): BulkPublishResult =
     cap.bulkPublish(topic, entries)
 
@@ -181,10 +181,10 @@ object PubSubCapability:
 
 /** Capability for synchronous service invocation (RPC) via DAPR. */
 @scala.caps.assumeSafe
-trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
+trait InvokeCapability extends scala.caps.ExclusiveCapability:
 
   /** Invoke a remote method with a request body. `Req` is inferred from `data`; `Resp` is specified at the call site:
-    * {{{invoker.invoke(appId, method, requestData)[ResponseType]}}}
+    * {{{invoke.invoke(appId, method, requestData)[ResponseType]}}}
     *
     * @param httpMethod
     *   HTTP verb to use; defaults to [[HttpMethod.Post]]
@@ -193,7 +193,7 @@ trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
     */
   def invoke[Req: JsonCodec](
       appId: AppId,
-      method: InvocationMethodName,
+      method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
@@ -203,27 +203,27 @@ trait ServiceInvocationCapability extends scala.caps.ExclusiveCapability:
     *
     * Use the body-bearing overload to pass a non-default HTTP verb or metadata headers.
     */
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvocationMethodName): Resp
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp
 
-/** Companion-object API for [[ServiceInvocationCapability]].
+/** Companion-object API for [[InvokeCapability]].
   *
-  * Forwards to the `ServiceInvocationCapability` in the enclosing `using` context:
+  * Forwards to the `InvokeCapability` in the enclosing `using` context:
   * {{{
-  *   def getUser(id: String)(using ServiceInvocationCapability): User =
-  *     ServiceInvocationCapability.invoke(AppId("user-service"), InvocationMethodName("get"), id)[User]
+  *   def getUser(id: String)(using InvokeCapability): User =
+  *     InvokeCapability.invoke(AppId("user-service"), InvokeMethodName("get"), id)[User]
   * }}}
   */
 @scala.caps.assumeSafe
-object ServiceInvocationCapability:
+object InvokeCapability:
   def invoke[Req: JsonCodec](
       appId: AppId,
-      method: InvocationMethodName,
+      method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
-  )[Resp: JsonCodec](using cap: ServiceInvocationCapability): Resp =
+  )[Resp: JsonCodec](using cap: InvokeCapability): Resp =
     cap.invoke(appId, method, data, httpMethod, metadata)[Resp]
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvocationMethodName)(using cap: ServiceInvocationCapability): Resp =
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName)(using cap: InvokeCapability): Resp =
     cap.invoke(appId, method)
 
 // ---------------------------------------------------------------------------
@@ -271,14 +271,14 @@ object SecretsCapability:
 /** Capability for reading configuration items from a named DAPR config store. */
 @scala.caps.assumeSafe
 trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
-  val storeName: ConfigStoreName
+  val storeName: ConfigurationStoreName
 
   /** Retrieve one or more configuration items by key.
     *
     * @param metadata
     *   optional metadata passed to the configuration backend
     */
-  def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigKey, ConfigItem]
+  def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigurationKey, ConfigurationItem]
 
   /** Subscribe to live configuration changes for the given keys.
     *
@@ -293,8 +293,8 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
     * @param metadata
     *   optional metadata passed to the configuration backend
     */
-  def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
-      onChange: ConfigUpdate => Unit,
+  def subscribe(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
+      onChange: ConfigurationUpdate => Unit,
   ): AutoCloseable^{this}
 
 /** Companion-object API for [[ConfigurationCapability]].
@@ -302,18 +302,18 @@ trait ConfigurationCapability extends scala.caps.ExclusiveCapability:
   * Forwards to the `ConfigurationCapability` in the enclosing `using` context:
   * {{{
   *   def featureFlag()(using ConfigurationCapability): Boolean =
-  *     ConfigurationCapability.get(Seq(ConfigKey("feature-x")))
-  *       .get(ConfigKey("feature-x")).exists(_.value.value == "true")
+  *     ConfigurationCapability.get(Seq(ConfigurationKey("feature-x")))
+  *       .get(ConfigurationKey("feature-x")).exists(_.value.value == "true")
   * }}}
   */
 @scala.caps.assumeSafe
 object ConfigurationCapability:
-  def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(using
+  def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(using
       cap: ConfigurationCapability,
-  ): Map[ConfigKey, ConfigItem] =
+  ): Map[ConfigurationKey, ConfigurationItem] =
     cap.get(keys, metadata)
-  def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
-      onChange: ConfigUpdate => Unit,
+  def subscribe(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
+      onChange: ConfigurationUpdate => Unit,
   )(using cap: ConfigurationCapability): AutoCloseable^{cap} =
     cap.subscribe(keys, metadata)(onChange)
 
@@ -374,7 +374,7 @@ object BindingsCapability:
 
 /** Capability for DAPR distributed locking against a named lock store. */
 @scala.caps.assumeSafe
-trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
+trait LockCapability extends scala.caps.ExclusiveCapability:
   val storeName: LockStoreName
 
   /** Try to acquire a lock. Returns true if acquired, false if already held. */
@@ -383,25 +383,25 @@ trait DistributedLockCapability extends scala.caps.ExclusiveCapability:
   /** Release a previously acquired lock. */
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus
 
-/** Companion-object API for [[DistributedLockCapability]].
+/** Companion-object API for [[LockCapability]].
   *
-  * Forwards to the `DistributedLockCapability` in the enclosing `using` context:
+  * Forwards to the `LockCapability` in the enclosing `using` context:
   * {{{
-  *   def withLock(resource: LockResourceId, owner: LockOwner)(using DistributedLockCapability): Boolean =
-  *     if DistributedLockCapability.tryLock(resource, owner, expiry = 30.seconds) then
+  *   def withLock(resource: LockResourceId, owner: LockOwner)(using LockCapability): Boolean =
+  *     if LockCapability.tryLock(resource, owner, expiry = 30.seconds) then
   *       try doWork(); true
-  *       finally DistributedLockCapability.unlock(resource, owner)
+  *       finally LockCapability.unlock(resource, owner)
   *     else false
   * }}}
   */
 @scala.caps.assumeSafe
-object DistributedLockCapability:
+object LockCapability:
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration)(using
-      cap: DistributedLockCapability,
+      cap: LockCapability,
   ): Boolean =
     cap.tryLock(resourceId, lockOwner, expiry)
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner)(using
-      cap: DistributedLockCapability,
+      cap: LockCapability,
   ): UnlockStatus =
     cap.unlock(resourceId, lockOwner)
 
@@ -682,7 +682,7 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
   /** Hold a multi-message exchange with optional tool definitions. */
   def converse(
       messages: Seq[ConversationMessage],
-      tools: Seq[ConversationTools] = Nil,
+      tools: Seq[ConversationTool] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,
@@ -701,7 +701,7 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
 object ConversationCapability:
   def converse(
       messages: Seq[ConversationMessage],
-      tools: Seq[ConversationTools] = Nil,
+      tools: Seq[ConversationTool] = Nil,
       toolChoice: Option[ToolChoice] = None,
       temperature: Option[Double] = None,
       contextId: Option[ConversationContextId] = None,

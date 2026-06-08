@@ -8,7 +8,7 @@ import language.experimental.safe
   * [[ConfigurationCapability.get]] or [[ConfigurationCapability.subscribe]] to retrieve or watch the corresponding
   * items.
   */
-opaque type ConfigKey = String
-object ConfigKey:
-  def apply(s: String): ConfigKey = s
-  extension (k: ConfigKey) def value: String = k
+opaque type ConfigurationKey = String
+object ConfigurationKey:
+  def apply(s: String): ConfigurationKey = s
+  extension (k: ConfigurationKey) def value: String = k

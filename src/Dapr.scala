@@ -19,7 +19,7 @@ import java.util.concurrent.atomic.AtomicReference
   *
   *   // long-running HTTP server:
   *   Dapr(config).serve:
-  *     DaprApp(subscriptions = ..., invocations = ...)
+  *     DaprApp(subscriptions = ..., invokeRoutes = ...)
   * }}}
   *
   * Annotated `@scala.caps.assumeSafe` so that safe-mode user code can call `Dapr(config).run` without seeing any unsafe
@@ -144,14 +144,14 @@ class Dapr(config: DaprConfig = DaprConfig()):
     * `body`, then block until the JVM shuts down or the calling thread is interrupted.
     *
     * The Dapr sidecar discovers pub/sub subscriptions via `GET /dapr/subscribe` and delivers messages / binding events
-    * / invocations via `POST /<route>`. All request handling runs on virtual threads.
+    * / invokeRoutes via `POST /<route>`. All request handling runs on virtual threads.
     *
     * ==Usage==
     * {{{
     *   Dapr(config).serve:
     *     val scope = summon[DaprCapability]
     *     given StateCapability  = scope.state(StateStoreName("statestore"))
-    *     given PubSubCapability = scope.pubsub(PubSubName("pubsub"))
+    *     given PublishCapability = scope.publish(PubSubName("pubsub"))
     *     DaprApp(
     *       subscriptions = List(
     *         Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event =>
@@ -159,8 +159,8 @@ class Dapr(config: DaprConfig = DaprConfig()):
     *           SubscriptionResult.Success
     *         }
     *       ),
-    *       invocations = List(
-    *         InvocationRoute[OrderRequest, OrderResponse](InvocationMethodName("place-order")) { req =>
+    *       invokeRoutes = List(
+    *         InvokeRoute[OrderRequest, OrderResponse](InvokeMethodName("place-order")) { req =>
     *           // handle direct invocation
     *           OrderResponse(req.id, "processed")
     *         }

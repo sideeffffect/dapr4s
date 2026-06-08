@@ -48,7 +48,7 @@ trait DaprServerTestBase:
     val stream = if code < 400 then conn.getInputStream.nn else conn.getErrorStream.nn
     new String(stream.readAllBytes().nn, "UTF-8")
 
-  /** Invoke a [[dapr4s.InvocationRoute]] through a running [[dapr4s.internal.DaprAppServer]].
+  /** Invoke a [[dapr4s.InvokeRoute]] through a running [[dapr4s.internal.DaprAppServer]].
     *
     * Encodes `req` with [[JsonCodec]], POSTs to `http://localhost:port/method`, and decodes the response.
     */

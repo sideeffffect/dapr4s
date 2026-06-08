@@ -4,8 +4,8 @@ import language.experimental.safe
 
 /** Pub/sub topic name.
   *
-  * Must not be empty. Must match the topic name registered in both the publisher ([[PubSubCapability.publish]]) and the
-  * subscriber configuration so that messages are routed correctly through the Dapr pub/sub component.
+  * Must not be empty. Must match the topic name registered in both the publisher ([[PublishCapability.publish]]) and
+  * the subscriber configuration so that messages are routed correctly through the Dapr pub/sub component.
   */
 opaque type Topic = String
 object Topic:

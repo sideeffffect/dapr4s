@@ -13,7 +13,7 @@ import unsafeExceptions.canThrowAny
 /** Client-side capability for invoking methods on a specific Dapr virtual actor instance.
   *
   * The actor proxy communicates with the Dapr sidecar via gRPC. A [[JavaActorClient]] (and its underlying gRPC channel)
-  * is shared across all actor invocations within the same [[dapr4s.DaprCapability]].
+  * is shared across all actor invokeRoutes within the same [[dapr4s.DaprCapability]].
   *
   * Serialization uses raw `byte[]` pass-through: the request value is encoded to JSON by our [[JsonCodec]], sent as raw
   * bytes, and the response bytes are decoded by the same codec — bypassing the Java SDK's Jackson-based serializer

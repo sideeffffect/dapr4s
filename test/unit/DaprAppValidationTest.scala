@@ -31,8 +31,8 @@ class DaprAppValidationTest extends FunSuite:
   // Helpers that build single-kind handlers with trivial bodies.
   private def sub(topic: String): Subscription =
     Subscription[Int](PubSubName("pubsub"), Topic(topic))(_ => SubscriptionResult.Success)
-  private def inv(method: String): InvocationRoute =
-    InvocationRoute[Int, Int](InvocationMethodName(method))(identity)
+  private def inv(method: String): InvokeRoute =
+    InvokeRoute[Int, Int](InvokeMethodName(method))(identity)
   private def bind(name: String): BindingRoute =
     BindingRoute[Int](BindingName(name))(_ => ())
   private def job(name: String): JobRoute =
@@ -43,7 +43,7 @@ class DaprAppValidationTest extends FunSuite:
   test("a clean app has no validation errors and validateOrThrow returns it unchanged"):
     val app = DaprApp(
       subscriptions = List(sub("orders"), sub("shipments")),
-      invocations = List(inv("place-order"), inv("get-order")),
+      invokeRoutes = List(inv("place-order"), inv("get-order")),
       bindings = List(bind("cron")),
       jobs = List(job("nightly")),
       workflows = List(new ReportWorkflow),
@@ -69,7 +69,7 @@ class DaprAppValidationTest extends FunSuite:
     assertEquals(app.validationErrors, List(DuplicateSubscriptionRoute("/orders", 2)))
 
   test("duplicate invocation methods are detected"):
-    val app = DaprApp(invocations = List(inv("place-order"), inv("place-order")))
+    val app = DaprApp(invokeRoutes = List(inv("place-order"), inv("place-order")))
     assertEquals(app.validationErrors, List(DuplicateInvocationMethod("place-order", 2)))
 
   test("duplicate binding names are detected"):
@@ -85,11 +85,11 @@ class DaprAppValidationTest extends FunSuite:
     assertEquals(app.validationErrors, List(DuplicateActorType("Counter", 2)))
 
   test("cross-type root-route collision (binding vs invocation on same path) is detected"):
-    val app = DaprApp(bindings = List(bind("foo")), invocations = List(inv("foo")))
+    val app = DaprApp(bindings = List(bind("foo")), invokeRoutes = List(inv("foo")))
     assertEquals(app.validationErrors, List(RouteCollision("/foo", List("binding", "invocation"))))
 
   test("reserved-path collision is detected"):
-    val app = DaprApp(invocations = List(inv("dapr/config")))
+    val app = DaprApp(invokeRoutes = List(inv("dapr/config")))
     assertEquals(
       app.validationErrors,
       List(ReservedPathCollision("/dapr/config", "invocation", "/dapr/config")),
@@ -104,7 +104,7 @@ class DaprAppValidationTest extends FunSuite:
 
   test("validateOrThrow aggregates every error into one exception"):
     val app = DaprApp(
-      invocations = List(inv("dup"), inv("dup")),
+      invokeRoutes = List(inv("dup"), inv("dup")),
       bindings = List(bind("dup")),
     )
     // Duplicate invocation + cross-type collision on /dup.

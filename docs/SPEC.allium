@@ -2,10 +2,10 @@
 -- SPEC.allium — dapr4s behavioural specification
 --
 -- Scope: Safe Scala capability library wrapping DAPR building blocks
--- Includes: DaprRuntime lifecycle (run + serve), StateCapability, PubSubCapability,
---           ServiceInvocationCapability, SecretsCapability,
+-- Includes: DaprRuntime lifecycle (run + serve), StateCapability, PublishCapability,
+--           InvokeCapability, SecretsCapability,
 --           ConfigurationCapability (get + subscribe), BindingsCapability,
---           DistributedLockCapability, DaprApp (inbound pub/sub, bindings,
+--           LockCapability, DaprApp (inbound pub/sub, bindings,
 --           service invocation, actors with reminders/timers),
 --           Workflow, WorkflowActivity, WorkflowContext (server-side workflow orchestration)
 --           JsonCodec
@@ -109,18 +109,18 @@ value PubSubName       { value: String }   -- DAPR pub/sub component name
 value Topic            { value: String }   -- Pub/sub topic (non-empty)
 value AppId            { value: String }   -- Target application ID for service invocation (non-empty)
 value SecretStoreName  { value: String }   -- DAPR secrets store component name
-value ConfigStoreName  { value: String }   -- DAPR configuration store component name
+value ConfigurationStoreName  { value: String }   -- DAPR configuration store component name
 value BindingName      { value: String }   -- DAPR output binding component name
 value ETag             { value: String }   -- Optimistic-concurrency tag
 
 -- Operation key / identifier opaque types (non-empty where noted)
 value StateStoreKey    { value: String }   -- Key in a DAPR state store (StateCapability)
 value ActorStateKey    { value: String }   -- Key in a virtual actor's state
-value InvocationMethodName { value: String }   -- Service-invocation / inbound handler method name (non-empty)
+value InvokeMethodName { value: String }   -- Service-invocation / inbound handler method name (non-empty)
 value ActorMethodName  { value: String }   -- Actor method name (non-empty)
 value Route            { value: String }   -- HTTP route for a pub/sub subscription (non-empty)
 value SecretKey        { value: String }   -- Key in a DAPR secrets store
-value ConfigKey        { value: String }   -- Key in a DAPR configuration store
+value ConfigurationKey        { value: String }   -- Key in a DAPR configuration store
 value LockResourceId   { value: String }   -- Resource identifier for distributed lock (non-empty)
 value LockOwner        { value: String }   -- Lock owner identifier (non-empty)
 value BindingOperation { value: String }   -- Operation name for an output binding (non-empty)
@@ -145,18 +145,18 @@ value StateQuery {
 }
 
 -- Complex value types
-value ConfigItem {
-    key: ConfigKey
+value ConfigurationItem {
+    key: ConfigurationKey
     value: String
     version: String
     metadata: Map<String, String>
 }
 
-value ConfigUpdate {
+value ConfigurationUpdate {
     -- Configuration update notification delivered by the sidecar via a subscribe callback.
-    -- Matches final case class ConfigUpdate(storeName: ConfigStoreName, items: Map[ConfigKey, ConfigItem]).
-    store_name: ConfigStoreName
-    items: Map<ConfigKey, ConfigItem>
+    -- Matches final case class ConfigurationUpdate(storeName: ConfigurationStoreName, items: Map[ConfigurationKey, ConfigurationItem]).
+    store_name: ConfigurationStoreName
+    items: Map<ConfigurationKey, ConfigurationItem>
 }
 
 value StateEntry<T> {
@@ -208,10 +208,10 @@ value CloudEvent<T> {
     data: T
 }
 
-value InvocationRequest<T> {
-    -- Incoming service invocation request delivered by the sidecar to an InvocationRoute.withRequest handler.
-    -- Matches final case class InvocationRequest[T](methodName: InvocationMethodName, httpMethod: HttpMethod, data: T).
-    method_name: InvocationMethodName
+value InvokeRequest<T> {
+    -- Incoming service invocation request delivered by the sidecar to an InvokeRoute.withRequest handler.
+    -- Matches final case class InvokeRequest[T](methodName: InvokeMethodName, httpMethod: HttpMethod, data: T).
+    method_name: InvokeMethodName
     http_method: HttpMethod
     data: T
 }
@@ -291,7 +291,7 @@ value DaprApp {
     -- Immutable, declarative description of all inbound handlers an application exposes.
     -- Built by the serve body and handed to the HTTP server.
     subscriptions: List<Subscription>
-    invocations:   List<InvocationRoute>
+    invokeRoutes:   List<InvokeRoute>
     bindings:      List<BindingRoute>
     workflows:     List<Workflow>
     activities:    List<WorkflowActivity>  -- existential: WorkflowActivity[?, ?]
@@ -306,8 +306,8 @@ value Subscription {
     -- handler: CloudEvent -> SubscriptionResult (captured, CC-erased internally)
 }
 
-value InvocationRoute {
-    method_name: InvocationMethodName
+value InvokeRoute {
+    method_name: InvokeMethodName
     -- handler: Req -> Resp (captured, CC-erased internally)
 }
 
@@ -323,13 +323,13 @@ entity StateCapability {
     -- status mirrors capability.status
 }
 
-entity PubSubCapability {
+entity PublishCapability {
     capability: DaprCapability
     pubsub_name: PubSubName
     status: open | closed
 }
 
-entity ServiceInvocationCapability {
+entity InvokeCapability {
     capability: DaprCapability
     status: open | closed
 }
@@ -342,7 +342,7 @@ entity SecretsCapability {
 
 entity ConfigurationCapability {
     capability: DaprCapability
-    store_name: ConfigStoreName
+    store_name: ConfigurationStoreName
     status: open | closed
 }
 
@@ -352,7 +352,7 @@ entity BindingsCapability {
     status: open | closed
 }
 
-entity DistributedLockCapability {
+entity LockCapability {
     capability: DaprCapability
     store_name: LockStoreName
     status: open | closed
@@ -468,26 +468,26 @@ rule StateCapabilityAcquired {
 
 rule PubSubCapabilityAcquired {
     when: DaprCapabilityPubSubRequested(cap, pubsub_name)
-    -- Triggered by DaprCapability.pubsub(pubsub_name) { body }.
+    -- Triggered by DaprCapability.publish(pubsub_name) { body }.
 
     requires: cap.status = open
 
     ensures:
-        PubSubCapability.created(
+        PublishCapability.created(
             capability: cap,
             pubsub_name: pubsub_name,
             status: open
         )
 }
 
-rule ServiceInvocationCapabilityAcquired {
+rule InvokeCapabilityAcquired {
     when: DaprCapabilityInvokerRequested(cap)
-    -- Triggered by DaprCapability.invoker { body }.
+    -- Triggered by DaprCapability.invoke { body }.
 
     requires: cap.status = open
 
     ensures:
-        ServiceInvocationCapability.created(
+        InvokeCapability.created(
             capability: cap,
             status: open
         )
@@ -509,7 +509,7 @@ rule SecretsCapabilityAcquired {
 
 rule ConfigCapabilityAcquired {
     when: DaprCapabilityConfigRequested(cap, store_name)
-    -- Triggered by DaprCapability.config(store_name) { body }.
+    -- Triggered by DaprCapability.configuration(store_name) { body }.
 
     requires: cap.status = open
 
@@ -523,7 +523,7 @@ rule ConfigCapabilityAcquired {
 
 rule BindingCapabilityAcquired {
     when: DaprCapabilityBindingRequested(cap, binding_name)
-    -- Triggered by DaprCapability.binding(binding_name) { body }.
+    -- Triggered by DaprCapability.bindings(binding_name) { body }.
 
     requires: cap.status = open
 
@@ -542,7 +542,7 @@ rule LockCapabilityAcquired {
     requires: cap.status = open
 
     ensures:
-        DistributedLockCapability.created(
+        LockCapability.created(
             capability: cap,
             store_name: store_name,
             status: open
@@ -557,9 +557,9 @@ rule CapabilitiesClosedWithScope {
     ensures:
         for cap in StateCapability where cap.capability = dc:
             cap.status = closed
-        for cap in PubSubCapability where cap.capability = dc:
+        for cap in PublishCapability where cap.capability = dc:
             cap.status = closed
-        for cap in ServiceInvocationCapability where cap.capability = dc:
+        for cap in InvokeCapability where cap.capability = dc:
             cap.status = closed
         for cap in SecretsCapability where cap.capability = dc:
             cap.status = closed
@@ -567,7 +567,7 @@ rule CapabilitiesClosedWithScope {
             cap.status = closed
         for cap in BindingsCapability where cap.capability = dc:
             cap.status = closed
-        for cap in DistributedLockCapability where cap.capability = dc:
+        for cap in LockCapability where cap.capability = dc:
             cap.status = closed
 }
 
@@ -665,7 +665,7 @@ rule StateTransaction {
             DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
 }
 
--- ---- PubSub Operations ----
+-- ---- Publish Operations ----
 
 rule PubSubPublish {
     when: PubSubPublishRequested(cap, topic, data)
@@ -759,7 +759,7 @@ rule ConfigGet {
     -- empty keys list is accepted; returns empty map
 
     ensures:
-        ConfigGetCompleted(items: Map<String, ConfigItem>)
+        ConfigGetCompleted(items: Map<String, ConfigurationItem>)
 }
 
 rule ConfigSubscribe {
@@ -793,8 +793,8 @@ rule DaprAppServed {
                 topic: s.topic,
                 route: s.route
             )
-        for inv in app.invocations:
-            InvocationHandler.registered(path: "/" + inv.method_name.value)
+        for inv in app.invokeRoutes:
+            InvokeHandler.registered(path: "/" + inv.method_name.value)
         for bin in app.bindings:
             BindingHandler.registered(path: "/" + bin.binding_name.value)
         -- GET /dapr/subscribe returns all registered subscriptions before any message is handled
@@ -837,9 +837,9 @@ rule BindingEventDelivered {
             SidecarErrorReturned()
 }
 
-rule ServiceInvocationReceived {
+rule InvokeReceived {
     when: SidecarDeliversInvocation(method_name, request_body_json)
-    -- The matching InvocationRoute (by method_name) provides the handler and codecs.
+    -- The matching InvokeRoute (by method_name) provides the handler and codecs.
 
     ensures:
         let handler = inv.handler  -- inv.Req -> inv.Resp
@@ -992,9 +992,9 @@ invariant ScopeContainment {
     -- binding each sub-capability's lifetime to the parent via the CC ownership model.
     for cap in StateCapability where cap.status = open:
         cap.capability.status = open
-    for cap in PubSubCapability where cap.status = open:
+    for cap in PublishCapability where cap.status = open:
         cap.capability.status = open
-    for cap in ServiceInvocationCapability where cap.status = open:
+    for cap in InvokeCapability where cap.status = open:
         cap.capability.status = open
     for cap in SecretsCapability where cap.status = open:
         cap.capability.status = open
@@ -1002,7 +1002,7 @@ invariant ScopeContainment {
         cap.capability.status = open
     for cap in BindingsCapability where cap.status = open:
         cap.capability.status = open
-    for cap in DistributedLockCapability where cap.status = open:
+    for cap in LockCapability where cap.status = open:
         cap.capability.status = open
 }
 
@@ -1022,11 +1022,11 @@ invariant ScopeLifetime {
 
 -- Non-empty identifier constraints (not machine-expressible as a state invariant;
 -- enforced by constructors at runtime):
---   Non-empty: StateStoreName, LockStoreName, PubSubName, Topic, AppId, InvocationMethodName, ActorMethodName, BindingName, SecretStoreName,
---              ConfigStoreName, LockResourceId, LockOwner, BindingOperation, Route,
+--   Non-empty: StateStoreName, LockStoreName, PubSubName, Topic, AppId, InvokeMethodName, ActorMethodName, BindingName, SecretStoreName,
+--              ConfigurationStoreName, LockResourceId, LockOwner, BindingOperation, Route,
 --              WorkflowName, ActorType, ReminderName, TimerName, EventName — all reject the
 --              empty string at construction time via require().
---   Accept any string (including empty): StateStoreKey, ActorStateKey, ETag, SecretKey, ConfigKey,
+--   Accept any string (including empty): StateStoreKey, ActorStateKey, ETag, SecretKey, ConfigurationKey,
 --              BulkEntryId, WorkflowInstanceId, ActorId.
 
 ------------------------------------------------------------
@@ -1086,12 +1086,12 @@ surface DaprCapabilitySurface {
 
     exposes:
         state:   (store_name: StateStoreName,       body: StateCapability ?=> T)              -> T (using DaprCapability)
-        pubsub:  (pubsub_name: PubSubName,     body: PubSubCapability ?=> T)             -> T (using DaprCapability)
-        invoker: (                             body: ServiceInvocationCapability ?=> T)  -> T (using DaprCapability)
+        pubsub:  (pubsub_name: PubSubName,     body: PublishCapability ?=> T)             -> T (using DaprCapability)
+        invoke: (                             body: InvokeCapability ?=> T)  -> T (using DaprCapability)
         secrets: (store_name: SecretStoreName, body: SecretsCapability ?=> T)            -> T (using DaprCapability)
-        config:  (store_name: ConfigStoreName, body: ConfigurationCapability ?=> T)      -> T (using DaprCapability)
+        config:  (store_name: ConfigurationStoreName, body: ConfigurationCapability ?=> T)      -> T (using DaprCapability)
         binding: (binding_name: BindingName,   body: BindingsCapability ?=> T)           -> T (using DaprCapability)
-        lock:    (store_name: LockStoreName,       body: DistributedLockCapability ?=> T)    -> T (using DaprCapability)
+        lock:    (store_name: LockStoreName,       body: LockCapability ?=> T)    -> T (using DaprCapability)
         -- Sub-capabilities carry the DaprCapability lifetime (CC: ^{capability}).
         -- body is a context function; the sub-capability is passed as an implicit and
         -- is not accessible outside body's lexical scope.
@@ -1164,15 +1164,15 @@ surface PubSubCapabilitySurface {
         -- Delivery to subscribers is at-least-once (DAPR sidecar guarantee).
 }
 
-surface ServiceInvocationSurface {
+surface InvokeSurface {
     facing user: UserCode
 
     contracts:
         demands JsonCodec
 
     exposes:
-        invoke: (app_id: AppId, method: InvocationMethodName, data: Any) -> Any
-        invoke_get: (app_id: AppId, method: InvocationMethodName) -> Any
+        invoke: (app_id: AppId, method: InvokeMethodName, data: Any) -> Any
+        invoke_get: (app_id: AppId, method: InvokeMethodName) -> Any
 }
 
 surface SecretsSurface {
@@ -1187,8 +1187,8 @@ surface ConfigurationSurface {
     facing user: UserCode
 
     exposes:
-        get: (keys: List<ConfigKey>) -> Map<ConfigKey, ConfigItem>
-        subscribe: (keys: List<ConfigKey>, on_change: ConfigUpdate -> Unit) -> AutoCloseable
+        get: (keys: List<ConfigurationKey>) -> Map<ConfigurationKey, ConfigurationItem>
+        subscribe: (keys: List<ConfigurationKey>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
         -- Streams config changes from sidecar; close the AutoCloseable to stop
 }
 
@@ -1203,13 +1203,13 @@ surface DaprAppSurface {
         Subscription: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Subscription
         Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
         -- Simple overload: handler receives only the decoded request body.
-        InvocationRoute: (method_name: InvocationMethodName, handler: Req -> Resp) -> InvocationRoute
-        -- Rich overload: handler receives the full InvocationRequest envelope (method name, HTTP verb, body).
-        InvocationRoute.withRequest: (method_name: InvocationMethodName, handler: InvocationRequest<Req> -> Resp) -> InvocationRoute
+        InvokeRoute: (method_name: InvokeMethodName, handler: Req -> Resp) -> InvokeRoute
+        -- Rich overload: handler receives the full InvokeRequest envelope (method name, HTTP verb, body).
+        InvokeRoute.withRequest: (method_name: InvokeMethodName, handler: InvokeRequest<Req> -> Resp) -> InvokeRoute
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
-        DaprApp: (subscriptions: List<Subscription>, invocations: List<InvocationRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>) -> DaprApp
+        DaprApp: (subscriptions: List<Subscription>, invokeRoutes: List<InvokeRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp
-        ActorMethodRoute: (method_name: InvocationMethodName, handler: Req -> Resp) -> ActorMethodRoute
+        ActorMethodRoute: (method_name: InvokeMethodName, handler: Req -> Resp) -> ActorMethodRoute
         ActorReminderRoute: (reminder_name: ReminderName, handler: Payload -> Unit) -> ActorReminderRoute
         ActorTimerRoute: (timer_name: TimerName, handler: Payload -> Unit) -> ActorTimerRoute
         ActorRoutes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes
@@ -1218,7 +1218,7 @@ surface DaprAppSurface {
         -- transformer bodies.
         -- The recommended pattern is: business logic in explicit methods with
         -- anonymous (using Capability) context parameters; companion-object
-        -- forwarders (e.g. StateCapability.save(...), PubSubCapability.publish(...))
+        -- forwarders (e.g. StateCapability.save(...), PublishCapability.publish(...))
         -- dispatch to the implicit instance, so callers never name the capability
         -- value.  Methods are passed as direct handler references (no wrapping lambda)
         -- because no library method carries a throws annotation.
@@ -1251,7 +1251,7 @@ surface BindingsSurface {
         -- Fire-and-forget binding invocation; no response expected
 }
 
-surface DistributedLockSurface {
+surface LockSurface {
     facing user: UserCode
 
     exposes:
@@ -1316,7 +1316,7 @@ open question "Should DaprRuntime support a custom DaprClient (e.g. for testing 
 -- RESOLVED: StateCapability exposes queryState via DAPR state query API.
 -- Note: not all state store components support queries.
 
--- RESOLVED: PubSubCapability supports bulkPublish via BulkPublishEntry / BulkPublishResult.
+-- RESOLVED: PublishCapability supports bulkPublish via BulkPublishEntry / BulkPublishResult.
 
 -- RESOLVED: ETagMismatchException extends Exception directly (DaprStateException was removed).
 -- It is the only exception declared for state operations; callers catch it to handle

@@ -132,7 +132,7 @@ class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll wit
         val scope = summon[DaprCapability]
         val app = OrderServiceApp()(using scope)
 
-        assert(app.invocations.exists(_.methodName.value == "place-order"))
-        assert(app.invocations.exists(_.methodName.value == "get-order"))
-        assert(app.invocations.exists(_.methodName.value == "query-orders"))
+        assert(app.invokeRoutes.exists(_.methodName.value == "place-order"))
+        assert(app.invokeRoutes.exists(_.methodName.value == "get-order"))
+        assert(app.invokeRoutes.exists(_.methodName.value == "query-orders"))
     }

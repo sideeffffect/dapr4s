@@ -5,8 +5,8 @@ import scala.collection.immutable.ArraySeq
 import scala.concurrent.duration.FiniteDuration
 import java.time.Instant
 
-/** Runtime forwarders for the capability `*.derive` macros (other than ServiceInvocation,
-  * which has its own [[ServiceInvocationDerivationRuntime]]).
+/** Runtime forwarders for the capability `*.derive` macros (other than Invoke,
+  * which has its own [[InvokeDerivationRuntime]]).
   *
   * Each derived method expands to a single flat call into one of these methods, passing the
   * capability and any `JsonCodec`s as plain explicit arguments. Performing the capability call
@@ -61,14 +61,14 @@ object Forwarders:
   def actorInvokeVoid(cap: ActorCapability, method: ActorMethodName): Unit =
     cap.invokeVoid(method)
 
-  // ---- PubSub ---------------------------------------------------------------
+  // ---- Publish ---------------------------------------------------------------
 
-  def pubsubPublish[T](cap: PubSubCapability, topic: Topic, data: T, codec: JsonCodec[T]): Unit =
+  def publish[T](cap: PublishCapability, topic: Topic, data: T, codec: JsonCodec[T]): Unit =
     given JsonCodec[T] = codec
     cap.publish[T](topic, data)
 
-  def pubsubPublishMeta[T](
-      cap: PubSubCapability,
+  def publishMeta[T](
+      cap: PublishCapability,
       topic: Topic,
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
@@ -90,9 +90,9 @@ object Forwarders:
 
   def configGet(
       cap: ConfigurationCapability,
-      key: ConfigKey,
+      key: ConfigurationKey,
       metadata: Map[MetadataKey, MetadataValue],
-  ): Option[ConfigItem] =
+  ): Option[ConfigurationItem] =
     cap.get(Seq(key), metadata).get(key)
 
   // ---- Crypto ---------------------------------------------------------------
@@ -278,14 +278,14 @@ object Forwarders:
   // ---- Invocation / subscription route construction (server-side) -----------
 
   def invocationRoute[Q, R](
-      name: InvocationMethodName,
+      name: InvokeMethodName,
       handler: Q => R,
       qCodec: JsonCodec[Q],
       rCodec: JsonCodec[R],
-  ): InvocationRoute =
+  ): InvokeRoute =
     given JsonCodec[Q] = qCodec
     given JsonCodec[R] = rCodec
-    InvocationRoute[Q, R](name)(handler)
+    InvokeRoute[Q, R](name)(handler)
 
   def subscriptionRoute[T](
       pubsubName: PubSubName,

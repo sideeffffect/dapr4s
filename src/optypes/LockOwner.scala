@@ -4,9 +4,9 @@ import language.experimental.safe
 
 /** Caller-chosen identifier for the owner of a distributed lock.
   *
-  * Must not be empty. Passed to [[DistributedLockCapability.tryLock]] when acquiring a lock and to
-  * [[DistributedLockCapability.unlock]] when releasing it. The lock store uses this value to verify ownership: only the
-  * owner that acquired the lock can release it.
+  * Must not be empty. Passed to [[LockCapability.tryLock]] when acquiring a lock and to [[LockCapability.unlock]] when
+  * releasing it. The lock store uses this value to verify ownership: only the owner that acquired the lock can release
+  * it.
   */
 opaque type LockOwner = String
 object LockOwner:

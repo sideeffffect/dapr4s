@@ -111,7 +111,7 @@ more lambdas in the same method each call a throwing method.
 
 **Required pattern** for every handler lambda that calls throwing methods:
 ```scala
-handlers.onInvoke[Req](InvocationMethodName("my-method"))[Resp] { req =>
+handlers.onInvoke[Req](InvokeMethodName("my-method"))[Resp] { req =>
   try myHandlerMethod(req)          // declares throws Exception
   catch case e: Exception => throw e  // re-throw WITHOUT swallowing
 }
@@ -154,8 +154,8 @@ Specific rules currently active in this codebase:
 - `StateOp` root is `sealed abstract class` (not `sealed trait`) — proper ADT root.
 - Do not call `.head`, `.tail`, `.last`, `.get` on collections or `Option`/`Try`/`Either` without a prior length/presence check; use `headOption`, `getOrElse`, `getOrElse(fail(...))` in tests.
 - Domain identifiers are split per Dapr building block — **never** unify a name/key type across two building blocks just because both are `String` underneath. The test: if a doc comment would have to say "X *or* Y", it's two types. Current splits to preserve (do not re-merge):
-  - **Method names**: `InvocationMethodName` for service invocation (`ServiceInvocationCapability.invoke`, `InvocationRoute`, `InvocationRequest`) vs. `ActorMethodName` for actor methods (`ActorCapability.invoke`/`invokeVoid`, `ActorMethodRoute`) — an HTTP route on a remote app vs. a method on a stateful actor. (Actor timer/reminder callbacks use `TimerName`/`ReminderName`, not a method-name type.)
-  - **Store names**: `StateStoreName` (`DaprCapability.state`) vs. `LockStoreName` (`DaprCapability.lock`) — distinct Dapr components with distinct YAML. (Mirrors the existing `ConfigStoreName`/`SecretStoreName` split.)
+  - **Method names**: `InvokeMethodName` for service invocation (`InvokeCapability.invoke`, `InvokeRoute`, `InvokeRequest`) vs. `ActorMethodName` for actor methods (`ActorCapability.invoke`/`invokeVoid`, `ActorMethodRoute`) — an HTTP route on a remote app vs. a method on a stateful actor. (Actor timer/reminder callbacks use `TimerName`/`ReminderName`, not a method-name type.)
+  - **Store names**: `StateStoreName` (`DaprCapability.state`) vs. `LockStoreName` (`DaprCapability.lock`) — distinct Dapr components with distinct YAML. (Mirrors the existing `ConfigurationStoreName`/`SecretStoreName` split.)
   - **State keys**: `StateStoreKey` (app-level `StateCapability`) vs. `ActorStateKey` (per-instance `ActorContext`/`ActorState`).
 
 ### Java interop boundary

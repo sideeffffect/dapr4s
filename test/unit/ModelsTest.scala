@@ -31,8 +31,8 @@ class ModelsTest extends FunSuite:
     val s = SecretStoreName("vault")
     assertEquals(s.value, "vault")
 
-  test("ConfigStoreName round-trips"):
-    val c = ConfigStoreName("app-config")
+  test("ConfigurationStoreName round-trips"):
+    val c = ConfigurationStoreName("app-config")
     assertEquals(c.value, "app-config")
 
   test("BindingName round-trips"):
@@ -68,19 +68,19 @@ class ModelsTest extends FunSuite:
     assert(entry.etag.isEmpty)
 
   // -------------------------------------------------------------------------
-  // ConfigItem
+  // ConfigurationItem
   // -------------------------------------------------------------------------
 
-  test("ConfigItem default metadata is empty"):
-    val item = ConfigItem(ConfigKey("key"), ConfigValue("value"), ConfigVersion("1"))
+  test("ConfigurationItem default metadata is empty"):
+    val item = ConfigurationItem(ConfigurationKey("key"), ConfigurationValue("value"), ConfigurationVersion("1"))
     assertEquals(item.metadata, Map.empty)
 
-  test("ConfigItem with metadata"):
+  test("ConfigurationItem with metadata"):
     val item =
-      ConfigItem(
-        ConfigKey("key"),
-        ConfigValue("value"),
-        ConfigVersion("2"),
+      ConfigurationItem(
+        ConfigurationKey("key"),
+        ConfigurationValue("value"),
+        ConfigurationVersion("2"),
         Map(MetadataKey("a") -> MetadataValue("b")),
       )
     assertEquals(item.metadata(MetadataKey("a")), MetadataValue("b"))
@@ -180,8 +180,8 @@ class ModelsTest extends FunSuite:
   test("SecretStoreName rejects empty string"):
     intercept[IllegalArgumentException] { SecretStoreName("") }
 
-  test("ConfigStoreName rejects empty string"):
-    intercept[IllegalArgumentException] { ConfigStoreName("") }
+  test("ConfigurationStoreName rejects empty string"):
+    intercept[IllegalArgumentException] { ConfigurationStoreName("") }
 
   test("BindingName rejects empty string"):
     intercept[IllegalArgumentException] { BindingName("") }

@@ -10,24 +10,24 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[internal] final class ConfigCapabilityImpl(
+private[internal] final class ConfigurationCapabilityImpl(
     scope: DaprCapabilityImpl,
-    val storeName: ConfigStoreName,
+    val storeName: ConfigurationStoreName,
 ) extends ConfigurationCapability:
 
-  import ConfigCapabilityImpl.*
+  import ConfigurationCapabilityImpl.*
 
-  def get(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigKey, ConfigItem] =
+  def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigurationKey, ConfigurationItem] =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
     val javaMeta = toJavaMeta(metadata)
     scope.client
       .getConfiguration(storeName.value, javaKeys, javaMeta)
       .awaitResult()
       .toOption
-      .fold(Map.empty)(_.asScala.map { case (k, item) => ConfigKey(k) -> toConfigItem(k, item) }.toMap)
+      .fold(Map.empty)(_.asScala.map { case (k, item) => ConfigurationKey(k) -> toConfigItem(k, item) }.toMap)
 
-  def subscribe(keys: Seq[ConfigKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
-      onChange: ConfigUpdate => Unit,
+  def subscribe(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty)(
+      onChange: ConfigurationUpdate => Unit,
   ): AutoCloseable^{this} =
     val javaKeys: java.util.List[String] = keys.map(_.value).asJava
     val javaMeta = toJavaMeta(metadata)
@@ -36,8 +36,8 @@ private[internal] final class ConfigCapabilityImpl(
     val sub = flux.subscribe { (response: SubscribeConfigurationResponse | Null) =>
       response.toOption.foreach { r =>
         r.getItems.toOption.foreach { jItems =>
-          val items = jItems.asScala.map { case (k, item) => ConfigKey(k) -> toConfigItem(k, item) }.toMap
-          try onChange(ConfigUpdate(ConfigStoreName(storeNameStr), items))
+          val items = jItems.asScala.map { case (k, item) => ConfigurationKey(k) -> toConfigItem(k, item) }.toMap
+          try onChange(ConfigurationUpdate(ConfigurationStoreName(storeNameStr), items))
           catch case NonFatal(e) => log.log(Level.WARNING, "Config subscription onChange callback threw", e)
         }
       }
@@ -45,14 +45,14 @@ private[internal] final class ConfigCapabilityImpl(
     () => sub.dispose()
 
 @scala.caps.assumeSafe
-private object ConfigCapabilityImpl:
-  private val log = Logger.getLogger("dapr4s.internal.ConfigCapabilityImpl")
+private object ConfigurationCapabilityImpl:
+  private val log = Logger.getLogger("dapr4s.internal.ConfigurationCapabilityImpl")
 
-  private def toConfigItem(k: String, item: JConfigItem): ConfigItem =
-    ConfigItem(
-      key = ConfigKey(k),
-      value = ConfigValue(item.getValue.toOption.getOrElse("")),
-      version = ConfigVersion(item.getVersion.toOption.getOrElse("")),
+  private def toConfigItem(k: String, item: JConfigItem): ConfigurationItem =
+    ConfigurationItem(
+      key = ConfigurationKey(k),
+      value = ConfigurationValue(item.getValue.toOption.getOrElse("")),
+      version = ConfigurationVersion(item.getVersion.toOption.getOrElse("")),
       metadata = item.getMetadata.toOption.fold(Map.empty[MetadataKey, MetadataValue]) { jm =>
         jm.asScala.map { case (mk, mv) => MetadataKey(mk) -> MetadataValue(mv) }.toMap
       },

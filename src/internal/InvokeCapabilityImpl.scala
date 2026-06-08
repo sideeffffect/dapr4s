@@ -7,7 +7,7 @@ import scala.jdk.CollectionConverters.*
 import java.nio.charset.StandardCharsets.UTF_8
 
 @scala.caps.assumeSafe
-private object InvokerCapabilityImpl:
+private object InvokeCapabilityImpl:
   private def toJava(m: HttpMethod): HttpExtension =
     m match
       case HttpMethod.Get     => HttpExtension.GET
@@ -27,15 +27,15 @@ private object InvokerCapabilityImpl:
     m.map { case (k, v) => k.value -> v.value }.asJava
 
 @scala.caps.assumeSafe
-private[internal] final class InvokerCapabilityImpl(
+private[internal] final class InvokeCapabilityImpl(
     scope: DaprCapabilityImpl,
-) extends ServiceInvocationCapability:
+) extends InvokeCapability:
 
-  import InvokerCapabilityImpl.*
+  import InvokeCapabilityImpl.*
 
   def invoke[Req: JsonCodec](
       appId: AppId,
-      method: InvocationMethodName,
+      method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
@@ -54,7 +54,7 @@ private[internal] final class InvokerCapabilityImpl(
       ),
     )
 
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvocationMethodName): Resp =
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
     JsonCodec.decodeOrThrow[Resp](
       bytesToString(
         scope.client
