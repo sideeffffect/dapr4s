@@ -285,11 +285,18 @@ probing class files whenever you need to verify an API.
 ## GitHub workflow
 
 - Work in independent worktrees, but push directly to `master`/`main`.
+- **Commit and push completed work immediately and automatically — do not wait to be asked.**
+  Once a change is done and the checks pass (format, compile, tests), commit it and push to
+  `master`/`main` without prompting for permission.
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
 - When forking external repos for contribution proposals: fork via `gh repo fork`, create a
   branch with a descriptive name (`feat/blocking-client-virtual-threads`), implement, compile,
   push. Do not open a PR without being asked.
 - Do not force-push, do not skip hooks, do not amend published commits.
+- **Releases**: when cutting a release, don't just push the `vX.Y.Z` tag — also create a proper
+  GitHub Release for it (`gh release create vX.Y.Z`). Make it pretty: a descriptive title and
+  release notes grouped by Conventional Commit type (Features / Fixes / Docs / Build), with the
+  highlights called out at the top. Prefer curated notes over a raw auto-generated commit dump.
 
 ---
 
