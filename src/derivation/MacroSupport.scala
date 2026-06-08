@@ -75,6 +75,13 @@ private[derivation] object MacroSupport:
   def wireName(using q: Quotes)(m: q.reflect.Symbol): String =
     nameOverride(m).getOrElse(m.name)
 
+  /** The "name" a name-derived `derive` overload binds to: the type's `@name` override, else its simple Scala name.
+    *
+    * The trailing `$` of a module (`object Foo` ⇒ `Foo$`) is stripped, so `Foo.type` yields `Foo`.
+    */
+  def derivedTypeName(using q: Quotes)(tSym: q.reflect.Symbol): String =
+    nameOverride(tSym).getOrElse(tSym.name.stripSuffix("$"))
+
   /** Stable activity name for a method of an implementation class: `<impl-full-name>#<method-wire-name>`.
     *
     * Both the server reification ([[dapr4s.derivation.WorkflowActivities]]) and the caller derivation

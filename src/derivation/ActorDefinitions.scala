@@ -8,7 +8,10 @@ import scala.quoted.*
   * `derive[C]` inspects class `C`'s methods (those with a `(using ActorContext)` clause) and builds the
   * `ActorDefinition`/`ActorRoutes` the runtime expects. The method name maps verbatim (override with [[name `@name`]])
   * to the route key; [[reminder `@reminder`]] and [[timer `@timer`]] turn a method into a reminder/timer route (its
-  * result is discarded). The actor's [[dapr4s.ActorType]] is the class's simple name (override with `@name` on the
+  * result is discarded).
+  *
+  * The actor's [[dapr4s.ActorType]] comes from one of two overloads: `derive[C](actorType)` uses the given type
+  * verbatim, while the no-argument `derive[C]` derives it from the class's simple name (override with `@name` on the
   * class).
   *
   * '''Contract.'''
@@ -27,20 +30,27 @@ import scala.quoted.*
   *     @reminder def scheduledReset(msg: String)(using ActorContext): Unit = ...
   *     @timer def autoIncrement(req: IncrRequest)(using ActorContext): Unit = ...
   *
-  *   val definition = ActorDefinitions.derive[Counter]
+  *   val definition = ActorDefinitions.derive[Counter](ActorType("Counter"))
+  *   val sameDefinition = ActorDefinitions.derive[Counter] // ActorType derived from the class's simple name
   * }}}
   */
 @scala.caps.assumeSafe
 object ActorDefinitions:
 
-  inline def derive[C]: ActorDefinition = ${ deriveImpl[C] }
+  /** Derive an [[dapr4s.ActorDefinition]] for class `C` registered under `actorType`. */
+  inline def derive[C](actorType: ActorType): ActorDefinition = ${ deriveImpl[C]('{ Some(actorType) }) }
 
-  private def deriveImpl[C: Type](using Quotes): Expr[ActorDefinition] =
+  /** Derive an [[dapr4s.ActorDefinition]] for class `C`, with the [[dapr4s.ActorType]] taken from `C`'s simple name
+    * (override with `@name` on the class).
+    */
+  inline def derive[C]: ActorDefinition = ${ deriveImpl[C]('{ None }) }
+
+  private def deriveImpl[C: Type](actorType: Expr[Option[ActorType]])(using Quotes): Expr[ActorDefinition] =
     import quotes.reflect.*
-    val typeName = MacroSupport.nameOverride(TypeRepr.of[C].typeSymbol).getOrElse(TypeRepr.of[C].typeSymbol.name)
+    val typeName = MacroSupport.derivedTypeName(TypeRepr.of[C].typeSymbol)
     '{
-      ActorDefinition(ActorType(${ Expr(typeName) })) { (id: ActorId) => (ctx: ActorContext) ?=>
-        ${ routesFor[C]('id, 'ctx) }
+      ActorDefinition(${ actorType }.getOrElse(ActorType(${ Expr(typeName) }))) {
+        (id: ActorId) => (ctx: ActorContext) ?=> ${ routesFor[C]('id, 'ctx) }
       }
     }
 

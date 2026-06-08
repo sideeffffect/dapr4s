@@ -33,3 +33,11 @@ class ActorDefinitionsTest extends FunSuite:
     val out = inc.rawHandler.asInstanceOf[Any => Any](Req(5))
     assertEquals(out, Resp("inc-a1"))
     assertEquals(ctx.log.toList, List("set|n|5"))
+
+  test("ActorDefinitions.derive(actorType) overrides the class-name-derived ActorType"):
+    val defn = ActorDefinitions.derive[Counter](ActorType("counter-actor"))
+    assertEquals(defn.actorType, ActorType("counter-actor"))
+    assertEquals(
+      defn.build(ActorId("a1"), FakeActorContext()).methods.map(_.methodName.value).sorted,
+      List("get", "increment"),
+    )

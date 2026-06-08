@@ -22,6 +22,7 @@ import scala.quoted.*
   *     def stats()(using ServiceInvocationCapability, JsonCodec[StatsResponse]): StatsResponse
   *
   *   val svc: GreetingService = ServiceInvocation.derive[GreetingService](AppId("greeting-service"))
+  *   val sameSvc: GreetingService = ServiceInvocation.derive[GreetingService] // AppId derived from the trait name
   * }}}
   *
   * The derived instance captures only the [[dapr4s.AppId]] (a plain value), never a capability — capture-checking
@@ -29,6 +30,8 @@ import scala.quoted.*
   * via each method's `using` clause.
   *
   * '''Method contract''' (enforced at compile time):
+  *   - The target [[dapr4s.AppId]] is either given explicitly (`derive[T](appId)`) or, with the no-argument
+  *     `derive[T]`, taken from the trait's simple name (override with `@name` on the trait).
   *   - The Scala method name is used verbatim as the [[dapr4s.InvocationMethodName]]; override per method with
   *     [[name `@name`]].
   *   - The first value parameter, if present, is the request body (its type is free). A method with no value parameters
@@ -43,11 +46,18 @@ import scala.quoted.*
 object ServiceInvocation:
 
   /** Derive an implementation of trait `T` that routes its methods to `appId`. */
-  inline def derive[T](appId: AppId): T = ${ deriveImpl[T]('appId) }
+  inline def derive[T](appId: AppId): T = ${ deriveImpl[T]('{ Some(appId) }) }
 
-  private def deriveImpl[T: Type](appId: Expr[AppId])(using Quotes): Expr[T] =
+  /** Derive an implementation of trait `T`, routing its methods to the [[dapr4s.AppId]] taken from `T`'s simple name
+    * (override with `@name` on the trait).
+    */
+  inline def derive[T]: T = ${ deriveImpl[T]('{ None }) }
+
+  private def deriveImpl[T: Type](appIdOpt: Expr[Option[AppId]])(using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "ServiceInvocation"
+    val derivedName = MacroSupport.derivedTypeName(TypeRepr.of[T].typeSymbol)
+    val appId: Expr[AppId] = '{ ${ appIdOpt }.getOrElse(AppId(${ Expr(derivedName) })) }
     val httpMethodTpe = TypeRepr.of[HttpMethod]
     val metadataTpe = TypeRepr.of[Map[MetadataKey, MetadataValue]]
     val capTpe = TypeRepr.of[ServiceInvocationCapability]

@@ -56,3 +56,10 @@ class ServiceInvocationDerivationTest extends FunSuite:
       rec.calls.toList,
       List("body|mixin-service|plain|3|Post|0", "nobody|mixin-service|get-stats"),
     )
+
+  test("derive without appId routes to the trait's simple name"):
+    val rec = RecordingInvoker("pong")
+    given ServiceInvocationCapability = rec
+    val svc = ServiceInvocation.derive[Greeter]
+    svc.double(Req(5))
+    assertEquals(rec.calls.toList, List("body|Greeter|double|5|Post|0"))

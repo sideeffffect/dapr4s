@@ -11,6 +11,9 @@ import scala.quoted.*
   * [[deadLetter `@deadLetter`]] sets the dead-letter topic. The handler's `using` capabilities/codecs and the
   * subscription's codec are resolved from the ambient scope at the `derive` call site.
   *
+  * The [[dapr4s.PubSubName]] is either given explicitly (`derive[T](pubsubName)`) or, with the no-argument `derive[T]`,
+  * taken from `T`'s simple name (override with `@name` on the type).
+  *
   * {{{
   *   object ResultRoutes:
   *     @name("scan-completed") def onScanCompleted(e: CloudEvent[ScanResult])(using StateCapability, JsonCodec[ScanResult]): SubscriptionResult = ...
@@ -21,11 +24,19 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Subscriptions:
 
-  inline def derive[T](pubsubName: PubSubName): List[Subscription] = ${ deriveImpl[T]('pubsubName) }
+  /** Derive the [[dapr4s.Subscription]]s of handler type `T` on the given `pubsubName`. */
+  inline def derive[T](pubsubName: PubSubName): List[Subscription] = ${ deriveImpl[T]('{ Some(pubsubName) }) }
 
-  private def deriveImpl[T: Type](pubsubName: Expr[PubSubName])(using Quotes): Expr[List[Subscription]] =
+  /** Derive the [[dapr4s.Subscription]]s of handler type `T` on the [[dapr4s.PubSubName]] taken from `T`'s simple name
+    * (override with `@name` on the type).
+    */
+  inline def derive[T]: List[Subscription] = ${ deriveImpl[T]('{ None }) }
+
+  private def deriveImpl[T: Type](pubsubNameOpt: Expr[Option[PubSubName]])(using Quotes): Expr[List[Subscription]] =
     import quotes.reflect.*
     val engine = "Subscriptions"
+    val derivedName = MacroSupport.derivedTypeName(TypeRepr.of[T].typeSymbol)
+    val pubsubName: Expr[PubSubName] = '{ ${ pubsubNameOpt }.getOrElse(PubSubName(${ Expr(derivedName) })) }
     val inst = MacroSupport.instanceOf[T]
     val methods = MacroSupport.handlerMethods[T]
     val cloudEventSym = Symbol.requiredClass("dapr4s.CloudEvent")
