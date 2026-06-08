@@ -40,6 +40,15 @@ object WorkflowActivities:
     * `def add` on `com.acme.CounterActivities` registers `"com.acme.CounterActivities#add"`. [[WorkflowActivityCalls]]
     * computes the very same string from `C`, so the two sides always dispatch to each other. The class is named only
     * through this scheme, so `derive` takes no argument.
+    *
+    * {{{
+    *   class CounterActivities:
+    *     def add(input: IncrRequest)(using DaprCapability): CounterState = CounterState(input.amount * 2)
+    *     def reset()(using DaprCapability): CounterState                 = CounterState(0)
+    *
+    *   // registers activities "…CounterActivities#add" and "…CounterActivities#reset":
+    *   DaprApp(activities = WorkflowActivities.derive[CounterActivities])
+    * }}}
     */
   inline def derive[C]: List[WorkflowActivity[?, ?]] = ${ deriveImpl[C] }
 

@@ -50,6 +50,19 @@ object ServiceInvocation:
     * Each method's Scala name is the [[dapr4s.InvocationMethodName]] it calls — `def greet` calls method `"greet"` on
     * the target app — overridable per method with [[name `@name`]]. This overload names the target [[dapr4s.AppId]]
     * explicitly; the no-argument overload derives it from `T`'s name instead.
+    *
+    * {{{
+    *   trait GreetingService:
+    *     def greet(req: GreetRequest)(using ServiceInvocationCapability, JsonCodec[GreetRequest], JsonCodec[GreetResponse]): GreetResponse
+    *     @name("get-stats") def stats()(using ServiceInvocationCapability, JsonCodec[StatsResponse]): StatsResponse
+    *   def GreetingService(appId: AppId): GreetingService = ServiceInvocation.derive[GreetingService](appId)
+    *
+    *   val svc = GreetingService(AppId("greeting-service"))
+    *   DaprCapability.invoker {
+    *     svc.greet(GreetRequest(...)) // → invoke(appId, InvocationMethodName("greet"), …)[GreetResponse]
+    *     svc.stats()                  // → invoke(appId, InvocationMethodName("get-stats"))[StatsResponse]
+    *   }
+    * }}}
     */
   inline def derive[T](appId: AppId): T = ${ deriveImpl[T]('{ Some(appId) }) }
 
@@ -58,6 +71,14 @@ object ServiceInvocation:
     *
     * Method names map to [[dapr4s.InvocationMethodName]]s exactly as in the `appId`-taking overload; only the source of
     * the target `AppId` differs — here it is the trait's own name rather than an argument.
+    *
+    * {{{
+    *   @name("greeting-service") trait GreetingService:
+    *     def greet(req: GreetRequest)(using ServiceInvocationCapability, JsonCodec[GreetRequest], JsonCodec[GreetResponse]): GreetResponse
+    *
+    *   // AppId("greeting-service") taken from the trait's `@name` (else its simple name "GreetingService"):
+    *   lazy val GreetingService: GreetingService = ServiceInvocation.derive[GreetingService]
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T]('{ None }) }
 

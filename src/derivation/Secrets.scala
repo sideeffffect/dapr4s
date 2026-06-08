@@ -23,6 +23,16 @@ object Secrets:
     * Each method's Scala name is the [[dapr4s.SecretKey]] it reads — `@name("db-password") def dbPassword` reads the
     * secret `"db-password"` — overridable per method with [[name `@name`]]. The secret store itself is fixed by the
     * per-call [[dapr4s.SecretsCapability]], so `derive` takes no argument.
+    *
+    * {{{
+    *   trait Secrets:
+    *     @name("db-password") def dbPassword()(using SecretsCapability): Option[SecretValue]
+    *   lazy val Secrets: Secrets = Secrets.derive[Secrets]
+    *
+    *   DaprCapability.secrets(SecretStoreName("vault")) {
+    *     Secrets.dbPassword() // reads SecretKey("db-password")
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

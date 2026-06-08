@@ -26,6 +26,17 @@ object WorkflowEvents:
     * Each method's Scala name is the [[dapr4s.EventName]] it waits for — `def approval` waits for the external event
     * `"approval"` — overridable per method with [[name `@name`]]. The workflow whose event is awaited is fixed by the
     * per-call [[dapr4s.WorkflowContext]], so `derive` takes no argument.
+    *
+    * {{{
+    *   trait Events:
+    *     def approval(timeout: FiniteDuration)(using ctx: WorkflowContext, c: JsonCodec[Approval]): Task[Approval]^{ctx}
+    *   lazy val Events: Events = WorkflowEvents.derive[Events]
+    *
+    *   class ApprovalWorkflow extends Workflow:
+    *     def run(using WorkflowContext): Unit =
+    *       val approved = Events.approval(1.hour).await() // waits for external event "approval"
+    *       ...
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

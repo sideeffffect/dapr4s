@@ -41,6 +41,17 @@ object WorkflowActivityCalls:
     * activity name both sides compute from `Impl`, `<Impl-full-name>#<method>` (so an `@name` on the `Impl` method, not
     * on `Calls`, shifts the wire name). The macro verifies the matching `Impl` method exists and that its input type
     * agrees, keeping caller and implementation bound across their separate declarations.
+    *
+    * {{{
+    *   trait CounterActivityCalls:
+    *     def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
+    *
+    *   class AddingWorkflow extends Workflow:
+    *     def run(using WorkflowContext): Unit =
+    *       // `add` binds to CounterActivities.add and dispatches "…CounterActivities#add":
+    *       val acts = WorkflowActivityCalls.derive[CounterActivityCalls, CounterActivities]
+    *       WorkflowContext.complete(acts.add(IncrRequest(21)).await())
+    * }}}
     */
   inline def derive[Calls, Impl]: Calls = ${ deriveImpl[Calls, Impl] }
 

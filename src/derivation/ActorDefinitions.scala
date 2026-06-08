@@ -43,6 +43,16 @@ object ActorDefinitions:
     * [[dapr4s.ActorMethodName]] for a normal method, or a [[dapr4s.ReminderName]]/[[dapr4s.TimerName]] when the method
     * carries [[reminder `@reminder`]]/[[timer `@timer`]]. This overload names the [[dapr4s.ActorType]] explicitly; the
     * no-argument overload derives it from `C`'s name instead.
+    *
+    * {{{
+    *   class Counter(actorId: ActorId):
+    *     def increment(input: IncrRequest)(using ActorContext): CounterState = ...
+    *     def get()(using ActorContext): CounterState                         = ...
+    *     @reminder def scheduledReset(msg: String)(using ActorContext): Unit = ...
+    *
+    *   // route keys: ActorMethodName("increment"/"get"), ReminderName("scheduledReset"):
+    *   val definition = ActorDefinitions.derive[Counter](ActorType("Counter"))
+    * }}}
     */
   inline def derive[C](actorType: ActorType): ActorDefinition = ${ deriveImpl[C]('{ Some(actorType) }) }
 
@@ -51,6 +61,11 @@ object ActorDefinitions:
     *
     * Method names become route keys exactly as in the `actorType`-taking overload; only the source of the `ActorType`
     * differs — here it is the class's own name rather than an argument.
+    *
+    * {{{
+    *   // ActorType("Counter") taken from the class's simple name (override with `@name` on the class):
+    *   val definition = ActorDefinitions.derive[Counter]
+    * }}}
     */
   inline def derive[C]: ActorDefinition = ${ deriveImpl[C]('{ None }) }
 

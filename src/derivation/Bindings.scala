@@ -28,6 +28,18 @@ object Bindings:
     * Each method's Scala name is the [[dapr4s.BindingOperation]] it performs — `def create` issues the binding
     * operation `"create"` — overridable per method with [[name `@name`]]. The binding component itself is fixed by the
     * per-call [[dapr4s.BindingsCapability]] (from `DaprCapability.binding(name)`), so `derive` takes no argument.
+    *
+    * {{{
+    *   trait EmailBinding:
+    *     def create(req: EmailRequest)(using BindingsCapability, JsonCodec[EmailRequest]): Unit
+    *     def fetch(req: Query)(using BindingsCapability, JsonCodec[Query], JsonCodec[Message]): Option[Message]
+    *   lazy val EmailBinding: EmailBinding = Bindings.derive[EmailBinding]
+    *
+    *   DaprCapability.binding(BindingName("email")) {
+    *     EmailBinding.create(EmailRequest(...)) // → invokeOneWay(BindingOperation("create"), …)  (Unit ⇒ fire-and-forget)
+    *     EmailBinding.fetch(Query(...))         // → invoke(BindingOperation("fetch"), …): Option[Message]
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

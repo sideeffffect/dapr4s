@@ -20,6 +20,18 @@ object Crypto:
     * Each method's Scala name is the [[dapr4s.CryptoKeyName]] it encrypts under — `def sessionKey` encrypts with the
     * key named `"sessionKey"` — overridable per method with [[name `@name`]]. The crypto component itself is fixed by
     * the per-call [[dapr4s.CryptoCapability]], so `derive` takes no argument.
+    *
+    * {{{
+    *   trait Vault:
+    *     def sessionKey(plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
+    *     @name("text-key") def textKey(plaintext: String, algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
+    *   lazy val Vault: Vault = Crypto.derive[Vault]
+    *
+    *   DaprCapability.crypto(CryptoComponentName("vault")) {
+    *     Vault.sessionKey(bytes, KeyWrapAlgorithm("RSA"))  // encrypts under key "sessionKey"
+    *     Vault.textKey("hello", KeyWrapAlgorithm("RSA"))   // encrypts under key "text-key"
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

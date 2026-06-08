@@ -30,6 +30,15 @@ object Subscriptions:
     * `"onOrder"` — overridable per method with [[name `@name`]]; [[deadLetter `@deadLetter`]] sets the dead-letter
     * topic. This overload names the [[dapr4s.PubSubName]] explicitly; the no-argument overload derives it from `T`'s
     * name instead.
+    *
+    * {{{
+    *   object ResultRoutes:
+    *     @name("scan-completed") @deadLetter("scan-failed")
+    *     def onScanCompleted(e: CloudEvent[ScanResult])(using StateCapability, JsonCodec[ScanResult]): SubscriptionResult = ...
+    *
+    *   // subscribes Topic("scan-completed") on PubSubName("pubsub"), dead-lettering to Topic("scan-failed"):
+    *   DaprApp(subscriptions = Subscriptions.derive[ResultRoutes.type](PubSubName("pubsub")))
+    * }}}
     */
   inline def derive[T](pubsubName: PubSubName): List[Subscription] = ${ deriveImpl[T]('{ Some(pubsubName) }) }
 
@@ -38,6 +47,14 @@ object Subscriptions:
     *
     * Method names map to [[dapr4s.Topic]]s exactly as in the `pubsubName`-taking overload; only the source of the
     * `PubSubName` differs — here it is the type's own name rather than an argument.
+    *
+    * {{{
+    *   @name("pubsub") object ResultRoutes:
+    *     def onScanCompleted(e: CloudEvent[ScanResult])(using JsonCodec[ScanResult]): SubscriptionResult = ...
+    *
+    *   // PubSubName("pubsub") taken from the object's `@name` (else its simple name "ResultRoutes"):
+    *   DaprApp(subscriptions = Subscriptions.derive[ResultRoutes.type])
+    * }}}
     */
   inline def derive[T]: List[Subscription] = ${ deriveImpl[T]('{ None }) }
 

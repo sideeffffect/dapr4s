@@ -28,6 +28,15 @@ object InvocationRoutes:
     * calls to method `"charge"` — overridable per method with [[name `@name`]]. This is the inbound (server)
     * counterpart of [[ServiceInvocation.derive]], which produces the matching outbound calls; the two agree when they
     * use the same method names.
+    *
+    * {{{
+    *   object PaymentRoutes:
+    *     def charge(req: ChargeRequest): PaymentResult = ...
+    *     @name("refund-payment") def refund(req: RefundRequest): Unit = ()
+    *
+    *   // serves InvocationMethodName("charge") and InvocationMethodName("refund-payment"):
+    *   DaprApp(invocations = InvocationRoutes.derive[PaymentRoutes.type])
+    * }}}
     */
   inline def derive[T]: List[InvocationRoute] = ${ deriveImpl[T] }
 

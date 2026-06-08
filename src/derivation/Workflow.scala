@@ -20,6 +20,18 @@ object Workflow:
     * Each method's Scala name is the [[dapr4s.WorkflowName]] it starts — `def orderSaga` starts the workflow
     * `"orderSaga"` — overridable per method with [[name `@name`]]. The workflow runtime is fixed by the per-call
     * [[dapr4s.WorkflowCapability]], so `derive` takes no argument.
+    *
+    * {{{
+    *   trait Workflows:
+    *     def orderSaga(input: OrderRequest)(using WorkflowCapability, JsonCodec[OrderRequest]): WorkflowInstanceId
+    *     def orderSagaWithId(instanceId: WorkflowInstanceId, input: OrderRequest)(using WorkflowCapability, JsonCodec[OrderRequest]): WorkflowInstanceId
+    *   lazy val Workflows: Workflows = Workflow.derive[Workflows]
+    *
+    *   DaprCapability.workflow {
+    *     Workflows.orderSaga(OrderRequest(...))                              // → start(WorkflowName("orderSaga"), input)
+    *     Workflows.orderSagaWithId(WorkflowInstanceId("o-1"), OrderRequest(...)) // → startWithId(WorkflowName("orderSagaWithId"), id, input)
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

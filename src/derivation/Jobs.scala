@@ -22,6 +22,18 @@ object Jobs:
     * `"nightlyReport"` — overridable per method with [[name `@name`]]. The job is identified by this name alone;
     * whether the method schedules (recurring), schedules once, or gets is chosen by its parameters and return type, so
     * `derive` takes no argument.
+    *
+    * {{{
+    *   trait ReportJobs:
+    *     def nightlyReport(spec: ReportSpec, schedule: JobSchedule)(using JobsCapability, JsonCodec[ReportSpec]): Unit
+    *     @name("nightlyReport") def status()(using JobsCapability): Option[JobDetails]
+    *   lazy val ReportJobs: ReportJobs = Jobs.derive[ReportJobs]
+    *
+    *   DaprCapability.jobs {
+    *     ReportJobs.nightlyReport(spec, JobSchedule.Every(1.day)) // schedules job "nightlyReport"
+    *     ReportJobs.status()                                      // gets that same job "nightlyReport"
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

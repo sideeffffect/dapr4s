@@ -23,6 +23,16 @@ object PubSub:
     * Each method's Scala name is the [[dapr4s.Topic]] it publishes to — `def orders` publishes to topic `"orders"` —
     * overridable per method with [[name `@name`]]. The pub/sub component itself is fixed by the per-call
     * [[dapr4s.PubSubCapability]], so `derive` takes no argument.
+    *
+    * {{{
+    *   trait OrderEvents:
+    *     def orders(event: OrderEvent)(using PubSubCapability, JsonCodec[OrderEvent]): Unit
+    *   lazy val OrderEvents: OrderEvents = PubSub.derive[OrderEvents]
+    *
+    *   DaprCapability.pubsub(PubSubName("pubsub")) {
+    *     OrderEvents.orders(OrderEvent(...)) // → publish to Topic("orders")
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

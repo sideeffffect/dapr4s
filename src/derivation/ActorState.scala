@@ -19,6 +19,17 @@ object ActorState:
     * `def count_=` both address the key `"count"` (the `_=` setter suffix is dropped when forming the key) —
     * overridable with [[name `@name`]]. The name addresses only the key: the actor instance and its store are fixed by
     * the per-call [[dapr4s.ActorContext]], so `derive` takes no argument.
+    *
+    * {{{
+    *   trait CounterFields:
+    *     def count(using ActorContext, JsonCodec[Int]): Option[Int]
+    *     def count_=(value: Int)(using ActorContext, JsonCodec[Int]): Unit
+    *   lazy val CounterFields: CounterFields = ActorState.derive[CounterFields]
+    *
+    *   // inside an actor handler, where the per-instance `ActorContext` is the `using` capability:
+    *   def increment()(using ActorContext): Unit =
+    *     CounterFields.count = CounterFields.count.getOrElse(0) + 1 // get/set ActorStateKey("count")
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

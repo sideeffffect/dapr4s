@@ -24,6 +24,21 @@ object Actor:
     * `"increment"` — overridable per method with [[name `@name`]]. The name addresses only the method: the target actor
     * instance is fixed by the [[dapr4s.ActorCapability]] each method receives in its `using` clause (from
     * `DaprCapability.actor(type, id)`), so `derive` itself takes no argument.
+    *
+    * {{{
+    *   trait CounterActor:
+    *     def increment(req: IncrRequest)(using ActorCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
+    *     def get()(using ActorCapability, JsonCodec[CounterState]): CounterState
+    *     def reset()(using ActorCapability): Unit
+    *   lazy val CounterActor: CounterActor = Actor.derive[CounterActor]
+    *
+    *   // choose the target instance, then call methods by their Scala name:
+    *   DaprCapability.actor(ActorType("Counter"), ActorId("c-1")) {
+    *     CounterActor.increment(IncrRequest(1)) // → invoke("increment", …)[CounterState]
+    *     CounterActor.get()                     // → invoke[CounterState]("get")
+    *     CounterActor.reset()                   // → invokeVoid("reset")
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

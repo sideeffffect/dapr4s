@@ -30,6 +30,18 @@ object State:
     * `def count_=` both address the key `"count"` (the `_=` setter suffix is dropped when forming the key) —
     * overridable with [[name `@name`]]. The state store itself is fixed by the per-call [[dapr4s.StateCapability]], so
     * `derive` takes no argument.
+    *
+    * {{{
+    *   trait Counter:
+    *     def count(using StateCapability, JsonCodec[Int]): Option[Int]
+    *     def count_=(value: Int)(using StateCapability, JsonCodec[Int]): Unit
+    *   lazy val Counter: Counter = State.derive[Counter]
+    *
+    *   DaprCapability.state(StateStoreName("statestore")) {
+    *     Counter.count = 5            // → save(StateStoreKey("count"), 5)
+    *     val now = Counter.count      // → get(StateStoreKey("count")): Option[Int]
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 

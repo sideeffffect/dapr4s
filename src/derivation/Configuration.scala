@@ -23,6 +23,16 @@ object Configuration:
     * Each method's Scala name is the single [[dapr4s.ConfigKey]] it reads — `def featureX` reads the config entry
     * `"featureX"` — overridable per method with [[name `@name`]]. The config store itself is fixed by the per-call
     * [[dapr4s.ConfigurationCapability]], so `derive` takes no argument.
+    *
+    * {{{
+    *   trait AppConfig:
+    *     @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigItem]
+    *   lazy val AppConfig: AppConfig = Configuration.derive[AppConfig]
+    *
+    *   DaprCapability.config(ConfigStoreName("appconfig")) {
+    *     AppConfig.featureX() // reads the single ConfigKey("feature-x")
+    *   }
+    * }}}
     */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
