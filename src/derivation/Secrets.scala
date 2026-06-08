@@ -18,6 +18,12 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Secrets:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each method's Scala name is the [[dapr4s.SecretKey]] it reads — `@name("db-password") def dbPassword` reads the
+    * secret `"db-password"` — overridable per method with [[name `@name`]]. The secret store itself is fixed by the
+    * per-call [[dapr4s.SecretsCapability]], so `derive` takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

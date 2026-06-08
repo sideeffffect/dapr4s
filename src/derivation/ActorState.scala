@@ -13,6 +13,13 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object ActorState:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each member's Scala name is the [[dapr4s.ActorStateKey]] it reads or writes — getter `def count` and setter
+    * `def count_=` both address the key `"count"` (the `_=` setter suffix is dropped when forming the key) —
+    * overridable with [[name `@name`]]. The name addresses only the key: the actor instance and its store are fixed by
+    * the per-call [[dapr4s.ActorContext]], so `derive` takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

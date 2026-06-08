@@ -21,6 +21,12 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object WorkflowEvents:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each method's Scala name is the [[dapr4s.EventName]] it waits for — `def approval` waits for the external event
+    * `"approval"` — overridable per method with [[name `@name`]]. The workflow whose event is awaited is fixed by the
+    * per-call [[dapr4s.WorkflowContext]], so `derive` takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

@@ -15,6 +15,12 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Workflow:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each method's Scala name is the [[dapr4s.WorkflowName]] it starts — `def orderSaga` starts the workflow
+    * `"orderSaga"` — overridable per method with [[name `@name`]]. The workflow runtime is fixed by the per-call
+    * [[dapr4s.WorkflowCapability]], so `derive` takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

@@ -18,6 +18,13 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Actor:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each method's Scala name is the [[dapr4s.ActorMethodName]] it invokes — `def increment` calls the actor method
+    * `"increment"` — overridable per method with [[name `@name`]]. The name addresses only the method: the target actor
+    * instance is fixed by the [[dapr4s.ActorCapability]] each method receives in its `using` clause (from
+    * `DaprCapability.actor(type, id)`), so `derive` itself takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

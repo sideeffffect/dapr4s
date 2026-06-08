@@ -16,6 +16,13 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Jobs:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each method's Scala name is the [[dapr4s.JobName]] it schedules or reads — `def nightlyReport` addresses the job
+    * `"nightlyReport"` — overridable per method with [[name `@name`]]. The job is identified by this name alone;
+    * whether the method schedules (recurring), schedules once, or gets is chosen by its parameters and return type, so
+    * `derive` takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

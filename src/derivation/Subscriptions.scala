@@ -24,11 +24,20 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Subscriptions:
 
-  /** Derive the [[dapr4s.Subscription]]s of handler type `T` on the given `pubsubName`. */
+  /** Derive the [[dapr4s.Subscription]]s of handler type `T` on the given `pubsubName`.
+    *
+    * Each handler method's Scala name is the [[dapr4s.Topic]] it subscribes to — `def onOrder` subscribes to topic
+    * `"onOrder"` — overridable per method with [[name `@name`]]; [[deadLetter `@deadLetter`]] sets the dead-letter
+    * topic. This overload names the [[dapr4s.PubSubName]] explicitly; the no-argument overload derives it from `T`'s
+    * name instead.
+    */
   inline def derive[T](pubsubName: PubSubName): List[Subscription] = ${ deriveImpl[T]('{ Some(pubsubName) }) }
 
   /** Derive the [[dapr4s.Subscription]]s of handler type `T` on the [[dapr4s.PubSubName]] taken from `T`'s simple name
     * (override with `@name` on the type).
+    *
+    * Method names map to [[dapr4s.Topic]]s exactly as in the `pubsubName`-taking overload; only the source of the
+    * `PubSubName` differs — here it is the type's own name rather than an argument.
     */
   inline def derive[T]: List[Subscription] = ${ deriveImpl[T]('{ None }) }
 

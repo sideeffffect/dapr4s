@@ -18,6 +18,12 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Configuration:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each method's Scala name is the single [[dapr4s.ConfigKey]] it reads — `def featureX` reads the config entry
+    * `"featureX"` — overridable per method with [[name `@name`]]. The config store itself is fixed by the per-call
+    * [[dapr4s.ConfigurationCapability]], so `derive` takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

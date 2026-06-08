@@ -19,8 +19,8 @@ import scala.quoted.*
   * per-call context. `JsonCodec[I]`/`JsonCodec[O]` are summoned at the `derive` call site. The corresponding `Impl`
   * method has shape `def m(input: I)(using DaprCapability): O` (see [[WorkflowActivities]]).
   *
-  * `JsonCodec[I]`/`JsonCodec[O]` are summoned where `derive` is expanded, so call it inside the
-  * workflow body (where the workflow's codec givens are in scope) rather than from a top-level val:
+  * `JsonCodec[I]`/`JsonCodec[O]` are summoned where `derive` is expanded, so call it inside the workflow body (where
+  * the workflow's codec givens are in scope) rather than from a top-level val:
   * {{{
   *   trait CounterActivityCalls:
   *     def add(input: IncrRequest)(using ctx: WorkflowContext): Task[CounterState]^{ctx}
@@ -34,6 +34,14 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object WorkflowActivityCalls:
 
+  /** Derive a caller facade for trait `Calls`, backed by the activities of class `Impl`.
+    *
+    * Here the Scala method name is a '''local handle''', not itself a wire name: each `Calls` method selects the `Impl`
+    * method of the same Scala name — `def add` binds to `Impl.add` — and the call is then dispatched by the stable
+    * activity name both sides compute from `Impl`, `<Impl-full-name>#<method>` (so an `@name` on the `Impl` method, not
+    * on `Calls`, shifts the wire name). The macro verifies the matching `Impl` method exists and that its input type
+    * agrees, keeping caller and implementation bound across their separate declarations.
+    */
   inline def derive[Calls, Impl]: Calls = ${ deriveImpl[Calls, Impl] }
 
   private def deriveImpl[Calls: Type, Impl: Type](using Quotes): Expr[Calls] =

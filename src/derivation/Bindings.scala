@@ -23,6 +23,12 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object Bindings:
 
+  /** Derive a client facade for trait `T`.
+    *
+    * Each method's Scala name is the [[dapr4s.BindingOperation]] it performs — `def create` issues the binding
+    * operation `"create"` — overridable per method with [[name `@name`]]. The binding component itself is fixed by the
+    * per-call [[dapr4s.BindingsCapability]] (from `DaprCapability.binding(name)`), so `derive` takes no argument.
+    */
   inline def derive[T]: T = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[T] =

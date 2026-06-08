@@ -22,6 +22,13 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object InvocationRoutes:
 
+  /** Derive the [[dapr4s.InvocationRoute]]s exposed by handler type `T`.
+    *
+    * Each handler method's Scala name is the [[dapr4s.InvocationMethodName]] it answers — `def charge` serves incoming
+    * calls to method `"charge"` — overridable per method with [[name `@name`]]. This is the inbound (server)
+    * counterpart of [[ServiceInvocation.derive]], which produces the matching outbound calls; the two agree when they
+    * use the same method names.
+    */
   inline def derive[T]: List[InvocationRoute] = ${ deriveImpl[T] }
 
   private def deriveImpl[T: Type](using Quotes): Expr[List[InvocationRoute]] =

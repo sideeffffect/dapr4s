@@ -33,12 +33,20 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object WorkflowActivities:
 
+  /** Derive the registrable [[dapr4s.WorkflowActivity]] values defined by class `C`.
+    *
+    * Each method's Scala name (overridable with [[name `@name`]]) does not become the activity's registration name on
+    * its own: the activity is registered under the stable, fully-qualified name `<C-full-name>#<method>` — e.g.
+    * `def add` on `com.acme.CounterActivities` registers `"com.acme.CounterActivities#add"`. [[WorkflowActivityCalls]]
+    * computes the very same string from `C`, so the two sides always dispatch to each other. The class is named only
+    * through this scheme, so `derive` takes no argument.
+    */
   inline def derive[C]: List[WorkflowActivity[?, ?]] = ${ deriveImpl[C] }
 
   private def deriveImpl[C: Type](using Quotes): Expr[List[WorkflowActivity[?, ?]]] =
     import quotes.reflect.*
     val engine = "WorkflowActivities"
-    val cSym   = TypeRepr.of[C].typeSymbol
+    val cSym = TypeRepr.of[C].typeSymbol
 
     if cSym.flags.is(Flags.Trait) then
       report.errorAndAbort(s"$engine.derive expects a class, but ${cSym.fullName} is a trait.")
@@ -88,7 +96,10 @@ object WorkflowActivities:
     def summonGiven(m: Symbol, tpe: TypeRepr): Term =
       tpe.asType match
         case '[t] =>
-          Expr.summon[t].map(_.asTerm).getOrElse(fail(m, s"no given instance for ${tpe.show} in scope at the derive site."))
+          Expr
+            .summon[t]
+            .map(_.asTerm)
+            .getOrElse(fail(m, s"no given instance for ${tpe.show} in scope at the derive site."))
 
     // build `inst.m(<in?>)(using <dapr>, <summoned givens…>)`, applying clauses in declaration order.
     // The DaprCapability in the `using` clause is threaded from `execute`; any other given params
@@ -97,8 +108,7 @@ object WorkflowActivities:
       termClauses(dd).foldLeft(Select(instTerm, m): Term) { (acc, tc) =>
         val isUsing = tc.params.nonEmpty && tc.params.forall(_.symbol.flags.is(Flags.Given))
         val args =
-          if isUsing then
-            tc.params.map(p => if p.tpt.tpe <:< daprTpe then daprRef else summonGiven(m, p.tpt.tpe))
+          if isUsing then tc.params.map(p => if p.tpt.tpe <:< daprTpe then daprRef else summonGiven(m, p.tpt.tpe))
           else if tc.params.isEmpty then Nil
           else if tc.params.sizeIs == 1 then List(inRef.getOrElse(fail(m, "missing input argument.")))
           else fail(m, "an activity method takes at most one request-body parameter.")

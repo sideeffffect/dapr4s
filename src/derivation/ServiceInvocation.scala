@@ -45,11 +45,19 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object ServiceInvocation:
 
-  /** Derive an implementation of trait `T` that routes its methods to `appId`. */
+  /** Derive a client facade for trait `T`, routing its calls to `appId`.
+    *
+    * Each method's Scala name is the [[dapr4s.InvocationMethodName]] it calls — `def greet` calls method `"greet"` on
+    * the target app — overridable per method with [[name `@name`]]. This overload names the target [[dapr4s.AppId]]
+    * explicitly; the no-argument overload derives it from `T`'s name instead.
+    */
   inline def derive[T](appId: AppId): T = ${ deriveImpl[T]('{ Some(appId) }) }
 
-  /** Derive an implementation of trait `T`, routing its methods to the [[dapr4s.AppId]] taken from `T`'s simple name
+  /** Derive a client facade for trait `T`, routing its calls to the [[dapr4s.AppId]] taken from `T`'s simple name
     * (override with `@name` on the trait).
+    *
+    * Method names map to [[dapr4s.InvocationMethodName]]s exactly as in the `appId`-taking overload; only the source of
+    * the target `AppId` differs — here it is the trait's own name rather than an argument.
     */
   inline def derive[T]: T = ${ deriveImpl[T]('{ None }) }
 

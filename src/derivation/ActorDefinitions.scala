@@ -37,11 +37,20 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object ActorDefinitions:
 
-  /** Derive an [[dapr4s.ActorDefinition]] for class `C` registered under `actorType`. */
+  /** Derive an [[dapr4s.ActorDefinition]] for class `C`, registered under `actorType`.
+    *
+    * Each handler method's Scala name (overridable with [[name `@name`]]) becomes its route key — an
+    * [[dapr4s.ActorMethodName]] for a normal method, or a [[dapr4s.ReminderName]]/[[dapr4s.TimerName]] when the method
+    * carries [[reminder `@reminder`]]/[[timer `@timer`]]. This overload names the [[dapr4s.ActorType]] explicitly; the
+    * no-argument overload derives it from `C`'s name instead.
+    */
   inline def derive[C](actorType: ActorType): ActorDefinition = ${ deriveImpl[C]('{ Some(actorType) }) }
 
   /** Derive an [[dapr4s.ActorDefinition]] for class `C`, with the [[dapr4s.ActorType]] taken from `C`'s simple name
     * (override with `@name` on the class).
+    *
+    * Method names become route keys exactly as in the `actorType`-taking overload; only the source of the `ActorType`
+    * differs — here it is the class's own name rather than an argument.
     */
   inline def derive[C]: ActorDefinition = ${ deriveImpl[C]('{ None }) }
 
