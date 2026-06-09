@@ -573,10 +573,18 @@ from `Impl` exactly as `derive` would, but additionally:
 |---|---|---|---|
 | `Invoke` ↔ `InvokeRoutes` | `InvokeRoutes` | Scala method name; wire name from `Contract` | body type (knobs skipped) + return type |
 | `Publish` ↔ `Subscriptions` | `Subscriptions` | **`Topic`** (wire name) — the two name methods independently | published payload `=:=` subscriber's `CloudEvent[Payload]` |
-| `Actor` ↔ `ActorDefinitions` | `ActorDefinitions` | Scala method name (callable methods only) | body + return type; `@reminder`/`@timer` excluded (runtime-triggered) |
+| `Actor` ↔ `ActorDefinitions` | `ActorDefinitions` | Scala method name | plain method: body + return type; `@reminder`/`@timer` scheduling method: payload type (result discarded) |
 | `Jobs` ↔ `JobRoutes` | `JobRoutes` | **`JobName`** (wire name) | scheduled payload type; getters (`Option[JobDetails]`, no payload) skipped |
 | `Bindings` ↔ `BindingRoutes` | `BindingRoutes` | — | **no `deriveChecked`** (see below) |
 | `WorkflowActivityCalls` ↔ `WorkflowActivities` | both engines | Scala method name | input type + (Task-unwrapped) output type — the original precedent |
+
+The `Actor` engine covers all three actor client concerns through one trait: a plain method invokes via
+`ActorCapability`, while a `@reminder`/`@timer` method *schedules* via `ActorContext.registerReminder`/
+`registerTimer` (name → `ReminderName`/`TimerName`, first non-knob param = `data`, `dueTime`/`period` knobs). This is
+itself a sub-dualism — `ActorContext.registerReminder`/`registerTimer` (scheduling) ↔ `ActorReminderRoute`/
+`ActorTimerRoute` (handling, reified by `ActorDefinitions` from `@reminder`/`@timer` actor methods) — matched by
+name + payload, exactly like `Jobs` ↔ `JobRoutes`. `ActorDefinitions.deriveChecked` verifies all three kinds against
+the actor class.
 
 The workflow-activity pair is symmetric: `WorkflowActivityCalls.derive[Calls, Impl]` (unchecked — binds the two
 only by name, enough to compute the dispatch string) and `.deriveChecked[Calls, Impl]` (also verifies request types);

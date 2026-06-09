@@ -61,6 +61,28 @@ object Forwarders:
   def actorInvokeVoid(cap: ActorCapability, method: ActorMethodName): Unit =
     cap.invokeVoid(method)
 
+  def actorRegisterReminder[T](
+      ctx: ActorContext,
+      name: ReminderName,
+      data: T,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration],
+      codec: JsonCodec[T],
+  ): Unit =
+    given JsonCodec[T] = codec
+    ctx.registerReminder[T](name, data, dueTime, period)
+
+  def actorRegisterTimer[T](
+      ctx: ActorContext,
+      name: TimerName,
+      data: T,
+      dueTime: FiniteDuration,
+      period: Option[FiniteDuration],
+      codec: JsonCodec[T],
+  ): Unit =
+    given JsonCodec[T] = codec
+    ctx.registerTimer[T](name, data, dueTime, period)
+
   // ---- Publish ---------------------------------------------------------------
 
   def publish[T](cap: PublishCapability, topic: Topic, data: T, codec: JsonCodec[T]): Unit =

@@ -221,7 +221,9 @@ final class FakeActorContext extends ActorContext:
   def set[T: JsonCodec](key: ActorStateKey, value: T): Unit =
     log += s"set|${key.value}|${summon[JsonCodec[T]].encode(value)}"
   def remove(key: ActorStateKey): Unit = ???
-  def registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration]): Unit = ???
+  def registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration]): Unit =
+    log += s"reminder|${name.value}|${summon[JsonCodec[T]].encode(data)}|$dueTime|$period"
   def unregisterReminder(name: ReminderName): Unit = ???
-  def registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration]): Unit = ???
+  def registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration]): Unit =
+    log += s"timer|${name.value}|${summon[JsonCodec[T]].encode(data)}|$dueTime|$period"
   def unregisterTimer(name: TimerName): Unit = ???

@@ -426,8 +426,8 @@ object LockCapability:
   *
   * '''Dual:''' [[ActorDefinition]] is the server counterpart — a call this capability makes to an [[ActorMethodName]]
   * is served by the matching method route of the actor's `ActorDefinition`. (Derivation binds the two through one
-  * trait: `Actor.derive` ↔ `ActorDefinitions.deriveChecked`; `@reminder`/`@timer` routes are runtime-triggered, not
-  * part of the caller contract.)
+  * trait: `Actor.derive` ↔ `ActorDefinitions.deriveChecked`. The actor's reminders/timers are a separate sub-dualism,
+  * scheduled via [[ActorContext.registerReminder]]/[[ActorContext.registerTimer]] rather than this capability.)
   */
 @scala.caps.assumeSafe
 trait ActorCapability extends scala.caps.ExclusiveCapability:

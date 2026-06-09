@@ -42,6 +42,10 @@ trait ActorContext extends scala.caps.ExclusiveCapability:
     *
     * `data` is serialised with its [[JsonCodec]] and stored in the Dapr reminder payload, then deserialised and passed
     * to the matching [[ActorReminderRoute]] handler when the reminder fires.
+    *
+    * '''Dual:''' [[ActorReminderRoute]] is the handler counterpart (matched by [[ReminderName]] + payload type). A
+    * `@reminder` method on an `Actor.derive` facade forwards here; the matching `@reminder` route on the actor class
+    * (reified by `ActorDefinitions.derive`) handles it.
     */
   def registerReminder[T: JsonCodec](
       name: ReminderName,
@@ -62,6 +66,10 @@ trait ActorContext extends scala.caps.ExclusiveCapability:
     *
     * `data` is serialised and stored in the timer payload; it is deserialised and passed to the matching
     * [[ActorTimerRoute]] handler when the timer fires.
+    *
+    * '''Dual:''' [[ActorTimerRoute]] is the handler counterpart (matched by [[TimerName]] + payload type). A `@timer`
+    * method on an `Actor.derive` facade forwards here; the matching `@timer` route on the actor class (reified by
+    * `ActorDefinitions.derive`) handles it.
     */
   def registerTimer[T: JsonCodec](
       name: TimerName,
@@ -151,6 +159,11 @@ object ActorMethodRoute:
   * Registered in [[ActorRoutes.reminders]]; dispatched by the framework when the Dapr sidecar delivers a reminder
   * callback for this actor instance. Follows the same `AnyRef`-erasure pattern as [[Subscription]].
   *
+  * '''Dual:''' the handler counterpart of [[ActorContext.registerReminder]] — a reminder scheduled under a
+  * [[ReminderName]] with payload `T` fires into the `ActorReminderRoute` for that same name, decoding `T`. (Derivation
+  * binds the two through one trait: `Actor.derive` schedules via a `@reminder` method ↔ `ActorDefinitions.derive`
+  * reifies the `@reminder` route.)
+  *
   * Use [[ActorReminderRoute.apply]] to construct instances.
   */
 sealed abstract class ActorReminderRoute:
@@ -184,6 +197,10 @@ object ActorReminderRoute:
   *
   * Registered in [[ActorRoutes.timers]]; dispatched by the framework when the Dapr sidecar delivers a timer callback
   * for this actor instance. Follows the same `AnyRef`-erasure pattern as [[ActorReminderRoute]].
+  *
+  * '''Dual:''' the handler counterpart of [[ActorContext.registerTimer]] — a timer scheduled under a [[TimerName]] with
+  * payload `T` fires into the `ActorTimerRoute` for that same name, decoding `T`. (Derivation binds the two through one
+  * trait: `Actor.derive` schedules via a `@timer` method ↔ `ActorDefinitions.derive` reifies the `@timer` route.)
   *
   * Use [[ActorTimerRoute.apply]] to construct instances.
   */
@@ -235,8 +252,9 @@ object ActorRoutes
 /** Describes a hosted Dapr virtual actor type.
   *
   * '''Dual:''' the server counterpart of [[ActorCapability]] — the method routes here answer the [[ActorMethodName]]
-  * calls a client makes through that capability (`@reminder`/`@timer` routes are runtime-triggered, not caller-facing).
-  * (Derivation binds the two through one trait: `Actor.derive` ↔ `ActorDefinitions.deriveChecked`.)
+  * calls a client makes through that capability, and the [[ActorReminderRoute]]/[[ActorTimerRoute]] routes here handle
+  * the reminders/timers a client schedules via [[ActorContext.registerReminder]]/[[ActorContext.registerTimer]].
+  * (Derivation binds all of it through one trait: `Actor.derive` ↔ `ActorDefinitions.deriveChecked`.)
   *
   * `build` is called by the framework on every incoming actor invocation. The fresh [[ActorContext]] scoped to that
   * instance is supplied as a `given` (it is a context-function parameter), so `ActorContext.get`/`set`/… and any

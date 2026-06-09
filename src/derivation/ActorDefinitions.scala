@@ -35,8 +35,8 @@ import scala.quoted.*
   * }}}
   *
   * '''Dual.''' [[Actor]] is the client counterpart. Use [[deriveChecked]] to bind an actor class to the same caller
-  * `Contract` trait that `Actor.derive[Contract]` turns into invocations (`@reminder`/`@timer` methods are
-  * runtime-triggered, so they are outside the caller contract).
+  * `Contract` trait that `Actor.derive[Contract]` turns into invocations and reminder/timer scheduling — it verifies
+  * every contract method (plain, `@reminder`, and `@timer`) is answered by the matching actor method.
   */
 @scala.caps.assumeSafe
 object ActorDefinitions:
@@ -77,9 +77,10 @@ object ActorDefinitions:
     * `Contract`, with the [[dapr4s.ActorType]] given explicitly.
     *
     * Same result as [[derive]], but bound to the dual [[Actor]] facade through the shared `Contract` trait: every
-    * `Contract` method must be implemented by an `Impl` actor '''method''' (not a `@reminder`/`@timer`, which the
-    * runtime — not a caller — triggers) of the same Scala name and matching request/response types. Reminders and
-    * timers on `Impl` are derived as usual but are not part of the caller contract.
+    * `Contract` method must be implemented by an `Impl` actor method of the same Scala name and matching payload types
+    * — a plain method by a callable actor method (request + response), and a `@reminder`/`@timer` scheduling method by
+    * the actor's `@reminder`/`@timer` method of the same kind (scheduled `data` payload; the discarded result is not
+    * checked).
     *
     * @see
     *   [[Actor.derive]] — the dual client facade derived from the same `Contract`.
@@ -101,8 +102,10 @@ object ActorDefinitions:
     crossCheck[Contract, Impl]() // compile-time only; aborts on any caller/impl divergence
     deriveImpl[Impl](actorType)
 
-  /** Verify every `Contract` method is answered by a callable `Impl` actor method (matching name + request/response
-    * types). `@reminder`/`@timer` methods are runtime-triggered, so they are excluded from the eligible set.
+  /** Verify every `Contract` method is answered by the matching `Impl` actor method. A plain contract method must map
+    * to a callable actor method (matching name + request/response types); a `@reminder`/`@timer` contract method (a
+    * scheduling method, see [[Actor.derive]]) must map to an `Impl` method of the same kind whose payload type matches
+    * the scheduled `data` (the `dueTime`/`period` knobs are skipped, and the route's discarded result is not checked).
     */
   private def crossCheck[Contract: Type, Impl: Type]()(using Quotes): Unit =
     import quotes.reflect.*
@@ -110,27 +113,55 @@ object ActorDefinitions:
     val actorCtx = TypeRepr.of[ActorContext]
     val reminderTpe = TypeRepr.of[reminder]
     val timerTpe = TypeRepr.of[timer]
+    val unit = TypeRepr.of[Unit]
+    val schedKnobs = Set("dueTime", "period")
     val implSym = TypeRepr.of[Impl].typeSymbol
     val implName = implSym.name.stripSuffix("$")
+    def hasAnnot(m: Symbol, t: TypeRepr): Boolean = m.annotations.exists(_.tpe =:= t)
 
-    val callable = implSym.declaredMethods.filter { m =>
-      !m.isClassConstructor && !m.annotations.exists(a => a.tpe =:= reminderTpe || a.tpe =:= timerTpe) && (m.tree match
-        case dd: DefDef =>
-          dd.paramss.collect { case tc: TermParamClause => tc }.exists(_.params.exists(_.tpt.tpe <:< actorCtx))
-        case _ => false)
-    }
+    def usesCtx(m: Symbol): Boolean = m.tree match
+      case dd: DefDef =>
+        dd.paramss.collect { case tc: TermParamClause => tc }.exists(_.params.exists(_.tpt.tpe <:< actorCtx))
+      case _ => false
+    val implMethods = implSym.declaredMethods.filter(m => !m.isClassConstructor && usesCtx(m))
+    val implReminders = implMethods.filter(hasAnnot(_, reminderTpe))
+    val implTimers = implMethods.filter(hasAnnot(_, timerTpe))
+    val callable = implMethods.filterNot(m => hasAnnot(m, reminderTpe) || hasAnnot(m, timerTpe))
 
     MacroSupport.contractMethods[Contract](engine).foreach { cm =>
-      val implM = MacroSupport.requireImplMethod(engine, cm, callable, implName)
-      MacroSupport.checkInOut(
-        engine,
-        cm,
-        implName,
-        MacroSupport.bodyParamType(cm, Set.empty),
-        MacroSupport.resultTypeOf(cm),
-        MacroSupport.valueParamType(implM),
-        MacroSupport.resultTypeOf(implM),
-      )
+      if hasAnnot(cm, reminderTpe) then
+        val implM = MacroSupport.requireImplMethod(engine, cm, implReminders, implName)
+        MacroSupport.checkInOut(
+          engine,
+          cm,
+          implName,
+          MacroSupport.bodyParamType(cm, schedKnobs),
+          unit,
+          MacroSupport.valueParamType(implM),
+          unit,
+        )
+      else if hasAnnot(cm, timerTpe) then
+        val implM = MacroSupport.requireImplMethod(engine, cm, implTimers, implName)
+        MacroSupport.checkInOut(
+          engine,
+          cm,
+          implName,
+          MacroSupport.bodyParamType(cm, schedKnobs),
+          unit,
+          MacroSupport.valueParamType(implM),
+          unit,
+        )
+      else
+        val implM = MacroSupport.requireImplMethod(engine, cm, callable, implName)
+        MacroSupport.checkInOut(
+          engine,
+          cm,
+          implName,
+          MacroSupport.bodyParamType(cm, Set.empty),
+          MacroSupport.resultTypeOf(cm),
+          MacroSupport.valueParamType(implM),
+          MacroSupport.resultTypeOf(implM),
+        )
     }
 
   private def deriveImpl[C: Type](actorType: Expr[Option[ActorType]])(using Quotes): Expr[ActorDefinition] =
