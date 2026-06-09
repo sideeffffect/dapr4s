@@ -69,6 +69,60 @@ object ActorDefinitions:
     */
   inline def derive[C]: ActorDefinition = ${ deriveImpl[C]('{ None }) }
 
+  /** Derive the [[dapr4s.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
+    * `Contract`, with the [[dapr4s.ActorType]] given explicitly.
+    *
+    * The counterpart of [[Actor.derive]] bound to the same trait: every `Contract` method must be implemented by an
+    * `Impl` actor '''method''' (not a `@reminder`/`@timer`, which the runtime — not a caller — triggers) of the same
+    * Scala name and matching request/response types. Reminders and timers on `Impl` are derived as usual but are not
+    * part of the caller contract.
+    */
+  inline def derive[Contract, Impl](actorType: ActorType): ActorDefinition =
+    ${ deriveCheckedImpl[Contract, Impl]('{ Some(actorType) }) }
+
+  /** Derive the [[dapr4s.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
+    * `Contract`, with the [[dapr4s.ActorType]] taken from `Impl`'s simple name (override with `@name` on the class).
+    */
+  inline def derive[Contract, Impl]: ActorDefinition = ${ deriveCheckedImpl[Contract, Impl]('{ None }) }
+
+  private def deriveCheckedImpl[Contract: Type, Impl: Type](
+      actorType: Expr[Option[ActorType]],
+  )(using Quotes): Expr[ActorDefinition] =
+    crossCheck[Contract, Impl]() // compile-time only; aborts on any caller/impl divergence
+    deriveImpl[Impl](actorType)
+
+  /** Verify every `Contract` method is answered by a callable `Impl` actor method (matching name + request/response
+    * types). `@reminder`/`@timer` methods are runtime-triggered, so they are excluded from the eligible set.
+    */
+  private def crossCheck[Contract: Type, Impl: Type]()(using Quotes): Unit =
+    import quotes.reflect.*
+    val engine = "ActorDefinitions"
+    val actorCtx = TypeRepr.of[ActorContext]
+    val reminderTpe = TypeRepr.of[reminder]
+    val timerTpe = TypeRepr.of[timer]
+    val implSym = TypeRepr.of[Impl].typeSymbol
+    val implName = implSym.name.stripSuffix("$")
+
+    val callable = implSym.declaredMethods.filter { m =>
+      !m.isClassConstructor && !m.annotations.exists(a => a.tpe =:= reminderTpe || a.tpe =:= timerTpe) && (m.tree match
+        case dd: DefDef =>
+          dd.paramss.collect { case tc: TermParamClause => tc }.exists(_.params.exists(_.tpt.tpe <:< actorCtx))
+        case _ => false)
+    }
+
+    MacroSupport.contractMethods[Contract](engine).foreach { cm =>
+      val implM = MacroSupport.requireImplMethod(engine, cm, callable, implName)
+      MacroSupport.checkInOut(
+        engine,
+        cm,
+        implName,
+        MacroSupport.bodyParamType(cm, Set.empty),
+        MacroSupport.resultTypeOf(cm),
+        MacroSupport.valueParamType(implM),
+        MacroSupport.resultTypeOf(implM),
+      )
+    }
+
   private def deriveImpl[C: Type](actorType: Expr[Option[ActorType]])(using Quotes): Expr[ActorDefinition] =
     import quotes.reflect.*
     val typeName = MacroSupport.derivedTypeName(TypeRepr.of[C].typeSymbol)

@@ -15,6 +15,13 @@ class Counter(actorId: ActorId):
   @reminder def onReset(msg: String)(using ActorContext): Unit = ()
   @timer def tick(req: Req)(using ActorContext): Unit = ()
 
+/** Caller contract for [[Counter]]: the actor methods a client may invoke (reminders/timers excluded). Binds the two
+  * sides through `ActorDefinitions.derive[CounterActorClient, Counter]`.
+  */
+trait CounterActorClient:
+  def increment(req: Req)(using ActorCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def get()(using ActorCapability, JsonCodec[Resp]): Resp
+
 @scala.caps.assumeSafe
 class ActorDefinitionsTest extends FunSuite:
 
@@ -33,6 +40,15 @@ class ActorDefinitionsTest extends FunSuite:
     val out = inc.rawHandler.asInstanceOf[Any => Any](Req(5))
     assertEquals(out, Resp("inc-a1"))
     assertEquals(ctx.log.toList, List("set|n|5"))
+
+  test("ActorDefinitions.derive[Contract, Impl] checks the caller contract and reifies all routes"):
+    val defn = ActorDefinitions.derive[CounterActorClient, Counter]
+    assertEquals(defn.actorType, ActorType("Counter"))
+    val routes = defn.build(ActorId("a1"), FakeActorContext())
+    // the contract covers increment/get; reminders & timers are still reified
+    assertEquals(routes.methods.map(_.methodName.value).sorted, List("get", "increment"))
+    assertEquals(routes.reminders.map(_.reminderName.value), List("onReset"))
+    assertEquals(routes.timers.map(_.timerName.value), List("tick"))
 
   test("ActorDefinitions.derive(actorType) overrides the class-name-derived ActorType"):
     val defn = ActorDefinitions.derive[Counter](ActorType("counter-actor"))
