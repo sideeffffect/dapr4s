@@ -52,6 +52,60 @@ object WorkflowActivities:
     */
   inline def derive[C]: List[WorkflowActivity[?, ?]] = ${ deriveImpl[C] }
 
+  /** Reify class `Impl`'s activities, '''checked''' against the caller contract trait `Calls`.
+    *
+    * Same result as [[derive]], but bound to the dual [[WorkflowActivityCalls]] facade through the shared `Calls`
+    * trait: every `Calls` method (shape `def m(input: I)(using WorkflowContext): Task[O]^{ctx}`) must be implemented by
+    * an `Impl` activity method of the same Scala name whose input type matches `I` and whose return type matches `O`
+    * (the `Task` wrapper on the caller side is unwrapped for the comparison). Activities on `Impl` beyond those the
+    * contract declares are still reified.
+    *
+    * @see
+    *   [[WorkflowActivityCalls.deriveChecked]] — the dual caller facade checked against the same `Calls` trait.
+    */
+  inline def deriveChecked[Calls, Impl]: List[WorkflowActivity[?, ?]] = ${ deriveCheckedImpl[Calls, Impl] }
+
+  private def deriveCheckedImpl[Calls: Type, Impl: Type](using Quotes): Expr[List[WorkflowActivity[?, ?]]] =
+    crossCheck[Calls, Impl]() // compile-time only; aborts on any caller/activity divergence
+    deriveImpl[Impl]
+
+  /** Verify every `Calls` activity is implemented by an `Impl` method of the same Scala name with matching input and
+    * (Task-unwrapped) output types.
+    */
+  private def crossCheck[Calls: Type, Impl: Type]()(using Quotes): Unit =
+    import quotes.reflect.*
+    val engine = "WorkflowActivities"
+    val daprTpe = TypeRepr.of[DaprCapability]
+    val implSym = TypeRepr.of[Impl].typeSymbol
+    val implName = implSym.name.stripSuffix("$")
+
+    def termClauses(dd: DefDef): List[TermParamClause] = dd.paramss.collect { case tc: TermParamClause => tc }
+    val activities = implSym.declaredMethods.filter { m =>
+      !m.isClassConstructor && (m.tree match
+        case dd: DefDef => termClauses(dd).exists(_.params.exists(_.tpt.tpe <:< daprTpe))
+        case _          => false)
+    }
+    // first non-given, non-DaprCapability value parameter of an activity method
+    def implInput(dd: DefDef): Option[TypeRepr] =
+      termClauses(dd).flatMap(_.params).collectFirst {
+        case p if !p.symbol.flags.is(Flags.Given) && !(p.tpt.tpe <:< daprTpe) => p.tpt.tpe
+      }
+
+    MacroSupport.contractMethods[Calls](engine).foreach { cm =>
+      val implM = MacroSupport.requireImplMethod(engine, cm, activities, implName)
+      val dd = implM.tree.asInstanceOf[DefDef]
+      val callsOut = MacroSupport.resultTypeOf(cm)
+      MacroSupport.checkInOut(
+        engine,
+        cm,
+        implName,
+        MacroSupport.bodyParamType(cm, Set.empty),
+        MacroSupport.taskArg(callsOut).getOrElse(callsOut),
+        implInput(dd),
+        dd.returnTpt.tpe,
+      )
+    }
+
   private def deriveImpl[C: Type](using Quotes): Expr[List[WorkflowActivity[?, ?]]] =
     import quotes.reflect.*
     val engine = "WorkflowActivities"

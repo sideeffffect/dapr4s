@@ -36,7 +36,7 @@ class WorkflowActivityDerivationTest extends FunSuite:
   test("WorkflowActivityCalls.derive forwards to callActivity under the same name as the reified activity"):
     val fake = FakeActivityContext("scheduled")
     given WorkflowContext = fake
-    val calls = CounterCalls
+    val calls = CounterCalls // CounterCalls = WorkflowActivityCalls.derive[…] (unchecked)
 
     assertEquals(calls.add(Req(7)).await(), Resp("scheduled"))
     assertEquals(calls.reset().await(), Resp("scheduled"))
@@ -48,3 +48,24 @@ class WorkflowActivityDerivationTest extends FunSuite:
         "call|dapr4s.test.unit.CounterActivities#clear",
       ),
     )
+
+  test("WorkflowActivityCalls.deriveChecked verifies against the impl and forwards identically"):
+    val fake = FakeActivityContext("scheduled")
+    given WorkflowContext = fake
+    val calls = WorkflowActivityCalls.deriveChecked[CounterCalls, CounterActivities]
+    assertEquals(calls.add(Req(7)).await(), Resp("scheduled"))
+    assertEquals(fake.log.toList, List("call|dapr4s.test.unit.CounterActivities#add|7"))
+
+  test("WorkflowActivities.deriveChecked verifies the impl against the caller trait and reifies all activities"):
+    val activities = WorkflowActivities.deriveChecked[CounterCalls, CounterActivities]
+    // CounterCalls covers add/reset; the extra `echo` activity is still reified.
+    assertEquals(
+      activities.map(_.activityName).sorted,
+      List(
+        "dapr4s.test.unit.CounterActivities#add",
+        "dapr4s.test.unit.CounterActivities#clear",
+        "dapr4s.test.unit.CounterActivities#echo",
+      ),
+    )
+    val add = activities.find(_.activityName.endsWith("#add")).get.asInstanceOf[WorkflowActivity[Req, Resp]]
+    assertEquals(add.execute(Req(5))(using noDapr), Resp("added-5"))

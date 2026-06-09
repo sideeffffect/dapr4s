@@ -265,6 +265,16 @@ private[derivation] object MacroSupport:
       case AppliedType(tycon, List(arg)) if tycon.typeSymbol == ceSym => Some(arg)
       case _                                                          => None
 
+  /** Extract `O` from a `dapr4s.Task[O]` type, if it is one — via `baseType`, so a capture annotation (`Task[O]^{ctx}`)
+    * on the type is tolerated.
+    */
+  def taskArg(using q: Quotes)(tpe: q.reflect.TypeRepr): Option[q.reflect.TypeRepr] =
+    import q.reflect.*
+    val taskSym = Symbol.requiredClass("dapr4s.Task")
+    tpe.dealias.baseType(taskSym) match
+      case AppliedType(_, List(arg)) => Some(arg)
+      case _                         => None
+
   /** Verify a contract method's request/response types against its `Impl` handler, attributing mismatches to the
     * contract method. `contractIn`/`contractOut` are the contract's body and result types; `implIn`/`implOut` the
     * handler's. A `None` `in` means "no request body".

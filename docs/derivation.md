@@ -576,10 +576,15 @@ from `Impl` exactly as `derive` would, but additionally:
 | `Actor` ↔ `ActorDefinitions` | `ActorDefinitions` | Scala method name (callable methods only) | body + return type; `@reminder`/`@timer` excluded (runtime-triggered) |
 | `Jobs` ↔ `JobRoutes` | `JobRoutes` | **`JobName`** (wire name) | scheduled payload type; getters (`Option[JobDetails]`, no payload) skipped |
 | `Bindings` ↔ `BindingRoutes` | `BindingRoutes` | — | **no `deriveChecked`** (see below) |
-| `WorkflowActivityCalls` ↔ `WorkflowActivities` | `WorkflowActivityCalls` (caller) | Scala method name | input type (output via return type) — the original precedent |
+| `WorkflowActivityCalls` ↔ `WorkflowActivities` | both engines | Scala method name | input type + (Task-unwrapped) output type — the original precedent |
+
+The workflow-activity pair is symmetric: `WorkflowActivityCalls.derive[Calls, Impl]` (unchecked — binds the two
+only by name, enough to compute the dispatch string) and `.deriveChecked[Calls, Impl]` (also verifies request types);
+`WorkflowActivities.derive[C]` (unchecked) and `.deriveChecked[Calls, C]` (verifies the activity class implements the
+caller trait, unwrapping the caller's `Task[O]` for the output comparison).
 
 Shared cross-check helpers live in `MacroSupport`: `contractMethods[T]`, `bodyParamType(m, knobs)`,
-`requireImplMethod` (by Scala name) / `requireImplByWireName` (by wire string), `cloudEventArg`, and
+`requireImplMethod` (by Scala name) / `requireImplByWireName` (by wire string), `cloudEventArg`, `taskArg`, and
 `checkInOut`. Each callee engine keeps a tiny per-pair `crossCheck` (the request/response relationship
 differs per pair — e.g. pub/sub wraps the payload in `CloudEvent` and has no shared return type).
 

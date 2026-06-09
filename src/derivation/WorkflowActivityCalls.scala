@@ -53,9 +53,19 @@ object WorkflowActivityCalls:
     *       WorkflowContext.complete(acts.add(IncrRequest(21)).await())
     * }}}
     */
-  inline def derive[Calls, Impl]: Calls = ${ deriveImpl[Calls, Impl] }
+  inline def derive[Calls, Impl]: Calls = ${ deriveImpl[Calls, Impl](false) }
 
-  private def deriveImpl[Calls: Type, Impl: Type](using Quotes): Expr[Calls] =
+  /** Like [[derive]], but additionally '''verifies''' each `Calls` method against `Impl`: there must be an `Impl` method
+    * of the same Scala name whose input type matches (output agreement is enforced by the generated body's return
+    * type). `derive` binds the two only by name (enough to compute the dispatch string); `deriveChecked` also proves
+    * the request types line up, so a caller/implementation drift fails at compile time.
+    *
+    * @see
+    *   [[WorkflowActivities.deriveChecked]] — the dual server reification checked against the same `Calls` trait.
+    */
+  inline def deriveChecked[Calls, Impl]: Calls = ${ deriveImpl[Calls, Impl](true) }
+
+  private def deriveImpl[Calls: Type, Impl: Type](verify: Boolean)(using Quotes): Expr[Calls] =
     import quotes.reflect.*
     val engine = "WorkflowActivityCalls"
     val ctxTpe = TypeRepr.of[WorkflowContext]
@@ -91,14 +101,15 @@ object WorkflowActivityCalls:
       val implIn = implInput(implDd)
       val implOut = implDd.returnTpt.tpe
 
-      (bodyEntry, implIn) match
-        case (Some((_, _, callerIn, _)), Some(ii)) if !(callerIn =:= ii) =>
-          fail(s"input type ${callerIn.show} does not match ${implSym.name}.${implM.name}'s input ${ii.show}.")
-        case (Some(_), None) =>
-          fail(s"${implSym.name}.${implM.name} takes no input, but the call declares one.")
-        case (None, Some(ii)) =>
-          fail(s"${implSym.name}.${implM.name} takes input ${ii.show}, but the call declares none.")
-        case _ => ()
+      if verify then
+        (bodyEntry, implIn) match
+          case (Some((_, _, callerIn, _)), Some(ii)) if !(callerIn =:= ii) =>
+            fail(s"input type ${callerIn.show} does not match ${implSym.name}.${implM.name}'s input ${ii.show}.")
+          case (Some(_), None) =>
+            fail(s"${implSym.name}.${implM.name} takes no input, but the call declares one.")
+          case (None, Some(ii)) =>
+            fail(s"${implSym.name}.${implM.name} takes input ${ii.show}, but the call declares none.")
+          case _ => ()
 
       val nm = MacroSupport.activityName(implSym, implM)
       val nameExpr = '{ ActivityName(${ Expr(nm) }) }
@@ -114,10 +125,12 @@ object WorkflowActivityCalls:
         case '[o] =>
           val oc = codecFor(implOut, "Output").asExprOf[JsonCodec[o]]
           bodyEntry match
-            case Some((_, bodyRef, _, _)) =>
-              implIn.get.asType match
+            case Some((_, bodyRef, callerIn, _)) =>
+              // Encode with the caller's own declared input type (it equals `implIn` once `deriveChecked` has
+              // verified it; `derive` skips that check, so do not assume `implIn` is present here).
+              callerIn.asType match
                 case '[i] =>
-                  val ic = codecFor(implIn.get, "Input").asExprOf[JsonCodec[i]]
+                  val ic = codecFor(callerIn, "Input").asExprOf[JsonCodec[i]]
                   '{
                     Forwarders.callActivityByName[i, o](
                       ${ ctxExpr },
