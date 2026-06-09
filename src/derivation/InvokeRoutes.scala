@@ -40,6 +40,68 @@ object InvokeRoutes:
     */
   inline def derive[T]: List[InvokeRoute] = ${ deriveImpl[T] }
 
+  /** Derive the [[dapr4s.InvokeRoute]]s of handler type `Impl`, '''checked''' against caller contract trait `Contract`.
+    *
+    * This is the inbound (server) counterpart of [[Invoke.derive]] bound to the very same trait: where `Invoke.derive`
+    * turns `Contract` into outbound calls, `InvokeRoutes.derive[Contract, Impl]` turns the plain handler `Impl` into
+    * the routes that answer them. The wire [[dapr4s.InvokeMethodName]] of each route is taken from `Contract` (so a
+    * `@name` on the trait governs both sides), and the macro verifies — matching by Scala method name — that `Impl`
+    * implements every `Contract` method with the same request and response types. `Impl` stays a plain handler: no
+    * `InvokeCapability`, no `httpMethod`/`metadata` knobs, and free to take its own ambient `using` dependencies.
+    *
+    * {{{
+    *   trait GreetingService:
+    *     def greet(req: GreetRequest)(using InvokeCapability, JsonCodec[GreetRequest], JsonCodec[GreetResponse]): GreetResponse
+    *
+    *   object GreetingServiceImpl:
+    *     def greet(req: GreetRequest): GreetResponse = ...
+    *
+    *   // checked against GreetingService; serves InvokeMethodName("greet"):
+    *   DaprApp(invokeRoutes = InvokeRoutes.derive[GreetingService, GreetingServiceImpl.type])
+    * }}}
+    */
+  inline def derive[Contract, Impl]: List[InvokeRoute] = ${ deriveCheckedImpl[Contract, Impl] }
+
+  /** The optional caller-only knobs of an [[Invoke]] contract method, skipped when reading its request body. */
+  private val invokeKnobs = Set("httpMethod", "metadata")
+
+  /** Build one [[dapr4s.InvokeRoute]] answering wire name `nm` by calling handler method `m` on `inst`, with request
+    * type `inTpe` and response type `outTpe` (codecs summoned at the derive site).
+    */
+  private def route(using
+      q: Quotes,
+  )(
+      engine: String,
+      inst: q.reflect.Term,
+      m: q.reflect.Symbol,
+      nm: String,
+      inTpe: q.reflect.TypeRepr,
+      outTpe: q.reflect.TypeRepr,
+  ): Expr[InvokeRoute] =
+    import q.reflect.*
+    inTpe.asType match
+      case '[qt] =>
+        outTpe.asType match
+          case '[rt] =>
+            val handler = Lambda(
+              Symbol.spliceOwner,
+              MethodType(List("req"))(_ => List(inTpe), _ => outTpe),
+              (lam, args) =>
+                MacroSupport
+                  .callSummoning(engine, inst, m, Some(args.head.asInstanceOf[Term]))
+                  .changeOwner(lam),
+            ).asExprOf[qt => rt]
+            val qCodec = MacroSupport.summonExpr(TypeRepr.of[JsonCodec[qt]]).asExprOf[JsonCodec[qt]]
+            val rCodec = MacroSupport.summonExpr(TypeRepr.of[JsonCodec[rt]]).asExprOf[JsonCodec[rt]]
+            '{
+              Forwarders.invocationRoute[qt, rt](
+                InvokeMethodName(${ Expr(nm) }),
+                ${ handler },
+                ${ qCodec },
+                ${ rCodec },
+              )
+            }
+
   private def deriveImpl[T: Type](using Quotes): Expr[List[InvokeRoute]] =
     import quotes.reflect.*
     val engine = "InvokeRoutes"
@@ -48,31 +110,33 @@ object InvokeRoutes:
     if methods.isEmpty then
       report.errorAndAbort(s"$engine.derive: ${TypeRepr.of[T].typeSymbol.name} has no handler methods to derive.")
 
-    val routes: List[Expr[InvokeRoute]] = methods.map { m =>
-      val nm = MacroSupport.wireName(m)
+    val routes = methods.map { m =>
       val inTpe = MacroSupport.valueParamType(m).getOrElse(TypeRepr.of[Unit])
-      val outTpe = MacroSupport.resultTypeOf(m)
-      inTpe.asType match
-        case '[q] =>
-          outTpe.asType match
-            case '[r] =>
-              val handler = Lambda(
-                Symbol.spliceOwner,
-                MethodType(List("req"))(_ => List(inTpe), _ => outTpe),
-                (lam, args) =>
-                  MacroSupport
-                    .callSummoning(engine, inst, m, Some(args.head.asInstanceOf[Term]))
-                    .changeOwner(lam),
-              ).asExprOf[q => r]
-              val qCodec = MacroSupport.summonExpr(TypeRepr.of[JsonCodec[q]]).asExprOf[JsonCodec[q]]
-              val rCodec = MacroSupport.summonExpr(TypeRepr.of[JsonCodec[r]]).asExprOf[JsonCodec[r]]
-              '{
-                Forwarders.invocationRoute[q, r](
-                  InvokeMethodName(${ Expr(nm) }),
-                  ${ handler },
-                  ${ qCodec },
-                  ${ rCodec },
-                )
-              }
+      route(engine, inst, m, MacroSupport.wireName(m), inTpe, MacroSupport.resultTypeOf(m))
+    }
+    Expr.ofList(routes)
+
+  private def deriveCheckedImpl[Contract: Type, Impl: Type](using Quotes): Expr[List[InvokeRoute]] =
+    import quotes.reflect.*
+    val engine = "InvokeRoutes"
+    val inst = MacroSupport.instanceOf[Impl]
+    val implName = TypeRepr.of[Impl].typeSymbol.name.stripSuffix("$")
+    val implMethods = MacroSupport.handlerMethods[Impl]
+
+    val routes = MacroSupport.contractMethods[Contract](engine).map { cm =>
+      val implM = MacroSupport.requireImplMethod(engine, cm, implMethods, implName)
+      val contractIn = MacroSupport.bodyParamType(cm, invokeKnobs)
+      val contractOut = MacroSupport.resultTypeOf(cm)
+      MacroSupport.checkInOut(
+        engine,
+        cm,
+        implName,
+        contractIn,
+        contractOut,
+        MacroSupport.valueParamType(implM),
+        MacroSupport.resultTypeOf(implM),
+      )
+      // Types verified equal; the contract is the wire-protocol authority, so its name + types win.
+      route(engine, inst, implM, MacroSupport.wireName(cm), contractIn.getOrElse(TypeRepr.of[Unit]), contractOut)
     }
     Expr.ofList(routes)

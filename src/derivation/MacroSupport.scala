@@ -197,3 +197,71 @@ private[derivation] object MacroSupport:
           if !tc.params.headOption.exists(_.symbol.flags.is(Flags.Given)) && tc.params.sizeIs == 1 =>
         tc.params.head.tpt.tpe
     }
+
+  // ---- caller/callee pair cross-checking ------------------------------------
+  //
+  // A "checked" `derive[Contract, Impl]` pairs the rich caller contract trait with the plain
+  // server handler that answers it (mirrors `WorkflowActivityCalls.derive[Calls, Impl]`): the
+  // wire protocol — method names and request/response types — lives on `Contract`, the bodies on
+  // `Impl`, and the macro verifies the two agree so the same trait binds both sides type-safely.
+
+  /** The abstract (deferred) methods of contract trait `T`, in declaration order; aborts if `T` is not a trait of
+    * abstract methods.
+    */
+  def contractMethods[T: Type](using q: Quotes)(engine: String): List[q.reflect.Symbol] =
+    import q.reflect.*
+    val tSym = TypeRepr.of[T].typeSymbol
+    if !tSym.flags.is(Flags.Trait) then
+      report.errorAndAbort(s"$engine.derive: contract ${tSym.fullName} is not a trait.")
+    val abs = tSym.declaredMethods.filter(_.flags.is(Flags.Deferred))
+    if abs.isEmpty then report.errorAndAbort(s"$engine.derive: contract ${tSym.name} has no abstract methods.")
+    abs
+
+  /** The request-body parameter type of a contract method: its first value parameter whose name is not one of `knobs`
+    * (e.g. `httpMethod`/`metadata`). `None` when there is no such parameter (a no-body method).
+    */
+  def bodyParamType(using q: Quotes)(m: q.reflect.Symbol, knobs: Set[String]): Option[q.reflect.TypeRepr] =
+    import q.reflect.*
+    m.tree
+      .asInstanceOf[DefDef]
+      .paramss
+      .collect { case tc: TermParamClause => tc }
+      .flatMap(_.params)
+      .collectFirst { case p if !p.symbol.flags.is(Flags.Given) && !knobs.contains(p.name) => p.tpt.tpe }
+
+  /** Locate the `Impl` handler answering contract method `cm`: the `Impl` method of the same Scala name. Aborts
+    * (attributing the error to `cm`) when none exists, so a contract method left unimplemented fails at compile time.
+    */
+  def requireImplMethod(using
+      q: Quotes,
+  )(engine: String, cm: q.reflect.Symbol, implMethods: List[q.reflect.Symbol], implName: String): q.reflect.Symbol =
+    implMethods
+      .find(_.name == cm.name)
+      .getOrElse(fail(engine, cm, s"$implName does not implement contract method `${cm.name}`."))
+
+  /** Verify a contract method's request/response types against its `Impl` handler, attributing mismatches to the
+    * contract method. `contractIn`/`contractOut` are the contract's body and result types; `implIn`/`implOut` the
+    * handler's. A `None` `in` means "no request body".
+    */
+  def checkInOut(using
+      q: Quotes,
+  )(
+      engine: String,
+      cm: q.reflect.Symbol,
+      implName: String,
+      contractIn: Option[q.reflect.TypeRepr],
+      contractOut: q.reflect.TypeRepr,
+      implIn: Option[q.reflect.TypeRepr],
+      implOut: q.reflect.TypeRepr,
+  ): Unit =
+    import q.reflect.*
+    (contractIn, implIn) match
+      case (Some(c), Some(i)) if !(c =:= i) =>
+        fail(engine, cm, s"request type ${c.show} does not match $implName.${cm.name}'s ${i.show}.")
+      case (Some(c), None) =>
+        fail(engine, cm, s"$implName.${cm.name} takes no request, but the contract declares ${c.show}.")
+      case (None, Some(i)) =>
+        fail(engine, cm, s"$implName.${cm.name} takes a request ${i.show}, but the contract declares none.")
+      case _ => ()
+    if !(contractOut =:= implOut) then
+      fail(engine, cm, s"response type ${contractOut.show} does not match $implName.${cm.name}'s ${implOut.show}.")
