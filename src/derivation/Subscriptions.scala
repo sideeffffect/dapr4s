@@ -58,6 +58,70 @@ object Subscriptions:
     */
   inline def derive[T]: List[Subscription] = ${ deriveImpl[T]('{ None }) }
 
+  /** Derive the [[dapr4s.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
+    * `Contract` on the given `pubsubName`.
+    *
+    * The inbound counterpart of [[Publish.derive]] bound to the same trait: the two sides agree on the [[dapr4s.Topic]]
+    * (the wire name — a publisher method and its subscriber are matched by topic, since they name their Scala methods
+    * independently), and the macro verifies that for every topic the contract publishes there is an `Impl` handler
+    * whose `CloudEvent[Payload]` carries the same payload type. `Impl` stays a plain subscriber: handlers take
+    * `CloudEvent[Payload]`, return [[dapr4s.SubscriptionResult]], and may take their own ambient `using` dependencies.
+    *
+    * {{{
+    *   trait OrderEvents:
+    *     def orders(event: OrderPlaced)(using PublishCapability, JsonCodec[OrderPlaced]): Unit
+    *
+    *   object OrderSubscribers:
+    *     @name("orders") def onOrder(e: CloudEvent[OrderPlaced]): SubscriptionResult = ...
+    *
+    *   // checked against OrderEvents; subscribes Topic("orders"):
+    *   DaprApp(subscriptions = Subscriptions.derive[OrderEvents, OrderSubscribers.type](PubSubName("pubsub")))
+    * }}}
+    */
+  inline def derive[Contract, Impl](pubsubName: PubSubName): List[Subscription] =
+    ${ deriveCheckedImpl[Contract, Impl]('{ Some(pubsubName) }) }
+
+  /** Derive the [[dapr4s.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
+    * `Contract`, with the [[dapr4s.PubSubName]] taken from `Impl`'s simple name (override with `@name` on the type).
+    */
+  inline def derive[Contract, Impl]: List[Subscription] = ${ deriveCheckedImpl[Contract, Impl]('{ None }) }
+
+  private def deriveCheckedImpl[Contract: Type, Impl: Type](
+      pubsubNameOpt: Expr[Option[PubSubName]],
+  )(using Quotes): Expr[List[Subscription]] =
+    crossCheck[Contract, Impl]() // compile-time only; aborts on any publisher/subscriber divergence
+    deriveImpl[Impl](pubsubNameOpt)
+
+  /** Verify every topic the `Contract` publishes has an `Impl` subscriber carrying the same payload type. Publisher and
+    * subscriber are matched by topic (wire name); the publisher's optional `metadata` knob is not part of the payload.
+    */
+  private def crossCheck[Contract: Type, Impl: Type]()(using Quotes): Unit =
+    import quotes.reflect.*
+    val engine = "Subscriptions"
+    val implName = TypeRepr.of[Impl].typeSymbol.name.stripSuffix("$")
+    val subscribers = MacroSupport.handlerMethods[Impl]
+
+    MacroSupport.contractMethods[Contract](engine).foreach { cm =>
+      val topic = MacroSupport.wireName(cm)
+      val pubPayload = MacroSupport.bodyParamType(cm, Set("metadata"))
+      val subM = MacroSupport.requireImplByWireName(engine, cm, topic, subscribers, implName, "topic")
+      val subPayload = MacroSupport.valueParamType(subM).flatMap(MacroSupport.cloudEventArg)
+      (pubPayload, subPayload) match
+        case (Some(p), Some(s)) if !(p =:= s) =>
+          MacroSupport.fail(
+            engine,
+            cm,
+            s"published payload ${p.show} does not match subscriber's CloudEvent[${s.show}] for topic \"$topic\".",
+          )
+        case (Some(p), None) =>
+          MacroSupport.fail(
+            engine,
+            cm,
+            s"publishes ${p.show} on topic \"$topic\", but its subscriber takes no CloudEvent payload.",
+          )
+        case _ => ()
+    }
+
   private def deriveImpl[T: Type](pubsubNameOpt: Expr[Option[PubSubName]])(using Quotes): Expr[List[Subscription]] =
     import quotes.reflect.*
     val engine = "Subscriptions"

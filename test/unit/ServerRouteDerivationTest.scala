@@ -96,6 +96,16 @@ class ServerRouteDerivationTest extends FunSuite:
     assertEquals(echo.rawHandler.asInstanceOf[Any => Any](Resp("x")), Resp("x"))
     assertEquals(rec.log.toList, List("plain4"))
 
+  test("Subscriptions.derive[Contract, Impl]: checks publisher contract by topic, dispatches"):
+    val rec = new Recorder { val log = mutable.ListBuffer.empty[String] }
+    given Recorder = rec
+    // Publisher (orders/audit topics, Req payload) checked against SubHandlers (same topics, CloudEvent[Req]).
+    val subs = Subscriptions.derive[Publisher, SubHandlers.type](PubSubName("pubsub"))
+    assertEquals(subs.map(_.topic.value).sorted, List("audit", "orders"))
+    val orders = subs.find(_.topic.value == "orders").get
+    orders.rawHandler.asInstanceOf[Any => Any](ce(Req(11)))
+    assertEquals(rec.log.toList, List("order11"))
+
   test("Subscriptions.derive without pubsubName uses the handler type's simple name"):
     val rec = new Recorder { val log = mutable.ListBuffer.empty[String] }
     given Recorder = rec

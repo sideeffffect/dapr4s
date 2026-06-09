@@ -239,6 +239,32 @@ private[derivation] object MacroSupport:
       .find(_.name == cm.name)
       .getOrElse(fail(engine, cm, s"$implName does not implement contract method `${cm.name}`."))
 
+  /** Locate the `Impl` handler answering contract method `cm` by '''wire name''' rather than Scala name — used by pairs
+    * whose two sides name their methods independently but agree on a wire string (a pub/sub [[dapr4s.Topic]]). `kind`
+    * names that string in the error (e.g. `"topic"`). Aborts (attributing to `cm`) when no handler matches.
+    */
+  def requireImplByWireName(using
+      q: Quotes,
+  )(
+      engine: String,
+      cm: q.reflect.Symbol,
+      cmWire: String,
+      implMethods: List[q.reflect.Symbol],
+      implName: String,
+      kind: String,
+  ): q.reflect.Symbol =
+    implMethods
+      .find(im => wireName(im) == cmWire)
+      .getOrElse(fail(engine, cm, s"no $implName handler for $kind \"$cmWire\"."))
+
+  /** Extract `X` from a `dapr4s.CloudEvent[X]` type, if it is one. */
+  def cloudEventArg(using q: Quotes)(tpe: q.reflect.TypeRepr): Option[q.reflect.TypeRepr] =
+    import q.reflect.*
+    val ceSym = Symbol.requiredClass("dapr4s.CloudEvent")
+    tpe.dealias match
+      case AppliedType(tycon, List(arg)) if tycon.typeSymbol == ceSym => Some(arg)
+      case _                                                          => None
+
   /** Verify a contract method's request/response types against its `Impl` handler, attributing mismatches to the
     * contract method. `contractIn`/`contractOut` are the contract's body and result types; `implIn`/`implOut` the
     * handler's. A `None` `in` means "no request body".
