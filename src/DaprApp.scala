@@ -78,6 +78,9 @@ object DaprApp
   * empty capture set and can live in a plain `List`. Internal dispatch code (in [[dapr4s.internal.DaprAppServer]] and
   * `TestDaprApp`) casts it back using the `Payload` type member under `@assumeSafe`.
   *
+  * '''Dual:''' the inbound counterpart of [[PublishCapability]] — a `Subscription` on a [[Topic]] consumes what a
+  * publisher sends to that same topic.
+  *
   * Use [[Subscription.apply]] to construct instances.
   */
 sealed abstract class Subscription:
@@ -139,6 +142,9 @@ object Subscription:
   * `Req` and `Resp` type members bind [[reqCodec]] and [[respCodec]] to concrete types. The handler is stored as
   * `AnyRef` for the same reasons as [[Subscription.rawHandler]].
   *
+  * '''Dual:''' the inbound counterpart of [[InvokeCapability]] — an `InvokeRoute` for an [[InvokeMethodName]] answers
+  * the calls a caller makes to that method.
+  *
   * Use [[InvokeRoute.apply]] or [[InvokeRoute.withRequest]] to construct instances.
   */
 sealed abstract class InvokeRoute:
@@ -194,6 +200,10 @@ object InvokeRoute:
 
 /** Existential wrapper for an input-binding handler.
   *
+  * '''Dual:''' the inbound counterpart of [[BindingsCapability]] (output bindings). These are independent directions on
+  * a binding component, not a request/response contract: a `BindingRoute` receives payloads delivered to a
+  * [[BindingName]], whereas the capability issues [[BindingOperation]]s.
+  *
   * Use [[BindingRoute.apply]] to construct instances.
   */
 sealed abstract class BindingRoute:
@@ -224,8 +234,10 @@ object BindingRoute:
 
 /** Existential wrapper for a job trigger handler.
   *
-  * A job scheduled via [[JobsCapability.schedule]] fires as an inbound trigger the sidecar POSTs to `/job/<name>`. The
-  * `Payload` type member binds [[codec]] to the payload the job was scheduled with.
+  * '''Dual:''' the inbound counterpart of [[JobsCapability]] — a job scheduled via [[JobsCapability.schedule]] fires as
+  * an inbound trigger the sidecar POSTs to `/job/<name>`, answered by the `JobRoute` for that same [[JobName]]. The
+  * `Payload` type member binds [[codec]] to the payload the job was scheduled with. (Derivation binds the two through
+  * one trait: `Jobs.derive` ↔ `JobRoutes.deriveChecked`.)
   *
   * Use [[JobRoute.apply]] to construct instances.
   */

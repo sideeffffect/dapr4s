@@ -234,6 +234,10 @@ object ActorRoutes
 
 /** Describes a hosted Dapr virtual actor type.
   *
+  * '''Dual:''' the server counterpart of [[ActorCapability]] — the method routes here answer the [[ActorMethodName]]
+  * calls a client makes through that capability (`@reminder`/`@timer` routes are runtime-triggered, not caller-facing).
+  * (Derivation binds the two through one trait: `Actor.derive` ↔ `ActorDefinitions.deriveChecked`.)
+  *
   * `build` is called by the framework on every incoming actor invocation. The fresh [[ActorContext]] scoped to that
   * instance is supplied as a `given` (it is a context-function parameter), so `ActorContext.get`/`set`/… and any
   * `(using ActorContext)` handlers resolve directly — no `given ActorContext = ctx` boilerplate. The lambda receives

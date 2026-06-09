@@ -236,6 +236,10 @@ abstract class Workflow:
   *
   * Register instances in [[DaprApp.activities]]; reference the concrete class in [[WorkflowContext.callActivity]].
   *
+  * '''Dual:''' the server side of the workflow-activity pair — an activity registered here answers the name-based calls
+  * an orchestration makes via [[WorkflowContext.callActivityByName]]. (Derivation binds the two through one trait:
+  * `WorkflowActivityCalls.derive`/`deriveChecked` (caller) ↔ `WorkflowActivities.derive`/`deriveChecked` (server).)
+  *
   * An activity receives a [[DaprCapability]] on every invocation, so it can perform Dapr I/O
   * (call other services, read state, publish events) without capturing a capability in a field.
   * Because the capability arrives as a parameter and is never stored, activity implementations

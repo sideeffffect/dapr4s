@@ -136,7 +136,12 @@ object StateCapability:
 
 // ---------------------------------------------------------------------------
 
-/** Capability for DAPR pub/sub publish operations against a named component. */
+/** Capability for DAPR pub/sub publish operations against a named component.
+  *
+  * '''Dual:''' [[Subscription]] is the inbound counterpart — what this capability publishes to a [[Topic]], a
+  * `Subscription` on the same topic consumes. (Derivation binds the two through one trait: `Publish.derive` ↔
+  * `Subscriptions.deriveChecked`.)
+  */
 @scala.caps.assumeSafe
 trait PublishCapability extends scala.caps.ExclusiveCapability:
   val pubsubName: PubSubName
@@ -179,7 +184,12 @@ object PublishCapability:
 
 // ---------------------------------------------------------------------------
 
-/** Capability for synchronous service invocation (RPC) via DAPR. */
+/** Capability for synchronous service invocation (RPC) via DAPR.
+  *
+  * '''Dual:''' [[InvokeRoute]] is the inbound counterpart — a call this capability makes to an [[InvokeMethodName]] is
+  * answered by an `InvokeRoute` for the same method on the target app. (Derivation binds the two through one trait:
+  * `Invoke.derive` ↔ `InvokeRoutes.deriveChecked`.)
+  */
 @scala.caps.assumeSafe
 trait InvokeCapability extends scala.caps.ExclusiveCapability:
 
@@ -319,7 +329,12 @@ object ConfigurationCapability:
 
 // ---------------------------------------------------------------------------
 
-/** Capability for invoking DAPR output bindings. */
+/** Capability for invoking DAPR output bindings.
+  *
+  * '''Dual:''' [[BindingRoute]] is the inbound counterpart (input bindings). Note these are independent directions,
+  * not a request/response contract: this capability issues [[BindingOperation]]s on a binding, while a `BindingRoute`
+  * merely receives payloads delivered to a [[BindingName]]. (So `BindingRoutes` has only `derive`, no `deriveChecked`.)
+  */
 @scala.caps.assumeSafe
 trait BindingsCapability extends scala.caps.ExclusiveCapability:
   val bindingName: BindingName
@@ -407,7 +422,13 @@ object LockCapability:
 
 // ---------------------------------------------------------------------------
 
-/** Capability for invoking methods on a specific Dapr virtual actor instance. */
+/** Capability for invoking methods on a specific Dapr virtual actor instance.
+  *
+  * '''Dual:''' [[ActorDefinition]] is the server counterpart — a call this capability makes to an [[ActorMethodName]]
+  * is served by the matching method route of the actor's `ActorDefinition`. (Derivation binds the two through one
+  * trait: `Actor.derive` ↔ `ActorDefinitions.deriveChecked`; `@reminder`/`@timer` routes are runtime-triggered, not
+  * part of the caller contract.)
+  */
 @scala.caps.assumeSafe
 trait ActorCapability extends scala.caps.ExclusiveCapability:
   val actorType: ActorType
@@ -599,8 +620,10 @@ object CryptoCapability:
 
 /** Capability for scheduling DAPR jobs (client side).
   *
-  * Scheduling is decoupled from handling: a scheduled job fires as an inbound trigger the sidecar POSTs back to the
-  * app, handled by a [[JobRoute]] registered in the [[DaprApp]]. Acquired via [[DaprCapability.jobs]].
+  * '''Dual:''' [[JobRoute]] is the inbound counterpart. Scheduling is decoupled from handling: a scheduled job fires as
+  * an inbound trigger the sidecar POSTs back to the app, handled by a `JobRoute` for the same [[JobName]] registered in
+  * the [[DaprApp]]. Acquired via [[DaprCapability.jobs]]. (Derivation binds the two through one trait: `Jobs.derive` ↔
+  * `JobRoutes.deriveChecked`.)
   */
 @scala.caps.assumeSafe
 trait JobsCapability extends scala.caps.ExclusiveCapability:
