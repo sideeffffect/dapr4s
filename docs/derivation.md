@@ -534,3 +534,70 @@ object MyApp:
 Proven by `WorkflowActivityDerivationTest` (Docker-free, recording fakes) and the refactored
 `test/integration/apps/WorkflowApp.scala` (compiles under safe mode; exercised by the real-sidecar
 `WorkflowCapabilityServerTest`).
+
+---
+
+# Caller/callee pair binding — `deriveChecked` (0.12.0)
+
+Most Dapr building blocks come in **dual pairs**: one engine derives the *app → Dapr* (outbound,
+"caller") side, the other the *Dapr → app* (inbound, "callee") side. The goal of this iteration is
+to let **one shared trait bind both sides type-safely**, so the caller and the server it talks to
+cannot drift apart silently.
+
+## Why a single literal trait can't extend over both sides
+
+A caller contract intrinsically carries caller-only obligations the callee neither needs nor can
+satisfy: `Invoke` methods declare `(using InvokeCapability)` (+ optional `httpMethod`/`metadata`),
+and capture-checking forbids the derived facade from receiving the capability any way *other* than
+as a `using` parameter (it can't be captured, and summoning it at the `derive` site is the wrong
+scope). So the capability must live on the caller trait — but a server handler must not require it
+to run. The only thing genuinely shared is the *request → response* shape.
+
+The resolution mirrors `WorkflowActivityCalls.derive[Calls, Impl]`: keep the two sides as **separate
+types** and have the macro **verify** them against the same trait, rather than forcing a literal
+common supertype. The verification lives on the **callee** engine as a second method —
+`deriveChecked[Contract, Impl]` — alongside the unchanged `derive`.
+
+## `deriveChecked[Contract, Impl]`
+
+`Contract` is the *caller* trait (the rich, capability-bearing one that `<Caller>.derive[Contract]`
+turns into outbound calls). `Impl` is the plain server handler (`object`/class — no capability, no
+caller knobs, free to take its own ambient `using` dependencies). `deriveChecked` derives the routes
+from `Impl` exactly as `derive` would, but additionally:
+
+* takes the **wire name** from `Contract` (so a `@name` on the trait governs both sides at once), and
+* **aborts compilation** unless every `Contract` method is answered by an `Impl` handler with the
+  same request and response types.
+
+| Pair (caller ↔ callee) | callee engine | `deriveChecked` matches by | request/response check |
+|---|---|---|---|
+| `Invoke` ↔ `InvokeRoutes` | `InvokeRoutes` | Scala method name; wire name from `Contract` | body type (knobs skipped) + return type |
+| `Publish` ↔ `Subscriptions` | `Subscriptions` | **`Topic`** (wire name) — the two name methods independently | published payload `=:=` subscriber's `CloudEvent[Payload]` |
+| `Actor` ↔ `ActorDefinitions` | `ActorDefinitions` | Scala method name (callable methods only) | body + return type; `@reminder`/`@timer` excluded (runtime-triggered) |
+| `Jobs` ↔ `JobRoutes` | `JobRoutes` | **`JobName`** (wire name) | scheduled payload type; getters (`Option[JobDetails]`, no payload) skipped |
+| `Bindings` ↔ `BindingRoutes` | `BindingRoutes` | — | **no `deriveChecked`** (see below) |
+| `WorkflowActivityCalls` ↔ `WorkflowActivities` | `WorkflowActivityCalls` (caller) | Scala method name | input type (output via return type) — the original precedent |
+
+Shared cross-check helpers live in `MacroSupport`: `contractMethods[T]`, `bodyParamType(m, knobs)`,
+`requireImplMethod` (by Scala name) / `requireImplByWireName` (by wire string), `cloudEventArg`, and
+`checkInOut`. Each callee engine keeps a tiny per-pair `crossCheck` (the request/response relationship
+differs per pair — e.g. pub/sub wraps the payload in `CloudEvent` and has no shared return type).
+
+## Two new server-route engines
+
+`BindingRoutes.derive[T]: List[BindingRoute]` and `JobRoutes.derive[T]: List[JobRoute]` fill the two
+previously-asymmetric pairs (the `BindingRoute`/`JobRoute` *types* existed but had no derivation —
+routes were hand-built). Each handler is `def m(payload: P)(using …): Unit`; the name maps to
+`BindingName`/`JobName` (verbatim or `@name`); built exactly like `InvokeRoutes`/`Subscriptions`.
+
+## Why `Bindings` has no `deriveChecked`
+
+Unlike the other pairs, output bindings and input bindings are **not a request/response contract**.
+The outbound side issues `BindingOperation`s (`create`, `get`, …) *on* a binding; an input binding
+merely *delivers* payloads to the app keyed by binding name. There is no method-level correspondence
+between an output operation and an input handler, and no app-side caller for an input binding — so
+there is nothing to check a contract trait against. `BindingRoutes` therefore ships `derive` only.
+
+Proven by `ServerRouteDerivationTest` and `ActorDefinitionsTest` — every `derive` and `deriveChecked`
+(across `InvokeRoutes`, `Subscriptions`, `ActorDefinitions`, `BindingRoutes`, `JobRoutes`) is
+exercised with a shared contract trait and dispatch assertions.
