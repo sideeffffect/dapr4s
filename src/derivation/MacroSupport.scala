@@ -200,7 +200,7 @@ private[derivation] object MacroSupport:
 
   // ---- caller/callee pair cross-checking ------------------------------------
   //
-  // A "checked" `derive[Contract, Impl]` pairs the rich caller contract trait with the plain
+  // A "checked" `deriveChecked[Contract, Impl]` pairs the rich caller contract trait with the plain
   // server handler that answers it (mirrors `WorkflowActivityCalls.derive[Calls, Impl]`): the
   // wire protocol — method names and request/response types — lives on `Contract`, the bodies on
   // `Impl`, and the macro verifies the two agree so the same trait binds both sides type-safely.

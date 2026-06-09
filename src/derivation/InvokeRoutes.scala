@@ -18,6 +18,9 @@ import scala.quoted.*
   *
   *   DaprApp(invokeRoutes = InvokeRoutes.derive[PaymentRoutes.type])
   * }}}
+  *
+  * '''Dual.''' [[Invoke]] is the outbound counterpart. Use [[deriveChecked]] to bind a server impl to the same caller
+  * `Contract` trait that `Invoke.derive[Contract]` turns into calls, keeping the two sides type-safe across the wire.
   */
 @scala.caps.assumeSafe
 object InvokeRoutes:
@@ -42,12 +45,13 @@ object InvokeRoutes:
 
   /** Derive the [[dapr4s.InvokeRoute]]s of handler type `Impl`, '''checked''' against caller contract trait `Contract`.
     *
-    * This is the inbound (server) counterpart of [[Invoke.derive]] bound to the very same trait: where `Invoke.derive`
-    * turns `Contract` into outbound calls, `InvokeRoutes.derive[Contract, Impl]` turns the plain handler `Impl` into
-    * the routes that answer them. The wire [[dapr4s.InvokeMethodName]] of each route is taken from `Contract` (so a
-    * `@name` on the trait governs both sides), and the macro verifies — matching by Scala method name — that `Impl`
-    * implements every `Contract` method with the same request and response types. `Impl` stays a plain handler: no
-    * `InvokeCapability`, no `httpMethod`/`metadata` knobs, and free to take its own ambient `using` dependencies.
+    * Same result as [[derive]], but bound to the dual [[Invoke]] facade through the shared `Contract` trait. Where
+    * `Invoke.derive[Contract]` turns the trait into outbound calls, `InvokeRoutes.deriveChecked[Contract, Impl]` turns
+    * the plain handler `Impl` into the routes that answer them. The wire [[dapr4s.InvokeMethodName]] of each route is
+    * taken from `Contract` (so a `@name` on the trait governs both sides), and the macro verifies — matching by Scala
+    * method name — that `Impl` implements every `Contract` method with the same request and response types. `Impl`
+    * stays a plain handler: no `InvokeCapability`, no `httpMethod`/`metadata` knobs, and free to take its own ambient
+    * `using` dependencies.
     *
     * {{{
     *   trait GreetingService:
@@ -57,10 +61,13 @@ object InvokeRoutes:
     *     def greet(req: GreetRequest): GreetResponse = ...
     *
     *   // checked against GreetingService; serves InvokeMethodName("greet"):
-    *   DaprApp(invokeRoutes = InvokeRoutes.derive[GreetingService, GreetingServiceImpl.type])
+    *   DaprApp(invokeRoutes = InvokeRoutes.deriveChecked[GreetingService, GreetingServiceImpl.type])
     * }}}
+    *
+    * @see
+    *   [[Invoke.derive]] — the dual outbound facade derived from the same `Contract`.
     */
-  inline def derive[Contract, Impl]: List[InvokeRoute] = ${ deriveCheckedImpl[Contract, Impl] }
+  inline def deriveChecked[Contract, Impl]: List[InvokeRoute] = ${ deriveCheckedImpl[Contract, Impl] }
 
   /** The optional caller-only knobs of an [[Invoke]] contract method, skipped when reading its request body. */
   private val invokeKnobs = Set("httpMethod", "metadata")

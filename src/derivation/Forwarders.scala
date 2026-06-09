@@ -296,3 +296,11 @@ object Forwarders:
   ): Subscription =
     given JsonCodec[T] = codec
     Subscription[T](pubsubName, topic, deadLetter)(handler)
+
+  def bindingRoute[T](bindingName: BindingName, handler: T => Unit, codec: JsonCodec[T]): BindingRoute =
+    given JsonCodec[T] = codec
+    BindingRoute[T](bindingName)(handler)
+
+  def jobRoute[T](name: JobName, handler: T => Unit, codec: JsonCodec[T]): JobRoute =
+    given JsonCodec[T] = codec
+    JobRoute[T](name)(handler)

@@ -19,6 +19,11 @@ import scala.quoted.*
   *     def create(req: EmailRequest)(using BindingsCapability, JsonCodec[EmailRequest]): Unit
   *   lazy val EmailBinding: EmailBinding = Bindings.derive[EmailBinding]
   * }}}
+  *
+  * '''Dual.''' [[BindingRoutes]] is the inbound counterpart (input bindings). Unlike the other pairs this is '''not'''
+  * a request/response contract: the outbound side issues [[dapr4s.BindingOperation]]s on a binding, while an input
+  * binding merely delivers payloads to the app keyed by binding name. The two directions are independent, so
+  * `BindingRoutes` has only `derive` — there is no `deriveChecked` to bind them through a shared trait.
   */
 @scala.caps.assumeSafe
 object Bindings:

@@ -20,6 +20,9 @@ import scala.quoted.*
   *
   *   DaprApp(subscriptions = Subscriptions.derive[ResultRoutes.type](PubSubName("pubsub")))
   * }}}
+  *
+  * '''Dual.''' [[Publish]] is the outbound counterpart. Use [[deriveChecked]] to bind subscribers to the same publisher
+  * `Contract` trait that `Publish.derive[Contract]` turns into publishes, matched by [[dapr4s.Topic]].
   */
 @scala.caps.assumeSafe
 object Subscriptions:
@@ -61,11 +64,12 @@ object Subscriptions:
   /** Derive the [[dapr4s.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
     * `Contract` on the given `pubsubName`.
     *
-    * The inbound counterpart of [[Publish.derive]] bound to the same trait: the two sides agree on the [[dapr4s.Topic]]
-    * (the wire name — a publisher method and its subscriber are matched by topic, since they name their Scala methods
-    * independently), and the macro verifies that for every topic the contract publishes there is an `Impl` handler
-    * whose `CloudEvent[Payload]` carries the same payload type. `Impl` stays a plain subscriber: handlers take
-    * `CloudEvent[Payload]`, return [[dapr4s.SubscriptionResult]], and may take their own ambient `using` dependencies.
+    * Same result as [[derive]], but bound to the dual [[Publish]] facade through the shared `Contract` trait. The two
+    * sides agree on the [[dapr4s.Topic]] (the wire name — a publisher method and its subscriber are matched by topic,
+    * since they name their Scala methods independently), and the macro verifies that for every topic the contract
+    * publishes there is an `Impl` handler whose `CloudEvent[Payload]` carries the same payload type. `Impl` stays a
+    * plain subscriber: handlers take `CloudEvent[Payload]`, return [[dapr4s.SubscriptionResult]], and may take their
+    * own ambient `using` dependencies.
     *
     * {{{
     *   trait OrderEvents:
@@ -75,16 +79,22 @@ object Subscriptions:
     *     @name("orders") def onOrder(e: CloudEvent[OrderPlaced]): SubscriptionResult = ...
     *
     *   // checked against OrderEvents; subscribes Topic("orders"):
-    *   DaprApp(subscriptions = Subscriptions.derive[OrderEvents, OrderSubscribers.type](PubSubName("pubsub")))
+    *   DaprApp(subscriptions = Subscriptions.deriveChecked[OrderEvents, OrderSubscribers.type](PubSubName("pubsub")))
     * }}}
+    *
+    * @see
+    *   [[Publish.derive]] — the dual publisher facade derived from the same `Contract`.
     */
-  inline def derive[Contract, Impl](pubsubName: PubSubName): List[Subscription] =
+  inline def deriveChecked[Contract, Impl](pubsubName: PubSubName): List[Subscription] =
     ${ deriveCheckedImpl[Contract, Impl]('{ Some(pubsubName) }) }
 
   /** Derive the [[dapr4s.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
     * `Contract`, with the [[dapr4s.PubSubName]] taken from `Impl`'s simple name (override with `@name` on the type).
+    *
+    * @see
+    *   [[Publish.derive]] — the dual publisher facade derived from the same `Contract`.
     */
-  inline def derive[Contract, Impl]: List[Subscription] = ${ deriveCheckedImpl[Contract, Impl]('{ None }) }
+  inline def deriveChecked[Contract, Impl]: List[Subscription] = ${ deriveCheckedImpl[Contract, Impl]('{ None }) }
 
   private def deriveCheckedImpl[Contract: Type, Impl: Type](
       pubsubNameOpt: Expr[Option[PubSubName]],

@@ -41,6 +41,11 @@ import scala.quoted.*
   *     the macro then supplies `HttpMethod.Post` / `Map.empty`.
   *   - The `using` clause must provide a [[dapr4s.InvokeCapability]] and the required `JsonCodec`s (`JsonCodec[Resp]`
   *     always; `JsonCodec[Req]` when there is a body).
+  *
+  * '''Dual.''' [[InvokeRoutes]] is the inbound counterpart: the app calls out through `Invoke.derive[Contract]`, and
+  * the app answers calls through `InvokeRoutes.deriveChecked[Contract, Impl]`. Both read the same `Contract` trait —
+  * one to emit the calls, the other to verify the server implements them and route by the same wire names — so the two
+  * directions stay type-safe across the wire.
   */
 @scala.caps.assumeSafe
 object Invoke:

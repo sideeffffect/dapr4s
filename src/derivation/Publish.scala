@@ -14,6 +14,10 @@ import scala.quoted.*
   *     def orders(event: OrderEvent)(using PublishCapability, JsonCodec[OrderEvent]): Unit
   *   lazy val OrderEvents: OrderEvents = Publish.derive[OrderEvents]
   * }}}
+  *
+  * '''Dual.''' [[Subscriptions]] is the inbound counterpart: the app publishes through `Publish.derive[Contract]`, and
+  * consumes through `Subscriptions.deriveChecked[Contract, Impl]`. Both read the same `Contract` trait — matched by
+  * [[dapr4s.Topic]] — so `deriveChecked` verifies every published topic has a subscriber carrying the same payload.
   */
 @scala.caps.assumeSafe
 object Publish:

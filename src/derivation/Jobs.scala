@@ -12,6 +12,11 @@ import scala.quoted.*
   *   - returns `Unit` with a `dueTime: Instant` parameter (no schedule) → [[dapr4s.JobsCapability.scheduleOnce]] (plus
   *     optional `ttl: Option[Instant]`)
   *   - returns `Option[JobDetails]` with no value parameters → [[dapr4s.JobsCapability.get]]
+  *
+  * '''Dual.''' [[JobRoutes]] is the inbound (trigger) counterpart: the app schedules jobs through
+  * `Jobs.derive[Contract]`, and answers their triggers through `JobRoutes.deriveChecked[Contract, Impl]`. Both read the
+  * same `Contract` trait — matched by [[dapr4s.JobName]] — so `deriveChecked` verifies every scheduled job has a
+  * trigger handler decoding the same payload (job getters carry no payload and are not triggers).
   */
 @scala.caps.assumeSafe
 object Jobs:

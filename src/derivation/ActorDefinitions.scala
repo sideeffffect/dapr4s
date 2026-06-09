@@ -33,6 +33,10 @@ import scala.quoted.*
   *   val definition = ActorDefinitions.derive[Counter](ActorType("Counter"))
   *   val sameDefinition = ActorDefinitions.derive[Counter] // ActorType derived from the class's simple name
   * }}}
+  *
+  * '''Dual.''' [[Actor]] is the client counterpart. Use [[deriveChecked]] to bind an actor class to the same caller
+  * `Contract` trait that `Actor.derive[Contract]` turns into invocations (`@reminder`/`@timer` methods are
+  * runtime-triggered, so they are outside the caller contract).
   */
 @scala.caps.assumeSafe
 object ActorDefinitions:
@@ -72,18 +76,24 @@ object ActorDefinitions:
   /** Derive the [[dapr4s.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
     * `Contract`, with the [[dapr4s.ActorType]] given explicitly.
     *
-    * The counterpart of [[Actor.derive]] bound to the same trait: every `Contract` method must be implemented by an
-    * `Impl` actor '''method''' (not a `@reminder`/`@timer`, which the runtime — not a caller — triggers) of the same
-    * Scala name and matching request/response types. Reminders and timers on `Impl` are derived as usual but are not
-    * part of the caller contract.
+    * Same result as [[derive]], but bound to the dual [[Actor]] facade through the shared `Contract` trait: every
+    * `Contract` method must be implemented by an `Impl` actor '''method''' (not a `@reminder`/`@timer`, which the
+    * runtime — not a caller — triggers) of the same Scala name and matching request/response types. Reminders and
+    * timers on `Impl` are derived as usual but are not part of the caller contract.
+    *
+    * @see
+    *   [[Actor.derive]] — the dual client facade derived from the same `Contract`.
     */
-  inline def derive[Contract, Impl](actorType: ActorType): ActorDefinition =
+  inline def deriveChecked[Contract, Impl](actorType: ActorType): ActorDefinition =
     ${ deriveCheckedImpl[Contract, Impl]('{ Some(actorType) }) }
 
   /** Derive the [[dapr4s.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
     * `Contract`, with the [[dapr4s.ActorType]] taken from `Impl`'s simple name (override with `@name` on the class).
+    *
+    * @see
+    *   [[Actor.derive]] — the dual client facade derived from the same `Contract`.
     */
-  inline def derive[Contract, Impl]: ActorDefinition = ${ deriveCheckedImpl[Contract, Impl]('{ None }) }
+  inline def deriveChecked[Contract, Impl]: ActorDefinition = ${ deriveCheckedImpl[Contract, Impl]('{ None }) }
 
   private def deriveCheckedImpl[Contract: Type, Impl: Type](
       actorType: Expr[Option[ActorType]],

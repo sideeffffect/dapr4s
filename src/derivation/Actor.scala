@@ -14,6 +14,11 @@ import scala.quoted.*
   *   - no body + `Unit` result → `invokeVoid(method)`
   *
   * A `Unit`-returning method with a request body is rejected (there is no such actor overload).
+  *
+  * '''Dual.''' [[ActorDefinitions]] is the server counterpart: a client invokes the actor through
+  * `Actor.derive[Contract]`, and the actor class is reified through `ActorDefinitions.deriveChecked[Contract, Impl]`.
+  * Both read the same `Contract` trait — so `deriveChecked` verifies every contract method is answered by a callable
+  * actor method (`@reminder`/`@timer` methods are runtime-triggered and not part of the caller contract).
   */
 @scala.caps.assumeSafe
 object Actor:
