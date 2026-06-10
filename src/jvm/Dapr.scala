@@ -1,3 +1,4 @@
+//> using target.platform "jvm"
 package dapr4s
 
 import scala.util.control.NonFatal
@@ -42,9 +43,9 @@ class Dapr(config: DaprConfig = DaprConfig()):
     overrides.put(Properties.GRPC_ENDPOINT.getName, sc.grpcEndpoint.toString)
     overrides.put(Properties.GRPC_TLS_INSECURE.getName, sc.grpcTlsInsecure.toString)
     sc.apiToken.foreach(t => overrides.put(Properties.API_TOKEN.getName, t.value))
-    sc.grpcTlsCertPath.foreach(p => overrides.put(Properties.GRPC_TLS_CERT_PATH.getName, p.toString))
-    sc.grpcTlsKeyPath.foreach(p => overrides.put(Properties.GRPC_TLS_KEY_PATH.getName, p.toString))
-    sc.grpcTlsCaPath.foreach(p => overrides.put(Properties.GRPC_TLS_CA_PATH.getName, p.toString))
+    sc.grpcTlsCertPath.foreach(p => overrides.put(Properties.GRPC_TLS_CERT_PATH.getName, p.value))
+    sc.grpcTlsKeyPath.foreach(p => overrides.put(Properties.GRPC_TLS_KEY_PATH.getName, p.value))
+    sc.grpcTlsCaPath.foreach(p => overrides.put(Properties.GRPC_TLS_CA_PATH.getName, p.value))
     new Properties(overrides)
 
   /** Acquire a `DaprClient`, run `body` with a `DaprCapability` in context, then release the client whether `body`
@@ -102,9 +103,9 @@ class Dapr(config: DaprConfig = DaprConfig()):
       .withPropertyOverride(Properties.MAX_RETRIES, sc.maxRetries.toString)
       .withPropertyOverride(Properties.TIMEOUT, sc.timeout.toSeconds.toString)
     sc.apiToken.foreach(t => builder.withPropertyOverride(Properties.API_TOKEN, t.value))
-    sc.grpcTlsCertPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CERT_PATH, p.toString))
-    sc.grpcTlsKeyPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_KEY_PATH, p.toString))
-    sc.grpcTlsCaPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CA_PATH, p.toString))
+    sc.grpcTlsCertPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CERT_PATH, p.value))
+    sc.grpcTlsKeyPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_KEY_PATH, p.value))
+    sc.grpcTlsCaPath.foreach(p => builder.withPropertyOverride(Properties.GRPC_TLS_CA_PATH, p.value))
     // AbstractDaprClient (the concrete type DaprClientBuilder.build() returns) implements both
     // DaprClient and DaprPreviewClient; clientPreview is the same instance viewed through the
     // preview API, so only `client` is closed below.

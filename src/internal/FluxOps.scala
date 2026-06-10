@@ -1,3 +1,4 @@
+//> using target.platform "jvm"
 package dapr4s.internal
 
 import scala.collection.immutable.ArraySeq

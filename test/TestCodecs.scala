@@ -1,3 +1,4 @@
+//> using target.platform "jvm"
 package dapr4s
 
 import com.fasterxml.jackson.databind.ObjectMapper

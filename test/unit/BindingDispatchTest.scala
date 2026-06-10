@@ -1,3 +1,4 @@
+//> using target.platform "jvm"
 package dapr4s.test.unit
 
 import dapr4s.*

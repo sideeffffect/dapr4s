@@ -1,0 +1,19 @@
+{
+  "name": "t3code-c916dd05",
+  "version": "1.0.0",
+  "description": "| CI | Release | | --- | --- | | [![Build Status][Badge-GitHubActions]][Link-GitHubActions] | [![Release Artifacts][Badge-MavenCentral]][Link-MavenCentral] |",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@dapr/dapr": "^3.18.0"
+  }
+}

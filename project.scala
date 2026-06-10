@@ -1,5 +1,7 @@
 //> using scala "3.10.0-RC1-bin-20260607-dec42ae-NIGHTLY"
+//> using platform "jvm" "scala-js"
 //> using jvm "zulu:25.0.3"
+//> using jsEsVersionStr "es2017"
 //> using options "-language:experimental.captureChecking"
 //> using options "-language:experimental.pureFunctions"
 //> using options "-Ycc-verbose"
@@ -9,17 +11,21 @@
 // Note: -language:experimental.safe is NOT applied globally because non-safe-mode
 // files (Dapr, JsonCodec, internal/*) need to use @scala.caps.assumeSafe.
 // Safe mode is enabled per-file via: import language.experimental.safe
-//> using dep "io.dapr:dapr-sdk:1.17.2"
-//> using dep "io.dapr:dapr-sdk-actors:1.17.2"
-//> using dep "io.dapr:dapr-sdk-workflows:1.17.2"
-//> using test.dep "org.scalameta::munit:1.3.0"
-//> using test.dep "com.lihaoyi::upickle:3.3.1"
-//> using test.dep "com.dimafeng::testcontainers-scala-munit:0.43.6"
-//> using test.dep "io.dapr:testcontainers-dapr:1.17.2"
-// testcontainers-scala 0.43.6 pulls TC 1.21.1; testcontainers-dapr 1.17.2 pulls TC 1.21.4.
-// Both resolve to 1.21.4 with no conflict. Upgrade to testcontainers-scala 0.44+ only after
-// testcontainers-dapr ships a TC 2.x-compatible release (fix merged to dapr/java-sdk master,
-// awaiting release as v1.18.0).
+//
+// Platforms: "jvm" is listed first, so plain `scala-cli compile/test .` builds the JVM
+// platform; select Scala.js with `--js` (and add `--exclude jvm-deps.scala`, see below).
+// jsEsVersionStr es2017 is required by js.async/js.await (used by the JS internal layer).
+//
+// JVM-only dependencies (the Dapr Java SDK and testcontainers) live in jvm-deps.scala, NOT
+// here: scala-cli has no platform-scoped dependency directives (deps declared in a
+// `//> using target.platform jvm` file still leak into the Scala.js build and would pollute
+// the published _sjs1_3 POM). JS invocations exclude that file: `--exclude jvm-deps.scala`.
+//
+// scala-java-time provides java.time on Scala.js (java.time.Instant is part of the public
+// JobsCapability/Models API); on the JVM it is a thin shim over the JDK and harmless.
+//> using dep "io.github.cquiroz::scala-java-time::2.6.0"
+//> using test.dep "org.scalameta::munit::1.3.0"
+//> using test.dep "com.lihaoyi::upickle::3.3.1"
 //> using publish.organization "com.github.sideeffffect"
 //> using publish.name "dapr4s"
 //> using publish.computeVersion "git:dynver"

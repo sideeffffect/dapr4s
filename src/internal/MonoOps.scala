@@ -1,3 +1,4 @@
+//> using target.platform "jvm"
 package dapr4s.internal
 
 /** Reactor ↔ virtual-thread bridge. See [[MonoOps.awaitResult]]. */
