@@ -45,6 +45,27 @@ jobs:
     - name: Unit tests
       run: scala-cli test . --test-only 'dapr4s.test.unit.*'
 
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+    - uses: coursier/cache-action@v8
+    - uses: VirtusLab/scala-cli-setup@v1
+      with:
+        power: true
+    # Scala.js invocations must exclude jvm-deps.scala (the Dapr Java SDK +
+    # testcontainers) — scala-cli cannot scope dependency directives to a platform,
+    # so that file is the wall keeping JVM-only artifacts out of the JS build.
+    # The runner's default Node is fine: unit tests run on the plain JS backend
+    # (the orphan-js.await capability code is Wasm-only and unit tests don't link
+    # it), and no unit test loads @dapr/dapr, so no npm install is needed here.
+    - name: Compile (Scala.js)
+      run: scala-cli compile --js . --exclude jvm-deps.scala
+    - name: Unit tests (Scala.js)
+      run: scala-cli test --js . --exclude jvm-deps.scala
+
   integration-test:
     runs-on: ubuntu-latest
     steps:
@@ -63,7 +84,7 @@ jobs:
       run: scala-cli test . --test-only 'dapr4s.test.integration.*'
 
   publish:
-    needs: [format, test, integration-test]
+    needs: [format, test, test-js, integration-test]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -76,6 +97,15 @@ jobs:
         power: true
     - name: Publish
       run: scala-cli publish .
+      env:
+        PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
+        PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
+        PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
+        PUBLISH_SECRET_KEY_PASSWORD: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+    # Second invocation publishes the Scala.js artifact (dapr4s_sjs1_3); excluding
+    # jvm-deps.scala keeps the Dapr Java SDK out of its POM.
+    - name: Publish (Scala.js)
+      run: scala-cli publish --js . --exclude jvm-deps.scala
       env:
         PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
         PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}

@@ -1,5 +1,10 @@
 # Wiki Log
 
+## [2026-06-11] ingest | Scala.js implementation learnings (dapr4s port field notes)
+- Raw sources: the dapr4s Scala.js cross-build implementation itself (src/internal/js/ + facades), runtime-verified against node_modules @dapr/dapr 3.18.0 + express 4.22.2 and a live daprd sidecar — no new raw files; the verified findings live in the code's scaladocs (Express.scala, DaprCapabilityImpl.scala, WorkflowCoroutine.scala, WorkflowContextImpl.scala)
+- Updated: scala-js/scala-js-async-jspi-wasm.md (new "Field notes from the dapr4s port" section: JSImport.Default is the one correct binding for CJS default-export modules under both module kinds; the per-request js.async re-entry pattern in express handlers; the AsyncGenerator-from-coroutine recipe with the strict-alternation safety argument)
+- Updated: dapr/dapr-js-sdk.md (GrpcEndpoint scheme bug — `grpc://` renders the channel target `grpc:host:port`, which grpc-js cannot resolve; bare host or `https://` are the only working spellings, and setTls only honours `https:`/`?tls=true`; orchestration-executor generator-driving details — next/throw only, never return, yields must be instanceof the vendored Task, post-done next() happens; deterministic-UUID gap — no newUuid in the JS SDK, mirror the Java SDK's v5/SHA-1 algorithm with namespace 9e952958-5e33-4daf-827f-2fa12937b875)
+
 ## [2026-06-11] ingest | Scala.js Cross-Build Research (scala-js topic) + Dapr JS SDK
 - Raw sources (scala-js): empirical scala-cli 1.12.2/1.14.0 cross-platform probes (/tmp/sjs-probe et al.) + scala-cli.virtuslab.org docs/releases/issues; scala-js.org release notes 1.17.0–1.21.0 + WebAssembly backend docs + JSPI.scala + chromestatus/nodejs/synckit/cats-effect; empirical CC-on-Scala.js probe (/tmp/cc-js-probe, dapr4s nightly 3.10.0-RC1-bin-20260607-dec42ae) + scala/scala3 Compiler.scala/issue tracker
 - Raw sources (dapr): dapr/js-sdk source survey @ a3be700 (= @dapr/dapr 3.18.0) + npm registry + v3.17.0/v3.18.0 release notes

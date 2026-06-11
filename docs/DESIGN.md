@@ -2,9 +2,11 @@
 
 ## Goal
 
-A Scala 3 library that exposes every DAPR building block as a **tracked capability**. User code compiles under `import language.experimental.safe` and `import language.experimental.captureChecking`. The DAPR Java SDK is completely hidden — users see only Scala types.
+A Scala 3 library that exposes every DAPR building block as a **tracked capability**. User code compiles under `import language.experimental.safe` and `import language.experimental.captureChecking`. The underlying Dapr SDK is completely hidden — users see only Scala types.
 
 **Requires**: Scala `3.10.0-RC1-bin-20260607-dec42ae-NIGHTLY` (or later nightly). The `import language.experimental.safe` and `import language.experimental.captureChecking` features are fully supported in nightly builds — no `-Ycc` flag is needed.
+
+**Platforms**: JVM and Scala.js, with a byte-identical public API. On the JVM the internal layer wraps the Dapr **Java SDK**; on Scala.js it wraps the Dapr **JS SDK** (`@dapr/dapr`). Both SDKs are confined behind the same `@assumeSafe` wall (`src/internal/` and `src/internal/js/` respectively) — see the [Scala.js platform](#scalajs-platform) section.
 
 Each DAPR effect (state access, pub/sub, service calls, secrets, configuration, bindings) is tracked as a captured capability via `^` annotations. The Scala 3 compiler statically verifies:
 
@@ -37,7 +39,7 @@ graph TB
         DA["DaprApp (case class)\n+ Subscription / InvokeRoute / BindingRoute"]
     end
 
-    subgraph "Internal Layer (@assumeSafe boundaries)"
+    subgraph "Internal Layer — JVM (@assumeSafe boundaries, src/internal/)"
         DR["Dapr(config).run { ... }"]
         DS2["Dapr(config).serve { ... }"]
         IMPL["*CapabilityImpl\n(non-safe-mode,\n@assumeSafe methods)"]
@@ -62,15 +64,50 @@ graph TB
     SRV -->|"GET /dapr/subscribe\nPOST /<route>"| SID
 ```
 
+On Scala.js, everything above the internal layer is the **same source code**; only the internal layer is swapped for a JS twin (package `dapr4s.internal`, sources in `src/internal/js/`):
+
+```mermaid
+graph TB
+    subgraph "Shared across platforms (identical sources)"
+        UC2["User code (safe mode)"]
+        API2["Public API: capability traits, DaprApp,\nopaque types, derivation macros"]
+    end
+
+    subgraph "Internal Layer — Scala.js (@assumeSafe boundaries, src/internal/js/)"
+        JR["Dapr(config).run / serve\n(src/js/Dapr.scala)\n+ JS-only runAsync / serveAsync"]
+        JIMPL["*CapabilityImpl JS twins\n(JsAwait: orphan js.await over js.Promise)"]
+        JDC["DaprClient (JS SDK, HTTP protocol)\n+ lazy gRPC DaprClient\n+ lazy DaprWorkflowClient"]
+        JFETCH["raw sidecar HTTP via fetch\n(actor client, ActorContext)"]
+        JSRV["DaprAppServer twin\n(express 4, js.async per request)"]
+        JWF["WorkflowRuntime (JS SDK)\n+ WorkflowCoroutine\n(AsyncGenerator bridge)"]
+    end
+
+    subgraph "DAPR Sidecar"
+        SID2["HTTP :3500 / gRPC :50001"]
+    end
+
+    UC2 --> API2
+    API2 -->|"implemented by"| JIMPL
+    JR -->|"provides DaprCapability ?=>"| UC2
+    JIMPL --> JDC
+    JIMPL --> JFETCH
+    JR --> JSRV
+    JSRV --> JWF
+    JDC -->|"HTTP/gRPC"| SID2
+    JFETCH -->|"HTTP"| SID2
+    JSRV -->|"app channel"| SID2
+    JWF -->|"gRPC work-item stream"| SID2
+```
+
 ### Layer 1 — Public API (safe-mode-compatible)
 
-Capability traits, opaque domain types, and the `Dapr(config).run` / `.serve` entry points (on `class Dapr(config: DaprConfig)` in `src/Dapr.scala`). These compile cleanly under both safe mode and capture checking. No Java types are visible.
+Capability traits, opaque domain types, and the `Dapr(config).run` / `.serve` entry points (on `class Dapr(config: DaprConfig)` — `src/jvm/Dapr.scala` on the JVM, `src/js/Dapr.scala` on Scala.js, same public signatures). These compile cleanly under both safe mode and capture checking. No Java or JS SDK types are visible.
 
 ### Layer 2 — Internal implementations (`@assumeSafe`)
 
-Non-safe-mode Scala that wraps `DaprClient` Java SDK calls. Each class/object is marked `@scala.caps.assumeSafe` (from the `scala.caps` package) so safe-mode user code may call them through the capability trait interfaces. Library authors are responsible for the safety contract; user code cannot add new `@scala.caps.assumeSafe` annotations (the annotation is itself restricted to non-safe-mode code).
+Non-safe-mode Scala that wraps the platform SDK calls — the Java SDK's `DaprClient` in `src/internal/`, the JS SDK's `DaprClient`/`DaprWorkflowClient`/`WorkflowRuntime` (plus express and raw `fetch`) in `src/internal/js/`. Each class/object is marked `@scala.caps.assumeSafe` (from the `scala.caps` package) so safe-mode user code may call them through the capability trait interfaces. Library authors are responsible for the safety contract; user code cannot add new `@scala.caps.assumeSafe` annotations (the annotation is itself restricted to non-safe-mode code).
 
-Note: safe mode is enabled **per-file** via `import language.experimental.safe` (not globally via a compiler flag). This is intentional: files in `internal/` and `Dapr.scala`/`JsonCodec.scala` must use `@scala.caps.assumeSafe` and therefore cannot have the safe-mode import.
+Note: safe mode is enabled **per-file** via `import language.experimental.safe` (not globally via a compiler flag). This is intentional: files in `internal/` (both platforms) and `jvm/Dapr.scala`/`js/Dapr.scala`/`JsonCodec.scala` must use `@scala.caps.assumeSafe` and therefore cannot have the safe-mode import.
 
 ---
 
@@ -529,27 +566,46 @@ Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM err
 
 ## Project Structure (Scala CLI)
 
+Platform tags: files marked `[jvm]` / `[js]` carry a `//> using target.platform` directive and exist on one platform only; untagged sources cross-compile.
+
 ```
 dapr4s/
-├── project.scala                     # Scala CLI directives (deps, compiler options; nightly Scala)
+├── project.scala                     # Scala CLI directives: platforms jvm + scala-js, nightly Scala,
+│                                     # compiler options, cross deps (scala-java-time; munit/upickle test deps)
+├── jvm-deps.scala                    # JVM-only deps (Dapr Java SDK, testcontainers) — every Scala.js
+│                                     # invocation passes --exclude jvm-deps.scala (see Scala.js platform section)
+├── publish-conf.scala                # CI publishing config (git:tag version, central, env credentials)
+├── package.json                      # npm dep @dapr/dapr for the Scala.js layer (Node resolves it from the CWD)
 ├── src/
 │   ├── Models.scala                  # Value types: StateEntry, ConfigurationItem, StateOp, SubscriptionResult,
-│   │                                 # CloudEvent, InvokeRequest, WorkflowSnapshot/Status [safe mode]
+│   │                                 # CloudEvent, InvokeRequest, WorkflowSnapshot/Status, Job/Conversation models
 │   ├── JsonCodec.scala               # JsonCodec typeclass + default instances [@assumeSafe]
 │   ├── Capabilities.scala            # All capability traits (DaprCapability subtypes + WorkflowCapability) [safe mode]
-│   ├── DaprApp.scala                 # DaprApp case class + Subscription/InvokeRoute/BindingRoute [@assumeSafe companions]
+│   ├── DaprApp.scala                 # DaprApp case class + Subscription/InvokeRoute/BindingRoute/JobRoute
 │   ├── DaprCapability.scala          # DaprCapability trait with ^{this} return types [safe mode]
-│   ├── Dapr.scala                    # class Dapr(config) with .run + .serve entry points [@assumeSafe]
 │   ├── DaprConfig.scala              # DaprConfig / SidecarConfig / AppServerConfig / ActorRuntimeConfig
 │   ├── Actors.scala                  # ActorContext, ActorDefinition, ActorRoutes + route types
 │   ├── Workflows.scala               # Workflow, WorkflowActivity, ActivityDef, Task, WorkflowContext
+│   ├── Validation.scala              # DaprAppValidationError + structural validation (validateOrThrow)
+│   ├── Charsets.scala                # Charset constants/encoding helpers usable from safe-mode code
 │   ├── Exceptions.scala              # ETagMismatchException, JsonDecodeException
 │   ├── optypes/                      # One opaque domain type per file (StateStoreName, Topic, AppId,
-│   │                                 # SerializedJson, ApiToken, DaprPort, DaprDuration, ... )
-│   └── internal/
+│   │                                 # SerializedJson, ApiToken, DaprPort, DaprDuration, PemPath, ...)
+│   ├── derivation/                   # Macro derivation layer: per-capability derive engines (State, Publish,
+│   │                                 # Invoke, Secrets, Configuration, Bindings, Crypto, Jobs, Subscriptions,
+│   │                                 # InvokeRoutes/BindingRoutes/JobRoutes, WorkflowActivities/-Calls,
+│   │                                 # WorkflowEvents, Actor/ActorState/ActorDefinitions, Forwarders, MacroSupport)
+│   ├── jvm/
+│   │   └── Dapr.scala                # JVM entry point: class Dapr(config) with .run + .serve [@assumeSafe] [jvm]
+│   ├── js/
+│   │   └── Dapr.scala                # Scala.js entry point: same public run/serve signatures
+│   │                                 # + JS-only runAsync/serveAsync [@assumeSafe] [js]
+│   └── internal/                     # JVM internal layer — Java SDK confined here [all jvm]
 │       ├── DaprCapabilityImpl.scala  # DaprCapability implementation
 │       ├── MonoOps.scala             # Reactor Mono → blocking bridge (.toFuture().get())
+│       ├── FluxOps.scala             # Reactor Flux subscription bridge (configuration subscribe)
 │       ├── NullOps.scala             # null-handling helpers
+│       ├── Json.scala                # shared Jackson mapper for internal protocol plumbing
 │       ├── DaprAppServer.scala       # HTTP server (OpenJDK jdk.httpserver); workflow/actor registration
 │       ├── StateCapabilityImpl.scala
 │       ├── PublishCapabilityImpl.scala
@@ -559,24 +615,57 @@ dapr4s/
 │       ├── BindingsCapabilityImpl.scala
 │       ├── LockCapabilityImpl.scala
 │       ├── ActorCapabilityImpl.scala
+│       ├── ConversationCapabilityImpl.scala
+│       ├── CryptoCapabilityImpl.scala
+│       ├── JobsCapabilityImpl.scala
 │       ├── HttpActorContext.scala
 │       ├── WorkflowCapabilityImpl.scala
 │       ├── WorkflowContextImpl.scala
-│       └── WorkflowBridges.scala     # WorkflowBridge / WorkflowActivityBridge (Java SDK adapters)
+│       ├── WorkflowBridges.scala     # WorkflowBridge / WorkflowActivityBridge (Java SDK adapters)
+│       └── js/                       # Scala.js internal layer — JS SDK confined here;
+│           │                         # same package dapr4s.internal [all js]
+│           ├── facade/               # @js.native facades (package dapr4s.internal.facade):
+│           │   ├── DaprSdk.scala     #   DaprClient + options/enums (@dapr/dapr root exports)
+│           │   ├── WorkflowSdk.scala #   DaprWorkflowClient, WorkflowRuntime, SdkTask, contexts
+│           │   ├── Express.scala     #   express 4 app/request/response + http.Server, process
+│           │   ├── NodeFetch.scala   #   Node-global fetch
+│           │   └── NodeCrypto.scala  #   node:crypto createHash (deterministic newUuid)
+│           ├── JsAwait.scala         # THE orphan-js.await bridge (only home of allowOrphanJSAwait)
+│           ├── JsInterop.scala       # JSON/string/error bridging (JS analogue of Json.scala + NullOps)
+│           ├── DaprCapabilityImpl.scala  # + LazyClientRef, SidecarConfig → SDK options mapping
+│           ├── StateCapabilityImpl.scala       # … + Publish/Invoke/Secrets/Configuration/
+│           ├── ...CapabilityImpl.scala         #   Bindings/Lock/Crypto twins (HTTP or gRPC client)
+│           ├── ActorCapabilityImpl.scala       # actor client over raw sidecar HTTP (fetch)
+│           ├── HttpActorContext.scala          # ActorContext over raw sidecar HTTP (fetch)
+│           ├── WorkflowCapabilityImpl.scala    # workflow client over DaprWorkflowClient (gRPC)
+│           ├── DaprAppServer.scala   # express-based app-channel server twin
+│           ├── WorkflowHost.scala    # server-side workflow/activity hosting (WorkflowRuntime)
+│           ├── WorkflowCoroutine.scala  # AsyncGenerator coroutine bridge (see Scala.js platform section)
+│           └── WorkflowContextImpl.scala
 └── test/
-    ├── TestCodecs.scala               # shared test JsonCodec instances
-    ├── TestDaprExtensions.scala       # test-only Dapr.runWithEndpoints(http, grpc) helper
+    ├── TestCodecs.scala              # shared test JsonCodec instances (Jackson) [jvm]
+    ├── TestCodecsJs.scala            # same given names over ujson, so shared tests cross-run [js]
+    ├── TestDaprExtensions.scala      # test-only Dapr.runWithEndpoints(http, grpc) helper [jvm]
     ├── TestOptionCodec.scala
-    ├── unit/
+    ├── unit/                         # cross-platform unless tagged
     │   ├── ModelsTest.scala
     │   ├── JsonCodecTest.scala
-    │   ├── CCTest.scala               # capture checking invariants (ScopeContainment, JsonCodec)
+    │   ├── CharsetsTest.scala
+    │   ├── CCTest.scala              # capture checking invariants (ScopeContainment, JsonCodec)
+    │   ├── DaprAppValidationTest.scala
+    │   ├── ActorDefinitionsTest.scala
+    │   ├── CapabilityDerivationTest.scala (+ CapabilityDerivationFixtures)
+    │   ├── InvokeDerivationTest.scala (+ DerivationFixtures)
+    │   ├── ServerRouteDerivationTest.scala
+    │   ├── WorkflowActivityDerivationTest.scala (+ WorkflowActivityDerivationFixtures)
+    │   ├── WorkflowEventsTest.scala
     │   ├── CapabilityHandlerTest.scala
-    │   ├── DaprServerTestBase.scala   # in-memory DaprAppServer test harness base
-    │   ├── StateCapabilityTest.scala  # mock-based tests: state, pubsub, secrets, config, lock
-    │   ├── BindingDispatchTest.scala
-    │   └── SubscriberTest.scala       # DaprAppServer dispatch logic (no Docker required)
-    └── integration/
+    │   ├── StateCapabilityTest.scala  # superseded by CapabilityHandlerTest (kept as a tombstone note)
+    │   ├── DaprServerTestBase.scala   # drives the JVM DaprAppServer over real HTTP [jvm]
+    │   ├── SubscriberTest.scala       # DaprAppServer dispatch logic [jvm]
+    │   ├── BindingDispatchTest.scala  # [jvm]
+    │   └── JobDispatchTest.scala      # [jvm]
+    └── integration/                  # all [jvm] — testcontainers + a real daprd sidecar
         ├── TestDaprApp.scala          # In-process DaprApp dispatch helper for tests (@assumeSafe)
         ├── DaprTestContainer.scala    # Testcontainers bridge
         ├── StateIntegrationTest.scala
@@ -593,12 +682,16 @@ dapr4s/
         ├── ActorCapabilityServerTest.scala
         ├── InvokeCapabilityServerTest.scala
         ├── WorkflowCapabilityServerTest.scala
+        ├── JobsCapabilityServerTest.scala
+        ├── CryptoCapabilityServerTest.scala
+        ├── ConversationCapabilityServerTest.scala
         └── apps/
             ├── Shared.scala           # Shared domain models (OrderRequest, OrderEvent, etc.)
             ├── OrderServiceApp.scala   # `object OrderServiceApp { def apply()(using …): DaprApp }` + handlers (no @assumeSafe)
             ├── InventoryServiceApp.scala
-            ├── OrderServiceMain.scala   # @main entry point (serve OrderServiceApp())
-            ├── InventoryServiceMain.scala
+            ├── OrderServiceMain.scala   # @main entry point (serve OrderServiceApp()) [jvm]
+            ├── InventoryServiceMain.scala  # [jvm]
+            ├── EchoServiceClient.scala
             ├── CounterActorApp.scala
             ├── CounterActorShared.scala
             ├── WorkflowApp.scala
@@ -614,9 +707,9 @@ dapr4s/
 |---|---|---|
 | Capability root | `DaprCapability` provides factory methods | Single entry point; child capabilities capture scope, preventing escape |
 | JSON library | upickle | Pure Scala, Scala CLI friendly, automatic derivation |
-| Async model | Blocking (`.toFuture().get()` on `Mono`) | Direct-style compatible; avoids bringing in effect library dependency; CAS-based VT-safe bridging |
+| Async model | JVM: blocking (`Mono.toFuture().get()`) on virtual threads; JS: JSPI suspension via orphan `js.await` on the Wasm backend | Direct-style API on both platforms with no effect-library dependency; VT parking and JSPI stack suspension are architectural analogues (see Scala.js platform section) |
 | Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |
-| Java SDK visibility | Zero — all Java types in `internal/` | Users see only Scala types; easier to swap SDK in future |
+| SDK visibility | Zero — Java SDK confined to `internal/`, JS SDK (`@dapr/dapr`) confined to `internal/js/` | Users see only Scala types; easier to swap SDKs in future |
 | Scope safety | Capture checking: capabilities `^{scope}` | Compiler enforces no DAPR resource outlives its `Dapr(config).run` block (via `import language.experimental.captureChecking`, no `-Ycc` needed) |
 | Configuration | Typed `DaprConfig` (`SidecarConfig` / `AppServerConfig` / `ActorRuntimeConfig`) | All endpoints/timeouts/TLS explicit and typed — no env-var reads or system-property manipulation in production code; `grpcTlsInsecure` defaults to `false` |
 | Capability base type | `scala.caps.ExclusiveCapability` | All capability traits extend `ExclusiveCapability` — the only sealed subtype of `Capability` that prevents sharing. Enables CC separation checking: no capability escapes its scope or is used concurrently. Sub-capabilities return as `^{this}` to bind lifetime to the parent; override methods must explicitly annotate return types to satisfy CC override checks. |
@@ -734,6 +827,98 @@ Actor state persists via `/v1.0/actors/{type}/{id}/state`. Reminders are registe
 
 ---
 
+## Scala.js platform
+
+dapr4s cross-compiles to Scala.js with a **byte-identical public API**, backed by the Dapr JS SDK (`@dapr/dapr`).
+
+### Identical public API — why
+
+The capability traits, `DaprApp`, the opaque types, and the entire derivation layer are shared sources. An async-on-JS API fork was rejected for two reasons:
+
+1. The derivation layer generates **synchronous** calls; forking the API would fork every derive engine.
+2. The project's documented constraint (see Non-Goals): no async/`Future`-based API — the library is direct-style by design.
+
+So on JS the same synchronous signatures are preserved, and the asynchrony is absorbed below the public API by Wasm + JSPI.
+
+### Wasm + JSPI: the virtual-thread analogue
+
+The Dapr JS SDK is Promise-based. Every JS capability implementation funnels its asynchronous boundary through one helper, `dapr4s.internal.JsAwait.await(p: js.Promise[A]): A` — an **orphan `js.await`** (enabled by the `scala.scalajs.js.wasm.JSPI.allowOrphanJSAwait` import, which appears in that one file only). On the experimental WebAssembly backend, JavaScript Promise Integration (JSPI) **suspends the entire Wasm stack** at this point and returns control to the event loop — no thread is blocked (there are none), inbound work keeps being served, and the stack resumes when the promise settles. This is the exact architectural analogue of a virtual thread parking in `CompletableFuture.get()` on the JVM (`MonoOps.awaitResult`).
+
+Consequences for JS consumers (documented on `src/js/Dapr.scala`):
+
+- Link with the **experimental WebAssembly backend**: `//> using jsEmitWasm true`, `//> using jsModuleKind es`, `//> using jsEsVersionStr es2017`.
+- Run on **Node 25+** (JSPI on by default), or Node 23/24 with `--experimental-wasm-jspi`.
+- `npm install @dapr/dapr` so the SDK resolves from the directory Node executes in.
+- Enter `js.async { ... }` **once at the program edge**: `def main = { js.async { Dapr().run { ... } }; () }`. The JS-only conveniences `Dapr#runAsync` / `Dapr#serveAsync` (returning `js.Promise`) wrap this for callers that prefer it.
+
+**Plain-JS backend: link-time failure by design.** Orphan awaits only link when targeting WebAssembly. The published `_sjs1_3` artifact contains backend-neutral `.sjsir`, so the pure parts of dapr4s (models, codecs, derivation, validation) link fine on the plain JS backend; any code path reaching `Dapr.run`/a capability impl fails **at link time** — a clean failure mode, not a runtime surprise.
+
+### The per-callback `js.async` re-entry rule
+
+JSPI suspension requires a dynamically enclosing `js.async` on the call stack **with no JavaScript frame in between** (otherwise the engine throws `WebAssembly.SuspendError`). Any Scala lambda invoked *by* a JS API — an express route handler, an SDK activity executor callback, a `Promise.then` reaction — sits below a JS frame. The rule therefore is: **every inbound dispatch re-enters `js.async` per request/invocation** before touching dapr4s code. Each request gets its own suspension scope — like one virtual thread per request on the JVM (`DaprAppServer`'s virtual-thread-per-request executor).
+
+### Capability support matrix and per-protocol mapping
+
+The JS SDK cannot serve all building blocks over one protocol (`configuration`/`crypto` throw `HTTPNotSupportedError` over HTTP), so `Dapr.run` owns up to three clients — an HTTP-protocol `DaprClient` (always created) plus a gRPC `DaprClient` and a `DaprWorkflowClient` created lazily on first use (`LazyClientRef`, the JS twin of the JVM's `AtomicReference` pattern) and closed in `run`'s `finally` block:
+
+| Capability | JS backing |
+|---|---|
+| state, publish, invoke, bindings (outbound), secrets, lock | HTTP-protocol `DaprClient` sub-clients |
+| configuration (get + subscribe), crypto | lazy **gRPC** `DaprClient` (gRPC-only in the JS SDK) |
+| actor (client) + `ActorContext` | **raw sidecar HTTP via Node-global `fetch`** (see below) |
+| workflow (client) | lazy `DaprWorkflowClient` (gRPC, vendored durabletask) |
+| jobs, conversation | `UnsupportedOperationException` — the JS SDK has no jobs or conversation API; use the JVM platform |
+| `serve()`: subscriptions, invoke routes, input bindings, job routes, actor hosting, workflow hosting | express-based `DaprAppServer` twin + `WorkflowHost` — full app-channel parity with the JVM |
+
+**Why raw `fetch` for actors**: the SDK's low-level `ActorClientHTTP` is exactly what is needed but is not exported from the package root (and `@dapr/dapr` has no `exports` map, so deep-requiring it is unsupported). The exported `ActorProxyBuilder` derives the actor type string from the JS class `.name` (mangled/minified under Scala.js) and returns a JS `Proxy` that turns every property access into an invocation — hostile to a typed facade. So `ActorCapabilityImpl`/`HttpActorContext` speak the sidecar's actor HTTP API directly over `fetch` + `JsAwait`, the same SDK-bypass precedent as the JVM's `HttpActorContext`.
+
+`SidecarConfig` mapping: `httpEndpoint` → the HTTP client, `grpcEndpoint` → the gRPC and workflow clients, `apiToken` → `daprApiToken`, `grpcMaxInboundMessageSizeBytes` → the SDK's `maxBodySizeMb`. Everything else (OkHttp pool settings, gRPC-Java keepalive, `maxRetries`, `timeout`, TLS material paths) is JVM-transport-specific and ignored on JS (TLS on/off still follows the endpoint URI scheme).
+
+### The express-based `DaprAppServer` twin
+
+The JVM deliberately bypasses the Java SDK's server and hand-rolls the Dapr app-channel protocol on `com.sun.net.httpserver`. The JS twin mirrors that decision on **express 4** (a dependency of `@dapr/dapr`, so always installed): the JS SDK's `DaprServer` is unsuitable for the same reasons its Java counterpart was — its pub/sub callbacks strip the CloudEvent envelope (dapr4s hands the full envelope to subscription handlers) and its invocation listener constrains HTTP verbs (dapr4s accepts every verb and reports it in `InvokeRequest`). The twin is identical route-for-route and status-code-for-status-code: `/dapr/subscribe`, `/dapr/config`, pub/sub routes, input bindings, invocations, `/job/<name>`, and the actor protocol routes. Every handler immediately enters a fresh `js.async` (the re-entry rule above). Express-forced differences (registration via `app.all` to preserve verb-agnostic dispatch, exact instead of prefix matching of `/dapr/*` paths, `path-to-regexp` pattern characters in user route strings, Node's default backlog instead of the `httpBacklog == 0` OS-default sentinel) are documented on the class.
+
+"Blocking forever" (`serve`'s `Nothing` contract) is an orphan await on a never-resolving promise — the JS analogue of `Thread.currentThread().join()`; the express server keeps the event loop alive. SIGINT/SIGTERM stop the listener, drain in-flight requests, close the workflow host, and exit after at most `shutdownGrace`.
+
+### Workflow hosting: the AsyncGenerator coroutine bridge
+
+The JS SDK's orchestration executor drives an **async generator** that yields the SDK's own `Task` objects (`await generator.next(prevResult)` per history event). Scala.js cannot write `async function*`, so `WorkflowCoroutine` hand-implements the AsyncGenerator protocol as a non-native `js.Object` class (`next`/`throw`/`return` + `Symbol.asyncIterator`):
+
+- The dapr4s `Workflow.run` body executes inside its own `js.async` fiber. `Task.await()` = resolve the pending generator *step* promise with `{value: sdkTask, done: false}` (handing over the SDK's own Task instance — the executor `instanceof`-checks it), then orphan-await a fresh *resume* promise. The executor's next `next(v)` / `throw(e)` settles the resume promise, resuming (or failing) the fiber.
+- **Strict-alternation safety argument**: the executor awaits every `next()`/`throw()` before processing the next history event, so the generator side and the fiber strictly alternate — at any instant at most one of the two is runnable. Combined with JavaScript's single-threaded execution (JSPI resumes a suspended stack as a promise reaction, never concurrently), each resolver field is written in one phase and consumed-and-cleared in the other; the plain `var`s need no synchronization, and the invariant-breach branches throw loudly if a future SDK version ever drives the generator differently. `generator.return()` is rejected loudly — the vendored executor never calls it.
+- **Replay**: each work item re-executes the orchestrator from scratch; when history runs out at an incomplete task, the executor stops driving the generator and the fiber stays suspended on a resume promise nobody will resolve — the whole coroutine graph becomes garbage (abandoned JSPI stacks are collectable by design). This is the JS analogue of the JVM's `OrchestratorBlockedException` unwind.
+- **Deterministic `newUuid`**: the JS SDK exposes no deterministic UUID, so `WorkflowContextImpl` mirrors the Java SDK's algorithm (RFC 4122 name-based v5/SHA-1 over `"<instanceId>-<currentUtcDateTime>-<counter>"` in the Java SDK's fixed namespace `9e952958-5e33-4daf-827f-2fa12937b875`) via `node:crypto`. Replay-stable per instance; cross-platform UUID equality is a non-goal (an instance always replays on the platform hosting it).
+
+Registration uses `registerWorkflowWithName`/`registerActivityWithName` with the same simple-class-name rule as the JVM (never `fn.name`, which is mangled under Scala.js). Activities run inside their own per-invocation `js.async`, with the same capability-erasure contract as the JVM `WorkflowActivityBridge`.
+
+### Build pattern: `jvm-deps.scala` + `--exclude`
+
+scala-cli cannot scope dependency directives to a platform — a `//> using dep` applies to every platform of the build, even from a `target.platform jvm`-tagged file. The Dapr Java SDK and testcontainers therefore live in `jvm-deps.scala` at the repo root, which every Scala.js invocation excludes:
+
+```bash
+scala-cli compile --js . --exclude jvm-deps.scala
+scala-cli test    --js . --exclude jvm-deps.scala
+scala-cli publish --js . --exclude jvm-deps.scala
+```
+
+Default (JVM) invocations include the file, so JVM workflows are unchanged. This keeps the published `_sjs1_3` POM free of JVM-only artifacts. Platform-specific sources carry per-file `//> using target.platform` directives (see Project Structure). Building the JS platform requires scala-cli >= 1.13.0.
+
+### Known platform divergences
+
+| Area | JVM | Scala.js |
+|---|---|---|
+| `waitForExternalEvent(name, timeout)` on timeout | throws the Java SDK's `io.dapr.durabletask.TaskCanceledException` | throws `java.util.concurrent.TimeoutException` (the JS SDK has no timeout overload; dapr4s races the event against a durable timer, mirroring the Java SDK's internal mechanism) |
+| `Task.isCancelled` | reflects the SDK task state | always `false` — the vendored JS task model has no cancellation state |
+| TLS material (`grpcTlsCertPath`/`KeyPath`/`CaPath`, `grpcTlsInsecure`) | honoured | ignored (JVM-only); TLS on/off follows the endpoint URI scheme |
+| `SidecarConfig` transport knobs (OkHttp pool, gRPC-Java keepalive, `maxRetries`, `timeout`) | honoured | ignored — the JS SDK exposes no equivalents; `grpcMaxInboundMessageSizeBytes` maps to `maxBodySizeMb` |
+| `jobs`, `conversation` | supported | `UnsupportedOperationException` (absent from the JS SDK) |
+| Duplicate workflow/activity registration name | silently keeps the first registration | the JS SDK registry throws at registration time (a loud failure for what is a bug either way) |
+| `try`/`finally` around a never-completing `Task.await()` | finalizer runs on every replay (the `OrchestratorBlockedException` unwind passes through it) | finalizer does not run (the fiber is abandoned mid-suspension) — out of contract on both platforms anyway: workflow code must be effect-free outside activities |
+| `continueAsNew` unwind signal | Java SDK `ContinueAsNewInterruption` (a `RuntimeException` — `NonFatal` would match it; contract: never catch it) | dapr4s's own `ContinueAsNewSignal extends ControlThrowable` — same contract, enforced (a broad `NonFatal` catch cannot swallow it) |
+| Shutdown ordering | workflow runtime closed after the HTTP drain completes | runtime stop initiated as soon as the listener stops accepting (a JS signal listener cannot block on the drain) |
+
+---
+
 ## Non-Goals (v1)
 
-- Reactive/async API (Mono/Flux exposed to users) — use blocking for simplicity.
+- Reactive/async API (Mono/Flux or `Future`s exposed to users) — direct style only. On Scala.js the same direct-style API is achieved via Wasm+JSPI suspension (see the Scala.js platform section) rather than by adding an async API; the JS-only `runAsync`/`serveAsync` conveniences merely wrap the program-edge `js.async`, they do not fork the API.

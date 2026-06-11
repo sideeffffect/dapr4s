@@ -53,6 +53,22 @@ Sub-clients (readonly fields) and key signatures:
 
 A single client protocol choice cannot serve all building blocks — dapr4s's JS layer holds an HTTP `DaprClient` plus a lazy gRPC one (configuration/crypto) plus a `DaprWorkflowClient` (own gRPC).
 
+## GrpcEndpoint scheme bug (live-sidecar-verified)
+
+The SDK parses `"daprHost:daprPort"` with its `HttpEndpoint`/`GrpcEndpoint` network classes, and `GrpcEndpoint` has a scheme-rendering bug that breaks the obvious spellings:
+
+- `GrpcEndpoint.setEndpoint` renders non-`dns` schemes as **`"<scheme>:host:port"`**. The workflow stack (`TaskHubGrpcWorker`/`TaskHubGrpcClient`) passes `GrpcEndpoint.endpoint` to grpc-js as the raw channel target, so `grpc://host` becomes the target `grpc:host:port` — which grpc-js cannot resolve (it falls back to `dns:grpc:host:port` → "Name resolution failed"). Same story for `grpcs://`.
+- `setTls` only honours **`https:`** or **`?tls=true`** — `grpcs://` never sets TLS.
+
+The only spellings that work across *both* gRPC consumers (the workflow stack and `GRPCClient`, which reads just hostname/port/tls):
+
+| Intent | Working spelling | Why |
+|---|---|---|
+| plaintext | **bare host** (no scheme) | `GrpcEndpoint` applies its default `dns` scheme → the `dns:host:port` target grpc-js expects |
+| TLS | **`https://host`** | the one spelling that both sets `tls = true` and still coerces the scheme to `dns` (at the price of a one-time `setScheme` deprecation `console.warn`) |
+
+(dapr4s's `DaprCapabilityImpl.hostAndPort` encodes exactly this mapping: `http`/`grpc` → bare host, `https`/`grpcs` → `https://host`.)
+
 ## DaprServer
 
 ```ts
@@ -103,6 +119,21 @@ registerActor<T extends AbstractActor>(cls); getRegisteredActors()
 - **`WorkflowRuntime`**: `registerWorkflow(fn)`, `registerActivity(fn)`, `start()`, `stop()`. Name resolution uses **`fn.name`** — from Scala.js always use **`registerWorkflowWithName(name, fn)` / `registerActivityWithName(name, fn)`** and pass string names to `scheduleNewWorkflow`/`callActivity`.
 - **Authoring model**: `TWorkflow = (context: WorkflowContext, input) => Generator<Task> | TOutput` — in practice an **`async function*` yielding `Task` objects**; the executor checks `result[Symbol.asyncIterator]` and drives `generator.next(prevResult)`. Plain (non-generator) return values complete the workflow immediately. **Scala.js cannot write `async function*`** — a facade must hand-implement the AsyncGenerator protocol (`next(v): js.Promise<IteratorResult>` + `[Symbol.asyncIterator]`); this is the hardest interop piece (dapr4s bridges it with a coroutine over two Promises inside `js.async`).
 - **`WorkflowContext`**: `getWorkflowInstanceId`, `getCurrentUtcDateTime`, `isReplaying`, `createTimer(fireAt: Date | seconds)`, `callActivity(activity | name, input?)`, `callSubWorkflow`, `waitForExternalEvent(name)`, `continueAsNew(newInput, saveEvents)`, `setCustomStatus`, `whenAll`, `whenAny`. `WorkflowState` getters: `name`, `instanceId`, `runtimeStatus`, `createdAt`, `lastUpdatedAt`, `serializedInput/Output?`, `workflowFailureDetails?` (`getErrorType/getErrorMessage/getStackTrace`), `customStatus?`. `WorkflowRuntimeStatus`: numeric enum `RUNNING, COMPLETED, FAILED, TERMINATED, CONTINUED_AS_NEW, PENDING, SUSPENDED`. Inputs/outputs are JSON-serialized strings.
+
+### How the orchestration executor drives the generator (source-verified)
+
+If you hand-implement the AsyncGenerator protocol (dapr4s's `WorkflowCoroutine`), these are the exact driving rules of `worker/orchestration-executor.js` + `worker/runtime-orchestration-context.js`:
+
+- `const result = await fn(ctx, input)` — the registered function must **create** the generator without running its body; the executor duck-types it via `typeof result?.[Symbol.asyncIterator] === "function"` (and never actually invokes that member).
+- It drives **`next()` and `throw()` only — `generator.return()` is never called** (no `.return(` call site in either file), so don't fake cancellation semantics for it.
+- `run()`: one `await generator.next()`; `{done: true}` completes the orchestration with `value`, otherwise `value` becomes `_previousTask`. `resume()` (once per task-completing history event): failed task → `await generator.throw(task._exception)`; complete task → `await generator.next(task._result)` in a loop that keeps feeding while the newly yielded task is already complete (this loop is what makes replay work).
+- **Every yielded `value` must be `instanceof` the vendored durabletask `Task`** — yield the SDK's own Task instances, never wrappers.
+- **Post-done `next()` happens**: the context never clears `_previousTask`, so events arriving after the generator finished still trigger `resume()` — a finished generator must answer `{value: undefined, done: true}` per the standard protocol.
+- The executor awaits every `next()`/`throw()` before processing the next history event — the strict-alternation property dapr4s's coroutine handshake relies on (see [the JSPI article's field notes](../scala-js/scala-js-async-jspi-wasm.md#field-notes-from-the-dapr4s-port)).
+
+### Deterministic-UUID gap
+
+The JS SDK's `WorkflowContext` has **no `newUuid`** (the Java SDK's `WorkflowContext.newUUID` has no counterpart). A port that needs replay-deterministic UUIDs must mirror the Java SDK's algorithm (`TaskOrchestrationExecutor.newUuid`): RFC 4122 §4.3 **name-based v5/SHA-1** over `"<instanceId>-<currentUtcDateTime>-<counter>"` in the fixed namespace **`9e952958-5e33-4daf-827f-2fa12937b875`**, with the version/variant bits patched into the truncated 128-bit hash. Deterministic because instanceId is constant, `getCurrentUtcDateTime` advances only via replayed ORCHESTRATORSTARTED history timestamps, and the per-execution counter restarts at 0 on every replay. (dapr4s: `WorkflowContextImpl.deterministicUuidV5`, hashing via `node:crypto` since the Scala.js javalib has no `MessageDigest`.)
 
 ## Serialization
 

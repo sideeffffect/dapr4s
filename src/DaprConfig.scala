@@ -59,9 +59,10 @@ case class DaprConfig(
   * @param grpcTlsCaPath
   *   Path to the CA certificate file (PEM) for server verification. Required when TLS is enabled.
   *
-  * Scala.js note: only `httpEndpoint`, `grpcEndpoint`, `apiToken`, `grpcMaxInboundMessageSizeBytes`, and `timeout` are
-  * honoured by the JS backend (the Dapr JS SDK exposes a much smaller knob set); the OkHttp/gRPC-Java transport
-  * settings are silently ignored there, and the TLS material paths are currently JVM-only.
+  * Scala.js note: only `httpEndpoint`, `grpcEndpoint`, and `apiToken` are honoured by the JS backend, plus
+  * `grpcMaxInboundMessageSizeBytes`, which maps to the JS SDK's `maxBodySizeMb`; `timeout` and every other knob (the
+  * OkHttp/gRPC-Java transport settings, `maxRetries`) are silently ignored there, and the TLS material paths are
+  * currently JVM-only.
   * @param maxRetries
   *   Number of times to retry failed SDK calls (default 0 = no retries).
   * @param timeout

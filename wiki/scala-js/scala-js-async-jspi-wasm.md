@@ -70,6 +70,32 @@ CI note: Node 23/24 flags must be argv flags on the node process (`NODE_OPTIONS`
 - Every inbound dispatch (express/SDK callback → Scala) re-enters `js.async` per request, so handlers can suspend freely.
 - Consequences for JS consumers: link with `jsEmitWasm true` + `jsModuleKind es` + `jsEsVersionStr es2017`, run on Node 25+ (or 23/24 + flag). Pure parts (models, derivation, validation) still link on the plain JS backend; touching capability impls there is a link-time error.
 
+## Field notes from the dapr4s port
+
+Runtime-verified findings from implementing the dapr4s JS internal layer (`src/internal/js/`, scaladocs there are the canonical record).
+
+### express interop: `JSImport.Default` for CJS default-export modules
+
+express is a classic CJS module: `module.exports = createApplication` — a *callable function* carrying the middleware factories (`text`, `json`, …) as properties. `JSImport.Default` is the **one binding that yields the callable under both module kinds** (verified at runtime under both):
+
+- `jsModuleKind commonjs`: Scala.js resolves `Default` through its `$moduleDefault` helper (`m.__esModule ? m.default : m`); express sets no `__esModule` flag → you get `module.exports` itself.
+- `jsModuleKind es` (the Wasm/JSPI production target): `import { default as e } from "express"` binds Node's CJS↔ESM interop default — again `module.exports`.
+
+`JSImport.Namespace` breaks under ES modules: an `import * as ns` namespace object is **never callable**, so `express()` throws `TypeError: ns is not a function`. Rule of thumb: facade any `module.exports = <function/class>` module with `JSImport.Default`, never `Namespace`, if it must work under both module kinds.
+
+### Per-request `js.async` re-entry in express handlers
+
+An express route handler runs below a JS frame (the router), so capability calls inside it would hit `SuspendError`. The pattern: the handler body immediately enters `js.async { ... }` and lets the resulting promise carry the request — one suspension scope per request, the JS twin of the JVM server's virtual-thread-per-request executor. Same applies to SDK callbacks (workflow activity executors return `js.async(...)` promises the SDK awaits; a rejection becomes the activity's failure, so no catch is wanted).
+
+### AsyncGenerator from a coroutine (when you can't write `async function*`)
+
+Recipe (dapr4s `WorkflowCoroutine`, driving the Dapr JS SDK's orchestration executor):
+
+- A non-native `js.Object` class with `def next(v)`/`` def `throw`(e) ``/`` def `return`(v) `` returning `js.Promise[{value, done}]`, plus `@JSName(js.Symbol.asyncIterator) def asyncIterator() = this` for the duck-typing check.
+- The synchronous body runs in its own `js.async` fiber; "yield" = resolve the pending *step* promise (the one the driver is awaiting from `next()`) with `{value, done: false}`, then orphan-await a fresh *resume* promise that the driver's next `next(v)`/`throw(e)` settles. Register the resume resolver **before** answering the step, so even a synchronous follow-up `next(v)` finds it.
+- **Strict-alternation safety argument**: a driver that awaits every `next()`/`throw()` before issuing the next one (the durabletask executor does — verified in `runtime-orchestration-context.js`) guarantees the driver and the fiber strictly alternate; at any instant at most one side is runnable. With JS single-threadedness (JSPI resumes a suspended stack as a promise reaction, never concurrently), plain unsynchronized `var`s for the two resolver pairs are correct: each is written in one phase and consumed-and-cleared in the other. Make the "driver violated the contract" branches throw loudly rather than trying to support concurrent driving.
+- A finished generator must answer post-completion `next()` with `{done: true}` (standard protocol — and the executor really does call it). An abandoned fiber (driver stops calling `next`) stays suspended forever and is simply collected — abandoned JSPI stacks are GC-able by design, but note `finally` blocks around the abandoned await never run.
+
 ## See Also
 
 - [Cross-Building JVM + Scala.js with Scala CLI](scala-js-cross-building-scala-cli.md) — build/test/publish mechanics, `jsEmitWasm` directive

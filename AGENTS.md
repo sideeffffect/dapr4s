@@ -23,7 +23,17 @@ Both must stay in sync with the code at all times.
 - **Scala version**: latest nightly (`3.9.0-RC1-bin-*-NIGHTLY` or later). Always use the newest
   available nightly to get the latest capture-checking and safe-mode fixes. Update when the build
   tool hints that a newer nightly is available.
-- **Build tool**: Scala CLI (`project.scala` using directives). Run tests with
+- **Platforms**: JVM **and Scala.js** (`//> using platform "jvm" "scala-js"`; jvm first = default).
+  Plain `scala-cli compile/test .` builds the JVM platform; Scala.js invocations add `--js` **and
+  must pass `--exclude jvm-deps.scala`** (the file holding the JVM-only Dapr Java SDK +
+  testcontainers deps — scala-cli cannot scope dep directives to a platform, so excluding that file
+  is what keeps the `_sjs1_3` build/POM clean):
+  - `scala-cli compile --js . --exclude jvm-deps.scala`
+  - `scala-cli test --js . --exclude jvm-deps.scala`
+  Platform-specific sources carry per-file `//> using target.platform "jvm"`/`"scala-js"`
+  directives. `//> using jsEsVersionStr "es2017"` is required by `js.async`/`js.await`.
+- **Build tool**: Scala CLI (`project.scala` using directives). **scala-cli >= 1.13.0 is required
+  for the Scala.js build** (munit 1.3.0 JS needs Scala.js IR 1.21). Run tests with
   `scala-cli test . --test-only "*unit*"` for unit tests.
 - **JVM**: Zulu 25 (`//> using jvm "zulu:25.0.3"` or later). JDK 25 is required for stable
   virtual thread support (no carrier pinning on `synchronized`).
@@ -36,6 +46,10 @@ Both must stay in sync with the code at all times.
 - **Dependencies**: upickle 3.3.1 (pinned — 4.x crashes on CC-annotated types, test-only),
   munit 1.3.0, testcontainers-scala-munit 0.43.6, testcontainers-dapr 1.17.2. (upickle, munit, and
   both testcontainers deps are `test.dep` only — they are not part of the published library.)
+  Cross deps use the `::version` (double-colon) form; `scala-java-time` provides `java.time` on
+  Scala.js (a thin JDK shim on the JVM). JVM-only deps (Dapr Java SDK, testcontainers) live in
+  `jvm-deps.scala`, not `project.scala`. The JS layer's npm dep (`@dapr/dapr`) is declared in
+  `package.json`.
 
 ---
 
@@ -158,11 +172,35 @@ Specific rules currently active in this codebase:
   - **Store names**: `StateStoreName` (`DaprCapability.state`) vs. `LockStoreName` (`DaprCapability.lock`) — distinct Dapr components with distinct YAML. (Mirrors the existing `ConfigurationStoreName`/`SecretStoreName` split.)
   - **State keys**: `StateStoreKey` (app-level `StateCapability`) vs. `ActorStateKey` (per-instance `ActorContext`/`ActorState`).
 
-### Java interop boundary
-Everything in `src/internal/` is marked `@scala.caps.assumeSafe`. This is the only place Java
-SDK types may appear. Nothing from the Java SDK (`Mono`, `DaprClient`, `GrpcChannel`, proto
-classes, etc.) may appear in `src/` files outside `internal/` or in any test file. The
-`@assumeSafe` boundary is the wall.
+### SDK interop boundary (Java on JVM, @dapr/dapr on JS)
+Everything in `src/internal/` is marked `@scala.caps.assumeSafe`. There are two platform walls
+behind the same boundary:
+
+- `src/internal/` (excluding the `js/` subdirectory, all jvm-tagged) is the **JVM wall**: the only
+  place Java SDK types may appear. Nothing from the Java SDK (`Mono`, `DaprClient`, `GrpcChannel`,
+  proto classes, etc.) may appear in `src/` files outside `internal/` or in any test file.
+- `src/internal/js/` (all js-tagged, same package `dapr4s.internal`) is the **JS wall**: the only
+  place `@dapr/dapr` (and express/Node) types may appear. The `@js.native` facades live in
+  `dapr4s.internal.facade` (`src/internal/js/facade/`). No `js.Promise`, facade type, or other JS
+  interop type may leak into the public API.
+
+The `@assumeSafe` boundary is the wall on both platforms — same rule, same documentation duty
+(WHAT/WHY/WHY SAFE on every escape hatch).
+
+### Scala.js layer rules
+
+- **Orphan `js.await` ONLY via `JsAwait`** (`src/internal/js/JsAwait.scala`) — the single home of
+  the `scala.scalajs.js.wasm.JSPI.allowOrphanJSAwait` import. Never import it anywhere else.
+- **Every callback invoked from a JS frame re-enters `js.async`** before touching dapr4s code
+  (express handlers, SDK activity executors, promise reactions). JSPI suspension cannot cross a
+  JavaScript stack frame — skipping this throws `WebAssembly.SuspendError` at runtime.
+- **SDK signatures are verified against `node_modules` sources, never guessed.** The TypeScript
+  interfaces are erased; read the installed `@dapr/dapr`/`express` JS sources (and record findings
+  in `wiki/dapr/dapr-js-sdk.md`).
+- Facade gotchas: **ports are strings** everywhere in the JS SDK; **`CommunicationProtocolEnum` is
+  numeric with `GRPC = 0`, `HTTP = 1`** — a facade defaulting to 0 silently picks gRPC.
+  `HttpMethod` values are lowercase strings. Options objects are `Partial<...>` — model them as
+  non-native `js.Object` traits/classes with `js.UndefOr` fields.
 
 ---
 
@@ -194,7 +232,18 @@ output for parse errors and fails loudly to catch this.
 - **Unit tests** (no Docker required): `scala-cli test . --test-only 'dapr4s.test.unit.*'`. Tests
   across `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`,
   `BindingDispatchTest`, `CapabilityHandlerTest` (with `DaprServerTestBase` as a shared helper).
-- **Integration tests** (require Docker): `scala-cli test . --test-only 'dapr4s.test.integration.*'`.
+- **Scala.js unit tests** (no Docker, no npm install needed):
+  `scala-cli test --js . --exclude jvm-deps.scala`. These run on the **plain JS backend** under
+  Node — fine because unit tests never link the orphan-await capability code and never load
+  `@dapr/dapr`. Most unit tests cross-compile and run on both platforms; the jvm-tagged
+  exceptions are `SubscriberTest`, `BindingDispatchTest`, `JobDispatchTest`, and
+  `DaprServerTestBase` (they drive the JVM `DaprAppServer` over real HTTP on
+  `com.sun.net.httpserver`), plus `TestCodecs.scala` (Jackson — a Java SDK transitive dep) and
+  `TestDaprExtensions.scala`. `TestCodecsJs.scala` provides the same codec given names over ujson
+  so the shared tests run unchanged on JS.
+- **Integration tests** (require Docker, **JVM-only for now** — every file under
+  `test/integration/` is jvm-tagged; a Wasm+JSPI JS e2e is a documented follow-up):
+  `scala-cli test . --test-only 'dapr4s.test.integration.*'`.
   They use `testcontainers-scala-munit` with the `TestContainersForAll` pattern and exercise a real
   Dapr sidecar. `startContainers()` **must return an already-started container** — call `c.start()`
   before returning; the framework does NOT auto-start it. Tests use `withContainers { c => }`. The
@@ -314,5 +363,6 @@ probing class files whenever you need to verify an API.
 - No async/`Future`-based API — the library is synchronous and blocking, designed for virtual
   threads.
 - No exposing Reactor/Mono types to users — all Reactor is confined to `internal/`.
-- No client-side WorkflowCapability yet (starting/querying/terminating workflow instances) —
-  server-side hosting (`Workflow`, `WorkflowActivity`, `WorkflowContext`) is implemented.
+- No JS integration-test suite in CI yet — the Scala.js layer is e2e-verified manually against a
+  real sidecar (see `docs/DESIGN.md`); the CI `test-js` job covers compilation and the shared unit
+  tests on the plain JS backend.
