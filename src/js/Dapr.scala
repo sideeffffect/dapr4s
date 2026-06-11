@@ -114,19 +114,74 @@ class Dapr(config: DaprConfig = DaprConfig()):
       run(body)
     }
 
-  /** Start the inbound app channel (pub/sub subscriptions, invocation routes, bindings, actors) described by the
-    * [[DaprApp]] returned from `body`.
+  /** Start an HTTP server on `config.appServer.port`, build the inbound handler set from the [[DaprApp]] returned by
+    * `body`, then suspend forever (until the process receives SIGINT/SIGTERM) — the Scala.js twin of the JVM `serve`.
     *
-    * '''Not implemented on Scala.js yet.''' A follow-up phase adds the implementation on top of the JS SDK's
-    * `DaprServer` (express-based HTTP app channel).
+    * The Dapr sidecar discovers pub/sub subscriptions via `GET /dapr/subscribe` and hosted actor types via
+    * `GET /dapr/config`, and delivers messages / binding events / invocations / job triggers / actor calls over the
+    * same app-channel routes the JVM server exposes (the express-based [[dapr4s.internal.DaprAppServer]] twin). Each
+    * inbound request gets its own `js.async` entry, so handlers can use capabilities (suspend) freely — one "virtual
+    * thread" per request.
+    *
+    * ==Usage==
+    * {{{
+    *   def main(args: Array[String]): Unit =
+    *     js.async {
+    *       Dapr(config).serve:
+    *         val scope = summon[DaprCapability]
+    *         given StateCapability   = scope.state(StateStoreName("statestore"))
+    *         given PublishCapability = scope.publish(PubSubName("pubsub"))
+    *         DaprApp(
+    *           subscriptions = List(
+    *             Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event =>
+    *               // handle incoming order event
+    *               SubscriptionResult.Success
+    *             }
+    *           ),
+    *           invokeRoutes = List(
+    *             InvokeRoute[OrderRequest, OrderResponse](InvokeMethodName("place-order")) { req =>
+    *               // handle direct invocation
+    *               OrderResponse(req.id, "processed")
+    *             }
+    *           )
+    *         )
+    *     }: Unit
+    * }}}
+    *
+    * The single `js.async` at the program edge satisfies the Wasm/JSPI requirement documented on this class; `serve`
+    * itself never resumes that block (it suspends on a never-resolving promise — the JS analogue of the JVM's
+    * `Thread.currentThread().join()`), so the `Nothing` result type is honoured and the express server keeps the event
+    * loop alive. Use [[serveAsync]] when opening the `js.async` block yourself is inconvenient.
+    *
+    * ==Sidecar startup order==
+    * Start the app (this method) before (or at the same time as) the Dapr sidecar. The sidecar calls
+    * `GET /dapr/subscribe` after connecting to the app port (`--app-port`).
+    *
+    * Workflow/activity hosting on Scala.js is not implemented yet: a [[DaprApp]] with non-empty `workflows` or
+    * `activities` currently throws `UnsupportedOperationException` at startup (see `dapr4s.internal.WorkflowHost`).
+    *
+    * @param body
+    *   a pure context function that receives a `DaprCapability` and returns a [[DaprApp]] describing all inbound
+    *   handlers
     */
-  // TODO(scala-js serve phase): implement over facade'd DaprServer — pubsub.subscribe/invoker.listen/
-  // binding.receive for the SDK-supported routes, raw express routes for the dapr4s app-channel extras
-  // (/dapr/config, actors, jobs), every callback re-entering js.async before dispatch.
   def serve(body: DaprCapability ?=> DaprApp): Nothing =
-    throw new UnsupportedOperationException("dapr4s serve() on Scala.js is not implemented yet")
+    run:
+      val cap = summon[DaprCapability]
+      // Fail fast on structural misconfiguration (duplicate/colliding handlers) before binding the port.
+      val app = body.validateOrThrow()
+      new internal.DaprAppServer(app).startAndBlock(
+        port = config.appServer.port.value,
+        daprCapability = cap,
+        sidecar = config.sidecar,
+        shutdownGrace = config.appServer.shutdownGrace,
+        httpBacklog = config.appServer.httpBacklog,
+        actorConfig = config.actors,
+      )
 
-  /** JS-only convenience twin of [[serve]], mirroring [[runAsync]]. Like [[serve]], not implemented yet. */
+  /** JS-only convenience twin of [[serve]], mirroring [[runAsync]]: [[serve]] wrapped in its own `js.async { ... }`
+    * entry. The returned `js.Promise[Nothing]` never fulfills (the server suspends forever); it rejects only if startup
+    * fails (validation error, port already bound) or the server errors fatally.
+    */
   def serveAsync(body: DaprCapability ?=> DaprApp): js.Promise[Nothing] =
     js.async {
       serve(body)
