@@ -1,19 +1,9 @@
 {
-  "name": "t3code-c916dd05",
-  "version": "1.0.0",
-  "description": "| CI | Release | | --- | --- | | [![Build Status][Badge-GitHubActions]][Link-GitHubActions] | [![Release Artifacts][Badge-MavenCentral]][Link-MavenCentral] |",
-  "main": "index.js",
-  "directories": {
-    "doc": "docs",
-    "test": "test"
-  },
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "name": "dapr4s",
+  "private": true,
+  "description": "npm dependency manifest for the dapr4s Scala.js layer — the facades in src/internal/js/facade/ are verified against exactly this @dapr/dapr version (TypeScript types are erased at runtime, so a floating range could drift undetected)",
+  "license": "Apache-2.0",
   "dependencies": {
-    "@dapr/dapr": "^3.18.0"
+    "@dapr/dapr": "3.18.0"
   }
 }

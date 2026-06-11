@@ -19,7 +19,10 @@ private[internal] final class BindingsCapabilityImpl(
     val response = invokeRaw(operation, data, metadata)
     // None when the binding returned no payload (undefined/empty), mirroring the JVM's null/empty
     // byte-array check; the empty string is HTTPClient.execute's tryParseJson artifact for an
-    // empty response body.
+    // empty response body. Consequently a binding response document that IS the JSON empty string
+    // (`""`) cannot be distinguished from an absent body post-SDK and also maps to None — a
+    // documented, accepted divergence from the JVM, which sees the raw bytes (see
+    // JsInterop.jsonStringOrNull).
     if isAbsent(response) then None
     else Some(JsonCodec.decodeOrThrow[Resp](js.JSON.stringify(response)))
 

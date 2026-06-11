@@ -182,7 +182,11 @@ behind the same boundary:
 - `src/internal/js/` (all js-tagged, same package `dapr4s.internal`) is the **JS wall**: the only
   place `@dapr/dapr` (and express/Node) types may appear. The `@js.native` facades live in
   `dapr4s.internal.facade` (`src/internal/js/facade/`). No `js.Promise`, facade type, or other JS
-  interop type may leak into the public API.
+  interop type may leak into the public API. Two deliberate carve-outs mirror the JVM side (where
+  `src/jvm/Dapr.scala` constructs Java SDK clients): the platform `Dapr` entry points
+  (`src/jvm/Dapr.scala`, `src/js/Dapr.scala`) may construct SDK clients/facades to hand to the
+  internal layer, and the JS-only `runAsync`/`serveAsync` conveniences intentionally return
+  `js.Promise` at the program edge — no other public member may.
 
 The `@assumeSafe` boundary is the wall on both platforms — same rule, same documentation duty
 (WHAT/WHY/WHY SAFE on every escape hatch).
@@ -241,8 +245,11 @@ output for parse errors and fails loudly to catch this.
   `com.sun.net.httpserver`), plus `TestCodecs.scala` (Jackson — a Java SDK transitive dep) and
   `TestDaprExtensions.scala`. `TestCodecsJs.scala` provides the same codec given names over ujson
   so the shared tests run unchanged on JS.
-- **Integration tests** (require Docker, **JVM-only for now** — every file under
-  `test/integration/` is jvm-tagged; a Wasm+JSPI JS e2e is a documented follow-up):
+- **Integration tests** (require Docker, **JVM-only for now** — every suite/harness file directly
+  under `test/integration/` is jvm-tagged; a Wasm+JSPI JS e2e is a documented follow-up). The
+  `DaprApp` fixtures in `test/integration/apps/` (all except the two `*Main.scala` entry points)
+  are deliberately **untagged and cross-compile** — `CapabilityHandlerTest` exercises them on
+  Scala.js, so do not jvm-tag them. Run:
   `scala-cli test . --test-only 'dapr4s.test.integration.*'`.
   They use `testcontainers-scala-munit` with the `TestContainersForAll` pattern and exercise a real
   Dapr sidecar. `startContainers()` **must return an already-started container** — call `c.start()`

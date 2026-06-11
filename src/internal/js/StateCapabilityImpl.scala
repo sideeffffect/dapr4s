@@ -114,8 +114,10 @@ private[internal] final class StateCapabilityImpl(
     // (implementation/Client/HTTPClient/HTTPClient.js), and `state.getBulk` (whose body does carry etags) cannot
     // pass the consistency hint. So this method calls the raw state HTTP API with fetch and reads the header
     // itself — the same SDK-bypass precedent as the JVM `HttpActorContext`.
+    import ActorCapabilityImpl.urlSegment
     val query = consistencyQuery(consistency).fold("")(c => s"?consistency=$c")
-    val url = s"${ActorCapabilityImpl.httpBase(scope.sidecar)}/v1.0/state/${storeName.value}/${key.value}$query"
+    val base = ActorCapabilityImpl.httpBase(scope.sidecar)
+    val url = s"$base/v1.0/state/${urlSegment(storeName.value)}/${urlSegment(key.value)}$query"
     val response = JsAwait.await(
       facade.NodeGlobals.fetch(
         url,

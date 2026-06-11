@@ -18,18 +18,42 @@ private[internal] object JsInterop:
   /** Parse a dapr4s-encoded JSON string into a JS value to hand to the SDK. */
   def parseJson(json: String): js.Any = js.JSON.parse(json)
 
+  /** True when a parsed JSON document is a JS-'''falsy''' value: `null`, `false`, `0` (incl. `-0`), or `""`. (Empty
+    * objects/arrays are truthy in JS and correctly excluded; `undefined` is checked defensively even though
+    * `JSON.parse` can never produce it.)
+    *
+    * Why this matters: the SDK's `HTTPClient.execute` guards the request body with a plain truthiness check —
+    * `if (params?.body)` in `node_modules/@dapr/dapr/implementation/Client/HTTPClient/HTTPClient.js` — so handing it a
+    * falsy payload silently produces an '''empty''' request body on the wire. Callers that pass parsed payloads to the
+    * SDK ([[PublishCapabilityImpl]], [[InvokeCapabilityImpl]]) must detect this case and bypass the SDK with a raw
+    * fetch instead.
+    */
+  def isFalsyJson(v: js.Any): Boolean =
+    js.isUndefined(v) || ((v: Any) match
+      case null       => true
+      case b: Boolean => !b
+      case d: Double  => d == 0.0 // every JS number pattern-matches as Double on Scala.js; covers 0 and -0
+      case s: String  => s.isEmpty
+      case _          => false)
+
   /** Convert an SDK response value back into the JSON string (or `null`) that [[JsonCodec.decode]] expects.
     *
     * `HTTPClient.execute` returns the response body after `tryParseJson`: an empty body comes back as the empty string
     * `""` (because `JSON.parse("")` throws and the raw text is substituted), a JSON body as the parsed value. Absent
     * (`undefined`/`null`) and empty-body responses map to `null`, mirroring the JVM impls where an empty `Mono` yields
     * a `null` byte array.
+    *
+    * One documented, accepted divergence from the JVM (which sees the raw response bytes): a response document that
+    * '''is''' the empty string (the two-byte JSON document `""`) parses to the empty JS string — the very same value
+    * `tryParseJson` substitutes for an empty body — so post-SDK the two cases are indistinguishable and both map to
+    * `null`/`None` here.
     */
   def jsonStringOrNull(v: js.Any): String | Null =
     if isAbsent(v) then null else js.JSON.stringify(v)
 
   /** True when the SDK response denotes "no payload": `undefined`, `null`, or the empty string (the `tryParseJson`
-    * artifact for an empty HTTP body).
+    * artifact for an empty HTTP body — which, see [[jsonStringOrNull]], also swallows a response document that is the
+    * JSON empty string `""`).
     */
   def isAbsent(v: js.Any): Boolean =
     js.isUndefined(v) || (v == null) || ((v: Any) match

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# k8s-test.sh — Full lifecycle k3d integration test for scala-safe-dapr
+# k8s-test.sh — Full lifecycle k3d integration test for dapr4s
 #
 # Prerequisites:
 #   k3d (>= v5.8), kubectl, dapr CLI, Docker, scala-cli, jq
@@ -103,14 +103,14 @@ if [[ "$SKIP_BUILD" == false ]]; then
 
   scala-cli --power package . \
     --assembly \
-    --main-class "dapr.safe.test.integration.apps.orderServiceMain" \
+    --main-class "dapr4s.test.integration.apps.orderServiceMain" \
     -o order-service.jar \
     --force
   info "Built order-service.jar ($(du -sh order-service.jar | cut -f1))"
 
   scala-cli --power package . \
     --assembly \
-    --main-class "dapr.safe.test.integration.apps.inventoryServiceMain" \
+    --main-class "dapr4s.test.integration.apps.inventoryServiceMain" \
     -o inventory-service.jar \
     --force
   info "Built inventory-service.jar ($(du -sh inventory-service.jar | cut -f1))"

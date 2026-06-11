@@ -9,6 +9,10 @@ package dapr4s
 // Placed in `package dapr4s` so that `import dapr4s.*` (present in every test file) brings
 // them into the implicit scope automatically — exactly like the JVM twin.
 //
+// WHY @assumeSafe on every given: the anonymous JsonCodec instances must carry an empty
+// capture set so safe-mode test code can summon them freely; they close over nothing but
+// pure ujson calls, so trusting them is sound.
+//
 // Note on Long: ujson backs numbers with Double, so longs beyond 2^53 lose precision here.
 // That is inherent to JavaScript's JSON number model, not a codec bug; tests avoid such values.
 

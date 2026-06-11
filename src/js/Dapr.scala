@@ -157,8 +157,8 @@ class Dapr(config: DaprConfig = DaprConfig()):
     * Start the app (this method) before (or at the same time as) the Dapr sidecar. The sidecar calls
     * `GET /dapr/subscribe` after connecting to the app port (`--app-port`).
     *
-    * Workflow/activity hosting works on this platform too: a [[DaprApp]] with non-empty `workflows`/`activities`
-    * starts a `WorkflowRuntime` (gRPC, against `config.sidecar.grpcEndpoint`) before the HTTP server binds — see
+    * Workflow/activity hosting works on this platform too: a [[DaprApp]] with non-empty `workflows`/`activities` starts
+    * a `WorkflowRuntime` (gRPC, against `config.sidecar.grpcEndpoint`) before the HTTP server binds — see
     * `dapr4s.internal.WorkflowHost` and the AsyncGenerator coroutine bridge in `dapr4s.internal.WorkflowCoroutine`.
     *
     * @param body

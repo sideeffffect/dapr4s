@@ -352,7 +352,23 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         },
       ): Unit,
     )
-    JsAwait.await(serverFailure)
+    try JsAwait.await(serverFailure)
+    catch
+      case NonFatal(e) =>
+        // The workflow host started BEFORE the bind; if the bind (or the server) fails, this is
+        // the only exit path, and without the close the detached gRPC work-item stream would keep
+        // executing activities against a torn-down capability scope and keep the Node event loop
+        // alive after serve() has thrown. close() is idempotent and non-suspending (see
+        // WorkflowHost.Handle), so calling it here — inside a catch, outside any JS frame — is
+        // safe; its own failure is swallowed (NonFatal only) so the original server error stays
+        // the primary exception. The JVM twin shares this start-host-before-bind ordering but
+        // leaks its runtime via non-daemon threads on a bind failure — a candidate for a separate
+        // follow-up fix there.
+        workflowHost.foreach { h =>
+          try h.close()
+          catch case NonFatal(_) => ()
+        }
+        throw e
 
 @scala.caps.assumeSafe
 private object DaprAppServer:
@@ -370,9 +386,10 @@ private object DaprAppServer:
     * necessarily capture-free — a JS interop boundary cannot carry capture annotations.
     *
     * WHY SAFE: the handler cannot outlive what it captures: it only runs while the express server is listening, and the
-    * server lives for the entire process lifetime (`startAndBlock` never returns; shutdown exits the process). Same
-    * erasure rationale as `ConfigurationCapabilityImpl.subscribe`'s callback cast and the `AnyRef`-erasure pattern
-    * documented in AGENTS.md.
+    * server lives for the entire process lifetime — `startAndBlock` never returns normally (shutdown exits the
+    * process), and its only exceptional exit (bind/server failure) stops the workflow runtime before unwinding, after
+    * which the failed server never invokes a handler. Same erasure rationale as
+    * `ConfigurationCapabilityImpl.subscribe`'s callback cast and the `AnyRef`-erasure pattern documented in AGENTS.md.
     */
   private def erased(handler: facade.ExpressHandler^): facade.ExpressHandler =
     handler.asInstanceOf[facade.ExpressHandler]

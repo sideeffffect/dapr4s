@@ -34,7 +34,10 @@ private[internal] final class ActorCapabilityImpl(
   import ActorCapabilityImpl.*
 
   private def methodUrl(method: ActorMethodName): String =
-    s"${httpBase(sidecar)}/v1.0/actors/${actorType.value}/${actorId.value}/method/${method.value}"
+    val base = httpBase(sidecar)
+    val tpe = urlSegment(actorType.value)
+    val id = urlSegment(actorId.value)
+    s"$base/v1.0/actors/$tpe/$id/method/${urlSegment(method.value)}"
 
   def invoke[Req: JsonCodec](method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp =
     val body = summon[JsonCodec[Req]].encode(data)
@@ -50,6 +53,14 @@ private[internal] final class ActorCapabilityImpl(
 
 @scala.caps.assumeSafe
 private[internal] object ActorCapabilityImpl:
+
+  /** Percent-encode one path segment (or query key/value) of a raw sidecar URL, shared with the other raw-fetch call
+    * sites. Domain values (state keys, actor ids, method/topic names, ...) are interpolated into URLs here, so reserved
+    * characters (space, `/`, `?`, `#`, `%`, ...) must be encoded or they corrupt the request path; daprd decodes the
+    * escapes back before routing.
+    */
+  private[internal] def urlSegment(value: String): String =
+    js.URIUtils.encodeURIComponent(value)
 
   /** Base URL of the sidecar HTTP API (scheme://host:port, no trailing slash), shared with the other raw-fetch call
     * sites (see `StateCapabilityImpl.getWithETag`).

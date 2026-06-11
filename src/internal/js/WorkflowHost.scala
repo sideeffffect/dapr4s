@@ -71,8 +71,10 @@ private[internal] object WorkflowHost:
     // WHY: a DaprCapability carries a non-empty CC capture set; capturing it directly in a closure handed to a JS
     // facade method (whose js.Function2 type cannot carry capture annotations) is rejected by capture checking.
     // WHY SAFE: the capability lives for the whole server lifetime (the enclosing Dapr.serve scope — startAndBlock
-    // never returns), so every activity invocation happens strictly within its lifetime. This is the exact same
-    // erasure the JVM twin performs for the same reason (WorkflowActivityBridge's daprRef: AnyRef parameter).
+    // never returns normally, and its only exceptional exit, a bind/server failure, stops this workflow runtime
+    // before unwinding out of that scope), so every activity invocation happens strictly within its lifetime. This
+    // is the exact same erasure the JVM twin performs for the same reason (WorkflowActivityBridge's daprRef: AnyRef
+    // parameter).
     val daprRef: AnyRef = daprCapability.asInstanceOf[AnyRef]
 
     activities.foreach { a =>

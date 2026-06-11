@@ -63,8 +63,11 @@ private[internal] final class WorkflowCapabilityImpl(
     // The JVM impl lets the Java SDK's java.util.concurrent.TimeoutException propagate to the
     // caller, so the rejection is translated to that exact exception type here — timeouts throw
     // (never None); None is reserved for "instance not found", matching the JVM.
+    // The timeout is passed as fractional seconds (toMillis / 1000.0, NOT toSeconds, which would
+    // truncate sub-second timeouts to 0): the vendored client multiplies by 1000 for setTimeout,
+    // so millisecond precision survives — matching the JVM, which passes a full-precision Duration.
     val state =
-      try JsAwait.await(client.waitForWorkflowCompletion(instanceId.value, true, timeout.toSeconds.toDouble))
+      try JsAwait.await(client.waitForWorkflowCompletion(instanceId.value, true, timeout.toMillis.toDouble / 1000.0))
       catch
         case e @ js.JavaScriptException(error: js.Error) =>
           if isVendoredTimeout(error) then

@@ -334,7 +334,9 @@ private[internal] final class DecryptRequest(
 ) extends js.Object
 
 // ---------------------------------------------------------------------------
-// health (interfaces/Client/IClientHealth.ts) — used by the serve() phase
+// health (interfaces/Client/IClientHealth.ts) — declared for completeness of
+// the client seam; dapr4s does not currently call it (the SDK's sub-clients
+// await sidecar health themselves on first use)
 // ---------------------------------------------------------------------------
 
 @js.native

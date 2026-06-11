@@ -665,7 +665,7 @@ dapr4s/
     │   ├── SubscriberTest.scala       # DaprAppServer dispatch logic [jvm]
     │   ├── BindingDispatchTest.scala  # [jvm]
     │   └── JobDispatchTest.scala      # [jvm]
-    └── integration/                  # all [jvm] — testcontainers + a real daprd sidecar
+    └── integration/                  # suites all [jvm]; apps/ cross-compiles except the Mains
         ├── TestDaprApp.scala          # In-process DaprApp dispatch helper for tests (@assumeSafe)
         ├── DaprTestContainer.scala    # Testcontainers bridge
         ├── StateIntegrationTest.scala

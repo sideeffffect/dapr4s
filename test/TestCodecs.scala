@@ -13,6 +13,11 @@ import unsafeExceptions.canThrowAny
 //
 // Placed in `package dapr4s` so that `import dapr4s.*` (present in every test
 // file) brings them into the implicit scope automatically.
+//
+// WHY @assumeSafe on every given: the anonymous JsonCodec instances must carry an
+// empty capture set so safe-mode test code can summon them freely; they close over
+// nothing but the shared Jackson ObjectMapper (a pure-by-contract serializer), so
+// trusting them is sound.
 
 private val testMapper = new ObjectMapper()
 

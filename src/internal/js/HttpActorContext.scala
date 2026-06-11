@@ -36,17 +36,23 @@ private[internal] final class HttpActorContext(
 
   private def base: String = ActorCapabilityImpl.httpBase(sidecar)
 
+  // Percent-encoded like every raw-fetch URL — see ActorCapabilityImpl.urlSegment.
+  private def actorPrefix: String =
+    val tpe = ActorCapabilityImpl.urlSegment(actorType.value)
+    val id = ActorCapabilityImpl.urlSegment(actorId.value)
+    s"$base/v1.0/actors/$tpe/$id"
+
   private def stateUrl(key: ActorStateKey): String =
-    s"$base/v1.0/actors/${actorType.value}/${actorId.value}/state/${key.value}"
+    s"$actorPrefix/state/${ActorCapabilityImpl.urlSegment(key.value)}"
 
   private def bulkStateUrl: String =
-    s"$base/v1.0/actors/${actorType.value}/${actorId.value}/state"
+    s"$actorPrefix/state"
 
   private def reminderUrl(name: ReminderName): String =
-    s"$base/v1.0/actors/${actorType.value}/${actorId.value}/reminders/${name.value}"
+    s"$actorPrefix/reminders/${ActorCapabilityImpl.urlSegment(name.value)}"
 
   private def timerUrl(name: TimerName): String =
-    s"$base/v1.0/actors/${actorType.value}/${actorId.value}/timers/${name.value}"
+    s"$actorPrefix/timers/${ActorCapabilityImpl.urlSegment(name.value)}"
 
   // ---- State -----------------------------------------------------------------
 
@@ -54,14 +60,16 @@ private[internal] final class HttpActorContext(
     val url = stateUrl(key)
     val init = new facade.FetchRequestInit(method = "GET", headers = ActorCapabilityImpl.baseHeaders(sidecar))
     val response = JsAwait.await(facade.NodeGlobals.fetch(url, init))
+    // Consume the body BEFORE branching on the status: the always-consume invariant (see postJson)
+    // also covers the 204/404 early return, or the unread (empty) body would pin the connection in
+    // Node fetch's keep-alive pool.
+    val text = JsAwait.await(response.text())
     val code = response.status
     if code == 204 || code == 404 then None
-    else
-      val text = JsAwait.await(response.text())
-      // The JVM twin reads conn.getInputStream here, which throws IOException for any other
-      // error status; mirror that by failing loudly instead of silently decoding an error body.
-      if code >= 400 then throw new RuntimeException(s"Dapr API error $code at $url: $text")
-      else summon[JsonCodec[T]].decode(text).toOption
+    // The JVM twin reads conn.getInputStream here, which throws IOException for any other
+    // error status; mirror that by failing loudly instead of silently decoding an error body.
+    else if code >= 400 then throw new RuntimeException(s"Dapr API error $code at $url: $text")
+    else summon[JsonCodec[T]].decode(text).toOption
 
   def set[T: JsonCodec](key: ActorStateKey, value: T): Unit =
     val requestInner = js.Dictionary[js.Any](
