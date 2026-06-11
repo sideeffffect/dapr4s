@@ -3,6 +3,8 @@ package dapr4s.internal
 
 import dapr4s.*
 import scala.scalajs.js
+import typings.node.globalsMod.global as NodeGlobals
+import typings.undiciTypes.fetchMod.RequestInit
 
 /** Client-side capability for invoking methods on a specific Dapr virtual actor instance — the Scala.js twin of the JVM
   * `ActorCapabilityImpl`.
@@ -15,10 +17,11 @@ import scala.scalajs.js
   * on any release. The exported alternative, `ActorProxyBuilder`, derives the actor type string from
   * `actorTypeClass.name` and returns a JS `Proxy` that turns '''every property access''' into an actor invocation — JS
   * class-name reflection that is hostile to Scala.js (class names are mangled/minified, and the Proxy contract doesn't
-  * fit a typed facade). So this class speaks the sidecar's actor HTTP API directly over the Node-global `fetch` +
-  * [[JsAwait]] — the same SDK-bypass precedent as the JVM `HttpActorContext` (which bypasses the Java SDK for actor
-  * state/reminders/timers for analogous reasons). The verb and path mirror `ActorClientHTTP.invoke`:
-  * `POST {sidecar}/v1.0/actors/{type}/{id}/method/{name}` (Dapr accepts PUT and POST; the JS SDK always POSTs).
+  * fit a typed facade). So this class speaks the sidecar's actor HTTP API directly over the Node-global `fetch` (typed
+  * by the ScalablyTyped `@types/node` conversion) + [[JsAwait]] — the same SDK-bypass precedent as the JVM
+  * `HttpActorContext` (which bypasses the Java SDK for actor state/reminders/timers for analogous reasons). The verb
+  * and path mirror `ActorClientHTTP.invoke`: `POST {sidecar}/v1.0/actors/{type}/{id}/method/{name}` (Dapr accepts PUT
+  * and POST; the JS SDK always POSTs).
   *
   * Serialization uses raw pass-through like the JVM twin: the request value is encoded to JSON by our [[JsonCodec]] and
   * sent verbatim as the body with `application/json`; the response body text is decoded by the same codec — no SDK
@@ -81,22 +84,23 @@ private[internal] object ActorCapabilityImpl:
 
   /** Headers common to every raw sidecar call: the `dapr-api-token` header when configured (the same header the SDK and
     * the JVM client send) plus our content type.
+    *
+    * Shaped as the `[[name, value], ...]` pairs array because that is the one member of the fetch `HeadersInit` union
+    * (`js.Array[js.Array[String]] | Record[...] | Headers` in the ScalablyTyped typing) that call sites can also extend
+    * with extra headers (`push`) without fighting `StringDictionary`'s invariance.
     */
-  private[internal] def baseHeaders(sidecar: SidecarConfig): js.Dictionary[String] =
-    val headers = js.Dictionary("Content-Type" -> "application/json")
-    sidecar.apiToken.foreach(t => headers("dapr-api-token") = t.value)
+  private[internal] def baseHeaders(sidecar: SidecarConfig): js.Array[js.Array[String]] =
+    val headers = js.Array(js.Array("Content-Type", "application/json"))
+    sidecar.apiToken.foreach(t => headers.push(js.Array("dapr-api-token", t.value)): Unit)
     headers
 
   /** POST `body` (if any) and return the response text; throw on HTTP >= 400 with the same message shape as the JVM
     * `HttpActorContext.postJson` (`"Dapr API error $code at $url: $errBody"`).
     */
   private def post(url: String, body: Option[String], sidecar: SidecarConfig): String =
-    val init = new facade.FetchRequestInit(
-      method = "POST",
-      headers = baseHeaders(sidecar),
-      body = body.fold[js.UndefOr[String]](js.undefined)(b => b),
-    )
-    val response = JsAwait.await(facade.NodeGlobals.fetch(url, init))
+    val init = RequestInit().setMethod("POST").setHeaders(baseHeaders(sidecar))
+    body.foreach(b => init.setBody(b): Unit)
+    val response = JsAwait.await(NodeGlobals.fetch(url, init))
     val text = JsAwait.await(response.text())
     if response.status >= 400 then throw new RuntimeException(s"Dapr API error ${response.status} at $url: $text")
     text

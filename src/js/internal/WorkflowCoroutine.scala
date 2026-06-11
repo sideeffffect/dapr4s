@@ -4,6 +4,8 @@ package dapr4s.internal
 import dapr4s.*
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSName
+import typings.daprDapr.workflowInternalDurabletaskTaskTaskMod.Task as SdkTask
+import typings.daprDapr.workflowRuntimeWorkflowContextMod.WorkflowContext as SdkWorkflowContext
 
 /** The `{value, done}` object the AsyncGenerator protocol requires every `next()`/`throw()` step to resolve to (the
   * orchestration executor destructures exactly these two properties — `runtime-orchestration-context.js` lines
@@ -103,7 +105,7 @@ private[internal] final class ContinueAsNewSignal extends scala.util.control.Con
 @scala.caps.assumeSafe
 private[internal] final class WorkflowCoroutine(
     private val workflow: Workflow,
-    private val sdkCtx: facade.SdkWorkflowContext,
+    private val sdkCtx: SdkWorkflowContext,
     private val input: js.Any,
 ) extends js.Object:
 
@@ -148,7 +150,7 @@ private[internal] final class WorkflowCoroutine(
     * The resume promise is registered '''before''' the step is answered so that the executor's follow-up `next(v)`
     * (even a hypothetical synchronous one) always finds the resolver in place.
     */
-  final private[internal] def exchange(task: facade.SdkTask): js.Any =
+  final private[internal] def exchange(task: SdkTask[?]): js.Any =
     val resume = new js.Promise[js.Any]((resolve, reject) => {
       fiberResolve = (v: js.Any) => { resolve(v); () }
       fiberReject = (e: scala.Any) => { reject(e); () }

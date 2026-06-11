@@ -5,6 +5,14 @@ import dapr4s.*
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import JsInterop.*
+import typings.daprDapr.typesPubsubPubSubBulkPublishMessageDottypeMod.{
+  PubSubBulkPublishMessage,
+  PubSubBulkPublishMessageExplicit,
+}
+import typings.daprDapr.typesPubsubPubSubPublishOptionsDottypeMod.PubSubPublishOptions
+import typings.daprDapr.typesPubsubPubSubPublishResponseDottypeMod.PubSubPublishResponseType
+import typings.node.globalsMod.global as NodeGlobals
+import typings.undiciTypes.fetchMod.RequestInit
 
 @scala.caps.assumeSafe
 private[internal] final class PublishCapabilityImpl(
@@ -34,7 +42,7 @@ private[internal] final class PublishCapabilityImpl(
     if isFalsyJson(parsed) then rawPublish(scope.sidecar, pubsubName, topic, json, Map.empty)
     else
       val response = JsAwait.await(
-        scope.client.pubsub.publish(pubsubName.value, topic.value, parsed, jsonContentTypeOptions),
+        scope.client.pubsub.publish(pubsubName.value, topic.value, asPublishData(parsed), jsonContentTypeOptions),
       )
       throwIfFailed(response)
 
@@ -48,21 +56,27 @@ private[internal] final class PublishCapabilityImpl(
     // Falsy payloads bypass the SDK — see the publish comment above.
     if isFalsyJson(parsed) then rawPublish(scope.sidecar, pubsubName, topic, json, metadata)
     else
-      val options = new facade.PubSubPublishOptions(contentType = "application/json", metadata = toDict(metadata))
-      val response = JsAwait.await(scope.client.pubsub.publish(pubsubName.value, topic.value, parsed, options))
+      val options = PubSubPublishOptions().setContentType("application/json").setMetadata(toDict(metadata))
+      val response = JsAwait.await(
+        scope.client.pubsub.publish(pubsubName.value, topic.value, asPublishData(parsed), options),
+      )
       throwIfFailed(response)
 
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult =
     // The explicit {entryID, event, contentType} message shape keeps our entry IDs authoritative
-    // (the SDK generates random UUIDs otherwise — utils/Client.util.js getBulkPublishEntries) and
-    // pins application/json per entry for the same scalar-payload reason as publish above.
-    val messages = entries.map { entry =>
-      new facade.PubSubBulkPublishMessage(
-        entryID = entry.entryId.value,
-        event = parseJson(summon[JsonCodec[T]].encode(entry.event)),
-        contentType = "application/json",
-      )
-    }.toJSArray
+    // (the SDK generates random UUIDs otherwise — utils/Client.util.js getBulkPublishEntries; the
+    // explicit form is detected via `"event" in message`) and pins application/json per entry for
+    // the same scalar-payload reason as publish above.
+    // The explicit element-type ascription widens each entry to the SDK's PubSubBulkPublishMessage union
+    // (Explicit | js.Object | String) — js.Array is invariant, so an Array of the Explicit member type alone
+    // would not conform to the publishBulk parameter.
+    val messages = entries
+      .map[PubSubBulkPublishMessage] { entry =>
+        PubSubBulkPublishMessageExplicit(asPublishData(parseJson(summon[JsonCodec[T]].encode(entry.event))))
+          .setEntryID(entry.entryId.value)
+          .setContentType("application/json")
+      }
+      .toJSArray
     val response = JsAwait.await(scope.client.pubsub.publishBulk(pubsubName.value, topic.value, messages))
     val failed = response.failedMessages.toList
     // Whole-request failures must THROW (the JVM twin's bulkPublish throws DaprException there),
@@ -85,12 +99,27 @@ private[internal] final class PublishCapabilityImpl(
 
 @scala.caps.assumeSafe
 private object PublishCapabilityImpl:
-  private val jsonContentTypeOptions = new facade.PubSubPublishOptions(contentType = "application/json")
+  private val jsonContentTypeOptions = PubSubPublishOptions().setContentType("application/json")
 
-  /** `pubsub.publish` soft-fails (`{error}` instead of rejecting — `implementation/Client/HTTPClient/pubsub.js`);
-    * rethrow to mirror the JVM impl, where a failed `publishEvent` throws `DaprException`.
+  /** WHAT: asInstanceOf viewing a parsed JSON value (`js.Any`) as `js.Object`, the SDK's publish-data type.
+    *
+    * WHY: the TypeScript signature (`data?: object | string`) is narrower than the runtime contract — with the explicit
+    * application/json content type, `serializeHttp` JSON.stringify-s '''any''' JS value, and dapr4s must pass JSON
+    * scalar documents (truthy numbers/booleans/strings like `1.5`/`true`/`"hi"`) down this same path. (The String side
+    * of the TS union is not used: it would route scalar documents into the SDK's text/plain inference — see the
+    * `publish` comment.) Only JS-falsy values are excluded (they take the rawPublish bypass).
+    *
+    * WHY SAFE: erased, zero-cost view change; every value here came out of `JSON.parse`, and the SDK's only operation
+    * on it is the single `JSON.stringify` that puts our original document back on the wire.
     */
-  private def throwIfFailed(response: facade.SoftFailureResponse): Unit =
+  private def asPublishData(parsed: js.Any): js.Object =
+    parsed.asInstanceOf[js.Object]
+
+  /** `pubsub.publish` soft-fails (`{error}` instead of rejecting — `implementation/Client/HTTPClient/pubsub.js`, typed
+    * `PubSubPublishResponseType` with an optional `error`); rethrow to mirror the JVM impl, where a failed
+    * `publishEvent` throws `DaprException`.
+    */
+  private def throwIfFailed(response: PubSubPublishResponseType): Unit =
     response.error.toOption.foreach(e => throw js.JavaScriptException(e))
 
   /** Publish over the raw sidecar HTTP API (`POST /v1.0/publish/{pubsub}/{topic}`), bypassing the SDK.
@@ -119,12 +148,8 @@ private object PublishCapabilityImpl:
           .mkString("?", "&", "")
     val base = ActorCapabilityImpl.httpBase(sidecar)
     val url = s"$base/v1.0/publish/${urlSegment(pubsubName.value)}/${urlSegment(topic.value)}$query"
-    val init = new facade.FetchRequestInit(
-      method = "POST",
-      headers = ActorCapabilityImpl.baseHeaders(sidecar),
-      body = json,
-    )
-    val response = JsAwait.await(facade.NodeGlobals.fetch(url, init))
+    val init = RequestInit().setMethod("POST").setHeaders(ActorCapabilityImpl.baseHeaders(sidecar)).setBody(json)
+    val response = JsAwait.await(NodeGlobals.fetch(url, init))
     // Always consume the body (Node fetch keep-alive invariant — see HttpActorContext.postJson).
     val text = JsAwait.await(response.text())
     if response.status >= 400 then throw new RuntimeException(s"Dapr API error ${response.status} at $url: $text")

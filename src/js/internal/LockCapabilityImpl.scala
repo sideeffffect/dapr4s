@@ -14,10 +14,12 @@ private[internal] final class LockCapabilityImpl(
     // expiry.toSeconds truncates to whole seconds — the same rounding the JVM impl applies
     // (`expiry.toSeconds.toInt` into LockRequest).
     val response = JsAwait.await(
-      scope.client.lock.lock(storeName.value, resourceId.value, lockOwner.value, expiry.toSeconds.toInt),
+      scope.client.lock.lock(storeName.value, resourceId.value, lockOwner.value, expiry.toSeconds.toDouble),
     )
-    // Absent `success` → false, mirroring the JVM's `.toOption.exists(_.booleanValue())` null handling.
-    response.success.contains(true)
+    // ScalablyTyped types `success` as a required Boolean; the equality test (rather than trusting the typed read)
+    // keeps the JVM twin's null-handling (`.toOption.exists(_.booleanValue())`): an absent/undefined field at
+    // runtime compares unequal to true and yields false instead of an undefined-as-Boolean read.
+    (response.success: Any) == true
 
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus =
     val response = JsAwait.await(scope.client.lock.unlock(storeName.value, resourceId.value, lockOwner.value))
@@ -26,8 +28,16 @@ private[internal] final class LockCapabilityImpl(
     // to InternalError exactly like the JVM maps LOCK_BELONG_TO_OTHERS (dapr4s's UnlockStatus has
     // no owner-mismatch case); InternalError (3), unknown values, and an absent status (JVM: null
     // response) all collapse to InternalError.
-    response.status.toOption.fold(UnlockStatus.InternalError) {
-      case 0 => UnlockStatus.Success
-      case 1 => UnlockStatus.LockNotFound
-      case _ => UnlockStatus.InternalError
-    }
+    //
+    // The numeric values are PINNED here (`_statusToLockStatus`, implementation/Client/HTTPClient/
+    // lock.js; enum LockStatus, types/lock/UnlockResponse.ts) instead of read off the SDK enum
+    // object like the other status mappings: LockStatus is not re-exported from the `@dapr/dapr`
+    // root, and its deep module (`@dapr/dapr/types/lock/UnlockResponse`) is unresolvable under
+    // Node ESM (ScalablyTyped emits extension-less specifiers; the package has no `exports` map —
+    // see the note in InvokeCapabilityImpl), so referencing the enum object would crash at module
+    // load. The type-tested read keeps unknown/absent shapes on the InternalError path.
+    // Every JS number pattern-matches as Double on Scala.js (see JsInterop.isFalsyJson).
+    (response.status: Any) match
+      case d: Double if d == 0 => UnlockStatus.Success
+      case d: Double if d == 1 => UnlockStatus.LockNotFound
+      case _                   => UnlockStatus.InternalError

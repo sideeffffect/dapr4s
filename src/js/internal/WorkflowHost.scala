@@ -3,9 +3,37 @@ package dapr4s.internal
 
 import dapr4s.*
 import scala.scalajs.js
+import typings.daprDapr.mod.WorkflowRuntime
+import typings.daprDapr.typesWorkflowActivityDottypeMod.TWorkflowActivity
+import typings.daprDapr.typesWorkflowInputOutputDottypeMod.{TInput, TOutput}
+import typings.daprDapr.typesWorkflowWorkflowDottypeMod.TWorkflow
 
 /** Server-side workflow/activity hosting on Scala.js — the JS counterpart of the JVM `DaprAppServer`'s
-  * `WorkflowRuntimeBuilder` block, backed by the SDK's [[facade.WorkflowRuntime]] and the [[WorkflowCoroutine]] bridge.
+  * `WorkflowRuntimeBuilder` block, backed by the SDK's [[WorkflowRuntime]] and the [[WorkflowCoroutine]] bridge.
+  *
+  * ==WorkflowRuntime lifecycle facts (verified in the vendored durabletask sources)==
+  *
+  * `workflow/internal/durabletask/worker/task-hub-grpc-worker.js`:
+  *   - `start()` is async but resolves as soon as the gRPC stub is created — the work-item stream runs detached in the
+  *     background (`internalRunWorker` is deliberately not awaited) and connection errors after the first attempt are
+  *     retried with backoff, so awaiting `start()` does not wait for (or guarantee) sidecar connectivity.
+  *   - `stop()` is async and slow by design: it cancels the work-item stream, polls in-flight work items for up to 30s,
+  *     closes the stub, then sleeps 1s (grpc-node shutdown quirk). It rejects if the worker is not running.
+  *   - Registering with a duplicate name throws synchronously (`registry.js`: "A '<name>' orchestrator already
+  *     exists.").
+  *
+  * The registered workflow function (the SDK's `TWorkflow`) receives the '''public''' SDK `WorkflowContext` wrapper
+  * (WorkflowRuntime.js wraps the inner `RuntimeOrchestrationContext` before invoking the registered function) and the
+  * `JSON.parse`d workflow input (`undefined` when the instance was started without input). Its return value is
+  * `await`ed by the orchestration executor and then duck-typed: anything with a callable `[Symbol.asyncIterator]`
+  * property is driven as an async generator (`worker/orchestration-executor.js`, EXECUTIONSTARTED case) — which is
+  * exactly what [[WorkflowCoroutine]] hands back. (ScalablyTyped types the result as `Generator | TOutput` where
+  * `TOutput = Any`; the coroutine object rides the `Any` arm, and the executor's duck-typing — not the erased TS type —
+  * decides how it is driven.)
+  *
+  * The registered activity callback (`TWorkflowActivity`) receives the SDK's `WorkflowActivityContext` and the
+  * `JSON.parse`d activity input; a returned `js.Promise` is awaited by the activity executor
+  * (`worker/activity-executor.js` `isPromise` check) and the settled value is `JSON.stringify`ed once onto the wire.
   *
   * [[DaprAppServer.startAndBlock]] calls [[start]] exactly when `app.workflows` or `app.activities` is non-empty
   * (mirroring the JVM's "created only if needed" condition) and closes the returned [[WorkflowHost.Handle]] during
@@ -33,8 +61,8 @@ private[internal] object WorkflowHost:
     *
     * `runtime.start()` is awaited before returning to preserve the JVM ordering (`WorkflowRuntimeBuilder` → `rt.start`
     * → HTTP server bind); per the vendored worker it resolves as soon as the gRPC stub exists — the work-item stream
-    * connects in the background with retries (see the [[facade.WorkflowRuntime]] doc), so this does not block on
-    * sidecar availability, same as the JVM's non-blocking `start(false)`.
+    * connects in the background with retries (see the class doc), so this does not block on sidecar availability, same
+    * as the JVM's non-blocking `start(false)`.
     *
     * @param workflows
     *   the [[dapr4s.Workflow]]s to register (under their simple class names, like the JVM)
@@ -54,22 +82,22 @@ private[internal] object WorkflowHost:
       daprCapability: DaprCapability,
       sidecar: SidecarConfig,
   ): Handle =
-    val runtime = new facade.WorkflowRuntime(DaprCapabilityImpl.workflowClientOptions(sidecar))
+    val runtime = new WorkflowRuntime(DaprCapabilityImpl.workflowClientOptions(sidecar))
 
     workflows.foreach { w =>
       // The TWorkflow function: create (NOT run) the coroutine generator for this execution. The executor awaits the
       // returned value, duck-types it as an async generator via Symbol.asyncIterator, and drives it — see the
       // WorkflowCoroutine doc for the full protocol. The closure captures only the @assumeSafe Workflow instance, so
-      // no capture-erasure cast is needed for the SAM conversion to the facade's js.Function2.
-      val fn: js.Function2[facade.SdkWorkflowContext, js.Any, js.Any] =
-        (sdkCtx, input) => new WorkflowCoroutine(w, sdkCtx, input)
+      // no capture-erasure cast is needed for the SAM conversion to the SDK's TWorkflow function type.
+      val fn: TWorkflow = (sdkCtx, input) => new WorkflowCoroutine(w, sdkCtx, JsInterop.asJsAny(input))
       runtime.registerWorkflowWithName(w.getClass.getSimpleName.nn, fn): Unit
     }
 
     // WHAT: asInstanceOf[AnyRef] erasing the DaprCapability's capture set before it is captured by the activity
     // callbacks below (and cast back at the use site in runActivity).
     // WHY: a DaprCapability carries a non-empty CC capture set; capturing it directly in a closure handed to a JS
-    // facade method (whose js.Function2 type cannot carry capture annotations) is rejected by capture checking.
+    // facade method (whose js.Function2-based TWorkflowActivity type cannot carry capture annotations) is rejected
+    // by capture checking.
     // WHY SAFE: the capability lives for the whole server lifetime (the enclosing Dapr.serve scope — startAndBlock
     // never returns normally, and its only exceptional exit, a bind/server failure, stops this workflow runtime
     // before unwinding out of that scope), so every activity invocation happens strictly within its lifetime. This
@@ -84,8 +112,8 @@ private[internal] object WorkflowHost:
       // awaited by the SDK (activity-executor.js isPromise check); a rejection becomes the activity's
       // failureDetails → TASKFAILED → TaskFailedError inside the calling workflow, exactly like a JVM activity
       // exception, so no catch is wanted here.
-      val fn: js.Function2[facade.SdkWorkflowActivityContext, js.Any, js.Any] =
-        (_, input) => js.async(runActivity(a, daprRef, input))
+      val fn: TWorkflowActivity[TInput, TOutput] =
+        (_, input) => js.async(runActivity(a, daprRef, JsInterop.asJsAny(input)))
       runtime.registerActivityWithName(a.activityName, fn): Unit
     }
 
@@ -95,7 +123,7 @@ private[internal] object WorkflowHost:
       private var closed = false
       def close(): Unit =
         // Fire-and-forget by contract: runtime.stop() is async (it drains in-flight work items for up to 30s — see
-        // the facade doc) and close() runs in a signal-listener JS frame where suspension is impossible. The JVM
+        // the class doc) and close() runs in a signal-listener JS frame where suspension is impossible. The JVM
         // hook can block on WorkflowRuntime.close(); here the drain continues in the background while
         // DaprAppServer's bounded shutdown timer decides when the process exits. The rejection handler keeps a
         // failing stop (or a double close racing the drain) from becoming an unhandled rejection, which would kill

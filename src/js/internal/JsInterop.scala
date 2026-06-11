@@ -4,6 +4,8 @@ package dapr4s.internal
 import dapr4s.*
 import scala.scalajs.js
 
+import org.scalablytyped.runtime.StringDictionary
+
 /** JSON/string/error bridging between dapr4s ([[JsonCodec]] works on JSON strings) and the Dapr JS SDK (which works on
   * parsed JS values). The JS analogue of `internal/Json.scala` + `internal/NullOps.scala` on the JVM.
   *
@@ -17,6 +19,20 @@ private[internal] object JsInterop:
 
   /** Parse a dapr4s-encoded JSON string into a JS value to hand to the SDK. */
   def parseJson(json: String): js.Any = js.JSON.parse(json)
+
+  /** View a loosely-typed SDK value as `js.Any` so the `js.JSON` API accepts it.
+    *
+    * WHAT: `asInstanceOf[js.Any]` on a `scala.Any`-typed value.
+    *
+    * WHY: the ScalablyTyped facades model TypeScript `any` as `scala.Any` and TS unions as Scala 3 unions (e.g.
+    * `state.get`'s `KeyValueType | String`); neither conforms to `js.Any`, which `js.JSON.stringify` requires — even
+    * though the runtime value behind them is always a plain JavaScript value.
+    *
+    * WHY SAFE: every value passed here is read off a `typings.*` API, i.e. produced by JavaScript code, so it IS a
+    * JavaScript value at runtime. The cast is a compile-time view change only (`asInstanceOf` to a JS type is unchecked
+    * and erased) and cannot fail or change the value.
+    */
+  def asJsAny(v: Any): js.Any = v.asInstanceOf[js.Any]
 
   /** True when a parsed JSON document is a JS-'''falsy''' value: `null`, `false`, `0` (incl. `-0`), or `""`. (Empty
     * objects/arrays are truthy in JS and correctly excluded; `undefined` is checked defensively even though
@@ -53,18 +69,24 @@ private[internal] object JsInterop:
 
   /** True when the SDK response denotes "no payload": `undefined`, `null`, or the empty string (the `tryParseJson`
     * artifact for an empty HTTP body — which, see [[jsonStringOrNull]], also swallows a response document that is the
-    * JSON empty string `""`).
+    * JSON empty string `""`). Takes `scala.Any` so the ScalablyTyped response types (TS `any` → `scala.Any`, TS unions
+    * → Scala unions) can be tested without a cast — every check below is JS-value-agnostic.
     */
-  def isAbsent(v: js.Any): Boolean =
-    js.isUndefined(v) || (v == null) || ((v: Any) match
+  def isAbsent(v: Any): Boolean =
+    js.isUndefined(v) || (v == null) || (v match
       case s: String => s.isEmpty
       case _         => false)
 
-  /** dapr4s metadata map → the `KeyValueType` string dictionary the SDK options take. */
-  def toDict(metadata: Map[MetadataKey, MetadataValue]): js.Dictionary[String] =
-    val d = js.Dictionary.empty[String]
-    metadata.foreach { case (k, v) => d(k.value) = v.value }
-    d
+  /** dapr4s metadata map → the string dictionary the ScalablyTyped SDK options take.
+    *
+    * The element type is generic because the generated facades want two shapes for what is one runtime concept:
+    * `KeyValueType = StringDictionary[Any]` (pub/sub options, configuration metadata, invoker headers) and
+    * `IRequestMetadata = StringDictionary[String]` (state-save metadata). `StringDictionary` is invariant, so the
+    * expected type at the call site selects `V`; the runtime object is the same plain string-valued JS object either
+    * way.
+    */
+  def toDict[V >: String](metadata: Map[MetadataKey, MetadataValue]): StringDictionary[V] =
+    StringDictionary(metadata.toSeq.map { case (k, v) => k.value -> (v.value: V) }*)
 
   /** A parsed SDK HTTP API failure.
     *

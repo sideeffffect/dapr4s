@@ -3,7 +3,8 @@ package dapr4s.internal
 
 import dapr4s.*
 import java.net.URI
-import scala.scalajs.js
+import typings.daprDapr.anon.{PartialDaprClientOptions, PartialWorkflowClientOpti}
+import typings.daprDapr.mod.{CommunicationProtocolEnum, DaprClient, DaprWorkflowClient}
 
 /** Lazily-created-client holder, the JS twin of the `AtomicReference[Client]` pattern in the JVM `Dapr.run` /
   * `DaprCapabilityImpl`: [[dapr4s.Dapr.run]] owns the holder, [[DaprCapabilityImpl]] populates it on first use, and
@@ -33,23 +34,23 @@ private[dapr4s] final class LazyClientRef[A]:
 /** Concrete implementation of [[dapr4s.DaprCapability]] backed by the Dapr JS SDK (`@dapr/dapr`) — the Scala.js twin
   * of the JVM `DaprCapabilityImpl`.
   *
-  * All interaction with the JS SDK is confined to this file, the individual `*CapabilityImpl` classes, and the
-  * facades in `dapr4s.internal.facade`. No JS types are visible in the public API.
+  * All interaction with the JS SDK is confined to this file and the individual `*CapabilityImpl` classes, through the
+  * ScalablyTyped-generated `typings.daprDapr` facades (see js-deps.scala). No JS types are visible in the public API.
   *
-  * Lifecycle: [[dapr4s.Dapr.run]] owns all three clients; it creates the HTTP-protocol [[facade.DaprClient]] and the
-  * two lazy refs, passes them here, and stops them in its `finally` block. The gRPC client (configuration and crypto
-  * are gRPC-only in the JS SDK) and the [[facade.DaprWorkflowClient]] (gRPC, vendored durabletask) are created on
-  * first use via [[LazyClientRef.getOrCreate]], so `run` can close only what was actually created.
+  * Lifecycle: [[dapr4s.Dapr.run]] owns all three clients; it creates the HTTP-protocol [[DaprClient]] and the two
+  * lazy refs, passes them here, and stops them in its `finally` block. The gRPC client (configuration and crypto are
+  * gRPC-only in the JS SDK) and the [[DaprWorkflowClient]] (gRPC, vendored durabletask) are created on first use via
+  * [[LazyClientRef.getOrCreate]], so `run` can close only what was actually created.
   *
   * Marked `@scala.caps.assumeSafe` so that safe-mode user code can use [[DaprCapability]] (implemented by this class)
   * through the trait interface.
   */
 @scala.caps.assumeSafe
 private[dapr4s] final class DaprCapabilityImpl(
-    private[internal] val client: facade.DaprClient,
+    private[internal] val client: DaprClient,
     private[internal] val sidecar: SidecarConfig,
-    private val grpcClientRef: LazyClientRef[facade.DaprClient],
-    private val workflowClientRef: LazyClientRef[facade.DaprWorkflowClient],
+    private val grpcClientRef: LazyClientRef[DaprClient],
+    private val workflowClientRef: LazyClientRef[DaprWorkflowClient],
 ) extends DaprCapability:
 
   import DaprCapabilityImpl.*
@@ -57,8 +58,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   /** The gRPC-protocol client, created on first use — required by `configuration` and `crypto`, whose HTTP
     * implementations in the JS SDK throw `HTTPNotSupportedError`.
     */
-  private[internal] def grpcClient: facade.DaprClient =
-    grpcClientRef.getOrCreate(() => new facade.DaprClient(grpcClientOptions(sidecar)))
+  private[internal] def grpcClient: DaprClient =
+    grpcClientRef.getOrCreate(() => new DaprClient(grpcClientOptions(sidecar)))
 
   // WHY ^{this}: sub-capabilities extend ExclusiveCapability, so CC infers ^{fresh} for new
   // instances. The trait declares ^{this} to prevent sub-capabilities from outliving `this`.
@@ -90,7 +91,7 @@ private[dapr4s] final class DaprCapabilityImpl(
     new ActorCapabilityImpl(actorType, actorId, sidecar).asInstanceOf[ActorCapability]
 
   def workflow: WorkflowCapability^{this} =
-    val wc = workflowClientRef.getOrCreate(() => new facade.DaprWorkflowClient(workflowClientOptions(sidecar)))
+    val wc = workflowClientRef.getOrCreate(() => new DaprWorkflowClient(workflowClientOptions(sidecar)))
     new WorkflowCapabilityImpl(wc).asInstanceOf[WorkflowCapability]
 
   def crypto(componentName: CryptoComponentName): CryptoCapability^{this} =
@@ -145,9 +146,6 @@ private[dapr4s] object DaprCapabilityImpl:
     val hostPart = if scheme.isEmpty then host else s"$scheme://$host"
     (hostPart, port.toString)
 
-  private def undefOr[A](o: Option[A]): js.UndefOr[A] =
-    o.fold[js.UndefOr[A]](js.undefined)(a => a)
-
   /** Options for the default HTTP-protocol client, from `SidecarConfig.httpEndpoint`.
     *
     * Only the knobs the JS SDK exposes are mapped: endpoint, API token, and max body size (from
@@ -155,32 +153,30 @@ private[dapr4s] object DaprCapabilityImpl:
     * The remaining `SidecarConfig` fields are OkHttp/gRPC-Java transport settings with no JS equivalent and are
     * ignored here (documented on [[dapr4s.Dapr]]).
     */
-  private[dapr4s] def httpClientOptions(sc: SidecarConfig): facade.DaprClientOptions =
+  private[dapr4s] def httpClientOptions(sc: SidecarConfig): PartialDaprClientOptions =
     val (host, port) = hostAndPort(sc.httpEndpoint, forGrpc = false)
-    new facade.DaprClientOptions(
-      daprHost = host,
-      daprPort = port,
-      communicationProtocol = facade.CommunicationProtocolEnum.HTTP,
-      daprApiToken = undefOr(sc.apiToken.map(_.value)),
-      maxBodySizeMb = sc.grpcMaxInboundMessageSizeBytes.toDouble / (1024 * 1024),
-    )
+    val options = PartialDaprClientOptions()
+      .setDaprHost(host)
+      .setDaprPort(port)
+      .setCommunicationProtocol(CommunicationProtocolEnum.HTTP)
+      .setMaxBodySizeMb(sc.grpcMaxInboundMessageSizeBytes.toDouble / (1024 * 1024))
+    sc.apiToken.foreach(t => options.setDaprApiToken(t.value): Unit)
+    options
 
   /** Options for the lazy gRPC-protocol client, from `SidecarConfig.grpcEndpoint`. */
-  private[internal] def grpcClientOptions(sc: SidecarConfig): facade.DaprClientOptions =
+  private[internal] def grpcClientOptions(sc: SidecarConfig): PartialDaprClientOptions =
     val (host, port) = hostAndPort(sc.grpcEndpoint, forGrpc = true)
-    new facade.DaprClientOptions(
-      daprHost = host,
-      daprPort = port,
-      communicationProtocol = facade.CommunicationProtocolEnum.GRPC,
-      daprApiToken = undefOr(sc.apiToken.map(_.value)),
-      maxBodySizeMb = sc.grpcMaxInboundMessageSizeBytes.toDouble / (1024 * 1024),
-    )
+    val options = PartialDaprClientOptions()
+      .setDaprHost(host)
+      .setDaprPort(port)
+      .setCommunicationProtocol(CommunicationProtocolEnum.GRPC)
+      .setMaxBodySizeMb(sc.grpcMaxInboundMessageSizeBytes.toDouble / (1024 * 1024))
+    sc.apiToken.foreach(t => options.setDaprApiToken(t.value): Unit)
+    options
 
   /** Options for the lazy workflow client (gRPC, vendored durabletask), from `SidecarConfig.grpcEndpoint`. */
-  private[internal] def workflowClientOptions(sc: SidecarConfig): facade.WorkflowClientOptions =
+  private[internal] def workflowClientOptions(sc: SidecarConfig): PartialWorkflowClientOpti =
     val (host, port) = hostAndPort(sc.grpcEndpoint, forGrpc = true)
-    new facade.WorkflowClientOptions(
-      daprHost = host,
-      daprPort = port,
-      daprApiToken = undefOr(sc.apiToken.map(_.value)),
-    )
+    val options = PartialWorkflowClientOpti().setDaprHost(host).setDaprPort(port)
+    sc.apiToken.foreach(t => options.setDaprApiToken(t.value): Unit)
+    options

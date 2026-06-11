@@ -5,26 +5,34 @@ import dapr4s.*
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
 import JsInterop.parseJson
+// The status TYPE comes from the deep module (types are erased — no import is emitted), but the
+// VALUES are read off the "@dapr/dapr" root re-export: ScalablyTyped's deep-module specifiers
+// are unresolvable under Node ESM — see the note in InvokeCapabilityImpl.
+import typings.daprDapr.mod.{DaprWorkflowClient, WorkflowRuntimeStatus as SdkStatuses}
+import typings.daprDapr.workflowClientWorkflowStateMod.WorkflowState
+import typings.daprDapr.workflowRuntimeWorkflowRuntimeStatusMod.WorkflowRuntimeStatus
 
 @scala.caps.assumeSafe
 private[internal] final class WorkflowCapabilityImpl(
-    private val client: facade.DaprWorkflowClient,
+    private val client: DaprWorkflowClient,
 ) extends WorkflowCapability:
 
   import WorkflowCapabilityImpl.*
 
   def start(name: WorkflowName): WorkflowInstanceId =
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, js.undefined, js.undefined)))
+    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value)))
 
   // Workflow inputs are passed as PARSED JS values: the vendored durabletask client JSON.stringify-s
   // the input (client.js scheduleNewOrchestration), producing single-encoded JSON on the wire —
   // the same as the JVM impl, which passes a parsed Jackson JsonNode for its serializer to encode once.
   def start[I: JsonCodec](name: WorkflowName, input: I): WorkflowInstanceId =
     val value = parseJson(summon[JsonCodec[I]].encode(input))
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value, js.undefined)))
+    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value)))
 
   def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId =
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, js.undefined, instanceId.value)))
+    // The `input: Unit` overload passes `undefined` for the input slot, exactly like the hand
+    // facade's js.undefined — the vendored client then schedules the instance without an input.
+    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, (), instanceId.value)))
 
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
     val value = parseJson(summon[JsonCodec[I]].encode(input))
@@ -95,7 +103,7 @@ private object WorkflowCapabilityImpl:
     error.message == "TimeoutError" ||
       error.asInstanceOf[js.Dynamic].selectDynamic("constructor").selectDynamic("name").toString == "TimeoutError"
 
-  private def toSnapshot(state: facade.WorkflowState): WorkflowSnapshot =
+  private def toSnapshot(state: WorkflowState): WorkflowSnapshot =
     WorkflowSnapshot(
       name = WorkflowName(state.name),
       instanceId = WorkflowInstanceId(state.instanceId),
@@ -109,15 +117,15 @@ private object WorkflowCapabilityImpl:
   /** Numeric `WorkflowRuntimeStatus` → [[WorkflowStatus]], mirroring the JVM impl's mapping. The JS enum has no
     * CANCELED member (the JVM maps CANCELED → Canceled; a cancelled-status protobuf value would crash inside the JS
     * SDK's own `fromOrchestrationStatus` before reaching us), and unknown values fall back to Pending exactly like the
-    * JVM maps a `null` status.
+    * JVM maps a `null` status. The comparisons read the values off the real SDK enum object (ScalablyTyped imports them
+    * from the SDK module), so a renumbering upstream cannot silently corrupt the mapping.
     */
-  private def toStatus(rs: Int): WorkflowStatus =
-    rs match
-      case facade.WorkflowRuntimeStatus.RUNNING          => WorkflowStatus.Running
-      case facade.WorkflowRuntimeStatus.COMPLETED        => WorkflowStatus.Completed
-      case facade.WorkflowRuntimeStatus.CONTINUED_AS_NEW => WorkflowStatus.ContinuedAsNew
-      case facade.WorkflowRuntimeStatus.FAILED           => WorkflowStatus.Failed
-      case facade.WorkflowRuntimeStatus.TERMINATED       => WorkflowStatus.Terminated
-      case facade.WorkflowRuntimeStatus.PENDING          => WorkflowStatus.Pending
-      case facade.WorkflowRuntimeStatus.SUSPENDED        => WorkflowStatus.Suspended
-      case _                                             => WorkflowStatus.Pending
+  private def toStatus(rs: WorkflowRuntimeStatus): WorkflowStatus =
+    if rs == SdkStatuses.RUNNING then WorkflowStatus.Running
+    else if rs == SdkStatuses.COMPLETED then WorkflowStatus.Completed
+    else if rs == SdkStatuses.CONTINUED_AS_NEW then WorkflowStatus.ContinuedAsNew
+    else if rs == SdkStatuses.FAILED then WorkflowStatus.Failed
+    else if rs == SdkStatuses.TERMINATED then WorkflowStatus.Terminated
+    else if rs == SdkStatuses.PENDING then WorkflowStatus.Pending
+    else if rs == SdkStatuses.SUSPENDED then WorkflowStatus.Suspended
+    else WorkflowStatus.Pending

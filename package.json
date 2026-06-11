@@ -1,9 +1,14 @@
 {
   "name": "dapr4s",
   "private": true,
-  "description": "npm dependency manifest for the dapr4s Scala.js layer — the facades in src/internal/js/facade/ are verified against exactly this @dapr/dapr version (TypeScript types are erased at runtime, so a floating range could drift undetected)",
+  "description": "npm dependency manifest for the dapr4s Scala.js layer — the ScalablyTyped-generated facades (scripts/generate-st-facades.sh, consumed via js-deps.scala) are converted from exactly these versions, and the runtime loads exactly these modules (TypeScript types are erased at runtime, so a floating range could drift undetected). @types/express and @types/node must be top-level dependencies (not devDependencies) or the converter skips them; typescript is required by the converter itself.",
   "license": "Apache-2.0",
   "dependencies": {
-    "@dapr/dapr": "3.18.0"
+    "@dapr/dapr": "3.18.0",
+    "@types/express": "4.17.21",
+    "@types/node": "22.13.0"
+  },
+  "devDependencies": {
+    "typescript": "5.7.3"
   }
 }

@@ -32,6 +32,9 @@ Both must stay in sync with the code at all times.
   - `scala-cli test --js .`
   Platform-specific sources carry per-file `//> using target.platform "jvm"`/`"scala-js"`
   directives. `//> using jsEsVersionStr "es2017"` is required by `js.async`/`js.await`.
+  **JS build prerequisite**: the ScalablyTyped facade jars referenced by `js-deps.scala` live only
+  in the local ivy repository — run `scripts/generate-st-facades.sh` once per machine (and again
+  whenever the pinned digests change) before the first `--js` build, or resolution fails.
 - **Build tool**: Scala CLI (`project.scala` using directives). **scala-cli >= 1.13.0 is required
   for the Scala.js build** (munit 1.3.0 JS needs Scala.js IR 1.21). Run tests with
   `scala-cli test . --test-only "*unit*"` for unit tests.
@@ -48,8 +51,10 @@ Both must stay in sync with the code at all times.
   both testcontainers deps are `test.dep` only — they are not part of the published library.)
   Cross deps use the `::version` (double-colon) form; `scala-java-time` provides `java.time` on
   Scala.js (a thin JDK shim on the JVM). JVM-only deps (Dapr Java SDK, testcontainers) live in
-  `jvm-deps.scala`, not `project.scala`. The JS layer's npm dep (`@dapr/dapr`) is declared in
-  `package.json`.
+  `jvm-deps.scala`, not `project.scala`. The JS layer's npm deps (`@dapr/dapr`, `@types/express`,
+  `@types/node`, `typescript`) are declared in `package.json` (with `package-lock.json` committed —
+  the ScalablyTyped digests are deterministic in it); the generated facade jars are declared in
+  `js-deps.scala`.
 
 ---
 
@@ -179,32 +184,60 @@ behind the same boundary:
 - `src/internal/` (excluding the `js/` subdirectory, all jvm-tagged) is the **JVM wall**: the only
   place Java SDK types may appear. Nothing from the Java SDK (`Mono`, `DaprClient`, `GrpcChannel`,
   proto classes, etc.) may appear in `src/` files outside `internal/` or in any test file.
-- `src/internal/js/` (all js-tagged, same package `dapr4s.internal`) is the **JS wall**: the only
-  place `@dapr/dapr` (and express/Node) types may appear. The `@js.native` facades live in
-  `dapr4s.internal.facade` (`src/internal/js/facade/`). No `js.Promise`, facade type, or other JS
-  interop type may leak into the public API. Two deliberate carve-outs mirror the JVM side (where
-  `src/jvm/Dapr.scala` constructs Java SDK clients): the platform `Dapr` entry points
-  (`src/jvm/Dapr.scala`, `src/js/Dapr.scala`) may construct SDK clients/facades to hand to the
-  internal layer, and the JS-only `runAsync`/`serveAsync` conveniences intentionally return
-  `js.Promise` at the program edge — no other public member may.
+- `src/js/internal/` (all js-tagged, same package `dapr4s.internal`) is the **JS wall**: the only
+  place `@dapr/dapr` (and express/Node) types may appear. Those types are the
+  **ScalablyTyped-generated facades** (`typings.daprDapr`, `typings.expressServeStaticCore`,
+  `typings.node`, ... — see js-deps.scala), plus the single surviving hand-written shim in
+  `dapr4s.internal.facade` (`src/js/internal/facade/ExpressModule.scala`). No `js.Promise`,
+  `typings.*` type, or other JS interop type may leak into the public API. Two deliberate
+  carve-outs mirror the JVM side (where `src/jvm/Dapr.scala` constructs Java SDK clients): the
+  platform `Dapr` entry points (`src/jvm/Dapr.scala`, `src/js/Dapr.scala`) may construct SDK
+  clients to hand to the internal layer, and the JS-only `runAsync`/`serveAsync` conveniences
+  intentionally return `js.Promise` at the program edge — no other public member may.
 
 The `@assumeSafe` boundary is the wall on both platforms — same rule, same documentation duty
 (WHAT/WHY/WHY SAFE on every escape hatch).
 
 ### Scala.js layer rules
 
-- **Orphan `js.await` ONLY via `JsAwait`** (`src/internal/js/JsAwait.scala`) — the single home of
+- **Orphan `js.await` ONLY via `JsAwait`** (`src/js/internal/JsAwait.scala`) — the single home of
   the `scala.scalajs.js.wasm.JSPI.allowOrphanJSAwait` import. Never import it anywhere else.
 - **Every callback invoked from a JS frame re-enters `js.async`** before touching dapr4s code
   (express handlers, SDK activity executors, promise reactions). JSPI suspension cannot cross a
   JavaScript stack frame — skipping this throws `WebAssembly.SuspendError` at runtime.
-- **SDK signatures are verified against `node_modules` sources, never guessed.** The TypeScript
-  interfaces are erased; read the installed `@dapr/dapr`/`express` JS sources (and record findings
-  in `wiki/dapr/dapr-js-sdk.md`).
-- Facade gotchas: **ports are strings** everywhere in the JS SDK; **`CommunicationProtocolEnum` is
-  numeric with `GRPC = 0`, `HTTP = 1`** — a facade defaulting to 0 silently picks gRPC.
-  `HttpMethod` values are lowercase strings. Options objects are `Partial<...>` — model them as
-  non-native `js.Object` traits/classes with `js.UndefOr` fields.
+- **Facades are ScalablyTyped-generated**, not hand-written. `scripts/generate-st-facades.sh`
+  converts the npm packages pinned in `package.json` into `typings.*` jars in `~/.ivy2/local`
+  (run it once per machine; idempotent, fast skip when the jars exist). `js-deps.scala` pins the
+  resulting `org.scalablytyped::<name>::<npmVersion>-<digest>` coordinates; the digests are
+  deterministic in (package-lock.json, converter version, converter flags), and the script and
+  `js-deps.scala` must name the same digests — the script fails loudly on drift. The converter
+  tuple (version `1.0.0-beta45`, `--scala 3.3.6 --scalajs 1.21.0 -s es2022`) is THE pin: changing
+  any element changes the digests. The ST jars are precompiled with their own flags, so our
+  `-Wconf:any:error`/CC flags do not apply to them — but OUR code must still compile with zero
+  warnings, and explicit-nulls means ST results must NOT be `.nn`-ed (it is an error: unnecessary
+  `.nn`).
+- **The one hand-written exception**: `src/js/internal/facade/ExpressModule.scala`, the express
+  default-import shim (ST's namespace-import entry point is not callable under Node ESM, and
+  `express.text` lost its type to a converter warning). Anything else ST genuinely cannot express
+  must live there too, justified in its header; everything else uses `typings.*` directly.
+- **The ST types ARE the signatures; verify runtime behaviour against `node_modules` sources.**
+  TypeScript types are erased — and occasionally wrong (`SubscribeConfigurationStream.stop()`
+  returns a Promise despite `: void`; transaction etags go on the wire as plain strings despite
+  `IEtag = {value}`) — so behavioural claims (soft-failure shapes, falsy-body bugs, enum wire
+  values) still come from reading the installed `@dapr/dapr`/`express` JS sources (record findings
+  in `wiki/dapr/dapr-js-sdk.md`). Where the ST type and the verified runtime diverge, keep the
+  runtime behaviour and document the divergence at the cast (WHAT/WHY/WHY SAFE).
+- **Never reference a deep-module ST object in value position for `@dapr/dapr`.** ScalablyTyped's
+  deep-module specifiers (e.g. `@dapr/dapr/enum/HttpMethod.enum`) carry no `.js` extension and the
+  package has no `exports` map, so Node ESM (the Wasm/JSPI production target) throws
+  `ERR_MODULE_NOT_FOUND` at load time. Deep **types** are fine (erased, no import emitted); for
+  **values** use the `typings.daprDapr.mod.*` root re-exports, and where none exists (e.g.
+  `LockStatus`) pin the runtime values with a documented source reference. Runtime-verified by the
+  e2e smoke run — compile-green is not enough to catch this.
+- SDK gotchas (still true under ST): **ports are strings** everywhere in the JS SDK;
+  **`CommunicationProtocolEnum` is numeric with `GRPC = 0`, `HTTP = 1`** — defaulting to 0
+  silently picks gRPC. `HttpMethod` values are lowercase strings. Options objects are
+  `Partial<...>` — ST renders them as builder-style traits (`PartialDaprClientOptions().setX(...)`).
 
 ---
 

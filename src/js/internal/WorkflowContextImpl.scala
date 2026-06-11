@@ -5,9 +5,17 @@ import dapr4s.*
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
 import unsafeExceptions.canThrowAny
+import typings.daprDapr.workflowInternalDurabletaskTaskTaskMod.Task as SdkTask
+import typings.daprDapr.workflowRuntimeWorkflowContextMod.WorkflowContext as SdkWorkflowContext
+import typings.node.cryptoMod
 
 /** dapr4s [[dapr4s.Task]] over an SDK task + a pure decode step — the Scala.js twin of the JVM `TaskJson`/`TaskUnit`
   * pair, unified because on JS every decode starts from the same `js.Any` the coroutine handshake delivers.
+  *
+  * The SDK task is held with a wildcard element type (`SdkTask[?]`): the orchestration executor only cares about the
+  * task '''object''' (its `instanceof Task` check and completion bookkeeping), while its element type varies by
+  * producer (`Task[Any]` from `callActivity`/`createTimer`, the composite `WhenAnyTask <: Task[Task[Any]]` from
+  * `whenAny`) — the decode step, not the task's type parameter, is what types the result.
   *
   * [[await]] hands the underlying SDK task to the orchestration executor through [[WorkflowCoroutine.exchange]] and
   * decodes whatever value the executor feeds back. During replay the executor feeds already-completed results
@@ -18,12 +26,12 @@ import unsafeExceptions.canThrowAny
   *   - a failed task surfaces from `await()` as `js.JavaScriptException(TaskFailedError)` (the JS SDK's failure type),
   *     where the JVM throws `io.dapr.durabletask.TaskFailedException` — both are `RuntimeException`s matched by
   *     `NonFatal`, but the concrete type is necessarily platform-specific (the Java SDK types do not exist on JS);
-  *   - [[isCancelled]] is always `false`: the vendored JS task model has no cancellation state (see the
-  *     [[facade.SdkTask]] doc), whereas the JVM SDK cancels e.g. timed-out external-event tasks.
+  *   - [[isCancelled]] is always `false`: the vendored JS task model has no cancellation state (no `isCancelled`
+  *     member exists on the SDK `Task`), whereas the JVM SDK cancels e.g. timed-out external-event tasks.
   */
 @scala.caps.assumeSafe
 private[internal] final class TaskImpl[+O](
-    private val sdkTask: facade.SdkTask,
+    private val sdkTask: SdkTask[?],
     private val coroutine: WorkflowCoroutine,
     // WHAT: the decode step stored capture-erased as AnyRef and cast back in await().
     // WHY: its honest type mentions the boxed type parameter O, so CC manufactures a fresh reach
@@ -55,7 +63,9 @@ private[internal] final class TaskMap[O1, +O](
 
 /** Implements the dapr4s [[dapr4s.WorkflowContext]] over the SDK's public workflow context + the
   * [[WorkflowCoroutine]] handshake — the Scala.js twin of the JVM `WorkflowContextImpl`, same contract method for
-  * method.
+  * method. (The SDK context/task types are the ScalablyTyped-generated ones, imported under `Sdk*` aliases because
+  * their natural names collide with the dapr4s public types `WorkflowContext`/`Task` that this very file must also
+  * reference.)
   *
   * ==Wire format (kept byte-identical to the JVM)==
   *
@@ -72,7 +82,7 @@ private[internal] final class TaskMap[O1, +O](
   */
 @scala.caps.assumeSafe
 private[internal] final class WorkflowContextImpl(
-    private val ctx: facade.SdkWorkflowContext,
+    private val ctx: SdkWorkflowContext,
     private val coroutine: WorkflowCoroutine,
     private val input: js.Any,
 ) extends WorkflowContext:
@@ -119,7 +129,7 @@ private[internal] final class WorkflowContextImpl(
   /** Construct a [[TaskImpl]], erasing the decode step's capture set into the AnyRef slot — see the `decodeRef`
     * comment on [[TaskImpl]] for the WHAT/WHY/WHY-SAFE of the erasure.
     */
-  private def mkTask[O](sdkTask: facade.SdkTask, decode: js.Any => O): TaskImpl[O] =
+  private def mkTask[O](sdkTask: SdkTask[?], decode: js.Any => O): TaskImpl[O] =
     new TaskImpl(sdkTask, coroutine, decode.asInstanceOf[AnyRef])
 
   def createTimer(duration: FiniteDuration): Task[Unit]^{this} =
@@ -149,7 +159,7 @@ private[internal] final class WorkflowContextImpl(
           throw new java.util.concurrent.TimeoutException(
             s"external event '$eventName' was not raised within $timeout",
           )
-        else decodeEvent(eventTask.getResult()),
+        else decodeEvent(JsInterop.asJsAny(eventTask.getResult())),
     )
 
   def waitForExternalEvent[T: JsonCodec](name: EventName): Task[T]^{this} =
@@ -217,12 +227,15 @@ private[internal] object WorkflowContextImpl:
   /** Fixed v5 namespace — the same one the Java SDK uses (`TaskOrchestrationExecutor.newUuid`). */
   private val UuidNamespace = "9e952958-5e33-4daf-827f-2fa12937b875"
 
-  /** RFC 4122 §4.3 name-based UUID: SHA-1 over namespace + name (via Node's `crypto`, since the Scala.js javalib has
-    * no `MessageDigest`), truncated to 128 bits with the version (5) and variant bits patched in — the same bit
-    * surgery as the Java SDK's `UuidGenerator.generate`.
+  /** RFC 4122 §4.3 name-based UUID: SHA-1 over namespace + name (via Node's `crypto`, typed by the ScalablyTyped
+    * `@types/node` conversion, since the Scala.js javalib has no `MessageDigest`), truncated to 128 bits with the
+    * version (5) and variant bits patched in — the same bit surgery as the Java SDK's `UuidGenerator.generate`.
     */
   private def deterministicUuidV5(name: String): java.util.UUID =
-    val hex = facade.NodeCrypto.createHash("sha1").update(s"$UuidNamespace-$name", "utf8").digest("hex")
+    val hex = cryptoMod
+      .createHash("sha1")
+      .update(s"$UuidNamespace-$name", cryptoMod.Encoding.utf8)
+      .digest(cryptoMod.BinaryToTextEncoding.hex)
     val msb = (java.lang.Long.parseUnsignedLong(hex.substring(0, 16), 16) & 0xffffffffffff0fffL) | (5L << 12)
     val lsb = (java.lang.Long.parseUnsignedLong(hex.substring(16, 32), 16) & 0x3fffffffffffffffL) |
       java.lang.Long.MIN_VALUE // the RFC variant bit pattern 10xx…: 0x8000000000000000

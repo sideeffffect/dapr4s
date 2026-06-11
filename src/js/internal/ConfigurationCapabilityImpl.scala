@@ -6,6 +6,9 @@ import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import scala.util.control.NonFatal
 import JsInterop.*
+import typings.daprDapr.typesConfigurationConfigurationItemMod.ConfigurationItem as SdkConfigurationItem
+import typings.daprDapr.typesConfigurationSubscribeConfigurationCallbackMod.SubscribeConfigurationCallback
+import typings.daprDapr.typesConfigurationSubscribeConfigurationResponseMod.SubscribeConfigurationResponse
 
 @scala.caps.assumeSafe
 private[internal] final class ConfigurationCapabilityImpl(
@@ -36,8 +39,8 @@ private[internal] final class ConfigurationCapabilityImpl(
     // WebAssembly.SuspendError because no dynamically enclosing js.async would be reachable
     // without an intervening JS frame. The js.Promise the async block returns is exactly what the
     // SDK's `await cb(...)` contract expects.
-    val callback: js.Function1[facade.SubscribeConfigurationResponse, js.Promise[Unit]]^{this, onChange} =
-      (response: facade.SubscribeConfigurationResponse) =>
+    val callback: js.Function1[SubscribeConfigurationResponse, js.Promise[Unit]]^{this, onChange} =
+      (response: SubscribeConfigurationResponse) =>
         js.async {
           val items = response.items.iterator.map { case (k, item) => ConfigurationKey(k) -> toConfigItem(k, item) }.toMap
           try onChange(ConfigurationUpdate(ConfigurationStoreName(storeNameStr), items))
@@ -49,9 +52,10 @@ private[internal] final class ConfigurationCapabilityImpl(
               js.Dynamic.global.console.warn(s"Config subscription onChange callback threw: $e"): Unit
         }
     // WHAT: asInstanceOf erasing the callback's capture set ({this, onChange}).
-    // WHY: js.Function1 is a Scala-defined SAM, so CC tracks the closure's captures, but the facade
-    // signature mirrors the SDK's TypeScript callback type, which is necessarily capture-free — a JS
-    // interop boundary cannot carry capture annotations.
+    // WHY: js.Function1 is a Scala-defined SAM, so CC tracks the closure's captures, but the SDK's
+    // SubscribeConfigurationCallback type (a ScalablyTyped alias of the same js.Function1 shape) mirrors the
+    // TypeScript callback type, which is necessarily capture-free — a JS interop boundary cannot carry capture
+    // annotations.
     // WHY SAFE: the callback cannot outlive the capabilities it captures: it only runs while the
     // SDK's stream loop is alive, the loop is torn down by stream.stop() (wired into the returned
     // AutoCloseable), and that handle is itself ^{this}-bound so capture checking already prevents
@@ -62,22 +66,46 @@ private[internal] final class ConfigurationCapabilityImpl(
         storeNameStr,
         keys.map(_.value).toJSArray,
         toDict(metadata),
-        callback.asInstanceOf[js.Function1[facade.SubscribeConfigurationResponse, js.Promise[Unit]]],
+        callback.asInstanceOf[SubscribeConfigurationCallback],
       ),
     )
-    // stop() is async (it aborts the stream and sends the explicit unsubscribe RPC); awaiting it
-    // makes close() synchronous like the JVM's `() => sub.dispose()`.
-    () => JsAwait.await(stream.stop())
+    // stop() is async at runtime (an async arrow that aborts the stream and sends the explicit
+    // unsubscribe RPC) even though the SDK's TypeScript interface — and therefore the ScalablyTyped
+    // signature — says `stop(): void`. Awaiting the recovered promise makes close() synchronous
+    // like the JVM's `() => sub.dispose()`.
+    //
+    // WHAT: js.Dynamic call of stop() + asInstanceOf[js.Promise[Unit]] on its result.
+    // WHY: the ST-typed `stream.stop(): Unit` would discard the promise, so close() could return
+    // before the unsubscribe RPC went out — a behaviour change from the hand-verified facade
+    // (SubscribeConfigurationStream.stop is `stop = async () => {...}` in
+    // implementation/Client/GRPCClient/configuration.js; the TS interface under-promises).
+    // WHY SAFE: the runtime return value IS a Promise (verified in the SDK sources above); the
+    // dynamic call invokes the same member the typed call would, and the cast is the standard
+    // erased view of a known JS value.
+    () => JsAwait.await(stream.asInstanceOf[js.Dynamic].applyDynamic("stop")().asInstanceOf[js.Promise[Unit]])
 
 @scala.caps.assumeSafe
 private object ConfigurationCapabilityImpl:
 
-  private def toConfigItem(k: String, item: facade.ConfigurationItemJs): ConfigurationItem =
+  /** Build the dapr4s item from the SDK's `ConfigurationItem` (`createConfigurationType`, `utils/Client.util.js`).
+    *
+    * ScalablyTyped types `value`/`version`/`metadata` as required (the TS interface says so), but the reads below
+    * stay defensive type-tests: the values cross a JS boundary where proto3 string defaults make them `""` in
+    * practice, and an absent field must degrade to `""`/empty exactly like the JVM impl treats `null` — not to an
+    * undefined-as-String read.
+    */
+  private def toConfigItem(k: String, item: SdkConfigurationItem): ConfigurationItem =
     ConfigurationItem(
       key = ConfigurationKey(k),
-      value = ConfigurationValue(item.value.getOrElse("")),
-      version = ConfigurationVersion(item.version.getOrElse("")),
-      metadata = item.metadata.toOption.fold(Map.empty[MetadataKey, MetadataValue]) { jm =>
-        jm.iterator.map { case (mk, mv) => MetadataKey(mk) -> MetadataValue(mv) }.toMap
-      },
+      value = ConfigurationValue((item.value: Any) match
+        case s: String => s
+        case _ => ""),
+      version = ConfigurationVersion((item.version: Any) match
+        case s: String => s
+        case _ => ""),
+      metadata = (item.metadata: Any) match
+        case null => Map.empty[MetadataKey, MetadataValue]
+        case _ if js.isUndefined(item.metadata) => Map.empty[MetadataKey, MetadataValue]
+        case _ =>
+          item.metadata.iterator.collect { case (mk, mv: String) => MetadataKey(mk) -> MetadataValue(mv) }.toMap,
     )

@@ -3,7 +3,7 @@ package dapr4s
 
 import scala.scalajs.js
 import scala.util.control.NonFatal
-import dapr4s.internal.facade
+import typings.daprDapr.mod.{DaprClient, DaprWorkflowClient}
 
 /** Entry point that manages the [[DaprCapability]] lifecycle — the Scala.js twin of the JVM `Dapr`, backed by the Dapr
   * JS SDK (`@dapr/dapr`).
@@ -46,8 +46,8 @@ import dapr4s.internal.facade
   * this platform (TLS on/off still follows the endpoint URI scheme).
   *
   * Annotated `@scala.caps.assumeSafe` so that safe-mode user code can call `Dapr(config).run` without seeing any unsafe
-  * operations. The internal use of `DaprCapabilityImpl` (a JS-SDK-backed class) and the SDK clients it wraps are
-  * managed entirely here.
+  * operations. The internal use of `DaprCapabilityImpl` (a JS-SDK-backed class) and the ScalablyTyped-generated SDK
+  * clients it wraps (`typings.daprDapr` — see js-deps.scala) are managed entirely here.
   */
 @scala.caps.assumeSafe
 class Dapr(config: DaprConfig = DaprConfig()):
@@ -74,9 +74,9 @@ class Dapr(config: DaprConfig = DaprConfig()):
     */
   def run[T](body: DaprCapability ?=> T): T =
     val sc = config.sidecar
-    val client = new facade.DaprClient(internal.DaprCapabilityImpl.httpClientOptions(sc))
-    val grpcClientRef = new internal.LazyClientRef[facade.DaprClient]
-    val workflowClientRef = new internal.LazyClientRef[facade.DaprWorkflowClient]
+    val client = new DaprClient(internal.DaprCapabilityImpl.httpClientOptions(sc))
+    val grpcClientRef = new internal.LazyClientRef[DaprClient]
+    val workflowClientRef = new internal.LazyClientRef[DaprWorkflowClient]
     val impl = new internal.DaprCapabilityImpl(client, sc, grpcClientRef, workflowClientRef)
     var primary: Throwable | Null = null
     try body(using impl)
