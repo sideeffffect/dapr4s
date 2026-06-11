@@ -85,7 +85,7 @@ Type-driven design patterns for correct, self-documenting Scala code: ADTs, opaq
 
 ## dapr
 
-Dapr (Distributed Application Runtime) — portable, event-driven runtime for building resilient microservices; covers architecture, building blocks, Java SDK, and testing.
+Dapr (Distributed Application Runtime) — portable, event-driven runtime for building resilient microservices; covers architecture, building blocks, Java and JS SDKs, and testing.
 
 | Article | Summary | Updated |
 |---------|---------|---------|
@@ -97,6 +97,7 @@ Dapr (Distributed Application Runtime) — portable, event-driven runtime for bu
 | [Dapr Actors](dapr/dapr-actors.md) | Virtual actor pattern, turn-based access, placement service, timers vs reminders | 2026-05-01 |
 | [Dapr Workflows](dapr/dapr-workflows.md) | Durable workflow orchestration, event sourcing, determinism requirement, activities | 2026-05-01 |
 | [Dapr Java SDK](dapr/dapr-java-sdk.md) | Java SDK structure, DaprClient API, actors SDK, workflows SDK, key usage patterns | 2026-05-01 |
+| [Dapr JS SDK](dapr/dapr-js-sdk.md) | @dapr/dapr 3.18.0 API map: CommonJS/named root exports, DaprClient sub-clients, per-protocol support matrix, DaprServer, actors (class-name reflection hazard), workflows (async-generator model, *WithName variants), serialization/error rules, missing jobs/conversation | 2026-06-11 |
 | [Dapr Testcontainers](dapr/dapr-testcontainers.md) | Integration testing with DaprContainer, component/subscription setup, host app channel, QuotedBoolean, placement container, JUnit patterns, Spring Boot @ServiceConnection, multi-language | 2026-05-05 |
 | [Dapr E2E — Self-Hosted (dapr run)](dapr/dapr-e2e-selfhosted.md) | `dapr run -- java -cp <assembly>` pattern for host-JVM E2E tests; Mill forkArgs+assembly() to avoid deadlocks; Scala 3 testcontainers self-referential generic workaround; why not DaprContainer | 2026-05-27 |
 | [Dapr Other Building Blocks](dapr/dapr-other-building-blocks.md) | Bindings, secrets, configuration, distributed lock, cryptography, jobs | 2026-05-01 |
@@ -149,3 +150,13 @@ Scala 3 libraries that derive an implementation FROM a trait (RPC clients, route
 | [tagless-redux](scala-rpc-derivation/tagless-redux.md) | `WireProtocol.derive` for tagless algebras (Kryo/Pekko/Boopickle); reflect rewrite of cats-tagless | 2026-06-07 |
 | [ZIO IsReloadable](scala-rpc-derivation/zio-isreloadable.md) | `IsReloadable[A].reloadable(scopedRef)` → reflect proxy forwarding to a ScopedRef; hot-reload; @experimental | 2026-06-07 |
 | [distage TraitConstructor](scala-rpc-derivation/distage-traitconstructor.md) | DI auto-implementation of an abstract trait → `Functoid[R]`; Symbol.newClass via reflection shim | 2026-06-07 |
+
+## scala-js
+
+Compiling Scala 3 (including capture-checked dapr4s) to JavaScript/WebAssembly — scala-cli cross-building and cross-publishing, the js.async/js.await + JSPI direct-style story, and capture checking on the JS backend.
+
+| Article | Summary | Updated |
+|---------|---------|---------|
+| [Cross-Building JVM + Scala.js with Scala CLI](scala-js/scala-js-cross-building-scala-cli.md) | `platform` directive (first = default), `--js`/`--cross`, per-file `target.platform`, dep-directive platform leak + jvm-deps.scala/--exclude pattern, `::` dep syntax, publish --cross (_3 + _sjs1_3), scala-cli >= 1.13.0 floor, cwd-based npm resolution, GH Actions | 2026-06-11 |
+| [js.async / js.await, JSPI, and the WebAssembly Backend](scala-js/scala-js-async-jspi-wasm.md) | js.async/js.await semantics (1.19.0+, ES2017+, Scala 3.8+), orphan await + allowOrphanJSAwait, Wasm backend restrictions, JSPI runtime matrix (Node 25+/Chrome 137+), no-intervening-JS-frame rule, rejected Atomics.wait/deasync alternatives, dapr4s's virtual-thread-parking analogue | 2026-06-11 |
+| [Capture Checking on Scala.js](scala-js/capture-checking-on-scala-js.md) | CC erased in picklerPhases before GenSJSIR; empirical probe (dapr4s nightly + full flag set passes on JS, zero warnings); explicit-nulls × js.native facades; sealed caps.Capability gotcha; munit/upickle _sjs1_3 availability | 2026-06-11 |

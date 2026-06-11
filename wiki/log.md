@@ -1,5 +1,13 @@
 # Wiki Log
 
+## [2026-06-11] ingest | Scala.js Cross-Build Research (scala-js topic) + Dapr JS SDK
+- Raw sources (scala-js): empirical scala-cli 1.12.2/1.14.0 cross-platform probes (/tmp/sjs-probe et al.) + scala-cli.virtuslab.org docs/releases/issues; scala-js.org release notes 1.17.0–1.21.0 + WebAssembly backend docs + JSPI.scala + chromestatus/nodejs/synckit/cats-effect; empirical CC-on-Scala.js probe (/tmp/cc-js-probe, dapr4s nightly 3.10.0-RC1-bin-20260607-dec42ae) + scala/scala3 Compiler.scala/issue tracker
+- Raw sources (dapr): dapr/js-sdk source survey @ a3be700 (= @dapr/dapr 3.18.0) + npm registry + v3.17.0/v3.18.0 release notes
+- Created topic `scala-js`: scala-js-cross-building-scala-cli.md, scala-js-async-jspi-wasm.md, capture-checking-on-scala-js.md
+- Created: dapr/dapr-js-sdk.md
+- Updated: dapr/dapr-java-sdk.md (See Also cross-reference to the JS SDK)
+- NOTE: context is the dapr4s Scala.js cross-build (direct-style API preserved via Wasm+JSPI orphan js.await; @dapr/dapr as the JS substrate). Pre-existing index issue spotted (not fixed here, ingest not lint): scala3-language/scala-cli-build-tool.md is referenced by index.md but missing on disk.
+
 ## [2026-06-07] ingest | Scala 3 Metaprogramming + Trait-to-Implementation Derivation (RPC)
 - Raw sources (scala3-metaprogramming): docs.scala-lang.org/scala3/reference/metaprogramming {index, inline, compiletime-ops, macros, reflection, staging, tasty-inspect}; scala-hearth.readthedocs.io
 - Created topic `scala3-metaprogramming`: metaprogramming-overview.md, inline.md, compile-time-operations.md, macros-quotes-and-splices.md, tasty-reflection.md, runtime-staging-and-tasty-inspection.md, scala-hearth.md
