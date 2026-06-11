@@ -112,11 +112,22 @@ private[dapr4s] object DaprCapabilityImpl:
   /** Split a `SidecarConfig` endpoint URI into the `(daprHost, daprPort)` string pair the JS SDK options take.
     *
     * The SDK reassembles them as `"daprHost:daprPort"` and parses the result with its `HttpEndpoint` /
-    * `GrpcEndpoint` network classes, both of which accept a scheme inside the host part — so the URI scheme is kept
-    * (`http://host` + port) to preserve TLS/plaintext selection. For gRPC clients the scheme is translated to the
-    * SDK's preferred `grpc`/`grpcs` (passing `http`/`https` works but triggers a deprecation `console.warn` in
-    * `GrpcEndpoint.setScheme`). A URI without an explicit port falls back to the parser defaults: 80/443 by scheme
-    * for HTTP (`HttpEndpoint`), 443 for gRPC (`URIParseConfig.DEFAULT_PORT`).
+    * `GrpcEndpoint` network classes, both of which accept a scheme inside the host part — so for HTTP the URI scheme
+    * is kept (`http://host` + port) to preserve TLS/plaintext selection.
+    *
+    * For gRPC the scheme mapping is dictated by a quirk verified against a live sidecar: the workflow stack
+    * (`TaskHubGrpcWorker`/`TaskHubGrpcClient`) passes `GrpcEndpoint.endpoint` to grpc-js as the raw channel target,
+    * and `GrpcEndpoint.setEndpoint` renders non-`dns` schemes as `"<scheme>:host:port"` — a target grpc-js cannot
+    * resolve for `grpc`/`grpcs` (it falls back to `dns:grpc:host:port`, i.e. "Name resolution failed"). `grpcs` also
+    * never sets `tls` (`setTls` only honours `https:` or `?tls=true`). The only scheme spellings that work across
+    * '''both''' gRPC consumers (the workflow stack and `GRPCClient`, which reads just hostname/port/tls) are:
+    *   - plaintext → '''no scheme''' (bare host): `GrpcEndpoint` then applies its default `dns` scheme, yielding the
+    *     `"dns:host:port"` target grpc-js expects;
+    *   - TLS → `https://host`: the one spelling that sets `tls = true` and still coerces the scheme to `dns`
+    *     (`setScheme` logs a one-time deprecation `console.warn`, the price of the only working TLS form).
+    *
+    * A URI without an explicit port falls back to the parser defaults: 80/443 by scheme for HTTP (`HttpEndpoint`),
+    * 443 for gRPC (`URIParseConfig.DEFAULT_PORT`).
     */
   private def hostAndPort(endpoint: URI, forGrpc: Boolean): (String, String) =
     val rawScheme = endpoint.getScheme match
@@ -125,9 +136,9 @@ private[dapr4s] object DaprCapabilityImpl:
     val scheme =
       if forGrpc then
         rawScheme match
-          case "http"  => "grpc"
-          case "https" => "grpcs"
-          case other   => other
+          case "http" | "grpc"   => "" // bare host → GrpcEndpoint's default "dns" scheme (see scaladoc)
+          case "https" | "grpcs" => "https" // the only spelling that both sets tls and resolves (see scaladoc)
+          case other             => other
       else rawScheme
     val host = endpoint.getHost match
       case null => "localhost"
@@ -137,7 +148,8 @@ private[dapr4s] object DaprCapabilityImpl:
       case -1 if rawScheme == "https" => 443
       case -1                       => 80
       case p                        => p
-    (s"$scheme://$host", port.toString)
+    val hostPart = if scheme.isEmpty then host else s"$scheme://$host"
+    (hostPart, port.toString)
 
   private def undefOr[A](o: Option[A]): js.UndefOr[A] =
     o.fold[js.UndefOr[A]](js.undefined)(a => a)
