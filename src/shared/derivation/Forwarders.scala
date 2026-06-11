@@ -3,7 +3,6 @@ package dapr4s.derivation
 import dapr4s.*
 import scala.collection.immutable.ArraySeq
 import scala.concurrent.duration.FiniteDuration
-import java.time.Instant
 
 /** Runtime forwarders for the capability `*.derive` macros (other than Invoke,
   * which has its own [[InvokeDerivationRuntime]]).
@@ -13,9 +12,15 @@ import java.time.Instant
   * here — in ordinary Scala — keeps generated trees trivial: no synthesised `given`s (which the
   * compiler would lift and capture into the enclosing class) and no by-hand reconstruction of
   * the capabilities' interleaved type/`using` clauses.
+  *
+  * Forwarders for JVM-only capabilities (jobs: the Dapr JS SDK has no jobs API) live in the
+  * inherited platform parent trait `ForwardersPlatform` — empty on Scala.js, so generated code
+  * referencing e.g. `Forwarders.jobSchedule` resolves only on the JVM, where the `Jobs.derive`
+  * macro that generates such calls exists. (`Forwarders.jobRoute` stays here: the inbound
+  * job-trigger side is cross-platform.)
   */
 @scala.caps.assumeSafe
-object Forwarders:
+object Forwarders extends ForwardersPlatform:
 
   // ---- Bindings -------------------------------------------------------------
 
@@ -134,35 +139,6 @@ object Forwarders:
       algorithm: KeyWrapAlgorithm,
   ): ArraySeq[Byte] =
     cap.encryptString(keyName, plaintext, algorithm)
-
-  // ---- Jobs -----------------------------------------------------------------
-
-  def jobSchedule[T](
-      cap: JobsCapability,
-      name: JobName,
-      data: T,
-      schedule: JobSchedule,
-      dueTime: Option[Instant],
-      repeats: Option[Int],
-      ttl: Option[Instant],
-      codec: JsonCodec[T],
-  ): Unit =
-    given JsonCodec[T] = codec
-    cap.schedule[T](name, data, schedule, dueTime, repeats, ttl)
-
-  def jobScheduleOnce[T](
-      cap: JobsCapability,
-      name: JobName,
-      data: T,
-      dueTime: Instant,
-      ttl: Option[Instant],
-      codec: JsonCodec[T],
-  ): Unit =
-    given JsonCodec[T] = codec
-    cap.scheduleOnce[T](name, data, dueTime, ttl)
-
-  def jobGet(cap: JobsCapability, name: JobName): Option[JobDetails] =
-    cap.get(name)
 
   // ---- Workflow (client) ----------------------------------------------------
 

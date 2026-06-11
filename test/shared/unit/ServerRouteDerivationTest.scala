@@ -41,11 +41,10 @@ object IngestHandlers:
   def orders(payload: Req)(using r: Recorder): Unit = r.log += s"ingest${payload.n}"
   @name("audit-log") def audit(payload: Req): Unit = ()
 
-/** Job-trigger handlers keyed by job name, plus the scheduling contract they answer. */
-trait ReportJobs:
-  def nightly(spec: Req, schedule: JobSchedule)(using JobsCapability, JsonCodec[Req]): Unit
-  @name("nightly") def status()(using JobsCapability): Option[JobDetails] // getter: not a trigger
-
+/** Job-trigger handlers keyed by job name. Cross-platform: answering job triggers needs no SDK support. The
+  * `ReportJobs` scheduling contract they answer is JVM-only (it mentions `JobsCapability`/`JobSchedule`) and lives in
+  * [[JvmServerRouteDerivationTest]] together with the `JobRoutes.deriveChecked` case.
+  */
 object ReportJobHandlers:
   def nightly(spec: Req)(using r: Recorder): Unit = r.log += s"job${spec.n}"
 
@@ -134,14 +133,8 @@ class ServerRouteDerivationTest extends FunSuite:
     val routes = JobRoutes.derive[ReportJobHandlers.type]
     assertEquals(routes.map(_.name.value), List("nightly"))
 
-  test("JobRoutes.deriveChecked: checks scheduling contract by job name, skips getters"):
-    val rec = new Recorder { val log = mutable.ListBuffer.empty[String] }
-    given Recorder = rec
-    // ReportJobs schedules "nightly" (payload Req) and has a "nightly" getter (skipped).
-    val routes = JobRoutes.deriveChecked[ReportJobs, ReportJobHandlers.type]
-    assertEquals(routes.map(_.name.value), List("nightly"))
-    routes.head.rawHandler.asInstanceOf[Any => Any](Req(2))
-    assertEquals(rec.log.toList, List("job2"))
+  // JobRoutes.deriveChecked is exercised in JvmServerRouteDerivationTest: its Contract trait
+  // mentions the JVM-only JobsCapability/JobSchedule/JobDetails (the Dapr JS SDK has no jobs API).
 
   test("Subscriptions.derive without pubsubName uses the handler type's simple name"):
     val rec = new Recorder { val log = mutable.ListBuffer.empty[String] }

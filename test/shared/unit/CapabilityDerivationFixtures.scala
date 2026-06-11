@@ -115,32 +115,7 @@ final class FakeCrypto extends CryptoCapability:
     ArraySeq.from("ct".getBytes)
   def decrypt(ciphertext: ArraySeq[Byte]): ArraySeq[Byte] = ???
 
-// ---- Jobs -------------------------------------------------------------------
-
-trait JobClient:
-  def recur(data: Req, schedule: JobSchedule)(using JobsCapability, JsonCodec[Req]): Unit
-  def once(data: Req, dueTime: java.time.Instant)(using JobsCapability, JsonCodec[Req]): Unit
-  @name("recur") def fetch()(using JobsCapability): Option[JobDetails]
-lazy val JobClient: JobClient = Jobs.derive[JobClient]
-
-@scala.caps.assumeSafe
-final class FakeJobs extends JobsCapability:
-  val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-  def schedule[T: JsonCodec](
-      name: JobName,
-      data: T,
-      schedule: JobSchedule,
-      dueTime: Option[java.time.Instant],
-      repeats: Option[Int],
-      ttl: Option[java.time.Instant],
-  ): Unit =
-    log += s"schedule|${name.value}|${summon[JsonCodec[T]].encode(data)}"
-  def scheduleOnce[T: JsonCodec](name: JobName, data: T, dueTime: java.time.Instant, ttl: Option[java.time.Instant]): Unit =
-    log += s"once|${name.value}|${summon[JsonCodec[T]].encode(data)}"
-  def get(name: JobName): Option[JobDetails] =
-    log += s"get|${name.value}"
-    None
-  def delete(name: JobName): Unit = ???
+// ---- Jobs: JVM-only (the Dapr JS SDK has no jobs API) — see JvmCapabilityDerivationFixtures.
 
 // ---- Workflow (client) ------------------------------------------------------
 

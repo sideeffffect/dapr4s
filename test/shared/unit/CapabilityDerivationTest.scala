@@ -55,14 +55,7 @@ class CapabilityDerivationTest extends FunSuite:
     client.textKey("hello", KeyWrapAlgorithm("AES"))
     assertEquals(fake.log.toList, List("encrypt|rawKey|2|RSA", "encrypt|text-key|5|AES"))
 
-  test("Jobs: schedule, scheduleOnce, get"):
-    val fake = FakeJobs()
-    given JobsCapability = fake
-    val client = JobClient
-    client.recur(Req(1), JobSchedule.Every(scala.concurrent.duration.DurationInt(5).seconds))
-    client.once(Req(2), java.time.Instant.EPOCH)
-    client.fetch()
-    assertEquals(fake.log.toList, List("schedule|recur|1", "once|once|2", "get|recur"))
+  // Jobs.derive is JVM-only (the Dapr JS SDK has no jobs API) — see JvmCapabilityDerivationTest.
 
   test("Workflow: start, startInput, startWithId, startWithIdInput"):
     val fake = FakeWorkflow()

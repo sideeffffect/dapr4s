@@ -13,16 +13,18 @@
 // Safe mode is enabled per-file via: import language.experimental.safe
 //
 // Platforms: "jvm" is listed first, so plain `scala-cli compile/test .` builds the JVM
-// platform; select Scala.js with `--js` (and add `--exclude jvm-deps.scala`, see below).
+// platform; select Scala.js with `--js` (no extra flags needed).
 // jsEsVersionStr es2017 is required by js.async/js.await (used by the JS internal layer).
 //
-// JVM-only dependencies (the Dapr Java SDK and testcontainers) live in jvm-deps.scala, NOT
-// here: scala-cli has no platform-scoped dependency directives (deps declared in a
-// `//> using target.platform jvm` file still leak into the Scala.js build and would pollute
-// the published _sjs1_3 POM). JS invocations exclude that file: `--exclude jvm-deps.scala`.
+// Platform-specific dependencies live in dedicated files, scoped by a `target.platform`
+// directive (a `using dep` in a platform-tagged file applies only to that platform):
+//   - jvm-deps.scala           — Dapr Java SDK (JVM, main scope)
+//   - jvm-test-deps.test.scala — testcontainers (JVM, test scope via the .test.scala suffix)
+//   - js-deps.scala            — Scala.js main-scope deps (facades land here)
+// Only cross-platform deps belong in this file (the `::version` double-colon form).
 //
 // scala-java-time provides java.time on Scala.js (java.time.Instant is part of the public
-// JobsCapability/Models API); on the JVM it is a thin shim over the JDK and harmless.
+// WorkflowSnapshot/Models API); on the JVM it is a thin shim over the JDK and harmless.
 //> using dep "io.github.cquiroz::scala-java-time::2.6.0"
 //> using test.dep "org.scalameta::munit::1.3.0"
 //> using test.dep "com.lihaoyi::upickle::3.3.1"

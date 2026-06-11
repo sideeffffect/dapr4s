@@ -24,12 +24,12 @@ Both must stay in sync with the code at all times.
   available nightly to get the latest capture-checking and safe-mode fixes. Update when the build
   tool hints that a newer nightly is available.
 - **Platforms**: JVM **and Scala.js** (`//> using platform "jvm" "scala-js"`; jvm first = default).
-  Plain `scala-cli compile/test .` builds the JVM platform; Scala.js invocations add `--js` **and
-  must pass `--exclude jvm-deps.scala`** (the file holding the JVM-only Dapr Java SDK +
-  testcontainers deps — scala-cli cannot scope dep directives to a platform, so excluding that file
-  is what keeps the `_sjs1_3` build/POM clean):
-  - `scala-cli compile --js . --exclude jvm-deps.scala`
-  - `scala-cli test --js . --exclude jvm-deps.scala`
+  Plain `scala-cli compile/test .` builds the JVM platform; Scala.js invocations just add `--js`
+  (JVM-only deps live in `jvm-deps.scala`/`jvm-test-deps.test.scala`, scoped to the JVM by their
+  `target.platform` directive, which is what keeps the `_sjs1_3` build/POM clean — no `--exclude`
+  flags needed):
+  - `scala-cli compile --js .`
+  - `scala-cli test --js .`
   Platform-specific sources carry per-file `//> using target.platform "jvm"`/`"scala-js"`
   directives. `//> using jsEsVersionStr "es2017"` is required by `js.async`/`js.await`.
 - **Build tool**: Scala CLI (`project.scala` using directives). **scala-cli >= 1.13.0 is required
@@ -237,7 +237,7 @@ output for parse errors and fails loudly to catch this.
   across `JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`, `CCTest`, `SubscriberTest`,
   `BindingDispatchTest`, `CapabilityHandlerTest` (with `DaprServerTestBase` as a shared helper).
 - **Scala.js unit tests** (no Docker, no npm install needed):
-  `scala-cli test --js . --exclude jvm-deps.scala`. These run on the **plain JS backend** under
+  `scala-cli test --js .`. These run on the **plain JS backend** under
   Node — fine because unit tests never link the orphan-await capability code and never load
   `@dapr/dapr`. Most unit tests cross-compile and run on both platforms; the jvm-tagged
   exceptions are `SubscriberTest`, `BindingDispatchTest`, `JobDispatchTest`, and

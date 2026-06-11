@@ -96,15 +96,9 @@ private[dapr4s] final class DaprCapabilityImpl(
   def crypto(componentName: CryptoComponentName): CryptoCapability^{this} =
     new CryptoCapabilityImpl(this, componentName).asInstanceOf[CryptoCapability]
 
-  def jobs: JobsCapability^{this} =
-    throw new UnsupportedOperationException(
-      "the Dapr JS SDK (@dapr/dapr 3.x) has no jobs API; use dapr4s on the JVM for the jobs capability",
-    )
-
-  def conversation(componentName: ConversationComponentName): ConversationCapability^{this} =
-    throw new UnsupportedOperationException(
-      "the Dapr JS SDK (@dapr/dapr 3.x) has no conversation API; use dapr4s on the JVM for the conversation capability",
-    )
+  // No jobs/conversation here: the Dapr JS SDK (@dapr/dapr 3.x) has no jobs or conversation API,
+  // so those factory methods exist only on the JVM DaprCapabilityPlatform parent trait — on this
+  // platform they are absent from DaprCapability at compile time (no runtime throw needed).
 
 @scala.caps.assumeSafe
 private[dapr4s] object DaprCapabilityImpl:

@@ -8,6 +8,17 @@ package dapr4s
   * capture checker enforces this via `^{this}` return type annotations on
   * the factory methods below.
   *
+  * '''Platform-specific capability surface.''' Not every Dapr building block exists
+  * in every Dapr SDK: the Dapr JS SDK has no jobs or conversation API. Rather than
+  * throwing `UnsupportedOperationException` at runtime, the platform-specific factory
+  * methods live in the inherited platform parent trait `DaprCapabilityPlatform` (and
+  * their companion transformer twins in `DaprCapabilityCompanionPlatform`) — parent
+  * traits, because the companion object must sit in the same file as the trait while
+  * the platform halves live in platform-tagged files. On the JVM the platform trait
+  * contributes `jobs` and `conversation`; on Scala.js both platform traits are empty.
+  * On a platform lacking a building block the method simply does not exist — using it
+  * is a compile error, not a runtime exception.
+  *
   * The factory methods can be called directly or via the companion-object
   * transformer API (see [[DaprCapability$ companion object]]):
   *
@@ -32,7 +43,7 @@ package dapr4s
   * }}}
   */
 @scala.caps.assumeSafe
-trait DaprCapability extends scala.caps.ExclusiveCapability:
+trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatform:
 
   /** Obtain a [[StateCapability]] for the named state store. */
   def state(storeName: StateStoreName): StateCapability^{this}
@@ -63,12 +74,6 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
 
   /** Obtain a [[CryptoCapability]] for the named crypto component. */
   def crypto(componentName: CryptoComponentName): CryptoCapability^{this}
-
-  /** Obtain the [[JobsCapability]] (shared; no named component). */
-  def jobs: JobsCapability^{this}
-
-  /** Obtain a [[ConversationCapability]] for the named conversation (LLM) component. */
-  def conversation(componentName: ConversationComponentName): ConversationCapability^{this}
 
 
 /** Companion-object transformer API for [[DaprCapability]].
@@ -106,7 +111,7 @@ trait DaprCapability extends scala.caps.ExclusiveCapability:
   * trait methods prevent sub-capabilities from outliving the root scope.
   */
 @scala.caps.assumeSafe
-object DaprCapability:
+object DaprCapability extends DaprCapabilityCompanionPlatform:
 
   def state(storeName: StateStoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.state(storeName).asInstanceOf[StateCapability])
@@ -137,11 +142,3 @@ object DaprCapability:
 
   def crypto(componentName: CryptoComponentName)[T](body: CryptoCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.crypto(componentName).asInstanceOf[CryptoCapability])
-
-  def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.jobs.asInstanceOf[JobsCapability])
-
-  def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability ?=> T)(using
-      cap: DaprCapability
-  ): T =
-    body(using cap.conversation(componentName).asInstanceOf[ConversationCapability])
