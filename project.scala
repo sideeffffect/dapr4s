@@ -1,7 +1,6 @@
 //> using scala "3.10.0-RC1-bin-20260607-dec42ae-NIGHTLY"
 //> using platform "jvm" "scala-js"
 //> using jvm "zulu:25.0.3"
-//> using jsEsVersionStr "es2017"
 //> using options "-language:experimental.captureChecking"
 //> using options "-language:experimental.pureFunctions"
 //> using options "-Ycc-verbose"
@@ -14,18 +13,15 @@
 //
 // Platforms: "jvm" is listed first, so plain `scala-cli compile/test .` builds the JVM
 // platform; select Scala.js with `--js` (no extra flags needed).
-// jsEsVersionStr es2017 is required by js.async/js.await (used by the JS internal layer).
 //
-// Platform-specific dependencies live in dedicated files, scoped by a `target.platform`
-// directive (a `using dep` in a platform-tagged file applies only to that platform):
-//   - jvm-deps.scala           — Dapr Java SDK (JVM, main scope)
-//   - jvm-test-deps.test.scala — testcontainers (JVM, test scope via the .test.scala suffix)
-//   - js-deps.scala            — Scala.js main-scope deps (facades land here)
+// Platform-specific dependencies AND platform-specific settings live in dedicated files,
+// scoped by a `target.platform` directive (a `using dep`/`using js*` directive in a
+// platform-tagged file applies only to that platform's build):
+//   - jvm-deps.scala            — Dapr Java SDK (JVM, main scope)
+//   - jvm-test-deps.test.scala  — testcontainers (JVM, test scope via the .test.scala suffix)
+//   - js-deps.scala             — Scala.js deps (facades, scala-java-time) + js* settings
+//   - js-test-deps.test.scala   — Scala.js test-scope deps (none yet; placeholder for symmetry)
 // Only cross-platform deps belong in this file (the `::version` double-colon form).
-//
-// scala-java-time provides java.time on Scala.js (java.time.Instant is part of the public
-// WorkflowSnapshot/Models API); on the JVM it is a thin shim over the JDK and harmless.
-//> using dep "io.github.cquiroz::scala-java-time::2.6.0"
 //> using test.dep "org.scalameta::munit::1.3.0"
 //> using test.dep "com.lihaoyi::upickle::3.3.1"
 //> using publish.organization "com.github.sideeffffect"

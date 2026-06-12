@@ -5,14 +5,14 @@ import dapr4s.*
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import JsInterop.*
-import typings.daprDapr.typesPubsubPubSubBulkPublishMessageDottypeMod.{
+import dapr4styped.daprDapr.typesPubsubPubSubBulkPublishMessageDottypeMod.{
   PubSubBulkPublishMessage,
   PubSubBulkPublishMessageExplicit,
 }
-import typings.daprDapr.typesPubsubPubSubPublishOptionsDottypeMod.PubSubPublishOptions
-import typings.daprDapr.typesPubsubPubSubPublishResponseDottypeMod.PubSubPublishResponseType
-import typings.node.globalsMod.global as NodeGlobals
-import typings.undiciTypes.fetchMod.RequestInit
+import dapr4styped.daprDapr.typesPubsubPubSubPublishOptionsDottypeMod.PubSubPublishOptions
+import dapr4styped.daprDapr.typesPubsubPubSubPublishResponseDottypeMod.PubSubPublishResponseType
+import dapr4styped.node.globalsMod.global as NodeGlobals
+import dapr4styped.undiciTypes.fetchMod.RequestInit
 
 @scala.caps.assumeSafe
 private[internal] final class PublishCapabilityImpl(

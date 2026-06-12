@@ -8,9 +8,9 @@ import JsInterop.parseJson
 // The status TYPE comes from the deep module (types are erased — no import is emitted), but the
 // VALUES are read off the "@dapr/dapr" root re-export: ScalablyTyped's deep-module specifiers
 // are unresolvable under Node ESM — see the note in InvokeCapabilityImpl.
-import typings.daprDapr.mod.{DaprWorkflowClient, WorkflowRuntimeStatus as SdkStatuses}
-import typings.daprDapr.workflowClientWorkflowStateMod.WorkflowState
-import typings.daprDapr.workflowRuntimeWorkflowRuntimeStatusMod.WorkflowRuntimeStatus
+import dapr4styped.daprDapr.mod.{DaprWorkflowClient, WorkflowRuntimeStatus as SdkStatuses}
+import dapr4styped.daprDapr.workflowClientWorkflowStateMod.WorkflowState
+import dapr4styped.daprDapr.workflowRuntimeWorkflowRuntimeStatusMod.WorkflowRuntimeStatus
 
 @scala.caps.assumeSafe
 private[internal] final class WorkflowCapabilityImpl(

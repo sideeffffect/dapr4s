@@ -1,0 +1,14 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: cryptostore
+spec:
+  type: crypto.dapr.localstorage
+  version: v1
+  metadata:
+    # Directory of PEM keys as seen INSIDE the daprd container: scripts/js-it/ is mounted at
+    # /dapr4s-js-it (see scripts/js-integration-env.sh). The keys/ subdir holds the RSA key
+    # `rsa-key`, generated fresh on every `up` (git-ignored) — the JS twin of the key
+    # CryptoCapabilityServerTest writes to /keys on the JVM.
+    - name: path
+      value: /dapr4s-js-it/keys

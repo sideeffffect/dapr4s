@@ -4,8 +4,8 @@ package dapr4s.internal
 import dapr4s.*
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSName
-import typings.daprDapr.workflowInternalDurabletaskTaskTaskMod.Task as SdkTask
-import typings.daprDapr.workflowRuntimeWorkflowContextMod.WorkflowContext as SdkWorkflowContext
+import dapr4styped.daprDapr.workflowInternalDurabletaskTaskTaskMod.Task as SdkTask
+import dapr4styped.daprDapr.workflowRuntimeWorkflowContextMod.WorkflowContext as SdkWorkflowContext
 
 /** The `{value, done}` object the AsyncGenerator protocol requires every `next()`/`throw()` step to resolve to (the
   * orchestration executor destructures exactly these two properties — `runtime-orchestration-context.js` lines

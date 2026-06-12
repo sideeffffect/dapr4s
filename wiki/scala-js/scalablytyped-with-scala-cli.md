@@ -10,10 +10,10 @@ ScalablyTyped (ST) converts TypeScript type definitions into Scala.js facades. I
 
 ```bash
 cs launch "org.scalablytyped.converter:cli_3:1.0.0-beta45" -- \
-  --scala 3.3.6 --scalajs 1.21.0 -s es2022
+  --scala 3.3.6 --scalajs 1.21.0 -s es2022 --outputPackage dapr4styped
 ```
 
-Then depend on the printed coordinates: `//> using dep "org.scalablytyped::dapr__dapr::3.18.0-d1e27c"` (in a `target.platform "scala-js"`-scoped deps file — see [Cross-Building JVM + Scala.js with Scala CLI](scala-js-cross-building-scala-cli.md)).
+Then depend on the printed coordinates: `//> using compileOnly.dep "org.scalablytyped::dapr__dapr::3.18.0-d3e034"` (in a `target.platform "scala-js"`-scoped deps file — see [Cross-Building JVM + Scala.js with Scala CLI](scala-js-cross-building-scala-cli.md); compileOnly because the classes are embedded into the published jar — see the consumer-problem section below).
 
 ## Flag landmines (all empirically hit)
 
@@ -49,13 +49,21 @@ Updating a pinned npm version: bump `package.json`, `npm install`, rerun the con
 - **The TS types are erased and occasionally wrong** — treat ST types as the *signatures* and verify *behaviour* against the installed JS sources. Verified examples from `@dapr/dapr`: `SubscribeConfigurationStream.stop()` is typed `void` but returns a Promise; transaction etags are typed as an `IEtag = {value}` object but go on the wire as plain strings. Where type and runtime diverge, keep the runtime behaviour and document the divergence at the cast site.
 - The ST jars are **precompiled with their own flags** — your `-Wconf:any:error`/explicit-nulls/CC flags do not apply to them. Under `-Yexplicit-nulls`, ST results must **not** be `.nn`-ed (it is an error: unnecessary `.nn`).
 
-## The published-library consumer problem
+## The published-library consumer problem — solved by embedding
 
-`org.scalablytyped` coordinates from the CLI exist **only in ivy2Local — they are not on Maven Central**. If you *publish* a Scala.js library whose POM references them (dapr4s's `dapr4s_sjs1_3` does), downstream users cannot resolve them from any remote repository. Options:
+`org.scalablytyped` coordinates from the CLI exist **only in ivy2Local — they are not on Maven Central**. If you *publish* a Scala.js library whose POM references them, downstream users cannot resolve them from any remote repository. dapr4s's implemented answer (verified end-to-end by publishing locally, hiding `~/.ivy2/local/org.scalablytyped`, and compiling+linking+running a consumer against the published jar alone) is a three-part embedding scheme:
 
-1. **Ship the generation recipe** (dapr4s's choice): commit `package.json` + `package-lock.json` + the pinned generation script; consumers run the script once and — thanks to digest determinism — materialise *exactly* the coordinates the POM references in their own ivy2Local.
-2. Republish the facades under your own organisation to a real repository (heavier: you own ~a dozen artifacts and their upgrade cadence; the sbt-plugin world solves this with a private Maven repo).
-3. Vendor the generated sources into your repo (rejected for dapr4s: hundreds of thousands of generated lines, unreviewable diffs).
+1. **Rename the generated package** with `--outputPackage` (dapr4s: `dapr4styped`) — the classes will ship inside your jar, and a consumer running its own ST generation always gets `typings.*` (with its own `typings.std`/`typings.node`), so the default package would collide at link time. The flag is parsed as a **single `Name`** (`Main.scala`: `Name(x)`); a dotted value is backtick-escaped into one bizarre identifier, not a nested package — use one identifier. The flag is digest-relevant like every other flag.
+2. **Declare the ST deps as `//> using compileOnly.dep`** (scala-cli >= 1.14 verified): platform-scoped by `target.platform` exactly like `using dep`, on the compile classpath, but **completely absent from the published POM** (not even scope `provided`). Add as *regular* deps the Central-hosted libraries the generated code links against — `com.olvind::scalablytyped-runtime` and `org.scala-js::scalajs-dom` (versions: read them from a generated ivy-local POM) — which previously arrived transitively through the now-unreferenced ST POMs.
+3. **Embed the facade classes at publish time**: resolve the exact transitive `org.scalablytyped` jar set of the roots with `cs fetch` from the deps-file pins (never glob the ivy directory — it accumulates stale digests), unpack only `*.class`/`*.tasty`/`*.sjsir` (no META-INF) into a staging dir, and publish with `scala-cli publish --js . --resource-dirs <staging>` — resource dirs land in the jar as-is. (dapr4s: `scripts/embed-st-facades.sh` → `.scala-build/st-embed`.)
+
+The result: the published `_sjs1_3` jar contains your own sjsir plus the renamed facade tree, the POM references Maven Central only, and consumers compile/link/run with zero ST involvement. Generation remains a build-time prerequisite for the library repo itself.
+
+Alternatives considered:
+
+- **Ship the generation recipe** (dapr4s's previous choice): commit `package.json` + `package-lock.json` + the pinned generation script; consumers run the script once and — thanks to digest determinism — materialise *exactly* the coordinates the POM references in their own ivy2Local. Works, but every consumer pays the converter toll and CI complexity.
+- Republish the facades under your own organisation to a real repository (heavier: you own ~a dozen artifacts and their upgrade cadence; the sbt-plugin world solves this with a private Maven repo).
+- Vendor the generated sources into your repo (rejected for dapr4s: hundreds of thousands of generated lines, unreviewable diffs).
 
 ## See Also
 

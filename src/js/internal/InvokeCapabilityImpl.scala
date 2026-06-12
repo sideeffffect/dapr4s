@@ -9,11 +9,11 @@ import JsInterop.*
 // (`@dapr/dapr/enum/HttpMethod.enum`) carry no `.js` extension and `@dapr/dapr` has no `exports`
 // map, so Node ESM (the Wasm/JSPI production target) cannot resolve them — ERR_MODULE_NOT_FOUND
 // at load time (runtime-verified). Only root re-exports may be referenced in value position.
-import typings.daprDapr.enumHttpMethodDotenumMod.HttpMethod as SdkHttpMethod
-import typings.daprDapr.mod.HttpMethod as SdkHttpMethods
-import typings.daprDapr.typesInvokerOptionsDottypeMod.InvokerOptions
-import typings.node.globalsMod.global as NodeGlobals
-import typings.undiciTypes.fetchMod.RequestInit
+import dapr4styped.daprDapr.enumHttpMethodDotenumMod.HttpMethod as SdkHttpMethod
+import dapr4styped.daprDapr.mod.HttpMethod as SdkHttpMethods
+import dapr4styped.daprDapr.typesInvokerOptionsDottypeMod.InvokerOptions
+import dapr4styped.node.globalsMod.global as NodeGlobals
+import dapr4styped.undiciTypes.fetchMod.RequestInit
 
 @scala.caps.assumeSafe
 private object InvokeCapabilityImpl:

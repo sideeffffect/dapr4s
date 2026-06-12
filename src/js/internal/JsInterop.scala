@@ -28,7 +28,7 @@ private[internal] object JsInterop:
     * `state.get`'s `KeyValueType | String`); neither conforms to `js.Any`, which `js.JSON.stringify` requires — even
     * though the runtime value behind them is always a plain JavaScript value.
     *
-    * WHY SAFE: every value passed here is read off a `typings.*` API, i.e. produced by JavaScript code, so it IS a
+    * WHY SAFE: every value passed here is read off a `dapr4styped.*` API, i.e. produced by JavaScript code, so it IS a
     * JavaScript value at runtime. The cast is a compile-time view change only (`asInstanceOf` to a JS type is unchecked
     * and erased) and cannot fail or change the value.
     */

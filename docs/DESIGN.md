@@ -577,14 +577,16 @@ dapr4s/
 ├── jvm-test-deps.test.scala          # JVM-only test deps (testcontainers): test scope from the .test.scala
 │                                     # suffix + platform scope from target.platform — deliberately NOT test.dep,
 │                                     # which is not platform-scoped and would leak into the JS test build
-├── js-deps.scala                     # Scala.js-only deps: the ScalablyTyped-generated facade coordinates
-│                                     # (org.scalablytyped::dapr__dapr/express/node, resolved from ~/.ivy2/local)
+├── js-deps.scala                     # Scala.js-only deps: the ScalablyTyped facade coordinates as compileOnly
+│                                     # deps (org.scalablytyped::dapr__dapr/express/node from ~/.ivy2/local;
+│                                     # embedded into the published jar) + their Central-hosted runtime libs
 ├── publish-conf.scala                # CI publishing config (git:dynver version, central, env credentials)
 ├── package.json                      # npm pins for the JS layer: @dapr/dapr (runtime + converter input),
 │                                     # @types/express + @types/node (converter inputs), typescript (converter tool)
 ├── package-lock.json                 # committed — the ScalablyTyped digests are deterministic in it
 ├── scripts/
 │   ├── generate-st-facades.sh        # ScalablyTyped conversion → ~/.ivy2/local (pins converter tuple + digests)
+│   ├── embed-st-facades.sh           # stage the facade classes for embedding into the published _sjs1_3 jar
 │   ├── test-js-integration.sh        # JS integration entry point: env up → munit on Wasm+JSPI → env down
 │   ├── js-integration-env.sh         # redis + placement + scheduler + daprd 1.17 + the packaged JS test server
 │   ├── wasm-test.sh                  # `scala-cli test` wrapper tolerating the known wasm cleanup bug
@@ -642,7 +644,7 @@ dapr4s/
 │       ├── DaprCapabilityPlatform.scala  # deliberately EMPTY platform traits — no jobs/conversation on JS
 │       ├── derivation/ForwardersPlatform.scala  # empty twin
 │       └── internal/                 # Scala.js internal layer — @dapr/dapr confined here, via the
-│           │                         # ScalablyTyped-generated typings.* facades (see Scala.js platform section)
+│           │                         # ScalablyTyped-generated dapr4styped.* facades (see Scala.js platform section)
 │           ├── facade/ExpressModule.scala  # THE one hand-written facade: express CJS default-export shim
 │           ├── JsAwait.scala         # THE orphan-js.await bridge (only home of allowOrphanJSAwait)
 │           ├── JsInterop.scala       # JSON/string/error bridging (JS analogue of Json.scala + NullOps)
@@ -674,15 +676,32 @@ dapr4s/
     │   │                             # JvmModelsTest, JvmServerRouteDerivationTest
     │   ├── integration/              # Docker/testcontainers suites: TestDaprApp + DaprTestContainer harnesses,
     │   │                             # per-capability *CapabilityServerTest (State/Publish/Secrets/Lock/Actor/
-    │   │                             # Invoke/Workflow/Jobs/Crypto/Conversation), State/PubSub/Invoke/Secrets/
-    │   │                             # OrderService/InventoryService/EndToEnd IntegrationTests
+    │   │                             # Invoke/Configuration/Workflow/Jobs/Crypto/Conversation), State/PubSub/Invoke/
+    │   │                             # Secrets/OrderService/InventoryService/EndToEnd IntegrationTests
     │   └── apps/                     # OrderServiceMain / InventoryServiceMain @main entry points
     └── js/                           # [every file: target.platform scala-js]
         ├── TestCodecsJs.scala        # same given names over ujson, so shared tests cross-run
         └── integration/              # Wasm+JSPI suites against a live sidecar (see Scala.js platform section):
-                                      # State/PubSub/Invoke/Secrets/Configuration/Lock/Actor/Workflow
+                                      # State/PubSub/Invoke/Secrets/Configuration/Lock/Actor/Workflow/Crypto
                                       # JsIntegrationTests + JsTestServer (the served app) + JsItEnv (env twin)
 ```
+
+### Integration-test coverage parity
+
+Every capability the JS SDK supports is integration-tested on **both** platforms against a live `daprd`. The two
+platforms drive the sidecar differently — the JVM via [testcontainers-dapr](https://github.com/diagridio/testcontainers-dapr),
+whose idiomatic API declares components programmatically (`DaprContainer.withComponent(Component(name, type, version,
+metadata))` inside each suite's `startContainers()`); the JS layer has no such library, so `scripts/js-integration-env.sh`
+drives raw `daprd` under Docker with on-disk component YAMLs under `scripts/js-it/components/` (which is exactly what
+testcontainers-dapr writes for you under the hood on the JVM). That is why there is no `scripts/jvm-it/components/`
+directory: the JVM never needs component files on disk. The two stay equivalent in *content* — same component types, same
+Redis `value||version` seeding for configuration, same crypto key material — rather than sharing one source, which would
+mean abandoning the JVM's programmatic API or hand-rolling a YAML loader.
+
+The only capabilities not tested on Scala.js are **jobs** and **conversation**: the JS SDK has no such APIs, so they are
+*compile-time absent* on that platform (`DaprCapabilityPlatform`, see the platform-trait section) — not untested.
+**Bindings** is the one shared capability with no live-sidecar suite on either platform (covered by derivation + unit
+tests on both); that gap is symmetric by design.
 
 ---
 
@@ -905,13 +924,15 @@ Registration uses `registerWorkflowWithName`/`registerActivityWithName` with the
 
 ### ScalablyTyped-generated facades
 
-The JS interop layer's facades over `@dapr/dapr`, express and the Node stdlib are **generated, not hand-written**. `scripts/generate-st-facades.sh` runs the ScalablyTyped converter CLI (`org.scalablytyped.converter:cli_3:1.0.0-beta45` via coursier, flags `--scala 3.3.6 --scalajs 1.21.0 -s es2022`) over the TypeScript type definitions of the npm packages pinned in `package.json` (`@dapr/dapr` 3.18.0 plus the conversion roots `@types/express` and `@types/node` — top-level *dependencies*, because the converter skips devDependencies; `typescript` itself is a converter requirement). The output is `typings.*` facade jars published to the **local** ivy repository (`~/.ivy2/local/org.scalablytyped/...`), which `js-deps.scala` pins and scala-cli resolves with zero configuration. Generated code is **never committed** and never published remotely.
+The JS interop layer's facades over `@dapr/dapr`, express and the Node stdlib are **generated, not hand-written**. `scripts/generate-st-facades.sh` runs the ScalablyTyped converter CLI (`org.scalablytyped.converter:cli_3:1.0.0-beta45` via coursier, flags `--scala 3.3.6 --scalajs 1.21.0 -s es2022 --outputPackage dapr4styped`) over the TypeScript type definitions of the npm packages pinned in `package.json` (`@dapr/dapr` 3.18.0 plus the conversion roots `@types/express` and `@types/node` — top-level *dependencies*, because the converter skips devDependencies; `typescript` itself is a converter requirement). The output is `dapr4styped.*` facade jars published to the **local** ivy repository (`~/.ivy2/local/org.scalablytyped/...`), which `js-deps.scala` pins as **compile-only** deps and scala-cli resolves with zero configuration. Generated code is **never committed** and never published remotely as standalone artifacts — at publish time its classes are embedded into the dapr4s jar (below).
 
-**Digest contract**: each coordinate's version is `<npmVersion>-<digest>` (e.g. `3.18.0-d1e27c`), where the digest is deterministic in exactly (package-lock.json contents, converter version, converter flags). `package-lock.json` is committed precisely so the digests reproduce on every machine; the script cross-checks its pinned `EXPECTED_*` digests against `js-deps.scala` and fails loudly on drift. It is idempotent — a marker-jar check makes re-runs instant.
+**Why `--outputPackage dapr4styped` instead of ST's default `typings`**: the facade classes ship inside the published dapr4s jar, and a consumer running its own ScalablyTyped generation always gets `typings.*` (including its own `typings.std`/`typings.node`) — a default-named embedded tree would collide with it at link time. The rename keeps the embedded tree in a dapr4s-owned namespace. It must be a single identifier (the converter parses the flag as one `Name`; a dotted value would be backtick-escaped into one bizarre identifier, not a nested package).
 
-**The one hand-written exception**: `src/js/internal/facade/ExpressModule.scala`. ST's entry point for calling the express module captures the module as a namespace import, which under Node ES modules is never callable (`express()` throws `TypeError`), and `express.text` lost its type to a converter warning — so a small `JSImport.Default` shim provides those two members, typed against the ST-generated `Express`/`Handler` types. Everything else uses `typings.*` directly.
+**Digest contract**: each coordinate's version is `<npmVersion>-<digest>` (e.g. `3.18.0-d3e034`), where the digest is deterministic in exactly (package-lock.json contents, converter version, converter flags — `--outputPackage` included). `package-lock.json` is committed precisely so the digests reproduce on every machine; the script cross-checks its pinned `EXPECTED_*` digests against `js-deps.scala` and fails loudly on drift. It is idempotent — a marker-jar check makes re-runs instant.
 
-**Consumer story**: the published `dapr4s_sjs1_3` POM references the `org.scalablytyped` coordinates, which are **not on Maven Central**. Downstream Scala.js users must run the same generation (the script, `package.json` and `package-lock.json` all ship in this repository; the digests come out identical) to materialise the facades in their own `~/.ivy2/local` before resolving dapr4s JS. See the README's facade-generation recipe.
+**The one hand-written exception**: `src/js/internal/facade/ExpressModule.scala`. ST's entry point for calling the express module captures the module as a namespace import, which under Node ES modules is never callable (`express()` throws `TypeError`), and `express.text` lost its type to a converter warning — so a small `JSImport.Default` shim provides those two members, typed against the ST-generated `Express`/`Handler` types. Everything else uses `dapr4styped.*` directly.
+
+**Consumer story**: the published `dapr4s_sjs1_3` artifact is **self-contained** — consumers resolve it from Maven Central like any ordinary dependency and never run the converter. Two mechanisms make that work, both at publish time: (1) the facade deps are `compileOnly.dep`, so the ivy-local-only `org.scalablytyped` coordinates never enter the published POM (scala-cli omits compile-only deps from the POM entirely); (2) `scripts/embed-st-facades.sh` resolves the exact transitive `org.scalablytyped` jar set of the three roots via coursier and unpacks their class/tasty/sjsir entries into a staging dir that `scala-cli publish --js . --resource-dirs .scala-build/st-embed` packs into the jar. The two Maven-Central libraries the generated code itself links against — `com.olvind::scalablytyped-runtime` and `org.scala-js::scalajs-dom` — are declared as regular deps in `js-deps.scala` so they remain in the POM (they used to arrive transitively through the now-absent ST POMs). Only **building dapr4s itself** still requires the generation script (see the README).
 
 ### Build pattern: `target.platform`-scoped dependency files
 
@@ -921,7 +942,7 @@ A `//> using dep` directive in a file carrying a `//> using target.platform` dir
 |---|---|---|
 | `jvm-deps.scala` | JVM, main | Dapr Java SDK (`io.dapr:dapr-sdk*`) |
 | `jvm-test-deps.test.scala` | JVM, test | testcontainers (test scope comes from the `.test.scala` filename suffix) |
-| `js-deps.scala` | Scala.js, main | the ScalablyTyped facade coordinates |
+| `js-deps.scala` | Scala.js, main | the ScalablyTyped facade coordinates (compileOnly) + scalablytyped-runtime/scalajs-dom |
 
 The one caveat (empirically verified): `//> using test.dep` is **not** platform-scoped even in a `target.platform`-tagged file — it leaks into the other platform's test build. Hence `jvm-test-deps.test.scala` uses plain `using dep` directives and gets its test scope from the `.test.scala` filename instead.
 

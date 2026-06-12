@@ -4,8 +4,8 @@ package dapr4s.internal
 import dapr4s.*
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
-import typings.node.globalsMod.global as NodeGlobals
-import typings.undiciTypes.fetchMod.RequestInit
+import dapr4styped.node.globalsMod.global as NodeGlobals
+import dapr4styped.undiciTypes.fetchMod.RequestInit
 
 /** [[ActorContext]] implementation backed by the Dapr actor HTTP API — the Scala.js twin of the JVM `HttpActorContext`,
   * speaking the same routes with the same JSON bodies over the Node-global `fetch` (typed by the ScalablyTyped

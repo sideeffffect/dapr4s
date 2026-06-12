@@ -4,3 +4,7 @@ node_modules/
 # removes it after every run, ignored here as a second line of defence — scala-cli would
 # otherwise compile it as project sources.
 out/
+
+# RSA key the JS crypto integration env generates fresh on every `up`
+# (scripts/js-integration-env.sh) for the crypto.dapr.localstorage component.
+scripts/js-it/keys/

@@ -8,13 +8,13 @@ import scala.jdk.CollectionConverters.*
 import scala.scalajs.js
 import scala.util.control.NonFatal
 import org.scalablytyped.runtime.Instantiable1
-import typings.expressServeStaticCore.mod.{Express, Handler, ParamsDictionary, Request, Response}
-import typings.node.globalsMod.global as NodeGlobals
-import typings.node.httpMod.{IncomingMessage, Server, ServerResponse}
-import typings.node.nodeColonnetMod.Socket
-import typings.node.processMod.global.NodeJS.Signals
-import typings.qs.mod.ParsedQs
-import typings.std.Record
+import dapr4styped.expressServeStaticCore.mod.{Express, Handler, ParamsDictionary, Request, Response}
+import dapr4styped.node.globalsMod.global as NodeGlobals
+import dapr4styped.node.httpMod.{IncomingMessage, Server, ServerResponse}
+import dapr4styped.node.nodeColonnetMod.Socket
+import dapr4styped.node.processMod.global.NodeJS.Signals
+import dapr4styped.qs.mod.ParsedQs
+import dapr4styped.std.Record
 
 /** HTTP server that serves the Dapr app-channel protocol from a [[DaprApp]] description — the Scala.js twin of the JVM
   * `DaprAppServer`, identical route-for-route and status-code-for-status-code.
@@ -371,7 +371,7 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
     // making a failed bind throw out of serve() like the JVM's BindException.
     val serverFailure: js.Promise[Nothing] = new js.Promise[Nothing]((_, reject) =>
       server.on_error(
-        typings.node.nodeStrings.error,
+        dapr4styped.node.nodeStrings.error,
         (err: js.Error) => {
           reject(err)
           ()
@@ -452,7 +452,7 @@ private object DaprAppServer:
     * `server.stop(grace)` has no error channel either).
     */
   private def closeServer(server: HttpServer)(onClosed: () => Unit): Unit =
-    server.asInstanceOf[typings.node.netMod.Server].close((_: js.UndefOr[js.Error]) => onClosed()): Unit
+    server.asInstanceOf[dapr4styped.node.netMod.Server].close((_: js.UndefOr[js.Error]) => onClosed()): Unit
 
   // -------------------------------------------------------------------------
   // Per-request async entry

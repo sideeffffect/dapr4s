@@ -5,9 +5,9 @@ import dapr4s.*
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
 import unsafeExceptions.canThrowAny
-import typings.daprDapr.workflowInternalDurabletaskTaskTaskMod.Task as SdkTask
-import typings.daprDapr.workflowRuntimeWorkflowContextMod.WorkflowContext as SdkWorkflowContext
-import typings.node.cryptoMod
+import dapr4styped.daprDapr.workflowInternalDurabletaskTaskTaskMod.Task as SdkTask
+import dapr4styped.daprDapr.workflowRuntimeWorkflowContextMod.WorkflowContext as SdkWorkflowContext
+import dapr4styped.node.cryptoMod
 
 /** dapr4s [[dapr4s.Task]] over an SDK task + a pure decode step — the Scala.js twin of the JVM `TaskJson`/`TaskUnit`
   * pair, unified because on JS every decode starts from the same `js.Any` the coroutine handshake delivers.

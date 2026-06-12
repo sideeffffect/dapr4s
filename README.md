@@ -107,21 +107,21 @@ def main(args: Array[String]): Unit =
   }: Unit
 ```
 
-### Scala.js facades: a one-time local generation step
+### Scala.js facades: embedded — consumers need only Maven Central
 
-The `dapr4s_sjs1_3` POM references ScalablyTyped-generated facades of `@dapr/dapr`
-(`org.scalablytyped::dapr__dapr` and friends, see `js-deps.scala`). These are **not on Maven
-Central** — they live only in the local ivy repository (`~/.ivy2/local`), which scala-cli resolves
-out of the box. Before your first build against dapr4s JS (and in CI), materialise them locally:
+The `dapr4s_sjs1_3` artifact is **self-contained**: the ScalablyTyped-generated facades of
+`@dapr/dapr`/express/Node that the JS interop layer is written against ship **inside the
+dapr4s jar** (under the dapr4s-specific `dapr4styped.*` package, so they can never collide
+with a `typings.*` generation of your own), and the POM references only Maven-Central
+artifacts. Using dapr4s from Scala.js is therefore an ordinary dependency — no converter, no
+local ivy repository, nothing beyond the `using dep` above plus `npm install @dapr/dapr`.
 
-1. get this repository's `package.json` + `package-lock.json` + `scripts/generate-st-facades.sh`
-   (all committed here — the converter inputs are `@dapr/dapr`, `@types/express`, `@types/node`,
-   with `typescript` needed by the converter itself),
-2. run `npm ci`, then `scripts/generate-st-facades.sh`.
-
-The facade digests are deterministic in (package-lock.json, converter version, converter flags),
-so the script reproduces exactly the coordinates the published POM references. It is idempotent
-and skips instantly when the jars already exist.
+**Building dapr4s itself** (this repository) is different: the facades are compile-only
+dependencies resolved from `~/.ivy2/local`, so run `npm ci` followed by
+`scripts/generate-st-facades.sh` once per machine before the first `scala-cli compile --js .`.
+The facade digests are deterministic in (package-lock.json, converter version, converter
+flags), the script is idempotent and skips instantly when the jars already exist, and at
+publish time `scripts/embed-st-facades.sh` packs the generated classes into the jar.
 
 See [`DESIGN.md`](docs/DESIGN.md) for the architecture, the two-layer
 (safe / `@assumeSafe` shell) model, and the Scala.js platform details, and

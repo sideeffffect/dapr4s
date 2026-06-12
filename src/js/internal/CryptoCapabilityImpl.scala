@@ -5,9 +5,9 @@ import dapr4s.*
 import scala.collection.immutable.ArraySeq
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.{Int8Array, Uint8Array}
-import typings.daprDapr.typesCryptoRequestsMod.{DecryptRequest, EncryptRequest}
-import typings.node.bufferMod.global.Buffer
-import typings.std.ArrayBufferLike
+import dapr4styped.daprDapr.typesCryptoRequestsMod.{DecryptRequest, EncryptRequest}
+import dapr4styped.node.bufferMod.global.Buffer
+import dapr4styped.std.ArrayBufferLike
 
 @scala.caps.assumeSafe
 private[internal] final class CryptoCapabilityImpl(
@@ -41,7 +41,7 @@ private[internal] final class CryptoCapabilityImpl(
 @scala.caps.assumeSafe
 private object CryptoCapabilityImpl:
 
-  import typings.daprDapr.daprDaprStrings
+  import dapr4styped.daprDapr.daprDaprStrings
 
   /** The SDK's `keyWrapAlgorithm` type: ScalablyTyped's rendering of the TS string-literal union on `EncryptRequest`
     * (`types/crypto/Requests.ts`).
@@ -78,7 +78,7 @@ private object CryptoCapabilityImpl:
     // Array[Byte]; unsafeWrapArray is then safe because the array never escapes.
     //
     // WHAT: asInstanceOf viewing the ScalablyTyped Buffer as the Scala.js-native js.typedarray.Uint8Array.
-    // WHY: ST's Buffer extends typings.std.Uint8Array, a structural re-typing of the ECMAScript class that
+    // WHY: ST's Buffer extends dapr4styped.std.Uint8Array, a structural re-typing of the ECMAScript class that
     // exposes no element access (no @JSBracketAccess member), so the bytes cannot be read through the ST type.
     // WHY SAFE: a Node Buffer IS an instance of the runtime Uint8Array class (Buffer extends Uint8Array is the
     // documented Node contract), so the erased cast only switches to Scala.js's first-class typed-array view of

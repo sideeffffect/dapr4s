@@ -5,23 +5,23 @@ import dapr4s.*
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import JsInterop.*
-import typings.daprDapr.anon.{PartialStateDeleteOptions, PartialStateGetOptions}
+import dapr4styped.daprDapr.anon.{PartialStateDeleteOptions, PartialStateGetOptions}
 // The enum TYPES come from the deep modules (types are erased — no import is emitted), but the
 // VALUES are read off the "@dapr/dapr" root re-exports: ScalablyTyped's deep-module specifiers
 // carry no `.js` extension and `@dapr/dapr` has no `exports` map, so Node ESM (the Wasm/JSPI
 // production target) cannot resolve them — see the same note in InvokeCapabilityImpl.
-import typings.daprDapr.enumStateConcurrencyDotenumMod.StateConcurrencyEnum
-import typings.daprDapr.enumStateConsistencyDotenumMod.StateConsistencyEnum
-import typings.daprDapr.mod.{StateConcurrencyEnum as SdkConcurrency, StateConsistencyEnum as SdkConsistency}
-import typings.daprDapr.typesKeyValuePairDottypeMod.KeyValuePairType
-import typings.daprDapr.typesOperationDottypeMod.OperationType
-import typings.daprDapr.typesRequestDottypeMod.IRequest
-import typings.daprDapr.typesStateStateOptionsDottypeMod.IStateOptions
-import typings.daprDapr.typesStateStateQueryDottypeMod.StateQueryType
-import typings.daprDapr.typesStateStateSaveOptionsDottypeMod.StateSaveOptions
-import typings.daprDapr.typesStateStateSaveResponseTypeMod.StateSaveResponseType
-import typings.node.globalsMod.global as NodeGlobals
-import typings.undiciTypes.fetchMod.RequestInit
+import dapr4styped.daprDapr.enumStateConcurrencyDotenumMod.StateConcurrencyEnum
+import dapr4styped.daprDapr.enumStateConsistencyDotenumMod.StateConsistencyEnum
+import dapr4styped.daprDapr.mod.{StateConcurrencyEnum as SdkConcurrency, StateConsistencyEnum as SdkConsistency}
+import dapr4styped.daprDapr.typesKeyValuePairDottypeMod.KeyValuePairType
+import dapr4styped.daprDapr.typesOperationDottypeMod.OperationType
+import dapr4styped.daprDapr.typesRequestDottypeMod.IRequest
+import dapr4styped.daprDapr.typesStateStateOptionsDottypeMod.IStateOptions
+import dapr4styped.daprDapr.typesStateStateQueryDottypeMod.StateQueryType
+import dapr4styped.daprDapr.typesStateStateSaveOptionsDottypeMod.StateSaveOptions
+import dapr4styped.daprDapr.typesStateStateSaveResponseTypeMod.StateSaveResponseType
+import dapr4styped.node.globalsMod.global as NodeGlobals
+import dapr4styped.undiciTypes.fetchMod.RequestInit
 
 @scala.caps.assumeSafe
 private object StateCapabilityImpl:
@@ -69,8 +69,8 @@ private object StateCapabilityImpl:
     * WHY SAFE: erased, zero-cost; the value lands in the JSON body exactly as daprd's API reference
     * (`TransactionalStateOperation.request.etag: string`) requires.
     */
-  private def toJsEtag(etag: ETag): typings.daprDapr.typesEtagDottypeMod.IEtag =
-    etag.value.asInstanceOf[typings.daprDapr.typesEtagDottypeMod.IEtag]
+  private def toJsEtag(etag: ETag): dapr4styped.daprDapr.typesEtagDottypeMod.IEtag =
+    etag.value.asInstanceOf[dapr4styped.daprDapr.typesEtagDottypeMod.IEtag]
 
   private def toJsOp(op: StateOp): OperationType =
     op match

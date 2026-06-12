@@ -3,10 +3,10 @@ package dapr4s.internal
 
 import dapr4s.*
 import scala.scalajs.js
-import typings.daprDapr.mod.WorkflowRuntime
-import typings.daprDapr.typesWorkflowActivityDottypeMod.TWorkflowActivity
-import typings.daprDapr.typesWorkflowInputOutputDottypeMod.{TInput, TOutput}
-import typings.daprDapr.typesWorkflowWorkflowDottypeMod.TWorkflow
+import dapr4styped.daprDapr.mod.WorkflowRuntime
+import dapr4styped.daprDapr.typesWorkflowActivityDottypeMod.TWorkflowActivity
+import dapr4styped.daprDapr.typesWorkflowInputOutputDottypeMod.{TInput, TOutput}
+import dapr4styped.daprDapr.typesWorkflowWorkflowDottypeMod.TWorkflow
 
 /** Server-side workflow/activity hosting on Scala.js — the JS counterpart of the JVM `DaprAppServer`'s
   * `WorkflowRuntimeBuilder` block, backed by the SDK's [[WorkflowRuntime]] and the [[WorkflowCoroutine]] bridge.

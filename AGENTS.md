@@ -40,7 +40,9 @@ Both must stay in sync with the code at all times.
   `//> using jsEsVersionStr "es2017"` is required by `js.async`/`js.await`.
   **JS build prerequisite**: the ScalablyTyped facade jars referenced by `js-deps.scala` live only
   in the local ivy repository — run `scripts/generate-st-facades.sh` once per machine (and again
-  whenever the pinned digests change) before the first `--js` build, or resolution fails.
+  whenever the pinned digests change) before the first `--js` build, or resolution fails. This is
+  a requirement for building dapr4s only: the published `dapr4s_sjs1_3` jar embeds the facade
+  classes (`scripts/embed-st-facades.sh`), so consumers resolve everything from Maven Central.
 - **Build tool**: Scala CLI (`project.scala` using directives). **scala-cli >= 1.13.0 is required
   for the Scala.js build** (munit 1.3.0 JS needs Scala.js IR 1.21; the JS integration harness
   wants >= 1.14). Run unit tests with `scala-cli test . --test-only 'dapr4s.test.unit.*'`.
@@ -193,10 +195,11 @@ platform walls behind the same boundary:
   may appear in `src/` files outside it or in any test file.
 - `src/js/internal/` (all js-tagged, same package `dapr4s.internal`) is the **JS wall**: the only
   place `@dapr/dapr` (and express/Node) types may appear. Those types are the
-  **ScalablyTyped-generated facades** (`typings.daprDapr`, `typings.expressServeStaticCore`,
-  `typings.node`, ... — see js-deps.scala), plus the single surviving hand-written shim in
+  **ScalablyTyped-generated facades** (`dapr4styped.daprDapr`, `dapr4styped.expressServeStaticCore`,
+  `dapr4styped.node`, ... — generated into the dapr4s-specific `dapr4styped.*` root package, see
+  js-deps.scala), plus the single surviving hand-written shim in
   `dapr4s.internal.facade` (`src/js/internal/facade/ExpressModule.scala`). No `js.Promise`,
-  `typings.*` type, or other JS interop type may leak into the public API. Two deliberate
+  `dapr4styped.*` type, or other JS interop type may leak into the public API. Two deliberate
   carve-outs mirror the JVM side (where `src/jvm/Dapr.scala` constructs Java SDK clients): the
   platform `Dapr` entry points (`src/jvm/Dapr.scala`, `src/js/Dapr.scala`) may construct SDK
   clients to hand to the internal layer, and the JS-only `runAsync`/`serveAsync` conveniences
@@ -239,20 +242,33 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
   (express handlers, SDK activity executors, promise reactions). JSPI suspension cannot cross a
   JavaScript stack frame — skipping this throws `WebAssembly.SuspendError` at runtime.
 - **Facades are ScalablyTyped-generated**, not hand-written. `scripts/generate-st-facades.sh`
-  converts the npm packages pinned in `package.json` into `typings.*` jars in `~/.ivy2/local`
-  (run it once per machine; idempotent, fast skip when the jars exist). `js-deps.scala` pins the
-  resulting `org.scalablytyped::<name>::<npmVersion>-<digest>` coordinates; the digests are
-  deterministic in (package-lock.json, converter version, converter flags), and the script and
-  `js-deps.scala` must name the same digests — the script fails loudly on drift. The converter
-  tuple (version `1.0.0-beta45`, `--scala 3.3.6 --scalajs 1.21.0 -s es2022`) is THE pin: changing
+  converts the npm packages pinned in `package.json` into `dapr4styped.*` jars in `~/.ivy2/local`
+  (run it once per machine; idempotent, fast skip when the jars exist). Facade imports use the
+  **`dapr4styped.*` root package** (`--outputPackage dapr4styped`), never ST's default
+  `typings.*` — the classes ship inside the published jar and must not collide with a consumer's
+  own ST generation. `js-deps.scala` pins the resulting
+  `org.scalablytyped::<name>::<npmVersion>-<digest>` coordinates as **`compileOnly.dep`** (they
+  are on the compile classpath and platform-scoped like `using dep`, but never enter the
+  published POM); the digests are deterministic in (package-lock.json, converter version,
+  converter flags), and the script and `js-deps.scala` must name the same digests — the script
+  fails loudly on drift. The converter tuple (version `1.0.0-beta45`,
+  `--scala 3.3.6 --scalajs 1.21.0 -s es2022 --outputPackage dapr4styped`) is THE pin: changing
   any element changes the digests. The ST jars are precompiled with their own flags, so our
   `-Wconf:any:error`/CC flags do not apply to them — but OUR code must still compile with zero
   warnings, and explicit-nulls means ST results must NOT be `.nn`-ed (it is an error: unnecessary
   `.nn`).
+- **The published `dapr4s_sjs1_3` jar is self-contained**: at publish time
+  `scripts/embed-st-facades.sh` resolves the exact transitive `org.scalablytyped` jar set of the
+  three facade roots (via coursier, from the js-deps.scala pins — never by globbing the ivy
+  directory, which accumulates stale digests) and stages their class/tasty/sjsir entries in
+  `.scala-build/st-embed`; the JS publish then runs with `--resource-dirs .scala-build/st-embed`.
+  Consumers resolve dapr4s from Maven Central alone (the POM carries scalablytyped-runtime +
+  scalajs-dom as regular deps for the embedded facades). Generation remains a prerequisite for
+  BUILDING dapr4s itself only.
 - **The one hand-written exception**: `src/js/internal/facade/ExpressModule.scala`, the express
   default-import shim (ST's namespace-import entry point is not callable under Node ESM, and
   `express.text` lost its type to a converter warning). Anything else ST genuinely cannot express
-  must live there too, justified in its header; everything else uses `typings.*` directly.
+  must live there too, justified in its header; everything else uses `dapr4styped.*` directly.
 - **The ST types ARE the signatures; verify runtime behaviour against `node_modules` sources.**
   TypeScript types are erased — and occasionally wrong (`SubscribeConfigurationStream.stop()`
   returns a Promise despite `: void`; transaction etags go on the wire as plain strings despite
@@ -264,7 +280,7 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
   deep-module specifiers (e.g. `@dapr/dapr/enum/HttpMethod.enum`) carry no `.js` extension and the
   package has no `exports` map, so Node ESM (the Wasm/JSPI production target) throws
   `ERR_MODULE_NOT_FOUND` at load time. Deep **types** are fine (erased, no import emitted); for
-  **values** use the `typings.daprDapr.mod.*` root re-exports, and where none exists (e.g.
+  **values** use the `dapr4styped.daprDapr.mod.*` root re-exports, and where none exists (e.g.
   `LockStatus`) pin the runtime values with a documented source reference. Runtime-verified by the
   e2e smoke run — compile-green is not enough to catch this.
 - SDK gotchas (still true under ST): **ports are strings** everywhere in the JS SDK;

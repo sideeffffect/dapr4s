@@ -42,6 +42,8 @@ object JsItEnv:
   val LockStore: LockStoreName = LockStoreName("lockstore")
   val ConfigStore: ConfigurationStoreName = ConfigurationStoreName("configstore")
   val SecretStore: SecretStoreName = SecretStoreName("secretstore")
+  val CryptoStore: CryptoComponentName = CryptoComponentName("cryptostore")
+  val CryptoKey: CryptoKeyName = CryptoKeyName("rsa-key")
 
   /** Client config pointing at the harness sidecar; every suite's `Dapr(...)` uses this. */
   def clientConfig: DaprConfig = DaprConfig(

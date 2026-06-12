@@ -3,7 +3,7 @@ package dapr4s
 
 import scala.scalajs.js
 import scala.util.control.NonFatal
-import typings.daprDapr.mod.{DaprClient, DaprWorkflowClient}
+import dapr4styped.daprDapr.mod.{DaprClient, DaprWorkflowClient}
 
 /** Entry point that manages the [[DaprCapability]] lifecycle — the Scala.js twin of the JVM `Dapr`, backed by the Dapr
   * JS SDK (`@dapr/dapr`).
@@ -47,7 +47,7 @@ import typings.daprDapr.mod.{DaprClient, DaprWorkflowClient}
   *
   * Annotated `@scala.caps.assumeSafe` so that safe-mode user code can call `Dapr(config).run` without seeing any unsafe
   * operations. The internal use of `DaprCapabilityImpl` (a JS-SDK-backed class) and the ScalablyTyped-generated SDK
-  * clients it wraps (`typings.daprDapr` — see js-deps.scala) are managed entirely here.
+  * clients it wraps (`dapr4styped.daprDapr` — see js-deps.scala) are managed entirely here.
   */
 @scala.caps.assumeSafe
 class Dapr(config: DaprConfig = DaprConfig()):

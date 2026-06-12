@@ -115,8 +115,10 @@ jobs:
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
-    # The Scala.js publish resolves the ScalablyTyped facade deps (js-deps.scala),
-    # so the artifacts must exist in ~/.ivy2/local here too.
+    # The Scala.js publish compiles against the ScalablyTyped facade deps
+    # (compileOnly in js-deps.scala), so the artifacts must exist in ~/.ivy2/local
+    # here too — generation is a BUILD-time requirement only; consumers of the
+    # published artifact never need it (see the embed step below).
     - name: Install npm dependencies (@dapr/dapr)
       run: npm ci
     - name: Cache ScalablyTyped facades
@@ -135,12 +137,16 @@ jobs:
         PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
         PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
         PUBLISH_SECRET_KEY_PASSWORD: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
-    # Publishes dapr4s_sjs1_3. Its POM references the org.scalablytyped facade
-    # coordinates, which are NOT on Maven Central — downstream Scala.js users must run
-    # scripts/generate-st-facades.sh (same digests, deterministic) before linking; see
-    # README "Scala.js" and js-deps.scala.
+    # Publishes a SELF-CONTAINED dapr4s_sjs1_3: the ScalablyTyped facade classes
+    # (renamed to the dapr4styped.* package) are embedded into the jar via
+    # --resource-dirs, and the facade deps are compileOnly so the POM references
+    # Maven-Central artifacts only — downstream Scala.js users resolve dapr4s like
+    # any ordinary dependency, no generation step; see js-deps.scala and
+    # scripts/embed-st-facades.sh.
+    - name: Stage ScalablyTyped facade classes for embedding
+      run: scripts/embed-st-facades.sh
     - name: Publish (Scala.js)
-      run: scala-cli publish --js .
+      run: scala-cli publish --js . --resource-dirs .scala-build/st-embed
       env:
         PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
         PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}

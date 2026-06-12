@@ -3,23 +3,23 @@ package dapr4s.internal.facade
 
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSImport
-import typings.expressServeStaticCore.mod.{Express, Handler}
+import dapr4styped.expressServeStaticCore.mod.{Express, Handler}
 
 // ---------------------------------------------------------------------------
 // The ONE hand-written facade that survives the ScalablyTyped migration.
 //
-// Everything else in the JS interop layer comes from the generated `typings.*`
+// Everything else in the JS interop layer comes from the generated `dapr4styped.*`
 // packages (see js-deps.scala). This file exists because ScalablyTyped cannot
 // express two members of the express module object:
 //
-//   1. `typings.express.mod.apply()` calls through the module root captured as
+//   1. `dapr4styped.express.mod.apply()` calls through the module root captured as
 //      `@JSImport("express", JSImport.Namespace)`. express is a classic
 //      CommonJS module (`module.exports = createApplication`); under Node ES
 //      modules an `import * as ns` namespace object is NEVER callable, so the
 //      ST entry point throws `TypeError: ns is not a function` at runtime
 //      (verified in the ScalablyTyped spike under `jsModuleKind es`, the
 //      Wasm/JSPI production target).
-//   2. `typings.express.mod.text` lost its type to a converter limitation —
+//   2. `dapr4styped.express.mod.text` lost its type to a converter limitation —
 //      the generated member is `Any` with an inline `/* import warning:
 //      ResolveTypeQueries.resolve Loop while resolving typeof bodyParser.text
 //      */` — so the middleware factory cannot be invoked as typed.

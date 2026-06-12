@@ -3,8 +3,8 @@ package dapr4s.internal
 
 import dapr4s.*
 import java.net.URI
-import typings.daprDapr.anon.{PartialDaprClientOptions, PartialWorkflowClientOpti}
-import typings.daprDapr.mod.{CommunicationProtocolEnum, DaprClient, DaprWorkflowClient}
+import dapr4styped.daprDapr.anon.{PartialDaprClientOptions, PartialWorkflowClientOpti}
+import dapr4styped.daprDapr.mod.{CommunicationProtocolEnum, DaprClient, DaprWorkflowClient}
 
 /** Lazily-created-client holder, the JS twin of the `AtomicReference[Client]` pattern in the JVM `Dapr.run` /
   * `DaprCapabilityImpl`: [[dapr4s.Dapr.run]] owns the holder, [[DaprCapabilityImpl]] populates it on first use, and
@@ -35,7 +35,7 @@ private[dapr4s] final class LazyClientRef[A]:
   * of the JVM `DaprCapabilityImpl`.
   *
   * All interaction with the JS SDK is confined to this file and the individual `*CapabilityImpl` classes, through the
-  * ScalablyTyped-generated `typings.daprDapr` facades (see js-deps.scala). No JS types are visible in the public API.
+  * ScalablyTyped-generated `dapr4styped.daprDapr` facades (see js-deps.scala). No JS types are visible in the public API.
   *
   * Lifecycle: [[dapr4s.Dapr.run]] owns all three clients; it creates the HTTP-protocol [[DaprClient]] and the two
   * lazy refs, passes them here, and stops them in its `finally` block. The gRPC client (configuration and crypto are

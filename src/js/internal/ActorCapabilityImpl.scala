@@ -3,8 +3,8 @@ package dapr4s.internal
 
 import dapr4s.*
 import scala.scalajs.js
-import typings.node.globalsMod.global as NodeGlobals
-import typings.undiciTypes.fetchMod.RequestInit
+import dapr4styped.node.globalsMod.global as NodeGlobals
+import dapr4styped.undiciTypes.fetchMod.RequestInit
 
 /** Client-side capability for invoking methods on a specific Dapr virtual actor instance — the Scala.js twin of the JVM
   * `ActorCapabilityImpl`.

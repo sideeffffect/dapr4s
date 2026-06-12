@@ -6,9 +6,9 @@ import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import scala.util.control.NonFatal
 import JsInterop.*
-import typings.daprDapr.typesConfigurationConfigurationItemMod.ConfigurationItem as SdkConfigurationItem
-import typings.daprDapr.typesConfigurationSubscribeConfigurationCallbackMod.SubscribeConfigurationCallback
-import typings.daprDapr.typesConfigurationSubscribeConfigurationResponseMod.SubscribeConfigurationResponse
+import dapr4styped.daprDapr.typesConfigurationConfigurationItemMod.ConfigurationItem as SdkConfigurationItem
+import dapr4styped.daprDapr.typesConfigurationSubscribeConfigurationCallbackMod.SubscribeConfigurationCallback
+import dapr4styped.daprDapr.typesConfigurationSubscribeConfigurationResponseMod.SubscribeConfigurationResponse
 
 @scala.caps.assumeSafe
 private[internal] final class ConfigurationCapabilityImpl(
