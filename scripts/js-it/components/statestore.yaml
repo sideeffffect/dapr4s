@@ -1,0 +1,17 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.redis
+  version: v1
+  metadata:
+    # The daprd container runs with --network host; redis publishes container port 6379
+    # on host port 6391 (see scripts/js-integration-env.sh).
+    - name: redisHost
+      value: localhost:6391
+    - name: redisPassword
+      value: ""
+    # The Counter actor and the workflow runtime both store their state here.
+    - name: actorStateStore
+      value: "true"
