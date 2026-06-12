@@ -123,9 +123,18 @@ up() {
   #       hence --test: it reuses the shared test fixtures and test-only codecs).
   #       The dist dir sits inside the repo so Node's ESM resolver finds the repo-root
   #       node_modules (@dapr/dapr, express) by walking up from the module's own path.
+  #
+  #       The ScalablyTyped facades are compileOnly.dep (js-deps.scala), so they are absent from
+  #       the RUNTIME classpath that `package` links against — unlike `compile`/`test`, which use
+  #       the compile/test classpath. Without them on the link classpath the link fails with
+  #       "Referring to non-existent class dapr4styped...", so add the facade jars back via
+  #       scripts/st-link-jars.sh (`--jar` flags; the linker de-duplicates, no POM impact).
   log "packaging JsTestServer (Wasm) -> $DIST_DIR"
   mkdir -p "$WORK_DIR"
+  local st_link
+  mapfile -t st_link < <("$ROOT/scripts/st-link-jars.sh")
   "$SCALA_CLI" --power package --test --js --js-emit-wasm --js-module-kind es "$ROOT" \
+    "${st_link[@]}" \
     --main-class dapr4s.test.integration.jsTestServerMain -o "$DIST_DIR" -f
 
   # -- 1b. Generate the RSA key the crypto.dapr.localstorage component loads. Fresh per run, into
