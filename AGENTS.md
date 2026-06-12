@@ -249,6 +249,7 @@ or orphaned articles. Start from `wiki/index.md` to orient.
 **Use the wiki actively**: before researching a topic, check if it's already covered. After
 researching a topic (especially SDK internals, Scala compiler behaviour, or library internals),
 add or update the relevant wiki article. The wiki is a compounding asset — keep it current.
+Learn from this wiki and save all what you learn continually during each session.
 
 When investigating the DAPR Java SDK or any external library's internals, document findings in
 the wiki regardless of whether the investigation yields an actionable change.
