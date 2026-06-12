@@ -61,7 +61,23 @@ PID_FILE="$WORK_DIR/server.pid"
 LOG_FILE="$WORK_DIR/server.log"
 
 log() { echo "[js-integration-env] $*" >&2; }
-die() { log "ERROR: $*"; exit 1; }
+
+# Dump the evidence before dying: a CI runner is discarded on failure, and the interesting bits
+# (the Node server crash, a daprd component-init error) live only in $LOG_FILE / `docker logs`.
+dump_diagnostics() {
+  if [ -f "$LOG_FILE" ]; then
+    log "---- tail of $LOG_FILE ----"
+    tail -n 100 "$LOG_FILE" >&2 || true
+  fi
+  for c in "$C_DAPRD" "$C_SCHEDULER" "$C_PLACEMENT" "$C_REDIS"; do
+    if docker inspect "$c" >/dev/null 2>&1; then
+      log "---- docker logs --tail 100 $c ----"
+      docker logs --tail 100 "$c" >&2 || true
+    fi
+  done
+}
+
+die() { log "ERROR: $*"; dump_diagnostics; exit 1; }
 
 wait_for() { # wait_for <description> <timeout-seconds> <command...>
   local desc="$1" timeout="$2"; shift 2

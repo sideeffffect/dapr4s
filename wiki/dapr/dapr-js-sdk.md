@@ -1,8 +1,8 @@
 # Dapr JS SDK (@dapr/dapr)
 
-> Sources: dapr/js-sdk source @ a3be700 (= v3.18.0, published 2026-06-10), npm registry, v3.17.0/v3.18.0 release notes, 2026-06-11
+> Sources: dapr/js-sdk source @ a3be700 (= v3.18.0, published 2026-06-10), npm registry, v3.17.0/v3.18.0 release notes, 2026-06-11; live daprd 1.17 + redis findings from the dapr4s JS integration suite (worker reconnect bug, Redis etag semantics), 2026-06-12
 > Raw: [dapr-js-sdk source survey](../../raw/dapr/2026-06-11-dapr-js-sdk-source-survey.md)
-> Updated: 2026-06-11
+> Updated: 2026-06-12
 
 ## Overview
 
@@ -131,6 +131,10 @@ If you hand-implement the AsyncGenerator protocol (dapr4s's `WorkflowCoroutine`)
 - **Post-done `next()` happens**: the context never clears `_previousTask`, so events arriving after the generator finished still trigger `resume()` — a finished generator must answer `{value: undefined, done: true}` per the standard protocol.
 - The executor awaits every `next()`/`throw()` before processing the next history event — the strict-alternation property dapr4s's coroutine handshake relies on (see [the JSPI article's field notes](../scala-js/scala-js-async-jspi-wasm.md#field-notes-from-the-dapr4s-port)).
 
+### Workflow worker reconnect bug: `isFirstAttempt` kills the worker on the first stream loss (live-verified)
+
+**A daprd restart permanently kills the workflow worker** — upstream issue candidate. In the vendored `worker/task-hub-grpc-worker.js`, `internalRunWorker`'s reconnect loop guards with `let isFirstAttempt = true` ... `catch (err) { ...; if (isFirstAttempt) throw err; }` and only sets `isFirstAttempt = false` **after** the try/catch completes a full pass — i.e. after the work-item stream has already ended or errored once. The flag is meant to fail fast when the *initial connection* can't be established, but because it is not cleared on *successful* connection ("Successfully connected ... Waiting for work items"), the **first** stream error of an established worker — e.g. the sidecar restarting hours later — still satisfies `isFirstAttempt`, rethrows, and unwinds `internalRunWorker` entirely. `start()` runs it un-awaited with `.catch(err => { logger.error("Worker failed:", err); this._isRunning = false; })`, so the process keeps running but **no reconnect is ever attempted**: workflows and activities silently stop being processed (symptom: workflow scheduling succeeds but instances hang in RUNNING/PENDING forever). The exponential-backoff retry path is unreachable in practice — it only triggers from the *second* disruption onward, and the first one is always fatal. Workaround: restart the Node process whenever daprd restarts (or supervise the worker and recreate `WorkflowRuntime` on failure); also make test harnesses kill stale servers whose sidecar has been recycled (a stale server holding the app port makes its replacement die with `EADDRINUSE` while its own worker is dead — dapr4s's `js-integration-env.sh` does a belt-and-braces `pkill` for exactly this).
+
 ### Deterministic-UUID gap
 
 The JS SDK's `WorkflowContext` has **no `newUuid`** (the Java SDK's `WorkflowContext.newUUID` has no counterpart). A port that needs replay-deterministic UUIDs must mirror the Java SDK's algorithm (`TaskOrchestrationExecutor.newUuid`): RFC 4122 §4.3 **name-based v5/SHA-1** over `"<instanceId>-<currentUtcDateTime>-<counter>"` in the fixed namespace **`9e952958-5e33-4daf-827f-2fa12937b875`**, with the version/variant bits patched into the truncated 128-bit hash. Deterministic because instanceId is constant, `getCurrentUtcDateTime` advances only via replayed ORCHESTRATORSTARTED history timestamps, and the per-execution counter restarts at 0 on every replay. (dapr4s: `WorkflowContextImpl.deterministicUuidV5`, hashing via `node:crypto` since the Scala.js javalib has no `MessageDigest`.)
@@ -143,6 +147,7 @@ Content type is **inferred from the JS value** unless overridden: `Object`/`Arra
 
 - HTTP client: non-2xx/3xx rejects with a plain **`Error` whose message is `JSON.stringify({ error: statusText, error_msg: bodyText, status })`** — no typed API-error hierarchy. gRPC: ConnectRPC `ConnectError`s.
 - **Soft-failure response objects instead of rejections**: `pubsub.publish` → `{ error?: Error }`; `state.save`/`delete` → `{ error?: Error }`; `publishBulk` → `{ failedMessages: [{message, error}] }`. Check these, don't just await.
+- **Redis etags are integers — 400 vs 409 (live-verified against daprd 1.17 + redis)**: the Redis state store's etags are version counters, so daprd rejects a *fabricated* non-numeric etag with **400 `ERR_STATE_SAVE` ("invalid etag value")**, not a conflict. A genuine **409 etag-mismatch conflict** only arises from a *stale but real* etag (save once, capture the etag, save again to bump it, then retry with the captured one). Tests that fake etags like `"wrong-etag"` are testing input validation, not optimistic concurrency.
 - Typed: `GRPCNotSupportedError`, `HTTPNotSupportedError`, `PropertyRequiredError`; sidecar startup timeout → `Error("DAPR_SIDECAR_COULD_NOT_BE_STARTED")` (~60 × 500ms retries). Workflow activity failures: `TaskFailedError` via `Task.getException()`, client-side `WorkflowFailureDetails`.
 
 ## Missing building blocks (vs the Java SDK)
@@ -151,7 +156,7 @@ Content type is **inferred from the JS value** unless overridden: `Object`/`Arra
 - **Conversation**: completely absent.
 - **Client-side streaming pub/sub subscriptions**: absent (subscribe only via `DaprServer`).
 
-dapr4s throws `UnsupportedOperationException` from these capabilities on JS (or implements them with raw HTTP).
+dapr4s makes the jobs/conversation capabilities **compile-time absent** on Scala.js (they live on a JVM-only platform trait — no runtime stub, no `UnsupportedOperationException`); client-side streaming subscriptions are simply not offered (subscribe via `serve()`).
 
 ## Facade-writing gotchas (Scala.js)
 
@@ -164,6 +169,7 @@ dapr4s throws `UnsupportedOperationException` from these capabilities on JS (or 
 ## See Also
 
 - [Dapr Java SDK](dapr-java-sdk.md) — the JVM counterpart (reactive Mono/Flux vs Promises; has jobs & conversation)
+- [ScalablyTyped Facades with Scala CLI](../scala-js/scalablytyped-with-scala-cli.md) — how dapr4s generates its `typings.daprDapr` facade over this SDK (and the TS-vs-wire mismatches to watch for)
 - [js.async, JSPI and the Wasm backend](../scala-js/scala-js-async-jspi-wasm.md) — how dapr4s turns these Promises back into direct style
 - [Cross-Building JVM + Scala.js with Scala CLI](../scala-js/scala-js-cross-building-scala-cli.md) — build mechanics, npm resolution
 - [Capture Checking on Scala.js](../scala-js/capture-checking-on-scala-js.md) — facades under explicit nulls + CC

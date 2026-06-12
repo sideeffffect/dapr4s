@@ -41,9 +41,16 @@ for entry in "dapr__dapr::${EXPECTED_DAPR}" "express::${EXPECTED_EXPRESS}" "node
 done
 
 # --- Skip when the artifacts are already materialised --------------------------------------------
-marker_jar="${IVY_LOCAL}/dapr__dapr_sjs1_3/${EXPECTED_DAPR}/jars/dapr__dapr_sjs1_3.jar"
-if [[ -f "${marker_jar}" ]]; then
-  echo "ScalablyTyped facades already present (${marker_jar}); nothing to do."
+# All three root jars must exist, not just one: an interrupted converter run can leave ivy2Local
+# partially populated, and a single-jar marker would then no-op forever while `compile --js`
+# keeps failing on the missing org.scalablytyped deps.
+all_present=1
+for spec in "dapr__dapr_sjs1_3:${EXPECTED_DAPR}" "express_sjs1_3:${EXPECTED_EXPRESS}" "node_sjs1_3:${EXPECTED_NODE}"; do
+  artifact="${spec%%:*}"; version="${spec##*:}"
+  [[ -f "${IVY_LOCAL}/${artifact}/${version}/jars/${artifact}.jar" ]] || all_present=0
+done
+if [[ "${all_present}" -eq 1 ]]; then
+  echo "ScalablyTyped facades already present in ${IVY_LOCAL}; nothing to do."
   exit 0
 fi
 

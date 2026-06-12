@@ -17,25 +17,34 @@ see only Scala types.
 ## Requirements
 
 - Scala `3.10.0-RC1-…-NIGHTLY` (capture checking / safe mode; exact version pinned in `project.scala`)
-- [scala-cli](https://scala-cli.virtuslab.org/) `>= 1.13.0` (older versions cannot build the Scala.js platform)
+- [scala-cli](https://scala-cli.virtuslab.org/) `>= 1.13.0` (older versions cannot build the Scala.js platform; `>= 1.14` to run the Scala.js integration harness, `scripts/test-js-integration.sh`)
 - JVM 25 (for the JVM platform)
-- Node 25+ and `npm install @dapr/dapr` (only for running Scala.js apps that touch capabilities — see below)
-- Docker (only for the integration tests, which spin up a real `daprd` sidecar + Redis
-  via testcontainers)
+- For Scala.js builds: `npm ci` + `scripts/generate-st-facades.sh` (once per machine — see below);
+  Node 25+ to run capability-touching code
+- Docker (only for the integration tests, which exercise a real `daprd` sidecar + Redis)
 
 ## Build & test
 
-```bash
-scala-cli compile .
-scala-cli test . --test-only 'dapr4s.test.unit.*'         # unit tests
-scala-cli test . --test-only 'dapr4s.test.integration.*'  # needs Docker
+Sources live in `src/{shared,jvm,js}` and `test/{shared,jvm,js}` (platform-specific files also
+carry a per-file `//> using target.platform` directive). Platform-specific *dependencies* live in
+`jvm-deps.scala` / `jvm-test-deps.test.scala` / `js-deps.scala`, each scoped by its own
+`target.platform` directive — so plain `--js` invocations just work, with no `--exclude` flags
+for dependency scoping.
 
-scala-cli compile --js . --exclude jvm-deps.scala         # Scala.js
-scala-cli test    --js . --exclude jvm-deps.scala         # Scala.js unit tests
+```bash
+scala-cli compile .                                       # JVM
+scala-cli test . --test-only 'dapr4s.test.unit.*'         # JVM unit tests
+scala-cli test . --test-only 'dapr4s.test.integration.*'  # JVM integration tests (needs Docker)
+
+scripts/generate-st-facades.sh                            # once per machine, before any --js build
+scala-cli compile --js .                                  # Scala.js
+scala-cli test --js . --exclude test/js/integration --test-only 'dapr4s.test.unit.*'   # Scala.js unit tests
+PATH=<node25-bin>:$PATH scripts/test-js-integration.sh    # Scala.js integration tests (Docker + Node 25)
 ```
 
-Scala.js invocations must `--exclude jvm-deps.scala` (the file holding the JVM-only
-Dapr Java SDK and testcontainers dependencies).
+The one remaining `--exclude` (of `test/js/integration`) exists only because those Wasm-only
+suites use orphan `js.await`, which wedges the plain-JS linker; the integration script runs
+them on the Wasm backend instead, against a real `daprd` 1.17 + Redis environment.
 
 ## Usage
 
@@ -65,8 +74,10 @@ while the Node event loop keeps running.
 bindings, secrets, configuration, locks, crypto, actors, workflows, and
 `serve()` with full app-channel parity (subscriptions, invoke routes, input
 bindings, job routes, actor hosting, workflow hosting) — **except `jobs` and
-`conversation`**, which throw `UnsupportedOperationException` because the Dapr JS
-SDK has no API for them (use the JVM platform for those).
+`conversation`**, which the Dapr JS SDK has no API for. On Scala.js those two
+methods simply don't exist at compile time (they live on a JVM-only platform
+trait), so using them is a compile error, not a runtime exception — use the JVM
+platform for those.
 
 JS consumers of capabilities must link with the experimental WebAssembly backend
 and run on Node 25+ (or Node 23/24 with `--experimental-wasm-jspi`); the pure
@@ -95,6 +106,22 @@ def main(args: Array[String]): Unit =
       summon[DaprCapability].state(StateStoreName("statestore")).get(StateStoreKey("k"))
   }: Unit
 ```
+
+### Scala.js facades: a one-time local generation step
+
+The `dapr4s_sjs1_3` POM references ScalablyTyped-generated facades of `@dapr/dapr`
+(`org.scalablytyped::dapr__dapr` and friends, see `js-deps.scala`). These are **not on Maven
+Central** — they live only in the local ivy repository (`~/.ivy2/local`), which scala-cli resolves
+out of the box. Before your first build against dapr4s JS (and in CI), materialise them locally:
+
+1. get this repository's `package.json` + `package-lock.json` + `scripts/generate-st-facades.sh`
+   (all committed here — the converter inputs are `@dapr/dapr`, `@types/express`, `@types/node`,
+   with `typescript` needed by the converter itself),
+2. run `npm ci`, then `scripts/generate-st-facades.sh`.
+
+The facade digests are deterministic in (package-lock.json, converter version, converter flags),
+so the script reproduces exactly the coordinates the published POM references. It is idempotent
+and skips instantly when the jars already exist.
 
 See [`DESIGN.md`](docs/DESIGN.md) for the architecture, the two-layer
 (safe / `@assumeSafe` shell) model, and the Scala.js platform details, and

@@ -1,8 +1,8 @@
 # js.async / js.await, JSPI, and the WebAssembly Backend
 
-> Sources: scala-js.org release notes (1.17.0–1.21.0) and WebAssembly backend docs, scala-js/scala-js JSPI.scala, chromestatus.com, nodejs/node#60014, un-ts/synckit, typelevel/cats-effect#529, 2026-06-11
+> Sources: scala-js.org release notes (1.17.0–1.21.0) and WebAssembly backend docs, scala-js/scala-js JSPI.scala, chromestatus.com, nodejs/node#60014, un-ts/synckit, typelevel/cats-effect#529, 2026-06-11; munit-on-Wasm+JSPI harness findings from the dapr4s JS integration suite (scala-cli 1.14.0, Node 25.5), 2026-06-12
 > Raw: [sync-looking APIs on Scala.js research report](../../raw/scala-js/2026-06-11-scalajs-async-jspi.md)
-> Updated: 2026-06-11
+> Updated: 2026-06-12
 
 ## Overview
 
@@ -72,7 +72,7 @@ CI note: Node 23/24 flags must be argv flags on the node process (`NODE_OPTIONS`
 
 ## Field notes from the dapr4s port
 
-Runtime-verified findings from implementing the dapr4s JS internal layer (`src/internal/js/`, scaladocs there are the canonical record).
+Runtime-verified findings from implementing the dapr4s JS internal layer (`src/js/internal/`, scaladocs there are the canonical record).
 
 ### express interop: `JSImport.Default` for CJS default-export modules
 
@@ -95,6 +95,18 @@ Recipe (dapr4s `WorkflowCoroutine`, driving the Dapr JS SDK's orchestration exec
 - The synchronous body runs in its own `js.async` fiber; "yield" = resolve the pending *step* promise (the one the driver is awaiting from `next()`) with `{value, done: false}`, then orphan-await a fresh *resume* promise that the driver's next `next(v)`/`throw(e)` settles. Register the resume resolver **before** answering the step, so even a synchronous follow-up `next(v)` finds it.
 - **Strict-alternation safety argument**: a driver that awaits every `next()`/`throw()` before issuing the next one (the durabletask executor does — verified in `runtime-orchestration-context.js`) guarantees the driver and the fiber strictly alternate; at any instant at most one side is runnable. With JS single-threadedness (JSPI resumes a suspended stack as a promise reaction, never concurrently), plain unsynchronized `var`s for the two resolver pairs are correct: each is written in one phase and consumed-and-cleared in the other. Make the "driver violated the contract" branches throw loudly rather than trying to support concurrent driving.
 - A finished generator must answer post-completion `next()` with `{done: true}` (standard protocol — and the executor really does call it). An abandoned fiber (driver stops calling `next`) stays suspended forever and is simply collected — abandoned JSPI stacks are GC-able by design, but note `finally` blocks around the abandoned await never run.
+
+### Running munit suites on Wasm+JSPI with `scala-cli test`
+
+Wasm+JSPI integration tests under scala-cli genuinely work (dapr4s runs 8 suites / 26 tests against a live daprd this way): `scala-cli test --power --js --js-emit-wasm --js-module-kind es . --test-only '...'`. Field findings, all empirically hit:
+
+- **Async test pattern**: each test body is `js.async { <suspending direct-style code> }.toFuture` — munit awaits `Future`-returning tests. **Footgun: a raw `js.Promise` return is NOT awaited** — munit treats it as an opaque value and the test passes vacuously before the body has run. Always `.toFuture`.
+- **Node flags**: scala-cli runs whatever `node` is first on PATH with **zero V8 flags** (no documented way to pass argv flags to the test runner), so JSPI needs **Node 25+** where it is default-on — Node 23/24's `--experimental-wasm-jspi` cannot be injected (`NODE_OPTIONS` rejects V8 `--experimental-wasm-*` flags).
+- **The wasm cleanup bug**: scala-cli 1.14.0 **always exits 1 after a Wasm test run, even when all tests pass** — its cleanup calls `Files.deleteIfExists` on the linked output `/tmp/mainXXXX.mjs`, which for Wasm is a non-empty *directory* (`__loader.js` + `main.js` + `main.wasm`) → `DirectoryNotEmptyException` (`Run.scala:728`). Wrapper pattern (dapr4s `scripts/wasm-test.sh`): exit 0 only when scala-cli exited 0, or when the log shows exactly that exception with every suite reporting "0 failed" and no incomplete runs.
+- **The plain-JS linker WEDGES on orphan-await test sources**: if test sources contain orphan `js.await` and you run plain `scala-cli test --js .` (no `--js-emit-wasm`), the linker does not report the expected orphan-await error — it **hangs indefinitely**. Keep Wasm-only suites in a directory you `--exclude` from plain-backend test legs.
+- **`--test-only` is ineffective on the JS test runner**: the filter does not actually restrict which suites execute — everything linked runs (the JVM runner honours it). Harmless when the extra suites are fast and environment-free; rely on `--exclude` (source-level) for hard exclusion.
+- **npm deps in test runs need an ESM resolution hook**: scala-cli links the test module into a temp dir (`/tmp/...`) and runs Node there; ESM resolution of bare specifiers walks up from the *importing module's own path* — `NODE_PATH` and the CWD are ignored for ES modules — so `import '@dapr/dapr'` cannot reach the project's `node_modules`. Fix: `NODE_OPTIONS="--import /abs/path/hook.mjs"` where the hook calls `node:module`'s `register()` on a *separate* delegate file (hooks run on a dedicated loader thread; self-registration recurses) that retries failed bare-specifier resolutions with the repo root as parent (dapr4s: `scripts/js-it/node-resolve-hook.mjs` + `node-resolve-delegate.mjs`).
+- **`java.util.UUID.randomUUID()` does not link on Scala.js** — it reaches for `java.security.SecureRandom`, which the javalib does not provide; the failure is at link time, on both backends. Use a time+`js.Math.random()` scheme for test ids (or `crypto.randomUUID` via a facade if real UUIDs are needed).
 
 ## See Also
 

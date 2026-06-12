@@ -44,8 +44,13 @@ private object InvokeCapabilityImpl:
     val base = ActorCapabilityImpl.httpBase(sidecar)
     val url = s"$base/v1.0/invoke/${urlSegment(appId.value)}/method/$methodPath"
     // baseHeaders supplies Content-Type: application/json + dapr-api-token; metadata adds headers
-    // on top, mirroring the SDK path's InvokerOptions.headers.
-    val headers = ActorCapabilityImpl.baseHeaders(sidecar)
+    // on top, mirroring the SDK path's InvokerOptions.headers. A metadata key that collides with a
+    // base header REPLACES it (drop the base pair first): filling fetch Headers from a pairs array
+    // APPENDS, and duplicate names are combined as "v1, v2" — which would corrupt Content-Type or
+    // dapr-api-token instead of letting the caller override them.
+    val headers = ActorCapabilityImpl
+      .baseHeaders(sidecar)
+      .filterNot(pair => metadata.keys.exists(_.value.equalsIgnoreCase(pair(0))))
     metadata.foreach { case (k, v) => headers.push(js.Array(k.value, v.value)): Unit }
     // fetch only auto-uppercases the six spec-listed methods (notably NOT "patch"), so uppercase
     // explicitly like the SDK does (`params?.method.toLocaleUpperCase()`).

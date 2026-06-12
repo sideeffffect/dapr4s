@@ -20,7 +20,7 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # -- Node >= 25 check (JSPI by default; Node 23/24 would need --experimental-wasm-jspi, which
-#    scala-cli's runner does not pass — see wiki/scala-js/scalajs-async-jspi notes).
+#    scala-cli's runner does not pass — see wiki/scala-js/scala-js-async-jspi-wasm.md).
 if ! command -v node >/dev/null 2>&1; then
   echo "ERROR: node not found on PATH; the Wasm+JSPI tests need Node >= 25." >&2
   exit 1

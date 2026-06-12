@@ -1,5 +1,18 @@
 # Wiki Log
 
+## [2026-06-12] lint | 1 issue fixed
+
+- Removed the index row for `scala3-language/scala-cli-build-tool.md` (article was never present on
+  disk — lost before the first commit) and redirected the `java-interop-safe-scala.md` See Also link
+  to `scala-js/scala-js-cross-building-scala-cli.md`, which now covers the same ground.
+
+## [2026-06-12] ingest | ScalablyTyped-with-scala-cli pipeline + JS test-harness field notes (dapr4s cross-build rework)
+- Raw sources: the dapr4s cross-build rework itself — scripts/generate-st-facades.sh + js-deps.scala + package.json (converter pipeline), scripts/test-js-integration.sh + wasm-test.sh + scripts/js-it/ hooks + test/js/integration/ (harness findings, 8 suites/26 tests on Wasm+JSPI vs live daprd 1.17 + redis), node_modules @dapr/dapr 3.18.0 task-hub-grpc-worker.js — no new raw files; the script headers, js-deps.scala comments, and suite comments are the canonical record
+- Created: scala-js/scalablytyped-with-scala-cli.md (converter CLI 1.0.0-beta45 with scala-cli: flag landmines — `--scala 3` resolves 3.7.3 and breaks std, pin 3.3.6; full --scalajs version; -s es2022 skips the broken dom stdlib; typescript npm package required — @types/* as top-level deps, deterministic npmVersion-digest coordinates from package-lock + converter tuple, ivy2Local zero-config resolution + CI cache paths, ESM gotchas (deep-module values unresolvable, CJS default-export shim), MutableBuilder option traits + TS-vs-wire mismatch patterns, the org.scalablytyped-not-on-Central consumer problem + options)
+- Updated: scala-js/scala-js-cross-building-scala-cli.md (CORRECTION: plain `using dep` IS platform-scoped by a same-file target.platform directive — the leak is `test.dep`-only, `.test.scala`-filename workaround; replaced the jvm-deps.scala/--exclude pattern with the target.platform-scoped deps files pattern; added: no --include exists — positional re-include of excluded files is silently ignored)
+- Updated: scala-js/scala-js-async-jspi-wasm.md (new munit-on-Wasm+JSPI harness notes: js.async{...}.toFuture per test + raw-js.Promise vacuous-pass footgun; scala-cli wasm DirectoryNotEmptyException-after-green-run cleanup bug + wrapper pattern; the plain-JS linker WEDGES on orphan-await test sources; scala-cli runs node from PATH with zero V8 flags → Node 25 floor; ESM resolution-hook pattern for npm deps in test runs; --test-only ineffective on the JS runner; UUID.randomUUID does not link — SecureRandom absent)
+- Updated: dapr/dapr-js-sdk.md (task-hub-grpc-worker isFirstAttempt bug — the first stream error of an *established* worker still rethrows as a first-attempt failure, so a daprd restart permanently kills the workflow worker, reconnect never happens; upstream issue candidate. Redis integer-etag behaviour — fabricated non-numeric etag → 400 ERR_STATE_SAVE, a genuine 409 conflict needs a stale real etag. jobs/conversation note updated to dapr4s's compile-time absence)
+
 ## [2026-06-11] ingest | Scala.js implementation learnings (dapr4s port field notes)
 - Raw sources: the dapr4s Scala.js cross-build implementation itself (src/internal/js/ + facades), runtime-verified against node_modules @dapr/dapr 3.18.0 + express 4.22.2 and a live daprd sidecar — no new raw files; the verified findings live in the code's scaladocs (Express.scala, DaprCapabilityImpl.scala, WorkflowCoroutine.scala, WorkflowContextImpl.scala)
 - Updated: scala-js/scala-js-async-jspi-wasm.md (new "Field notes from the dapr4s port" section: JSImport.Default is the one correct binding for CJS default-export modules under both module kinds; the per-request js.async re-entry pattern in express handlers; the AsyncGenerator-from-coroutine recipe with the strict-alternation safety argument)

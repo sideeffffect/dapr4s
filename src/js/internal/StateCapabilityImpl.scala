@@ -246,9 +246,13 @@ private[internal] final class StateCapabilityImpl(
     // to one built field-by-field; a malformed document is rejected by the sidecar exactly as on the JVM.
     val jsQuery = parseJson(query.value).asInstanceOf[StateQueryType]
     val response = JsAwait.await(scope.client.state.query(storeName.value, jsQuery))
-    // `results` is required in the ST type and always present at runtime: the SDK substitutes `{results: []}` for
-    // an empty response body (implementation/Client/HTTPClient/state.js `query`).
-    response.results.toList.map { item =>
+    // `results` is required in the ST type but only conditionally present at runtime: the SDK substitutes
+    // `{results: []}` solely for an EMPTY response body (implementation/Client/HTTPClient/state.js `query`);
+    // a JSON body without a `results` field (e.g. `{"token": ...}` when the repeated field is empty) passes
+    // through verbatim. Guard like getBulk does, mirroring the JVM twin's getResults.toOption.fold(Nil).
+    val rawResults = response.results
+    val results = if js.isUndefined(rawResults) || (rawResults: Any) == null then List.empty else rawResults.toList
+    results.map { item =>
       val raw = Option(item.data).filterNot(isAbsent)
       val etag = item.etag.toOption.map(ETag(_))
       StateEntry(raw.map(d => decode[T](js.JSON.stringify(asJsAny(d)))), etag)

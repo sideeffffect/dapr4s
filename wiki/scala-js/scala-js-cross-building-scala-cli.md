@@ -1,12 +1,12 @@
 # Cross-Building JVM + Scala.js with Scala CLI
 
-> Sources: Empirical probes (scala-cli 1.12.2 / 1.14.0, Node 22), scala-cli.virtuslab.org docs, VirtusLab/scala-cli releases & issues, Maven Central artifact probes, 2026-06-11
+> Sources: Empirical probes (scala-cli 1.12.2 / 1.14.0, Node 22), scala-cli.virtuslab.org docs, VirtusLab/scala-cli releases & issues, Maven Central artifact probes, 2026-06-11; dep-scoping correction + deps-file pattern verified in the dapr4s cross-build restructure, 2026-06-12
 > Raw: [scala-cli cross-platform probe report](../../raw/scala-js/2026-06-11-scala-cli-crossplatform.md)
-> Updated: 2026-06-11
+> Updated: 2026-06-12
 
 ## Overview
 
-Scala CLI (v1.x) can cross-compile and cross-publish a JVM + Scala.js library from a **single source tree** — no sbt-crossproject needed. Everything below was verified empirically (compile/test/publish-local on both platforms, jar/POM inspection), including with dapr4s's exact Scala 3.10.0-RC1 nightly. The two hard constraints are the **dependency-directive platform leak** (no platform-scoped deps) and the **scala-cli >= 1.13.0 floor** for Scala.js 1.21 IR.
+Scala CLI (v1.x) can cross-compile and cross-publish a JVM + Scala.js library from a **single source tree** — no sbt-crossproject needed. Everything below was verified empirically (compile/test/publish-local on both platforms, jar/POM inspection), including with dapr4s's exact Scala 3.10.0-RC1 nightly. The two hard constraints are the **`test.dep` platform leak** (plain `using dep` *is* platform-scopable — see below) and the **scala-cli >= 1.13.0 floor** for Scala.js 1.21 IR.
 
 ## The platform directive: first entry = default
 
@@ -31,11 +31,21 @@ Grammar: `//> using platform (jvm|scala-js|js|scala-native|native)+`. This direc
 - **There is NO `jvm/`/`js/` directory convention** (issue #1632). You can organize files into platform subdirectories for readability, but every platform-specific file must carry its own `target.platform` directive.
 - Verified: jar contents are correctly platform-split after packaging/publishing (JS jar = `.sjsir` + shared/js-only classes, no jvm-only classes; vice versa for JVM).
 
-## CRITICAL: dependency directives leak across platforms
+## Platform-scoping dependencies: `target.platform` deps files (and the `test.dep` leak)
 
-`using dep` / `using test.dep` directives written inside a `target.platform`-tagged file are **NOT scoped to that platform** — they apply to all platforms. Verified failure: `//> using test.dep com.dimafeng::testcontainers-scala-munit::0.43.6` inside a jvm-tagged test file made `scala-cli test --js .` fail resolving `testcontainers-scala-munit_sjs1_3` (404). There is **no platform-conditional dependency directive**.
+**CORRECTION (2026-06-12, supersedes the earlier "dependency directives leak" claim):** a plain `//> using dep` directive written in a file that carries a `//> using target.platform` directive **IS scoped to that platform** — `scala-cli compile|test --js .` simply never resolves a dep declared in a jvm-tagged file, and the published `_sjs1_3` POM stays clean. The earlier verified failure was specific to **`using test.dep`, which is NOT platform-scoped**: a `test.dep` in a jvm-tagged file still leaks into the JS *test* build (the original 404 repro used `test.dep`; the conclusion was over-generalised to all dep directives).
 
-**The dapr4s pattern (`jvm-deps.scala` + `--exclude`):** put all JVM-only dep directives (`io.dapr:*`, testcontainers) into a dedicated `jvm-deps.scala` file at the repo root. Default invocations (`scala-cli compile/test .`) include it, so JVM workflows are unchanged; JS invocations pass `--exclude jvm-deps.scala`, keeping both resolution and the published `_sjs1_3` POM clean. (Alternative: pass JVM-only deps as CLI `--dep` flags on JVM invocations only.) Note that plain Java deps (single `:`) resolve fine on JS — but they'd still pollute the `_sjs1_3` POM, so they need the same treatment. Cost either way: single-shot `test --cross` can't be used when any platform needs excluded/CLI-only deps; run `test .` and `test --js . --exclude jvm-deps.scala` as two steps.
+**The pattern (dapr4s, replacing its older `--exclude jvm-deps.scala` mechanism):** dedicated per-platform deps files at the repo root, each starting with a `target.platform` directive — no `--exclude` flags anywhere:
+
+- `jvm-deps.scala` — `target.platform "jvm"` + plain `using dep` lines (Dapr Java SDK).
+- `js-deps.scala` — `target.platform "scala-js"` + plain `using dep` lines (ScalablyTyped facades).
+- `jvm-test-deps.test.scala` — `target.platform "jvm"` + plain `using dep` lines, with **test scope coming from the `.test.scala` filename suffix**. This is the workaround for the `test.dep` leak: never write `test.dep` for a platform-specific dependency; put a plain `dep` in a platform-tagged `*.test.scala` file instead.
+
+Bonus: single-shot `test --cross` works again with this pattern as far as *dependencies* are concerned — though dapr4s itself still cannot use it: its Wasm-only orphan-await test suites must stay excluded from the plain-JS leg (see the next section), and its JVM integration suites need Docker.
+
+## `--exclude` has no inverse
+
+If you do exclude files (`--exclude path`), note there is **no `--include` flag**, and naming an excluded file as a positional argument is **silently ignored** — you cannot re-include per invocation. Excludes are only subtractive; design the build so excludes are rare (dapr4s's sole remaining one hides Wasm-only orphan-await test sources from the plain-JS linker, which would otherwise hang — see [the JSPI article](scala-js-async-jspi-wasm.md)).
 
 ## Dependency syntax: `::` before the version for cross deps
 
@@ -55,7 +65,7 @@ scala-cli --power publish --cross .
 → io.github.example:probe_sjs1_3:0.1.0     (Scala.js)
 ```
 
-- Without `--cross`, `publish` publishes **only the first/default platform**. Two separate invocations (`publish .` then `publish --js .`) are an equivalent alternative (and the one dapr4s uses, to combine with `--exclude jvm-deps.scala`).
+- Without `--cross`, `publish` publishes **only the first/default platform**. Two separate invocations (`publish .` then `publish --js .`) are an equivalent alternative (and the one dapr4s uses — with `target.platform`-scoped deps files, each invocation resolves exactly its own platform's deps).
 - Per-platform POMs verified correct: `_sjs1_3` POM depends on `scalajs-library_2.13`, `scala3-library_sjs1_3`, `upickle_sjs1_3`; the `_3` POM on the JVM artifacts. Both modules get jar + sources + javadoc + POM.
 - `publish.computeVersion git:dynver` works for cross publish; `publish.repository central` goes via the Central Portal OSSRH Staging API since scala-cli 1.8.4. `--cross` is undocumented in the publish docs (only `--help-full`); remote Central staging of two modules in one `--cross` run is untested — verify on first release.
 - `publish local` does not support publishing the test scope.
@@ -79,6 +89,7 @@ Canonical job: `actions/checkout` (with `fetch-depth: 0` for `git:dynver`) + `co
 
 ## See Also
 
-- [js.async, JSPI and the Wasm backend](scala-js-async-jspi-wasm.md) — the directives/Node versions needed for direct-style code on JS
+- [js.async, JSPI and the Wasm backend](scala-js-async-jspi-wasm.md) — the directives/Node versions needed for direct-style code on JS, plus testing-under-scala-cli field notes
+- [ScalablyTyped Facades with Scala CLI](scalablytyped-with-scala-cli.md) — generating the npm-package facades the `js-deps.scala` pattern pins
 - [Capture Checking on Scala.js](capture-checking-on-scala-js.md) — the same toolchain floor applies; CC adds zero extra constraints
 - [Dapr JS SDK](../dapr/dapr-js-sdk.md) — the npm dependency dapr4s's JS platform binds to (cwd-based resolution applies)

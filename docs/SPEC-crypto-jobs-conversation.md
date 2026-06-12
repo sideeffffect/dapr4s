@@ -31,7 +31,7 @@ Each block follows the established idiom exactly:
   on `object DaprCapability`;
 - the Java SDK is confined to `internal/*Impl.scala`; no Java types leak into
   the public API;
-- new opaque domain types live in `src/optypes/`, value models in `Models.scala`.
+- new opaque domain types live in `src/shared/optypes/`, value models in `Models.scala` (JVM-only models in `src/jvm/JobsModels.scala`/`ConversationModels.scala`).
 
 ## SDK surface (verified via javap on 1.17.2)
 
@@ -130,7 +130,7 @@ private concrete `ConversationMessage` for alpha2.
 
 - **Unit** (`test/`): codec/model round-trips; `JobSchedule` → expression mapping;
   `ChatRole` ↔ SDK enum mapping; `JobRoute` dispatch through `DaprAppServer`/`TestDaprApp`.
-- **Integration** (`test/integration`, Testcontainers + `DaprContainer`):
+- **Integration** (`test/jvm/integration`, Testcontainers + `DaprContainer`):
   - Crypto: component `crypto.dapr.localstorage` with a generated local key; encrypt→decrypt round-trip.
   - Conversation: component `conversation.echo`; `converse` returns the echoed prompt; `chat` returns it as assistant content.
   - Jobs: **risk** — the Jobs trigger needs the Dapr **scheduler** service, which the
