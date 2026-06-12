@@ -6,7 +6,8 @@ spec:
   type: lock.redis
   version: v1
   metadata:
+    # See statestore.yaml for the ${DAPR4S_IT_REDIS_HOST} substitution.
     - name: redisHost
-      value: localhost:6391
+      value: ${DAPR4S_IT_REDIS_HOST}
     - name: redisPassword
       value: ""

@@ -6,10 +6,11 @@ spec:
   type: state.redis
   version: v1
   metadata:
-    # The daprd container runs with --network host; redis publishes container port 6379
-    # on host port 6391 (see scripts/js-integration-env.sh).
+    # ${DAPR4S_IT_REDIS_HOST} is substituted by scripts/it/render-components.sh: the JVM
+    # testcontainers topology renders "redis:6379" (shared Docker network, alias "redis"),
+    # the JS host-network topology renders "localhost:6391" (see scripts/js-integration-env.sh).
     - name: redisHost
-      value: localhost:6391
+      value: ${DAPR4S_IT_REDIS_HOST}
     - name: redisPassword
       value: ""
     # The Counter actor and the workflow runtime both store their state here.

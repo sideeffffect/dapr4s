@@ -23,8 +23,8 @@ class ConfigurationJsIntegrationTest extends FunSuite:
     js.async {
       Dapr(clientConfig).run:
         DaprCapability.configuration(ConfigStore) {
-          val keyA = ConfigurationKey("dapr4s-js-it-cfg-a")
-          val keyB = ConfigurationKey("dapr4s-js-it-cfg-b")
+          val keyA = ConfigurationKey("dapr4s-it-cfg-a")
+          val keyB = ConfigurationKey("dapr4s-it-cfg-b")
           val items = ConfigurationCapability.get(Seq(keyA, keyB))
           val a = items.getOrElse(keyA, fail(s"missing $keyA in $items"))
           val b = items.getOrElse(keyB, fail(s"missing $keyB in $items"))
@@ -39,7 +39,7 @@ class ConfigurationJsIntegrationTest extends FunSuite:
     js.async {
       Dapr(clientConfig).run:
         DaprCapability.configuration(ConfigStore) {
-          val absent = ConfigurationKey(s"dapr4s-js-it-absent-${uniqueId()}")
+          val absent = ConfigurationKey(s"dapr4s-it-absent-${uniqueId()}")
           val items = ConfigurationCapability.get(Seq(absent))
           assertEquals(items.get(absent), None)
         }

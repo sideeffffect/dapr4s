@@ -36,7 +36,7 @@ object JsItEnv:
   val AppPort: Int = 8391
   val ServerAppId: AppId = AppId("js-it-server")
 
-  // Component names match scripts/js-it/components/*.yaml.
+  // Component names match the shared canonical set scripts/it/components/*.yaml.
   val StateStore: StateStoreName = StateStoreName("statestore")
   val PubSub: PubSubName = PubSubName("pubsub")
   val LockStore: LockStoreName = LockStoreName("lockstore")

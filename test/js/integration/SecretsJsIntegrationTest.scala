@@ -9,8 +9,8 @@ import scala.scalajs.js
 import unsafeExceptions.canThrowAny
 import JsItEnv.*
 
-/** [[SecretsCapability]] against a real `secretstores.local.file` component (seeded from `scripts/js-it/secrets.json`)
-  * — the Scala.js twin of [[SecretsCapabilityServerTest]].
+/** [[SecretsCapability]] against a real `secretstores.local.file` component (seeded from the shared
+  * `scripts/it/secrets.json`) — the Scala.js twin of [[SecretsCapabilityServerTest]].
   *
   * A missing key THROWS rather than returning `None`: the local-file store answers 500, which rejects the SDK promise —
   * the documented behaviour on both platforms (`SecretsCapabilityImpl`: "a sidecar error REJECTS the promise and
@@ -25,8 +25,8 @@ class SecretsJsIntegrationTest extends FunSuite:
     js.async {
       Dapr(clientConfig).run:
         DaprCapability.secrets(SecretStore) {
-          assertEquals(SecretsCapability.get(SecretKey("js-it-secret")), Some(SecretValue("s3cr3t-js")))
-          assertEquals(SecretsCapability.get(SecretKey("another-secret")), Some(SecretValue("other-value")))
+          assertEquals(SecretsCapability.get(SecretKey("it-secret-a")), Some(SecretValue("secret-value-alpha")))
+          assertEquals(SecretsCapability.get(SecretKey("it-secret-b")), Some(SecretValue("secret-value-beta")))
         }
     }.toFuture
 
@@ -37,12 +37,12 @@ class SecretsJsIntegrationTest extends FunSuite:
           val bulk = SecretsCapability.getBulk()
           // The bulk response nests {secretName: {key: value}}; dapr4s flattens to "name/key" compound keys.
           assert(
-            bulk.exists { case (k, v) => k.value.contains("js-it-secret") && v.value == "s3cr3t-js" },
-            s"expected js-it-secret in bulk result; got keys: ${bulk.keys.map(_.value).toList.sorted}",
+            bulk.exists { case (k, v) => k.value.contains("it-secret-a") && v.value == "secret-value-alpha" },
+            s"expected it-secret-a in bulk result; got keys: ${bulk.keys.map(_.value).toList.sorted}",
           )
           assert(
-            bulk.exists { case (k, v) => k.value.contains("another-secret") && v.value == "other-value" },
-            "expected another-secret in bulk result",
+            bulk.exists { case (k, v) => k.value.contains("it-secret-b") && v.value == "secret-value-beta" },
+            "expected it-secret-b in bulk result",
           )
         }
     }.toFuture
