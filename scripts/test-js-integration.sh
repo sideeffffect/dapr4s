@@ -42,8 +42,15 @@ fi
 export DAPR4S_REPO_ROOT="$ROOT"
 export NODE_OPTIONS="--import $ROOT/scripts/js-it/node-resolve-hook.mjs"
 
+# The ScalablyTyped facades are compileOnly.dep (js-deps.scala), which leaves them off the
+# classpath this Wasm `test` link uses — so add their jars back via --jar, same as the
+# JsTestServer package step in js-integration-env.sh. (The plain-JS unit `test` leg links without
+# them, but the Wasm `test`/`package` link does not — see scripts/st-link-jars.sh.)
+mapfile -t st_link < <("$ROOT/scripts/st-link-jars.sh")
+
 "$ROOT/scripts/wasm-test.sh" \
   --power --js --js-emit-wasm --js-module-kind es "$ROOT" \
+  "${st_link[@]}" \
   --test-only 'dapr4s.test.integration.*'
 code=$?
 unset NODE_OPTIONS DAPR4S_REPO_ROOT
