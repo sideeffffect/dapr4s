@@ -251,6 +251,11 @@ researching a topic (especially SDK internals, Scala compiler behaviour, or libr
 add or update the relevant wiki article. The wiki is a compounding asset — keep it current.
 Learn from this wiki and save all what you learn continually during each session.
 
+**Continually lint the wiki**: run the `karpathy-llm-wiki` lint after ingesting sources or
+editing articles, and periodically even when you haven't, to catch broken links, index drift,
+orphaned pages, and stale or contradictory content. Fix the deterministic issues and keep the
+index and `log.md` in sync.
+
 When investigating the DAPR Java SDK or any external library's internals, document findings in
 the wiki regardless of whether the investigation yields an actionable change.
 
