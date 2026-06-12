@@ -184,3 +184,4 @@ With `-Xfatal-warnings`, unmatched cases are errors. No runtime `MatchError` sur
 
 - [Parse, Don't Validate](parse-dont-validate.md)
 - [Primitive Obsession and Opaque Types](primitive-obsession-opaque-types.md)
+- [Scala Best Practices (nrinaudo)](scala-best-practices-nrinaudo.md)

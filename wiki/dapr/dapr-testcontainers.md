@@ -329,3 +329,4 @@ public static void setup() {
 - [Dapr Workflows](dapr-workflows.md)
 - [Testcontainers Overview](../testing/testcontainers-overview.md)
 - [Testcontainers-Scala](../testing/testcontainers-scala.md)
+- [Dapr E2E — Self-Hosted (dapr run)](dapr-e2e-selfhosted.md)

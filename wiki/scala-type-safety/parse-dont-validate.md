@@ -99,4 +99,5 @@ Parse, Don't Validate is the practical expression of type-driven design:
 
 - [Primitive Obsession and Opaque Types](primitive-obsession-opaque-types.md)
 - [ADTs and Making Illegal States Unrepresentable](adts-illegal-states.md)
+- [Scala Best Practices (nrinaudo)](scala-best-practices-nrinaudo.md)
 - [Opaque Types](../scala3-language/opaque-types.md)
