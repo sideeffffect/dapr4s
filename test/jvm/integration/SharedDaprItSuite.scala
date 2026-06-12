@@ -57,7 +57,7 @@ trait SharedDaprItSuite extends TestContainersForAll:
       .withCopyFileToContainer(MountableFile.forHostPath(res.keysDir, 0x1ed), "/dapr4s-it/keys")
       .withCopyFileToContainer(MountableFile.forHostPath(res.secretsFile, 0x1a4), "/dapr4s-it/secrets.json")
       .dependsOn(redis.container)
-    for p <- res.components do dc = dc.withComponent(p)
+    for p <- res.components.values do dc = dc.withComponent(p)
 
     val c = DaprTestContainer(dc)
     c.start()

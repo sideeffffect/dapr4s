@@ -158,4 +158,5 @@ def query(c: Connection[Open]): List[Row] = ??? // closed connection = compile e
 
 - [Parse, Don't Validate](parse-dont-validate.md)
 - [ADTs and Making Illegal States Unrepresentable](adts-illegal-states.md)
+- [Scala Best Practices (nrinaudo)](scala-best-practices-nrinaudo.md)
 - [Opaque Types](../scala3-language/opaque-types.md)

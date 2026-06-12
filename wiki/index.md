@@ -56,6 +56,7 @@ Core Scala 3 language features for safe library design: opaque types, context fu
 | [Opaque Types](scala3-language/opaque-types.md) | Zero-cost type abstraction for wrapping Java/primitive types; companion object smart constructors, type bounds, extension methods | 2026-05-01 |
 | [Context Functions and Capability Passing](scala3-language/context-functions-capability-passing.md) | `A ?=> B` syntax, automatic expansion, capability threading, DSL builder pattern, OxDispatcher, postcondition pattern | 2026-05-01 |
 | [Given Instances and Using Clauses](scala3-language/given-using.md) | `given`/`using` syntax, conditional givens, alias givens, initialization semantics, summoning capabilities, Scala 2 migration | 2026-05-01 |
+| [Scala CLI as Build Tool](scala3-language/scala-cli-build-tool.md) | **[MISSING]** Using directives, Java/Scala deps, experimental compiler flags (`-language:experimental.safe`/`captureChecking`), library project layout | 2026-05-01 |
 | [Java Interop and Safe Scala](scala3-language/java-interop-safe-scala.md) | `@assumeSafe`/`@rejectSafe`, wrapping Java SDK calls behind capability boundaries, trusted vs untrusted code zones, CC integration | 2026-05-01 |
 
 ## scala-effect-libraries

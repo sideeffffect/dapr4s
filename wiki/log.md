@@ -133,3 +133,9 @@
 - NOTE: dapr-java-sdk.md already covers DaprClient construction (DaprClientBuilder), AutoCloseable/try-with-resources, Mono/Flux reactive model, .block() for synchronous use, DaprPreviewClient, and DaprException — no update to existing article required
 
 ## [2026-05-01] lint | 12 issues found, 9 auto-fixed
+
+## [2026-06-13] lint | 4 issues found, 3 auto-fixed
+- Fixed: index entry scala3-language/scala-cli-build-tool.md marked [MISSING] (no such file)
+- Fixed: orphan dapr-e2e-selfhosted.md — added back-reference from dapr-testcontainers.md See Also
+- Fixed: orphan scala-best-practices-nrinaudo.md — added back-references from adts-illegal-states.md, parse-dont-validate.md, primitive-obsession-opaque-types.md
+- Reported (not fixed): broken link java-interop-safe-scala.md:187 → scala-cli-build-tool.md (article missing; raw scala-cli sources exist but no compiled article)
