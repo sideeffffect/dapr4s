@@ -457,7 +457,10 @@ probing class files whenever you need to verify an API.
   `master`/`main` without prompting for permission. This applies to *any* edit you make — code,
   docs, config, tests, a one-line fix — with no exceptions. Never end a turn by offering
   "commit and push, or leave it in the working tree?" as a choice — just push. Pushing to
-  `master` here is the default, not an action that needs confirmation.
+  `master` here is the default, not an action that needs confirmation. Likewise, never make an
+  edit and then *stop* with it left uncommitted in the working tree: finishing an edit means
+  committing and pushing it in the same turn. If the user later has to ask "did you push this?",
+  the rule was broken.
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
 - When forking external repos for contribution proposals: fork via `gh repo fork`, create a
   branch with a descriptive name (`feat/blocking-client-virtual-threads`), implement, compile,
