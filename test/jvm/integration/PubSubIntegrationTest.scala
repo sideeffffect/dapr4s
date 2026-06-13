@@ -3,31 +3,28 @@ package dapr4s.test.integration
 
 import dapr4s.*
 import dapr4s.given
-import io.dapr.testcontainers.{DaprContainer, Component}
-import com.dimafeng.testcontainers.munit.TestContainersForAll
+import io.dapr.testcontainers.DaprContainer
 import munit.FunSuite
+import org.testcontainers.containers.Network
 
-import java.util.Collections
-
-/** Integration tests for [[PublishCapability]] using a real DAPR sidecar in Docker via Testcontainers.
+/** Integration tests for [[PublishCapability]] using a real DAPR sidecar in Docker via Testcontainers, publishing to
+  * the canonical `pubsub.redis` component (the shared scripts/it/components set, matching the JS harness — see
+  * [[RedisFixture]]).
   */
 @scala.caps.assumeSafe
-class PubSubIntegrationTest extends FunSuite with TestContainersForAll:
+class PubSubIntegrationTest extends FunSuite, RedisFixture:
 
-  type Containers = DaprTestContainer
+  override type Containers = DaprTestContainer
 
   override def startContainers(): DaprTestContainer =
-    val component = Component(
-      "pubsub",
-      "pubsub.in-memory",
-      "v1",
-      Collections.emptyMap[String, String](),
-    )
+    val network = Network.newNetwork()
+    val res = startRedis(network)
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
+        .withNetwork(network)
         .withAppName("pubsub-test-app")
         .withAppPort(0)
-        .withComponent(component),
+        .withComponent(res.component("pubsub")),
     )
     c.start()
     c

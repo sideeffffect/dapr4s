@@ -1,8 +1,15 @@
 # JVM ↔ Scala.js test & config parity
 
-Status: in progress (PR #38). Goal: the JVM and Scala.js variants should share as much
+Status: done (PR #38). Goal: the JVM and Scala.js variants should share as much
 production code, test logic, and Dapr configuration as is *reasonable*, and have equal
 integration-test coverage for every cross-platform capability.
+
+Outcome: one shared component set (`scripts/it/components`, redis everywhere), shared
+scenario traits in `test/shared/scenarios` driving both platforms, and thin per-platform
+shells. Direct-call capabilities (state, secrets, lock, crypto, configuration, invoke)
+share the full call+assertion logic; server-delivery suites (actor, workflow, pub/sub
+delivery) keep platform-specific bring-up but run on the same shared redis components.
+Verified locally: all JVM integration suites + the full JS Wasm+JSPI leg green.
 
 ## What is already shared (baseline)
 
@@ -80,10 +87,11 @@ The shared scenario backbone targets the **direct-call** form (what the JVM `*In
 suites and all JS suites already do). Server-dispatch coverage stays a per-platform layer
 (JVM `DaprAppServer` routes; JS `JsTestServer`), since the server runtimes differ.
 
-## Execution order (incremental, format → compile → test after each)
+## Execution order (incremental, format → compile → test after each) — all done
 
-1. Canonical `scripts/it/components/*.yaml` + render step. (#10)
-2. Point the JS harness at it. (#11)
-3. Point the JVM suites at it; in-memory→redis, env→file. (#12)
-4. Shared scenario traits + thin shells; close coverage/naming gaps. (#13)
-5. Verify both platforms locally, update docs/wiki, push, keep PR #38 green. (#14)
+1. ✅ Canonical `scripts/it/components/*.yaml` + `render-components.sh`.
+2. ✅ JS harness assembles the rendered dir (components + secrets.json + RSA key) at `/dapr4s-it`.
+3. ✅ JVM suites on the shared set: `SharedDaprItSuite` (direct-call) + `RedisFixture` (server-delivery);
+   state in-memory→redis, secrets local.env→local.file, actor/workflow/pubsub/app-level in-memory→redis.
+4. ✅ Shared scenario traits + thin shells for the direct-call capabilities + invoke; JS invoke error-path gap closed.
+5. ✅ Verified locally — every JVM integration suite + the full JS Wasm+JSPI leg pass on the shared redis components.

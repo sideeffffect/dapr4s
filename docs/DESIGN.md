@@ -674,29 +674,41 @@ dapr4s/
     │   ├── unit/                     # JVM-server tests: SubscriberTest, BindingDispatchTest, JobDispatchTest,
     │   │                             # DaprServerTestBase, JvmCapabilityDerivationTest (+ fixtures),
     │   │                             # JvmModelsTest, JvmServerRouteDerivationTest
-    │   ├── integration/              # Docker/testcontainers suites: TestDaprApp + DaprTestContainer harnesses,
-    │   │                             # per-capability *CapabilityServerTest (State/Publish/Secrets/Lock/Actor/
-    │   │                             # Invoke/Configuration/Workflow/Jobs/Crypto/Conversation), State/PubSub/Invoke/
-    │   │                             # Secrets/OrderService/InventoryService/EndToEnd IntegrationTests
+    │   ├── integration/              # Docker/testcontainers suites. Harnesses: DaprTestContainer, JvmItComponents
+    │   │                             # (renders the shared scripts/it/components set), SharedDaprItSuite (single
+    │   │                             # all-components redis sidecar — direct-call shells), RedisFixture (redis for the
+    │   │                             # bespoke server-delivery suites), TestDaprApp. Thin shells over test/shared
+    │   │                             # scenarios: State/Secrets/Lock/Crypto/Configuration/Invoke ItTest. Server-
+    │   │                             # delivery: Publish/Actor/Workflow/Jobs/Conversation CapabilityServerTest,
+    │   │                             # PubSubIntegrationTest, Order/Inventory/EndToEnd IntegrationTests
     │   └── apps/                     # OrderServiceMain / InventoryServiceMain @main entry points
     └── js/                           # [every file: target.platform scala-js]
         ├── TestCodecsJs.scala        # same given names over ujson, so shared tests cross-run
-        └── integration/              # Wasm+JSPI suites against a live sidecar (see Scala.js platform section):
-                                      # State/PubSub/Invoke/Secrets/Configuration/Lock/Actor/Workflow/Crypto
+        └── integration/              # Wasm+JSPI thin shells over the SAME test/shared scenarios, against a live
+                                      # sidecar: State/PubSub/Invoke/Secrets/Configuration/Lock/Actor/Workflow/Crypto
                                       # JsIntegrationTests + JsTestServer (the served app) + JsItEnv (env twin)
 ```
 
 ### Integration-test coverage parity
 
-Every capability the JS SDK supports is integration-tested on **both** platforms against a live `daprd`. The two
-platforms drive the sidecar differently — the JVM via [testcontainers-dapr](https://github.com/diagridio/testcontainers-dapr),
-whose idiomatic API declares components programmatically (`DaprContainer.withComponent(Component(name, type, version,
-metadata))` inside each suite's `startContainers()`); the JS layer has no such library, so `scripts/js-integration-env.sh`
-drives raw `daprd` under Docker with on-disk component YAMLs under `scripts/js-it/components/` (which is exactly what
-testcontainers-dapr writes for you under the hood on the JVM). That is why there is no `scripts/jvm-it/components/`
-directory: the JVM never needs component files on disk. The two stay equivalent in *content* — same component types, same
-Redis `value||version` seeding for configuration, same crypto key material — rather than sharing one source, which would
-mean abandoning the JVM's programmatic API or hand-rolling a YAML loader.
+Every capability the JS SDK supports is integration-tested on **both** platforms against a live `daprd`, and the two
+platforms share as much as is reasonable — see [JVM-JS-PARITY.md](JVM-JS-PARITY.md) for the full design.
+
+- **One component set, redis everywhere.** `scripts/it/components/*.yaml` + `scripts/it/secrets.json` are the single
+  source of truth, rendered per topology by `scripts/it/render-components.sh` (the only environment-specific value is
+  `redisHost`: `localhost:6391` for the JS host-network harness, `redis:6379` for the JVM testcontainers network). The
+  JS harness mounts the rendered dir into daprd; the JVM feeds the *same files* via `DaprContainer.withComponent(Path)`
+  (`JvmItComponents` renders them; `SharedDaprItSuite`/`RedisFixture` stand up the redis the manifests point at). Both
+  platforms therefore run state/pubsub/lock/configuration on `redis`, secrets on `local.file`, crypto on
+  `localstorage` — identical backends, no `state.in-memory` divergence, no `scripts/jvm-it/` twin.
+- **Shared scenarios, thin shells.** Each capability's calls + assertions live once as a trait in
+  `test/shared/scenarios` (`self: munit.Assertions =>`, shared API + `given DaprCapability`). The JVM and JS suites are
+  thin shells that own only bring-up and the sync/`Future` boundary, then call the same scenarios — so the assertions
+  are literally shared, not merely "equivalent". Direct-call capabilities (state, secrets, lock, crypto, configuration,
+  invoke) reduce to `withDapr(scenario)` / `run(scenario)` one-liners.
+- **Irreducibly platform-specific bring-up.** Server-delivery suites (actor, workflow, pub/sub delivery) keep
+  platform-specific harnesses — a host `DaprAppServer` thread the sidecar calls back into on the JVM, the external
+  `JsTestServer` Node process on JS — because the server runtimes differ. They still run on the shared redis components.
 
 The only capabilities not tested on Scala.js are **jobs** and **conversation**: the JS SDK has no such APIs, so they are
 *compile-time absent* on that platform (`DaprCapabilityPlatform`, see the platform-trait section) — not untested.

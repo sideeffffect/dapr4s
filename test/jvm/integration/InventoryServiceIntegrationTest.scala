@@ -5,7 +5,7 @@ import dapr4s.*
 import dapr4s.given
 import dapr4s.test.integration.apps.*
 import dapr4s.test.unit.DaprServerTestBase
-import io.dapr.testcontainers.{DaprContainer, Component}
+import io.dapr.testcontainers.DaprContainer
 import com.dimafeng.testcontainers.GenericContainer
 import com.dimafeng.testcontainers.lifecycle.and
 import com.dimafeng.testcontainers.lifecycle.Andable.AndableOps
@@ -13,8 +13,6 @@ import com.dimafeng.testcontainers.munit.TestContainersForAll
 import org.testcontainers.containers.Network
 import org.testcontainers.containers.wait.strategy.Wait
 import munit.FunSuite
-
-import java.util.Collections
 
 /** Integration tests for [[InventoryServiceApp]] against a real Dapr sidecar, dispatched through a real
   * [[dapr4s.internal.DaprAppServer]] HTTP server.
@@ -40,17 +38,18 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       waitStrategy = Wait.forLogMessage(".*Ready to accept connections.*", 1),
     )
     redis.container.withNetwork(network)
-    redis.container.withNetworkAliases("redis")
+    redis.container.withNetworkAliases(JvmItComponents.RedisAlias)
     redis.start()
 
+    val res = JvmItComponents.render()
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
         .withNetwork(network)
         .withAppName("inventory-service-test")
         .withAppPort(0)
-        .withComponent(Component("statestore", "state.in-memory", "v1", Collections.emptyMap()))
-        .withComponent(Component("pubsub", "pubsub.in-memory", "v1", Collections.emptyMap()))
-        .withComponent(Component("lockstore", "lock.redis", "v1", java.util.Map.of("redisHost", "redis:6379")))
+        .withComponent(res.component("statestore"))
+        .withComponent(res.component("pubsub"))
+        .withComponent(res.component("lockstore"))
         .dependsOn(redis.container),
     )
     c.start()

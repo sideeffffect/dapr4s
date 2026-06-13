@@ -7,11 +7,10 @@ import dapr4s.internal.DaprAppServer
 import java.net.URI
 import dapr4s.test.unit.DaprServerTestBase
 import dapr4s.test.integration.apps.*
-import io.dapr.testcontainers.{DaprContainer, Component}
+import io.dapr.testcontainers.DaprContainer
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
-import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 
 /** Tests for Counter actor dispatch via [[DaprAppServer]] HTTP, with actor state stored in a real Dapr sidecar.
@@ -39,7 +38,7 @@ import java.util.concurrent.atomic.AtomicInteger
   * Actor IDs are unique per test to prevent state leakage across tests that share the same sidecar container.
   */
 @scala.caps.assumeSafe
-class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
+class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase with RedisFixture:
 
   type Containers = DaprTestContainer
 
@@ -85,15 +84,16 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
     // exposeHostPorts above.  DaprContainer.configure() would otherwise create a NEW isolated
     // network; host.testcontainers.internal inside that network points to a different gateway
     // than the Socat relay — making the app server unreachable from the sidecar.
+    // Redis on the SHARED network backs the canonical state.redis actor state store (actorStateStore=true),
+    // matching the JS harness.
+    val res = startRedis(org.testcontainers.containers.Network.SHARED)
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
         .withNetwork(org.testcontainers.containers.Network.SHARED)
         .withAppName("actor-server-test")
         .withAppPort(appPort)
         .withAppChannelAddress("host.testcontainers.internal")
-        .withComponent(
-          Component("statestore", "state.in-memory", "v1", java.util.Map.of("actorStateStore", "true")),
-        ),
+        .withComponent(res.component("statestore")),
     )
     c.start()
 

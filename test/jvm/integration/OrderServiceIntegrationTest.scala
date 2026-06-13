@@ -5,30 +5,32 @@ import dapr4s.*
 import dapr4s.given
 import dapr4s.test.integration.apps.*
 import dapr4s.test.unit.DaprServerTestBase
-import io.dapr.testcontainers.{DaprContainer, Component}
-import com.dimafeng.testcontainers.munit.TestContainersForAll
+import io.dapr.testcontainers.DaprContainer
 import munit.FunSuite
-
-import java.util.Collections
+import org.testcontainers.containers.Network
 
 /** Integration tests for [[OrderServiceApp]] against a real Dapr sidecar, dispatched through a real
   * [[dapr4s.internal.DaprAppServer]] HTTP server.
   *
   * Each test starts a real HTTP server wrapping the handler app and exercises it via HTTP POST — the full encode → HTTP
-  * → decode path is tested, with state persisted in the real in-memory Dapr sidecar.
+  * → decode path is tested, with state persisted in the real `state.redis` Dapr sidecar (the shared
+  * scripts/it/components set — see [[RedisFixture]]).
   */
 @scala.caps.assumeSafe
-class OrderServiceIntegrationTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
+class OrderServiceIntegrationTest extends FunSuite, RedisFixture, DaprServerTestBase:
 
-  type Containers = DaprTestContainer
+  override type Containers = DaprTestContainer
 
   override def startContainers(): DaprTestContainer =
+    val network = Network.newNetwork()
+    val res = startRedis(network)
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
+        .withNetwork(network)
         .withAppName("order-service-test")
         .withAppPort(0)
-        .withComponent(Component("statestore", "state.in-memory", "v1", Collections.emptyMap()))
-        .withComponent(Component("pubsub", "pubsub.in-memory", "v1", Collections.emptyMap())),
+        .withComponent(res.component("statestore"))
+        .withComponent(res.component("pubsub")),
     )
     c.start()
     c

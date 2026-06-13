@@ -6,11 +6,10 @@ import dapr4s.given
 import dapr4s.internal.DaprAppServer
 import dapr4s.test.unit.DaprServerTestBase
 import dapr4s.test.integration.apps.*
-import io.dapr.testcontainers.{DaprContainer, Component}
+import io.dapr.testcontainers.DaprContainer
 import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
-import java.util.Collections
 import scala.concurrent.duration.*
 
 /** Integration tests for [[WorkflowCapability]] backed by a real Dapr sidecar and workflow runtime.
@@ -25,7 +24,7 @@ import scala.concurrent.duration.*
   * activity doubles its input, so starting the workflow with `IncrRequest(5)` should produce `CounterState(10)`.
   */
 @scala.caps.assumeSafe
-class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
+class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase with RedisFixture:
 
   type Containers = DaprTestContainer
 
@@ -48,15 +47,14 @@ class WorkflowCapabilityServerTest extends FunSuite with TestContainersForAll wi
     // Start the sidecar FIRST: the workflow runtime connects outbound to the sidecar's gRPC
     // endpoint, which Testcontainers maps to a dynamic host port. The runtime must be told that
     // port (not the default 50001), so the sidecar has to exist before we start the app server.
+    val res = startRedis(org.testcontainers.containers.Network.SHARED)
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
         .withNetwork(org.testcontainers.containers.Network.SHARED)
         .withAppName("workflow-server-test")
         .withAppPort(appPort)
         .withAppChannelAddress("host.testcontainers.internal")
-        .withComponent(
-          Component("statestore", "state.in-memory", "v1", java.util.Map.of("actorStateStore", "true")),
-        ),
+        .withComponent(res.component("statestore")),
     )
     c.start()
 

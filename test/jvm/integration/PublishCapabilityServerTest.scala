@@ -4,32 +4,34 @@ package dapr4s.test.integration
 import dapr4s.*
 import dapr4s.given
 import dapr4s.test.unit.DaprServerTestBase
-import io.dapr.testcontainers.{DaprContainer, Component}
-import com.dimafeng.testcontainers.munit.TestContainersForAll
+import io.dapr.testcontainers.DaprContainer
 import munit.FunSuite
+import org.testcontainers.containers.Network
 import unsafeExceptions.canThrowAny
 
-import java.util.Collections
-
 /** Tests for every [[PublishCapability]] method through real [[dapr4s.internal.DaprAppServer]] HTTP dispatch, backed by
-  * real Dapr pub/sub and state-store components via Testcontainers.
+  * the canonical `pubsub.redis` + `state.redis` components (the shared scripts/it/components set, matching the JS
+  * harness — see [[RedisFixture]]).
   *
   * Publish operations fire at the real Dapr sidecar and verify the handler returns without error. Subscription dispatch
   * is exercised by POSTing a CloudEvent JSON envelope directly to the subscription route — the same format Dapr uses in
   * production.
   */
 @scala.caps.assumeSafe
-class PublishCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
+class PublishCapabilityServerTest extends FunSuite, RedisFixture, DaprServerTestBase:
 
-  type Containers = DaprTestContainer
+  override type Containers = DaprTestContainer
 
   override def startContainers(): DaprTestContainer =
+    val network = Network.newNetwork()
+    val res = startRedis(network)
     val c = DaprTestContainer(
       DaprContainer(DaprTestContainer.DefaultImage)
+        .withNetwork(network)
         .withAppName("pubsub-server-test")
         .withAppPort(0)
-        .withComponent(Component("pubsub", "pubsub.in-memory", "v1", Collections.emptyMap()))
-        .withComponent(Component("statestore", "state.in-memory", "v1", Collections.emptyMap())),
+        .withComponent(res.component("pubsub"))
+        .withComponent(res.component("statestore")),
     )
     c.start()
     c

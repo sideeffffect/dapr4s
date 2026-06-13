@@ -34,13 +34,16 @@ object JvmItComponents:
   val SeededConfig: List[(String, String)] =
     List("dapr4s-it-cfg-a" -> "alpha||v1", "dapr4s-it-cfg-b" -> "beta||v2")
 
-  /** A rendered resource tree: the temp root, the rendered component file Paths keyed by component
-    * name (e.g. "statestore"), the keys dir and the secrets.json file (ready to mount into daprd).
+  /** A rendered resource tree: the temp root, the rendered component file Paths keyed by component name (e.g.
+    * "statestore"), the keys dir and the secrets.json file (ready to mount into daprd).
     */
   final case class Rendered(root: Path, components: Map[String, Path], keysDir: Path, secretsFile: Path):
     /** The rendered manifest Path for one component, e.g. `component("statestore")`. */
     def component(name: String): Path =
-      components.getOrElse(name, throw IllegalArgumentException(s"no shared component '$name'; have ${components.keySet}"))
+      components.getOrElse(
+        name,
+        throw IllegalArgumentException(s"no shared component '$name'; have ${components.keySet}"),
+      )
 
   /** Render the shared set for `redisHost` (default `redis:6379`) into a fresh temp dir. */
   def render(redisHost: String = RedisHostValue): Rendered =
