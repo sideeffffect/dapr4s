@@ -454,7 +454,10 @@ probing class files whenever you need to verify an API.
 - Work in independent worktrees, but push directly to `master`/`main`.
 - **Commit and push completed work immediately and automatically — do not wait to be asked.**
   Once a change is done and the checks pass (format, compile, tests), commit it and push to
-  `master`/`main` without prompting for permission.
+  `master`/`main` without prompting for permission. This applies to *every* change type,
+  including docs and Scaladoc-only edits. Never end a turn by offering "commit and push, or
+  leave it in the working tree?" as a choice — just push. Pushing to `master` here is the
+  default, not an action that needs confirmation.
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
 - When forking external repos for contribution proposals: fork via `gh repo fork`, create a
   branch with a descriptive name (`feat/blocking-client-virtual-threads`), implement, compile,
