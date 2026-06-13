@@ -55,16 +55,26 @@ if [[ "${#st_jars[@]}" -lt 3 ]]; then
   exit 1
 fi
 
-# --- Unpack class/tasty/sjsir entries into the staging dir ----------------------------------------
-# Everything else (META-INF/MANIFEST.MF is the ST jars' only other content) is excluded by the
-# include patterns: the dapr4s jar must carry no manifest junk beyond its own. The ST jars place
-# all their classes under the renamed `dapr4styped/` package root — verified below, so a
-# converter change that starts emitting other roots (or a class/tasty/sjsir file under META-INF)
-# fails loudly instead of silently polluting the dapr4s jar namespace.
+# --- Unpack the .sjsir entries into the staging dir -----------------------------------------------
+# ONLY .sjsir — deliberately NOT .class/.tasty. Two reasons:
+#   1. Consumers only ever LINK against these facades (the Scala.js linker resolves the
+#      `dapr4styped.*` classes the dapr4s .sjsir reference); they never COMPILE against them,
+#      because the facade types are entirely internal to dapr4s (src/js/internal) and never
+#      surface in the public API. So .sjsir alone is sufficient downstream — verified by linking
+#      a `Dapr().serve { ... }` consumer to Wasm against an sjsir-only jar.
+#   2. CRITICAL for publishing: `scala-cli publish --js --resource-dirs <this dir>` feeds the dir
+#      to scaladoc, which documents every embedded .tasty. With the full node/express/@dapr typings
+#      that produced a 1.1 GB `-javadoc.jar` — over the Sonatype Central per-file upload limit, so
+#      the Scala.js publish failed with HTTP 400 "length limit exceeded" (v0.20.0). Dropping
+#      .tasty/.class leaves scaladoc nothing to document → a ~3 MB doc jar, and shrinks the main
+#      jar from ~29 MB to ~9 MB. (META-INF/MANIFEST.MF is excluded by the include pattern too.)
+# The ST jars place all their .sjsir under the renamed `dapr4styped/` package root — verified
+# below, so a converter change that starts emitting other roots fails loudly instead of silently
+# polluting the dapr4s jar namespace.
 rm -rf "${STAGING}"
 mkdir -p "${STAGING}"
 for jar in "${st_jars[@]}"; do
-  unzip -qo "${jar}" '*.class' '*.tasty' '*.sjsir' -d "${STAGING}"
+  unzip -qo "${jar}" '*.sjsir' -d "${STAGING}"
 done
 
 unexpected="$(find "${STAGING}" -mindepth 1 -maxdepth 1 ! -name 'dapr4styped' -print)"
@@ -75,4 +85,4 @@ if [[ -n "${unexpected}" ]]; then
 fi
 
 echo "Embedded ${#st_jars[@]} ScalablyTyped jars into ${STAGING}:"
-echo "  $(find "${STAGING}" -name '*.sjsir' | wc -l) .sjsir, $(find "${STAGING}" -name '*.class' | wc -l) .class, $(find "${STAGING}" -name '*.tasty' | wc -l) .tasty files under dapr4styped/"
+echo "  $(find "${STAGING}" -name '*.sjsir' | wc -l) .sjsir files under dapr4styped/ (.class/.tasty deliberately excluded — see above)"

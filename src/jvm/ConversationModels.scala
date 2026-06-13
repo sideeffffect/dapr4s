@@ -81,6 +81,11 @@ object ToolChoice:
   *   Optional author name (used by some providers, e.g. to attribute a tool result).
   */
 final case class ConversationMessage(role: ConversationMessageRole, text: String, name: Option[String] = None)
+// @assumeSafe: this file is not compiled in safe mode (see the header), so these explicitly
+// declared factory `def`s are otherwise unreferable from safe consumer code (the dapr4s-examples
+// conversation demo constructs messages from a safe PureModule). The factories are pure — they
+// only wrap a role + text in a case class — so erasing their (empty) capture set is sound.
+@scala.caps.assumeSafe
 object ConversationMessage:
   def system(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.System, text)
   def user(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.User, text)

@@ -31,10 +31,12 @@
 //      (the script fails loudly if this file and its variables ever disagree).
 //
 // Consumer note: consumers of the published dapr4s _sjs1_3 artifact need NOTHING beyond Maven
-// Central. The facade classes are EMBEDDED in the published jar: at publish time,
-// scripts/embed-st-facades.sh unpacks the sjsir/tasty/class entries of every org.scalablytyped
-// jar the three roots transitively require into a staging dir that `scala-cli publish
-// --resource-dirs` packs into dapr4s_sjs1_3.jar. The deps are `compileOnly.dep` (not `dep`) so
+// Central. The facade .sjsir are EMBEDDED in the published jar: at publish time,
+// scripts/embed-st-facades.sh unpacks the .sjsir entries (ONLY — not .class/.tasty; see that
+// script for why: consumers link, never compile, against the facades, and embedding .tasty
+// blows the -javadoc.jar past Central's upload limit) of every org.scalablytyped jar the three
+// roots transitively require into a staging dir that `scala-cli publish --resource-dirs` packs
+// into dapr4s_sjs1_3.jar. The deps are `compileOnly.dep` (not `dep`) so
 // that the ivy-local-only org.scalablytyped coordinates never appear in the published POM —
 // verified: scala-cli 1.14 omits compileOnly deps from the POM entirely (not even scope
 // `provided`). Embedding + compileOnly is the whole trick; the two regular deps below it are
