@@ -234,7 +234,7 @@ Unit tests (no sidecar needed) covering:
 - Root-route collision across kinds (binding vs invocation on the same path).
 - Reserved-path collisions for each reserved path/prefix.
 - `validateOrThrow` aggregates *all* errors into one exception message.
-- `validationErrors` is empty for the example apps under `test/integration/apps`.
+- `validationErrors` is empty for the example apps under `test/shared/apps`.
 - Actor build with duplicate method names throws; clean actor builds succeed.
 - `serve` rejects an invalid app before binding the port (can be asserted by
   constructing the server path with an invalid `DaprApp` and expecting the

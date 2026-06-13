@@ -28,6 +28,9 @@ external entity DaprSidecar {
 
 external entity JavaDaprClient {
     -- Managed entirely inside @assumeSafe boundaries; opaque to user code
+    -- Platform note: on Scala.js the same role is played by the Dapr JS SDK client
+    -- (@dapr/dapr DaprClient + DaprWorkflowClient, in src/js/internal/), equally
+    -- opaque to user code and equally managed inside @assumeSafe boundaries.
 }
 
 external entity Workflow {

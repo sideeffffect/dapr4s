@@ -169,7 +169,7 @@ It supersedes the loose sketch above where they disagree.
    different wire name is required. No automatic case conversion.
 
 4. **Validation against examples — dapr4s test apps first.**
-   The slice is proven inside `dapr4s`'s own `test/integration/apps` before the
+   The slice is proven inside `dapr4s`'s own `test/shared/apps` before the
    separate `dapr4s-examples` repo is touched.
 
 ## Why the trait must be "faithful" (capture-checking)
@@ -305,7 +305,7 @@ method. Two non-obvious constraints shaped the body:
   metadata)` and the requested `Resp`. Derive a small trait, call its methods
   with stub codecs, assert the recorded values — proves name mapping, overload
   selection, and argument forwarding.
-* **Integration:** refactor a caller in `test/integration/apps` to obtain its
+* **Integration:** refactor a caller in `test/shared/apps` to obtain its
   remote calls through a derived service, confirming the slice compiles under
   `language.experimental.safe` + capture checking and behaves identically over a
   real sidecar.
@@ -532,7 +532,7 @@ object MyApp:
 ```
 
 Proven by `WorkflowActivityDerivationTest` (Docker-free, recording fakes) and the refactored
-`test/integration/apps/WorkflowApp.scala` (compiles under safe mode; exercised by the real-sidecar
+`test/shared/apps/WorkflowApp.scala` (compiles under safe mode; exercised by the real-sidecar
 `WorkflowCapabilityServerTest`).
 
 ---

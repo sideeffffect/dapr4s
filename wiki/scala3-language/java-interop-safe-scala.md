@@ -184,4 +184,4 @@ The `Ox ?=> Unit` signature of `runAsync` ensures the processing body has a mana
 - [Context Functions and Capability Passing](context-functions-capability-passing.md)
 - [Safe Mode](../scala-capture-checking/safe-mode.md)
 - [Capabilities for Safe Agents](../capabilities-research/capabilities-for-safe-agents.md)
-- [Scala CLI Build Tool](scala-cli-build-tool.md)
+- [Cross-building with Scala CLI](../scala-js/scala-js-cross-building-scala-cli.md)

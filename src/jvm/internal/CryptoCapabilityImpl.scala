@@ -1,0 +1,28 @@
+//> using target.platform "jvm"
+package dapr4s.internal
+
+import dapr4s.*
+import io.dapr.client.domain.{DecryptRequestAlpha1, EncryptRequestAlpha1}
+import reactor.core.publisher.Flux
+import scala.collection.immutable.ArraySeq
+import FluxOps.*
+
+@scala.caps.assumeSafe
+private[internal] final class CryptoCapabilityImpl(
+    scope: DaprCapabilityImpl,
+    val componentName: CryptoComponentName,
+) extends CryptoCapability:
+
+  def encrypt(keyName: CryptoKeyName, plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
+    val req = new EncryptRequestAlpha1(
+      componentName.value,
+      Flux.just(plaintext.toArray),
+      keyName.value,
+      algorithm.value,
+    )
+    scope.clientPreview.encrypt(req).collectBytes()
+
+  // The ciphertext embeds a reference to the wrapping key, so decryption needs only the component.
+  def decrypt(ciphertext: ArraySeq[Byte]): ArraySeq[Byte] =
+    val req = new DecryptRequestAlpha1(componentName.value, Flux.just(ciphertext.toArray))
+    scope.clientPreview.decrypt(req).collectBytes()

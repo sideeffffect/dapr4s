@@ -1,0 +1,13 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: cryptostore
+spec:
+  type: crypto.dapr.localstorage
+  version: v1
+  metadata:
+    # Directory of PEM keys as seen INSIDE the daprd container. Both harnesses mount the
+    # rendered component dir's sibling key material at /dapr4s-it; the keys/ subdir holds the
+    # RSA key `rsa-key`, generated fresh on every harness `up` (git-ignored).
+    - name: path
+      value: /dapr4s-it/keys

@@ -30,40 +30,80 @@ jobs:
           exit 1
         fi
 
+  # One matrix leg per platform. Adding Scala Native one day should be a new include
+  # entry (platform: native, platform-flags: '--native', ...), not a new job.
+  #
+  # Platform-specific dependencies need no flags here: jvm-deps.scala /
+  # jvm-test-deps.test.scala / js-deps.scala scope their `using dep` directives via
+  # `//> using target.platform`, so `scala-cli ... --js .` simply never resolves the
+  # Dapr Java SDK or testcontainers, and JVM invocations never resolve the
+  # ScalablyTyped facades.
   test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: jvm
+            platform-flags: ''
+            # Integration suite: a real daprd sidecar (and Redis) per test via
+            # testcontainers-dapr; Docker is preinstalled on ubuntu-latest.
+            unit-test-args: ''
+            integration-command: scala-cli test . --test-only 'dapr4s.test.integration.*'
+          - platform: js
+            platform-flags: '--js'
+            # The Wasm-only integration suites use orphan js.await, which the plain-JS
+            # linker cannot handle (it wedges instead of erroring) — exclude them from
+            # the plain-backend unit-test leg; the integration command runs them on the
+            # Wasm backend instead.
+            unit-test-args: --exclude test/js/integration
+            # Brings up redis + placement + scheduler + daprd + the Wasm-packaged test
+            # server, runs the munit suites on Wasm+JSPI (Node 25), tears down.
+            integration-command: scripts/test-js-integration.sh
+    name: test (${{ matrix.platform }})
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
+    - uses: coursier/setup-action@v1
+      if: matrix.platform == 'js'
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
+    # JSPI is on by default from Node 25; the runner's default Node has no JSPI and
+    # scala-cli's runner passes no V8 flags, so the Wasm integration tests need this.
+    - name: Set up Node 25
+      if: matrix.platform == 'js'
+      uses: actions/setup-node@v4
+      with:
+        node-version: 25
+    - name: Install npm dependencies (@dapr/dapr)
+      if: matrix.platform == 'js'
+      run: npm ci
+    # The ScalablyTyped-generated facades (js-deps.scala) live in ~/.ivy2/local; the
+    # generation script no-ops when the pinned digests are already there. Keep the
+    # cache key in sync with the converter version + flags in the script.
+    - name: Cache ScalablyTyped facades
+      if: matrix.platform == 'js'
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.ivy2/local/org.scalablytyped
+          ~/.cache/scalablytyped
+        key: scalablytyped-${{ hashFiles('package-lock.json', 'scripts/generate-st-facades.sh') }}
+    - name: Generate ScalablyTyped facades
+      if: matrix.platform == 'js'
+      run: scripts/generate-st-facades.sh
     - name: Compile
-      run: scala-cli compile .
+      run: scala-cli compile ${{ matrix.platform-flags }} .
     - name: Unit tests
-      run: scala-cli test . --test-only 'dapr4s.test.unit.*'
-
-  integration-test:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
-    - uses: coursier/cache-action@v8
-    - uses: VirtusLab/scala-cli-setup@v1
-      with:
-        power: true
-    # The integration suite spins up a real daprd sidecar (and Redis) per test via
-    # testcontainers-dapr; Docker is preinstalled on ubuntu-latest. These are the
-    # round-trip publish/subscribe + service-invocation tests — the coverage that
-    # would have caught the JSON double-encoding regression that compile-only CI missed.
+      run: scala-cli test ${{ matrix.platform-flags }} . ${{ matrix.unit-test-args }} --test-only 'dapr4s.test.unit.*'
     - name: Integration tests
-      run: scala-cli test . --test-only 'dapr4s.test.integration.*'
+      run: ${{ matrix.integration-command }}
 
   publish:
-    needs: [format, test, integration-test]
+    needs: [format, test]
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
@@ -71,11 +111,42 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
+    - uses: coursier/setup-action@v1
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
-    - name: Publish
+    # The Scala.js publish compiles against the ScalablyTyped facade deps
+    # (compileOnly in js-deps.scala), so the artifacts must exist in ~/.ivy2/local
+    # here too — generation is a BUILD-time requirement only; consumers of the
+    # published artifact never need it (see the embed step below).
+    - name: Install npm dependencies (@dapr/dapr)
+      run: npm ci
+    - name: Cache ScalablyTyped facades
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.ivy2/local/org.scalablytyped
+          ~/.cache/scalablytyped
+        key: scalablytyped-${{ hashFiles('package-lock.json', 'scripts/generate-st-facades.sh') }}
+    - name: Generate ScalablyTyped facades
+      run: scripts/generate-st-facades.sh
+    - name: Publish (JVM)
       run: scala-cli publish .
+      env:
+        PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
+        PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
+        PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
+        PUBLISH_SECRET_KEY_PASSWORD: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+    # Publishes a SELF-CONTAINED dapr4s_sjs1_3: the ScalablyTyped facade classes
+    # (renamed to the dapr4styped.* package) are embedded into the jar via
+    # --resource-dirs, and the facade deps are compileOnly so the POM references
+    # Maven-Central artifacts only — downstream Scala.js users resolve dapr4s like
+    # any ordinary dependency, no generation step; see js-deps.scala and
+    # scripts/embed-st-facades.sh.
+    - name: Stage ScalablyTyped facade classes for embedding
+      run: scripts/embed-st-facades.sh
+    - name: Publish (Scala.js)
+      run: scala-cli publish --js . --resource-dirs .scala-build/st-embed
       env:
         PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
         PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}

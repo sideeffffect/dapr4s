@@ -1,0 +1,14 @@
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: configstore
+spec:
+  type: configuration.redis
+  version: v1
+  metadata:
+    # See statestore.yaml for the ${DAPR4S_IT_REDIS_HOST} substitution. Configuration items are
+    # seeded by `redis-cli MSET` (both harnesses); Dapr's redis config store splits "value||version".
+    - name: redisHost
+      value: ${DAPR4S_IT_REDIS_HOST}
+    - name: redisPassword
+      value: ""

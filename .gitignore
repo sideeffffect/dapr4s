@@ -1,2 +1,6 @@
 .claude
-
+node_modules/
+# Scratch tree of the ScalablyTyped converter (scripts/generate-st-facades.sh); the script
+# removes it after every run, ignored here as a second line of defence — scala-cli would
+# otherwise compile it as project sources.
+out/
