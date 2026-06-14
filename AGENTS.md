@@ -344,15 +344,21 @@ job; each leg runs compile + unit tests + integration tests):
   linker **wedges on orphan-await test sources** (hangs, no error) — they must not even be
   linked on this leg.
 - **Scala.js integration tests** (Docker + Node >= 25 first on PATH + the ST facades +
-  `npm ci`): `scripts/test-js-integration.sh`. Brings up redis + placement + scheduler + daprd
-  1.17 + the Wasm-packaged `JsTestServer` (`scripts/js-integration-env.sh`; port map's Scala twin
-  is `test/js/integration/JsItEnv.scala` — keep in sync), runs the 8 munit suites (26 tests) in
-  `test/js/integration/` on the **Wasm+JSPI backend**, tears down. Harness facts:
-  `scripts/wasm-test.sh` tolerates the known scala-cli bug of exiting 1 after a green Wasm run
-  (`DirectoryNotEmptyException` on the linked-output dir); an ESM resolution hook
-  (`scripts/js-it/node-resolve-hook.mjs`) lets the `/tmp`-linked test module import `@dapr/dapr`
-  from the repo's node_modules (ESM ignores NODE_PATH/CWD); `--test-only` is **ineffective on
-  the JS test runner** — the unit suites run alongside, harmlessly; `java.util.UUID.randomUUID()`
+  `npm ci`): `scripts/test-js-integration.sh` runs the 9 munit suites in `test/js/integration/`
+  on the **Wasm+JSPI backend**. The Dapr sidecar (Redis-backed canonical components + placement +
+  scheduler) is started from INSIDE the test runtime by `@dapr/testcontainer-node` — the twin of
+  the JVM `testcontainers-dapr` leg — via `DaprJsItFixtures.scala`; there is no separate env to
+  bring up/down (testcontainers and its Ryuk reaper own the containers). Direct-call suites run
+  per-suite (`SharedDaprJsItSuite`, rotated forward since `afterAll` can't await on JS); the four
+  server-delivery suites (actor/pub-sub/invoke/workflow) share ONE sidecar + ONE in-process union
+  server (`ServerDaprJsItSuite` + `jsItUnionApp`), reached via `host.testcontainers.internal` with
+  daprd app health checks, because `serve` suspends forever with no clean stop on JS. Harness
+  facts: `scripts/wasm-test.sh` tolerates the known scala-cli bug of exiting 1 after a green Wasm
+  run (`DirectoryNotEmptyException` on the linked-output dir); an ESM resolution hook
+  (`scripts/js-it/node-resolve-hook.mjs`) lets the `/tmp`-linked test module import bare specifiers
+  from the repo's node_modules (ESM ignores NODE_PATH/CWD) and appends `.js` for the deep
+  CommonJS submodule paths ScalablyTyped emits for testcontainers; `--test-only` is **ineffective
+  on the JS test runner** — the unit suites run alongside, harmlessly; `java.util.UUID.randomUUID()`
   does **not link** on Scala.js (SecureRandom is absent from the javalib) — use
   `JsItEnv.uniqueId()`.
 - CI gates `publish` on the `format` job and **both** matrix legs passing.

@@ -582,16 +582,16 @@ dapr4s/
 │                                     # embedded into the published jar) + their Central-hosted runtime libs
 ├── publish-conf.scala                # CI publishing config (git:dynver version, central, env credentials)
 ├── package.json                      # npm pins for the JS layer: @dapr/dapr (runtime + converter input),
-│                                     # @types/express + @types/node (converter inputs), typescript (converter tool)
+│                                     # @types/express + @types/node (converter inputs), testcontainers +
+│                                     # @dapr/testcontainer-node (TEST-scope: JS integration sidecar + converter
+│                                     # inputs), typescript (converter tool)
 ├── package-lock.json                 # committed — the ScalablyTyped digests are deterministic in it
 ├── scripts/
 │   ├── generate-st-facades.sh        # ScalablyTyped conversion → ~/.ivy2/local (pins converter tuple + digests)
 │   ├── embed-st-facades.sh           # stage the facade classes for embedding into the published _sjs1_3 jar
-│   ├── test-js-integration.sh        # JS integration entry point: env up → munit on Wasm+JSPI → env down
-│   ├── js-integration-env.sh         # redis + placement + scheduler + daprd 1.17 + the packaged JS test server
+│   ├── test-js-integration.sh        # JS integration entry point: munit on Wasm+JSPI (sidecar via testcontainers)
 │   ├── wasm-test.sh                  # `scala-cli test` wrapper tolerating the known wasm cleanup bug
-│   ├── js-it/                        # daprd component YAMLs, secrets.json, Node ESM resolution hooks
-│   │                                 # (node-resolve-hook.mjs + node-resolve-delegate.mjs)
+│   ├── js-it/                        # Node ESM resolution hooks (node-resolve-hook.mjs + node-resolve-delegate.mjs)
 │   └── k8s-test.sh
 ├── src/
 │   ├── shared/                       # cross-compiled sources (no platform directive)
@@ -686,7 +686,8 @@ dapr4s/
         ├── TestCodecsJs.scala        # same given names over ujson, so shared tests cross-run
         └── integration/              # Wasm+JSPI thin shells over the SAME test/shared scenarios, against a live
                                       # sidecar: State/PubSub/Invoke/Secrets/Configuration/Lock/Actor/Workflow/Crypto
-                                      # JsIntegrationTests + JsTestServer (the served app) + JsItEnv (env twin)
+                                      # *JsIntegrationTest + DaprJsItFixtures (testcontainers bring-up) +
+                                      # JsItComponents/JsItFacades + jsItUnionApp (the served app) + JsItEnv
 ```
 
 ### Integration-test coverage parity
@@ -695,10 +696,11 @@ Every capability the JS SDK supports is integration-tested on **both** platforms
 platforms share as much as is reasonable — see [JVM-JS-PARITY.md](JVM-JS-PARITY.md) for the full design.
 
 - **One component set, redis everywhere.** `scripts/it/components/*.yaml` + `scripts/it/secrets.json` are the single
-  source of truth, rendered per topology by `scripts/it/render-components.sh` (the only environment-specific value is
-  `redisHost`: `localhost:6391` for the JS host-network harness, `redis:6379` for the JVM testcontainers network). The
-  JS harness mounts the rendered dir into daprd; the JVM feeds the *same files* via `DaprContainer.withComponent(Path)`
-  (`JvmItComponents` renders them; `SharedDaprItSuite`/`RedisFixture` stand up the redis the manifests point at). Both
+  source of truth; the only environment-specific value is `redisHost`, substituted to `redis:6379` (the redis
+  container's network alias) on both platforms. Each platform renders the manifests IN-CODE and feeds them to its
+  testcontainers `DaprContainer` — `JvmItComponents` + `withComponent(Path)` on the JVM, `JsItComponents` +
+  `withComponentFromPath` on JS (`SharedDaprJsItSuite`/`ServerDaprJsItSuite` stand up the redis the manifests point
+  at). `scripts/it/render-components.sh` remains as a standalone renderer for manual use. Both
   platforms therefore run state/pubsub/lock/configuration on `redis`, secrets on `local.file`, crypto on
   `localstorage` — identical backends, no `state.in-memory` divergence, no `scripts/jvm-it/` twin.
 - **Shared scenarios, thin shells.** Each capability's calls + assertions live once as a trait in
@@ -707,8 +709,9 @@ platforms share as much as is reasonable — see [JVM-JS-PARITY.md](JVM-JS-PARIT
   are literally shared, not merely "equivalent". Direct-call capabilities (state, secrets, lock, crypto, configuration,
   invoke) reduce to `withDapr(scenario)` / `run(scenario)` one-liners.
 - **Irreducibly platform-specific bring-up.** Server-delivery suites (actor, workflow, pub/sub delivery) keep
-  platform-specific harnesses — a host `DaprAppServer` thread the sidecar calls back into on the JVM, the external
-  `JsTestServer` Node process on JS — because the server runtimes differ. They still run on the shared redis components.
+  platform-specific harnesses — a per-suite host `DaprAppServer` thread the sidecar calls back into on the JVM, one
+  shared in-process `serveAsync` union server (`jsItUnionApp`) on JS (since `serve` suspends forever with no clean
+  stop) — because the server runtimes differ. They still run on the shared redis components.
 
 The only capabilities not tested on Scala.js are **jobs** and **conversation**: the JS SDK has no such APIs, so they are
 *compile-time absent* on that platform (`DaprCapabilityPlatform`, see the platform-trait section) — not untested.
@@ -965,7 +968,7 @@ Plain `scala-cli compile|test|publish --js .` therefore never resolves the Java 
 Scala.js tests run as **two legs**, mirroring the JVM split:
 
 - **Unit leg** (plain JS backend, no Docker/npm): `scala-cli test --js . --exclude test/js/integration --test-only 'dapr4s.test.unit.*'`. The shared unit suites cross-run unchanged (with `test/js/TestCodecsJs.scala` supplying the codec givens over ujson). The `--exclude` is load-bearing and is the only exclude left in the build: the integration suites contain orphan `js.await`, and the plain-JS linker does not fail on orphan-await test sources — it **wedges** (hangs without error), so they must not even be linked on this leg.
-- **Integration leg** (Wasm + JSPI, real sidecar): `scripts/test-js-integration.sh`. Nine munit suites under `test/js/integration/` — state, pub/sub, invoke, secrets, configuration, lock, actors, workflows, crypto — run on the experimental WebAssembly backend against a live environment: `daprd` 1.17 + Redis-backed components + the placement and scheduler services (workflows require the scheduler in 1.17), plus `JsTestServer` — a full dapr4s `serve()` app packaged to Wasm and run under Node as daprd's app channel. `scripts/js-integration-env.sh` brings all of that up/down on non-default ports (its Scala twin is `JsItEnv.scala`); the suites themselves exercise the *client* capabilities through `Dapr().run` while the server side exercises subscriptions, invoke routes, actor hosting and workflow hosting end to end.
+- **Integration leg** (Wasm + JSPI, real sidecar): `scripts/test-js-integration.sh`. Nine munit suites under `test/js/integration/` — state, pub/sub, invoke, secrets, configuration, lock, actors, workflows, crypto — run on the experimental WebAssembly backend against a live `daprd` 1.17 + Redis-backed components + placement and scheduler (workflows require the scheduler in 1.17). The sidecar is started from INSIDE the test runtime by `@dapr/testcontainer-node` (the twin of the JVM `testcontainers-dapr` leg), driven by `DaprJsItFixtures.scala`; there is no external bring-up script any more (testcontainers and its Ryuk reaper own the containers). Direct-call suites run per-suite (`SharedDaprJsItSuite`, each suite's stack torn down as the next starts — `afterAll` can't await on JS); the four server-delivery suites share ONE sidecar + ONE in-process `serveAsync` union server (`ServerDaprJsItSuite` + `jsItUnionApp`), reached via `host.testcontainers.internal` with daprd app health checks pointed at `/dapr/config`, because `serve` suspends forever with no clean stop. The suites exercise the *client* capabilities through `Dapr().run`; the union server exercises subscriptions, invoke routes, actor hosting and workflow hosting end to end.
 
 Harness specifics, each compensating for a verified toolchain gap:
 
@@ -974,7 +977,7 @@ Harness specifics, each compensating for a verified toolchain gap:
 - **ESM resolution hook** (`scripts/js-it/node-resolve-hook.mjs` + `node-resolve-delegate.mjs`, injected via `NODE_OPTIONS=--import`): scala-cli links the test module into `/tmp` and runs Node there; ESM resolution of bare specifiers walks up from the *module's own path* (ignoring both CWD and `NODE_PATH`), so `import '@dapr/dapr'` cannot find the repo's `node_modules` without the hook retrying failed bare specifiers against the repo root.
 - `--test-only` is **ineffective on the JS test runner** — the unit suites run alongside the integration suites on this leg (harmlessly; they are fast and environment-free).
 - `java.util.UUID.randomUUID()` does **not link** on Scala.js (it reaches for `java.security.SecureRandom`, absent from the javalib) — test ids use a time+`js.Math.random()` scheme (`JsItEnv.uniqueId`).
-- **Facade jars on the Wasm link classpath** (`scripts/st-link-jars.sh`): the facades are `compileOnly.dep` (so the ivy-local-only `org.scalablytyped` coordinates stay out of the published POM). `compileOnly` puts them on the classpath the *plain-JS* `test` link uses (the unit leg links fine), but **not** on the one the Wasm backend's `package --test` (building `JsTestServer`) and `test --js-emit-wasm` (running the suites) link against — there the link fails with "Referring to non-existent class dapr4styped…". Both `js-integration-env.sh` and `test-js-integration.sh` therefore resolve the exact transitive `org.scalablytyped` jar set (the same one `embed-st-facades.sh` embeds at publish) and pass it as `--jar` flags; the linker de-duplicates against the compileOnly deps (no duplicate-class errors) and the POM is unaffected.
+- **Facade jars on the Wasm link classpath** (`scripts/st-link-jars.sh`): the three MAIN facades (`js-deps.scala`) are `compileOnly.dep` (so the ivy-local-only `org.scalablytyped` coordinates stay out of the published POM). `compileOnly` puts them on the classpath the *plain-JS* `test` link uses (the unit leg links fine), but **not** on the one the Wasm backend's `test --js-emit-wasm` link uses — there the link fails with "Referring to non-existent class dapr4styped…". So `test-js-integration.sh` resolves the exact transitive `org.scalablytyped` jar set (the same one `embed-st-facades.sh` embeds at publish) and passes it as `--jar` flags; the linker de-duplicates against the compileOnly deps (no duplicate-class errors) and the POM is unaffected. The two TEST-scope testcontainers facades (`js-test-deps.test.scala`, plain `dep`) need no `--jar`: their closure is already on the test link classpath, and being test scope they never reach the published POM or the embedded artifact.
 
 ### Known platform divergences
 
