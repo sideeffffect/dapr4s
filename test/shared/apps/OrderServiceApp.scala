@@ -2,7 +2,9 @@ package dapr4s.test.integration.apps
 
 import dapr4s.*
 import dapr4s.given
-import language.experimental.safe
+// NOT language.experimental.safe (unlike InventoryServiceApp): minting unique order ids needs an effectful
+// counter, and safe mode forbids untracked mutable state — the same reason the shared `ItNames` counter is
+// not safe-mode. Global capture checking still applies.
 
 /** Business logic for the Order microservice.
   *
@@ -33,6 +35,12 @@ object OrderServiceApp:
   val PubSubComp = PubSubName("pubsub")
   val OrdersTopic = Topic("orders")
 
+  // Monotonic order-id counter on the (singleton) object, so ids stay unique across all `placeOrder` calls in a run.
+  // A plain Scala var — NOT `java.util.UUID.randomUUID` (reaches `java.security.SecureRandom`, which does not link on
+  // Scala.js) and NOT a `java.*` counter (safe mode forbids unsafe-tagged Java APIs). Requests are issued sequentially
+  // in the tests, so the unsynchronised increment never races.
+  private var orderSeq: Long = 0L
+
   // ---------------------------------------------------------------------------
   // Handler methods — pure functions with explicit capability requirements
   // ---------------------------------------------------------------------------
@@ -41,7 +49,8 @@ object OrderServiceApp:
     * acceptance status.
     */
   def placeOrder(req: OrderRequest)(using StateCapability, PublishCapability): OrderResponse =
-    val orderId = java.util.UUID.randomUUID().toString
+    orderSeq += 1
+    val orderId = s"order-$orderSeq"
     StateCapability.save(StateStoreKey(orderId), req)
     PublishCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
     OrderResponse(orderId, "accepted")
