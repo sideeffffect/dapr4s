@@ -4,16 +4,16 @@ import dapr4s.given
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-/** Cross-platform munit test registrations for the integration suites whose JVM and JS twins run the very same shared
-  * scenarios. Each `*SuiteDef` mixes in the scenario trait (the calls + assertions) and registers the `test(...)` lines
-  * once; the per-platform class adds only the bring-up trait that supplies [[DaprItFixture.withDapr]] (synchronous on
-  * the JVM, `Future`-returning on JS) — so the entire suite body lives here and each platform entry point is a single
-  * `class … extends FunSuite, <bring-up>, <SuiteDef>` line.
+/** Cross-platform munit test registrations for the integration suites whose JVM and JS runs exercise the very same
+  * shared scenarios. Each `*SuiteDef` mixes in the scenario trait (the calls + assertions) and registers the
+  * `test(...)` lines once; the matching concrete suite class (e.g. [[StateItTest]]) lives in test/shared too and just
+  * mixes a `*SuiteDef` with a per-platform bring-up trait (`SharedDaprItSuite` / `InvokeHarness`) that supplies
+  * [[DaprItFixture.withDapr]] (synchronous on the JVM, `Future`-returning on JS).
   *
   * These cover the five direct-call capability suites (State / Configuration / Crypto / Lock / Secrets) plus Invoke
-  * (whose `serverAppId` / `retrying` hooks stay abstract for the platform class to fill in). The Actor / PubSub /
-  * Workflow server-delivery suites are NOT shared here: their JVM and JS twins exercise genuinely different bodies (the
-  * JVM ones dispatch over HTTP and assert far more), so there is no common scenario set to register.
+  * (whose `serverAppId` / `retrying` hooks stay abstract for the platform `InvokeHarness` to fill in). The Actor /
+  * PubSub / Workflow server-delivery suites are NOT shared: their JVM and JS twins exercise genuinely different bodies
+  * (the JVM ones dispatch over HTTP and assert far more), so there is no common scenario set to register.
   *
   * WHY @assumeSafe: the registrations eta-expand the scenario methods into `DaprCapability ?=> Unit` closures passed to
   * `withDapr` — the same capture-checking erasure the scenario traits and bring-up fixtures already assume.

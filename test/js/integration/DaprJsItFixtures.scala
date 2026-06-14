@@ -207,7 +207,7 @@ object DaprJsIt:
   * (which runs inside `js.async`, the only place the orphan-await container startup can suspend).
   */
 @scala.caps.assumeSafe
-trait SharedDaprJsItSuite extends FunSuite, DaprItFixture:
+trait SharedDaprItSuite extends FunSuite, DaprItFixture:
   self: FunSuite =>
 
   override def munitTimeout: Duration = 120.seconds

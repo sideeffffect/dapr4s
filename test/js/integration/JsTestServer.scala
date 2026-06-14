@@ -20,7 +20,7 @@ class GatedWorkflow extends Workflow:
 /** The inbound handler set the JS integration suites exercise through a real sidecar:
   *
   *   - `echo` / `double` invoke routes — the same method names the derived [[EchoService]] caller facade expects, so
-  *     `InvokeJsIntegrationTest` covers both the plain and the derived invoke path;
+  *     `InvokeItTest` covers both the plain and the derived invoke path;
   *   - `echo-int` — Int→Int identity, so a falsy `0` request body (the raw-fetch fallback in the JS client) round-trips
   *     end to end;
   *   - `js-it-orders` subscription — writes each event's quantity to state under `js-it-order-{orderId}`, letting

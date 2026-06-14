@@ -7,7 +7,7 @@ import scala.scalajs.js
 
 /** Scala.js integration-suite constants + the JS implementation of the cross-platform [[ItPolling]] helpers.
   *
-  * Bring-up lives in [[DaprJsIt]] / [[SharedDaprJsItSuite]] / [[ServerDaprJsItSuite]], which drive a real Dapr sidecar
+  * Bring-up lives in [[DaprJsIt]] / [[SharedDaprItSuite]] / [[ServerDaprJsItSuite]], which drive a real Dapr sidecar
   * from inside the test runtime via `@dapr/testcontainer-node` — the twin of the JVM testcontainers fixtures.
   *
   * ==Why a JS-specific [[sleep]]==

@@ -11,24 +11,18 @@ import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-/** JVM [[InvokeCapability]] integration suite: registrations + scenarios come from the shared [[InvokeSuiteDef]] (echo,
-  * falsy-0, the derived [[EchoService]] facade and the non-existent-app error path); the JS twin
-  * [[InvokeJsIntegrationTest]] runs the very same suite definition. This file owns only the JVM bring-up.
+/** JVM bring-up for the shared [[InvokeItTest]] — the JVM implementation of the cross-platform `InvokeHarness` (the JS
+  * one lives in test/js). Supplies the [[InvokeScenarios]] hooks `serverAppId` / `retrying` and the [[withDapr]]
+  * boundary ([[DaprItFixture]]).
   *
   * Service invocation needs a reachable target, so — unlike the direct-call [[SharedDaprItSuite]] suites — this owns a
   * two-phase bring-up: a host-side [[DaprAppServer]] (registering the echo / echo-int / double routes the scenarios
   * call) is started and exposed to Docker BEFORE the sidecar, which is then pointed back at it (the same pattern as
-  * [[ActorCapabilityServerTest]]), and provides [[withDapr]] ([[DaprItFixture]]). Replaces the former
-  * InvokeCapabilityServerTest + InvokeIntegrationTest.
+  * [[ActorCapabilityServerTest]]).
   */
 @scala.caps.assumeSafe
-class InvokeItTest
-    extends FunSuite,
-      TestContainersForAll,
-      DaprServerTestBase,
-      DaprItFixture,
-      InvokeSuiteDef,
-      JvmItPolling:
+trait InvokeHarness extends TestContainersForAll, DaprServerTestBase, DaprItFixture, JvmItPolling:
+  self: FunSuite =>
 
   override type Containers = DaprTestContainer
 
