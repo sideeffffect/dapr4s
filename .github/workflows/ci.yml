@@ -54,8 +54,11 @@ jobs:
             # The Wasm-only integration suites use orphan js.await, which the plain-JS
             # linker cannot handle (it wedges instead of erroring) — exclude them from
             # the plain-backend unit-test leg; the integration command runs them on the
-            # Wasm backend instead.
-            unit-test-args: --exclude test/js/integration
+            # Wasm backend instead. The shared concrete suite classes in
+            # test/shared/integration extend the JS bring-up that lives in
+            # test/js/integration, so they must be excluded here too (else they fail to
+            # resolve it); they are integration suites and run on the Wasm leg below.
+            unit-test-args: --exclude test/js/integration --exclude test/shared/integration
             # Runs the munit suites on Wasm+JSPI (Node 25). The Dapr sidecar + Redis +
             # placement + scheduler are started from INSIDE the test runtime via
             # @dapr/testcontainer-node (Docker is preinstalled on ubuntu-latest) — the
