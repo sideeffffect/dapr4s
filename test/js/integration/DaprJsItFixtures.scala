@@ -4,6 +4,7 @@ package dapr4s.test.integration
 import dapr4s.*
 import dapr4s.given
 import dapr4s.internal.JsAwait
+import dapr4s.test.integration.apps.{InventoryServiceApp, OrderServiceApp}
 import java.net.URI
 import munit.FunSuite
 import scala.concurrent.Future
@@ -176,6 +177,62 @@ object DaprJsIt:
       // Wait until daprd has connected the app channel (subscriptions/actors registered) before tests run.
       awaitHttpOk("daprd healthz (app channel up)", s"${sidecar.httpEndpoint}/v1.0/healthz")
       cfg
+
+  // ---- service-suite environment (one sidecar + one DIRECT-HTTP service server) ----------------
+  // The service suites (Order/Inventory/e2e) host OrderServiceApp ++ InventoryServiceApp behind a
+  // DaprAppServer they poke DIRECTLY over HTTP (invoke routes + a synthetic CloudEvent POST to the
+  // subscription route), exactly like the JVM `ServiceHarness`. The sidecar here has NO app channel
+  // (plain `daprContainer`, no withAppPort/withAppChannelAddress), so a handler's fire-and-forget
+  // publish is never redelivered — the test's direct POST is the only delivery (no double-count, no
+  // poll). The stack is created lazily on the first service test and kept for the run (reaped at exit),
+  // like sharedServerConfig.
+  private var serviceClientCfg: DaprConfig | Null = null
+  private var serviceServerPort: Int = -1
+
+  def serviceStack(): (DaprConfig, Int) =
+    val existing = serviceClientCfg
+    if existing != null then (existing, serviceServerPort)
+    else
+      val (net, _) = startNetworkAndRedis()
+      val sd = JsAwait.await(daprContainer(net, "js-it-service").start())
+      val sidecar = sidecarOf(sd)
+      val port = nextAppPort()
+      // The service server reaches the sidecar for state/lock/publish; the sidecar never reaches it
+      // back (no app channel), so it is not exposed to Docker. serve suspends forever → fire-and-forget.
+      Dapr(DaprConfig(sidecar = sidecar, appServer = AppServerConfig(port = DaprPort(port))))
+        .serveAsync(OrderServiceApp() ++ InventoryServiceApp())
+        .asInstanceOf[js.Dynamic]
+        .applyDynamic("catch")(
+          ((e: js.Any) => {
+            js.Dynamic.global.console.error(s"dapr4s js-it: service server failed: $e")
+            ()
+          }): js.Function1[js.Any, Unit],
+        ): Unit
+      // GET /dapr/config answers 200 on the express server even with no actors — a readiness probe
+      // that needs no app channel.
+      awaitHttpOk("service server up", s"http://localhost:$port/dapr/config")
+      val cfg = DaprConfig(sidecar = sidecar)
+      serviceClientCfg = cfg
+      serviceServerPort = port
+      (cfg, port)
+
+  /** POST `body` to `url` and return `(status, responseText)` — the JS analogue of the JVM `httpPostWithCode`. */
+  def httpPostWithCode(url: String, body: String): (Int, String) =
+    val resp = JsAwait.await(
+      js.Dynamic.global
+        .fetch(
+          url,
+          js.Dynamic.literal(
+            method = "POST",
+            headers = js.Dynamic.literal("Content-Type" -> "application/json"),
+            body = body,
+          ),
+        )
+        .asInstanceOf[js.Promise[js.Dynamic]],
+    )
+    val status = resp.status.asInstanceOf[Int]
+    val text = JsAwait.await(resp.text().asInstanceOf[js.Promise[String]])
+    (status, text)
 
   private var forwarderGuardInstalled = false
 
