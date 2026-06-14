@@ -454,16 +454,24 @@ probing class files whenever you need to verify an API.
 - Work in independent worktrees, but push directly to `master`/`main`.
 - **Commit and push completed work immediately and automatically — do not wait to be asked.**
   Once a change is done and the checks pass (format, compile, tests), commit it and push to
-  `master`/`main` without prompting for permission.
+  `master`/`main` without prompting for permission. This applies to *any* edit you make — code,
+  docs, config, tests, a one-line fix — with no exceptions. Never end a turn by offering
+  "commit and push, or leave it in the working tree?" as a choice — just push. Pushing to
+  `master` here is the default, not an action that needs confirmation. Likewise, never make an
+  edit and then *stop* with it left uncommitted in the working tree: finishing an edit means
+  committing and pushing it in the same turn. If the user later has to ask "did you push this?",
+  the rule was broken.
 - Commit messages follow Conventional Commits: `feat:`, `fix:`, `refactor:`, `docs:`, etc.
 - When forking external repos for contribution proposals: fork via `gh repo fork`, create a
   branch with a descriptive name (`feat/blocking-client-virtual-threads`), implement, compile,
   push. Do not open a PR without being asked.
 - Do not force-push, do not skip hooks, do not amend published commits.
-- **Releases**: when cutting a release, don't just push the `vX.Y.Z` tag — also create a proper
-  GitHub Release for it (`gh release create vX.Y.Z`). Make it pretty: a descriptive title and
-  release notes grouped by Conventional Commit type (Features / Fixes / Docs / Build), with the
-  highlights called out at the top. Prefer curated notes over a raw auto-generated commit dump.
+- **Releases**: never create or push a bare `vX.Y.Z` tag by hand — always cut the release as a
+  proper GitHub Release (`gh release create vX.Y.Z`), which creates the tag for you. The
+  tag-pushing path exists only as the CI trigger; the human-facing action is always the GitHub
+  Release. Make it pretty: a descriptive title and release notes grouped by Conventional Commit
+  type (Features / Fixes / Docs / Build), with the highlights called out at the top. Prefer
+  curated notes over a raw auto-generated commit dump.
 
 ---
 
