@@ -32,7 +32,7 @@ trait RedisFixture extends TestContainersForAll:
       waitStrategy = Wait.forLogMessage(".*Ready to accept connections.*", 1),
     )
     r.container.withNetwork(network)
-    r.container.withNetworkAliases(JvmItComponents.RedisAlias)
+    r.container.withNetworkAliases(ItNames.RedisAlias)
     r.start()
     redis = r
     JvmItComponents.render()

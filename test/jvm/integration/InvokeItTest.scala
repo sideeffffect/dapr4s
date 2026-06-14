@@ -11,17 +11,24 @@ import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-/** JVM [[InvokeCapability]] integration suite: a thin shell over the shared [[InvokeScenarios]] (caller side: echo,
-  * falsy-0, the derived [[EchoService]] facade and the non-existent-app error path). The JS twin
-  * [[InvokeJsIntegrationTest]] runs the very same scenarios.
+/** JVM [[InvokeCapability]] integration suite: registrations + scenarios come from the shared [[InvokeSuiteDef]] (echo,
+  * falsy-0, the derived [[EchoService]] facade and the non-existent-app error path); the JS twin
+  * [[InvokeJsIntegrationTest]] runs the very same suite definition. This file owns only the JVM bring-up.
   *
   * Service invocation needs a reachable target, so — unlike the direct-call [[SharedDaprItSuite]] suites — this owns a
   * two-phase bring-up: a host-side [[DaprAppServer]] (registering the echo / echo-int / double routes the scenarios
   * call) is started and exposed to Docker BEFORE the sidecar, which is then pointed back at it (the same pattern as
-  * [[ActorCapabilityServerTest]]). Replaces the former InvokeCapabilityServerTest + InvokeIntegrationTest.
+  * [[ActorCapabilityServerTest]]), and provides [[withDapr]] ([[DaprItFixture]]). Replaces the former
+  * InvokeCapabilityServerTest + InvokeIntegrationTest.
   */
 @scala.caps.assumeSafe
-class InvokeItTest extends FunSuite, TestContainersForAll, DaprServerTestBase, InvokeScenarios:
+class InvokeItTest
+    extends FunSuite,
+      TestContainersForAll,
+      DaprServerTestBase,
+      DaprItFixture,
+      InvokeSuiteDef,
+      JvmItPolling:
 
   override type Containers = DaprTestContainer
 
@@ -71,8 +78,7 @@ class InvokeItTest extends FunSuite, TestContainersForAll, DaprServerTestBase, I
 
   private def waitForSidecarHealth(sidecarPort: Int, maxMs: Int = 30000): Unit =
     val url = s"http://localhost:$sidecarPort/v1.0/healthz"
-    val deadline = System.currentTimeMillis() + maxMs
-    while System.currentTimeMillis() < deadline do
+    eventually("sidecar healthz", timeoutMs = maxMs, intervalMs = 200) {
       try
         val conn = java.net.URI.create(url).toURL.nn.openConnection().asInstanceOf[java.net.HttpURLConnection]
         conn.setRequestMethod("GET")
@@ -81,15 +87,9 @@ class InvokeItTest extends FunSuite, TestContainersForAll, DaprServerTestBase, I
         conn.connect()
         val code = conn.getResponseCode
         conn.disconnect()
-        if code == 204 then return
-      catch case _: Exception => ()
-      Thread.sleep(200)
-    throw RuntimeException(s"Sidecar not healthy after ${maxMs}ms")
+        Option.when(code == 204)(())
+      catch case _: Exception => None
+    }
 
-  private def withDapr(body: DaprCapability ?=> Unit): Unit =
+  override def withDapr(body: DaprCapability ?=> Unit): Unit =
     withContainers { c => Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint)(body) }
-
-  test("invoke: echo roundtrip via the app server")(withDapr(echoRoundtrip))
-  test("invoke: falsy body 0 reaches the handler")(withDapr(falsyZeroBodyRoundtrips))
-  test("invoke: derived EchoService facade calls the matching server routes")(withDapr(derivedEchoServiceFacade))
-  test("invoke: invoking a non-existent app throws")(withDapr(nonexistentAppThrows))

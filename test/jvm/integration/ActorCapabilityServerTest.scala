@@ -38,7 +38,12 @@ import java.util.concurrent.atomic.AtomicInteger
   * Actor IDs are unique per test to prevent state leakage across tests that share the same sidecar container.
   */
 @scala.caps.assumeSafe
-class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase with RedisFixture:
+class ActorCapabilityServerTest
+    extends FunSuite
+    with TestContainersForAll
+    with DaprServerTestBase
+    with RedisFixture
+    with JvmItPolling:
 
   type Containers = DaprTestContainer
 
@@ -122,14 +127,10 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
 
   // Poll until state count reaches `expected` or timeout.
   private def waitForCount(actorId: String, expected: Int, maxMs: Int = 10000): Unit =
-    val deadline = System.currentTimeMillis() + maxMs
-    while System.currentTimeMillis() < deadline do
+    eventually(s"actor $actorId count=$expected", timeoutMs = maxMs, intervalMs = 200) {
       val resp = httpPost(sidecarActorUrl(actorId, "get"), "null")
-      if JsonCodec.decodeOrThrow[CounterState](resp).count == expected then return
-      Thread.sleep(200)
-    throw RuntimeException(
-      s"Actor $actorId count never reached $expected within ${maxMs}ms",
-    )
+      Option.when(JsonCodec.decodeOrThrow[CounterState](resp).count == expected)(())
+    }
 
   // ---- state persistence via real Dapr sidecar --------------------------------
 
@@ -279,9 +280,7 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
       maxMs: Int = 30000,
   ): Unit =
     val url = s"http://localhost:$sidecarPort/v1.0/actors/$actorType/$probeActorId/state/probe"
-    val deadline = System.currentTimeMillis() + maxMs
-    var lastMsg = ""
-    while System.currentTimeMillis() < deadline do
+    eventually(s"actor type $actorType state API ready", timeoutMs = maxMs, intervalMs = 200) {
       try
         val conn = java.net.URI.create(url).toURL.nn.openConnection().asInstanceOf[java.net.HttpURLConnection]
         conn.setRequestMethod("GET")
@@ -290,21 +289,12 @@ class ActorCapabilityServerTest extends FunSuite with TestContainersForAll with 
         conn.connect()
         val code = conn.getResponseCode
         conn.disconnect()
-        // Any proper HTTP response (even 500) means the actor state API is up.
-        // "Unexpected end of file" (getResponseCode throws) means the sidecar is still
-        // bootstrapping actor types — keep polling.
-        lastMsg = s"status=$code"
-        if code < 500 then return
-        // 500 can mean "not registered yet" or "actor state store error" — keep polling
-      catch
-        case e: java.net.SocketTimeoutException =>
-          lastMsg = "timeout"
-        case e: Exception =>
-          lastMsg = e.getMessage.nn
-      Thread.sleep(200)
-    throw RuntimeException(
-      s"Actor type $actorType not ready after ${maxMs}ms — last=$lastMsg",
-    )
+        // Any proper HTTP response below 500 means the actor state API is up. A 500 ("not registered
+        // yet" / state store error) or a thrown getResponseCode ("Unexpected end of file" while the
+        // sidecar bootstraps actor types) means keep polling.
+        Option.when(code < 500)(())
+      catch case _: Exception => None
+    }
 
   // ---- HTTP helpers -----------------------------------------------------------
 

@@ -89,7 +89,7 @@ object DaprJsIt:
     val redis = new GenericContainer(RedisImage)
       .withExposedPorts(6379)
       .withNetwork(net)
-      .withNetworkAliases(JsItComponents.RedisAlias)
+      .withNetworkAliases(ItNames.RedisAlias)
     val startedRedis = JsAwait.await(redis.start())
     // Seed configuration items before daprd reads them (redis config store splits "value||version").
     JsAwait.await(startedRedis.exec(JsItComponents.SeedConfigArgv))
@@ -207,7 +207,7 @@ object DaprJsIt:
   * (which runs inside `js.async`, the only place the orphan-await container startup can suspend).
   */
 @scala.caps.assumeSafe
-trait SharedDaprJsItSuite extends FunSuite:
+trait SharedDaprJsItSuite extends FunSuite, DaprItFixture:
   self: FunSuite =>
 
   override def munitTimeout: Duration = 120.seconds
@@ -230,7 +230,7 @@ trait SharedDaprJsItSuite extends FunSuite:
   /** Run `body` against the started sidecar — the JS analogue of the JVM `withDapr`, wrapped in the
     * `js.async{}.toFuture` boundary munit awaits.
     */
-  protected def withDapr(body: DaprCapability ?=> Unit): Future[Unit] =
+  override def withDapr(body: DaprCapability ?=> Unit): Future[Unit] =
     js.async {
       val cfg = ensureEnv()
       Dapr(cfg).run(body)
@@ -243,12 +243,12 @@ trait SharedDaprJsItSuite extends FunSuite:
   * `ActorCapabilityServerTest` / `WorkflowCapabilityServerTest`.
   */
 @scala.caps.assumeSafe
-trait ServerDaprJsItSuite extends FunSuite:
+trait ServerDaprJsItSuite extends FunSuite, DaprItFixture:
   self: FunSuite =>
 
   override def munitTimeout: Duration = 120.seconds
 
-  protected def withDapr(body: DaprCapability ?=> Unit): Future[Unit] =
+  override def withDapr(body: DaprCapability ?=> Unit): Future[Unit] =
     js.async {
       val cfg = DaprJsIt.sharedServerConfig()
       Dapr(cfg).run(body)

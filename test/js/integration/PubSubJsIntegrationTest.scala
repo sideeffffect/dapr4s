@@ -20,7 +20,7 @@ class PubSubJsIntegrationTest extends FunSuite, ServerDaprJsItSuite:
 
   test("pubsub: publish is delivered to the server subscription and lands in state"):
     withDapr:
-      val orderId = uniqueId()
+      val orderId = fresh("o")
       DaprCapability.publish(PubSub) {
         PublishCapability.publish(Topic("js-it-orders"), OrderEvent(orderId, "widget", 7))
       }
@@ -47,7 +47,7 @@ class PubSubJsIntegrationTest extends FunSuite, ServerDaprJsItSuite:
 
   test("pubsub: bulkPublish delivers every entry"):
     withDapr:
-      val ids = List(uniqueId(), uniqueId(), uniqueId())
+      val ids = List(fresh("o"), fresh("o"), fresh("o"))
       val entries = ids.zipWithIndex.map { case (id, i) =>
         BulkPublishEntry(BulkEntryId(s"entry-$i"), OrderEvent(id, "bulk", i + 1))
       }

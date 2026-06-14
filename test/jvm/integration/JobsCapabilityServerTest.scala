@@ -20,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
   * the [[JobRoute]] handler has recorded the delivered payload.
   */
 @scala.caps.assumeSafe
-class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase:
+class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase with JvmItPolling:
 
   type Containers = DaprTestContainer
 
@@ -67,12 +67,7 @@ class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with D
     c
 
   private def waitForDelivery(jobName: String, maxMs: Int = 30000): String =
-    val deadline = System.currentTimeMillis() + maxMs
-    while System.currentTimeMillis() < deadline do
-      val v = delivered.get(jobName)
-      if v != null then return v
-      Thread.sleep(250)
-    throw RuntimeException(s"Job '$jobName' was never delivered within ${maxMs}ms")
+    eventually(s"job '$jobName' delivered", timeoutMs = maxMs, intervalMs = 250)(Option(delivered.get(jobName)))
 
   test("jobs: scheduleOnce fires the job back to the matching JobRoute"):
     withContainers { c =>

@@ -38,7 +38,7 @@ class InventoryServiceIntegrationTest extends FunSuite with TestContainersForAll
       waitStrategy = Wait.forLogMessage(".*Ready to accept connections.*", 1),
     )
     redis.container.withNetwork(network)
-    redis.container.withNetworkAliases(JvmItComponents.RedisAlias)
+    redis.container.withNetworkAliases(ItNames.RedisAlias)
     redis.start()
 
     val res = JvmItComponents.render()

@@ -29,7 +29,7 @@ class GatedWorkflow extends Workflow:
   */
 object JsItServerApp:
   def apply()(using DaprCapability): DaprApp =
-    DaprCapability.state(JsItEnv.StateStore) {
+    DaprCapability.state(ItNames.StateStore) {
       DaprApp(
         invokeRoutes = List(
           InvokeRoute[String, String](InvokeMethodName("echo")) { s =>
@@ -46,13 +46,13 @@ object JsItServerApp:
           },
         ),
         subscriptions = List(
-          Subscription[OrderEvent](JsItEnv.PubSub, Topic("js-it-orders")) { ev =>
+          Subscription[OrderEvent](ItNames.PubSub, Topic("js-it-orders")) { ev =>
             try
               StateCapability.save(StateStoreKey(s"js-it-order-${ev.data.orderId}"), ev.data.quantity)
               SubscriptionResult.Success
             catch case e: Exception => throw e
           },
-          Subscription[Int](JsItEnv.PubSub, Topic("js-it-zeros")) { ev =>
+          Subscription[Int](ItNames.PubSub, Topic("js-it-zeros")) { ev =>
             try
               StateCapability.save(StateStoreKey("js-it-zero-marker"), ev.data)
               SubscriptionResult.Success
@@ -65,8 +65,8 @@ object JsItServerApp:
 /** The union of every inbound handler set the server-delivery suites need — invoke/pub-sub ([[JsItServerApp]]), the
   * `Counter` actor ([[CounterActorApp]]), and the workflows ([[WorkflowApp]] + [[GatedWorkflow]]).
   *
-  * This is hosted ONCE in-process by [[DaprJsIt.sharedServerConfig]] (via `Dapr(serverCfg).serveAsync`, reachable
-  * from the daprd container through `host.testcontainers.internal`) — the Scala.js twin of the JVM suites' in-test
+  * This is hosted ONCE in-process by [[DaprJsIt.sharedServerConfig]] (via `Dapr(serverCfg).serveAsync`, reachable from
+  * the daprd container through `host.testcontainers.internal`) — the Scala.js twin of the JVM suites' in-test
   * `DaprAppServer`. Unlike the JVM, where each server suite starts and stops its own app-server thread in `afterAll`,
   * on JS `serve` suspends forever with no clean stop, so the four server-delivery suites (Actor/PubSub/Invoke/Workflow)
   * share ONE sidecar + ONE union server for the whole run (the topology of the retired `scripts/js-integration-env.sh`,

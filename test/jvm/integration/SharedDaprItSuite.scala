@@ -22,7 +22,7 @@ import munit.FunSuite
   * bring-up (testcontainers here, external Docker+Node there) and the munit boundary (synchronous here, `Future` there)
   * differ.
   */
-trait SharedDaprItSuite extends TestContainersForAll:
+trait SharedDaprItSuite extends TestContainersForAll, DaprItFixture:
   self: FunSuite =>
 
   override type Containers = GenericContainer and DaprTestContainer
@@ -38,11 +38,11 @@ trait SharedDaprItSuite extends TestContainersForAll:
       waitStrategy = Wait.forLogMessage(".*Ready to accept connections.*", 1),
     )
     redis.container.withNetwork(network)
-    redis.container.withNetworkAliases(JvmItComponents.RedisAlias)
+    redis.container.withNetworkAliases(ItNames.RedisAlias)
     redis.start()
 
     // Seed configuration items before daprd reads them (redis config store splits "value||version").
-    val args = Array("redis-cli", "MSET") ++ JvmItComponents.SeededConfig.flatMap((k, v) => List(k, v))
+    val args = Array("redis-cli", "MSET") ++ ItNames.SeededConfig.flatMap((k, v) => List(k, v))
     val seed = redis.container.execInContainer(args*)
     assertEquals(seed.getExitCode, 0, s"redis MSET failed: ${seed.getStderr}")
 
@@ -66,7 +66,7 @@ trait SharedDaprItSuite extends TestContainersForAll:
   /** Run `body` against the started sidecar with a [[DaprCapability]] in scope — the JVM analogue of the JS suites'
     * `Dapr(clientConfig).run { ... }`.
     */
-  protected def withDapr(body: DaprCapability ?=> Unit): Unit =
+  override def withDapr(body: DaprCapability ?=> Unit): Unit =
     withContainers { case _ and c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint)(body)
     }

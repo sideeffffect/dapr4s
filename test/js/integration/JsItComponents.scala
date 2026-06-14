@@ -23,35 +23,24 @@ import dapr4styped.testcontainers.buildTypesMod.ContentToCopy
 @scala.caps.assumeSafe
 object JsItComponents:
 
-  /** Network alias of the redis container; the rendered redisHost is `redis:6379`. */
-  val RedisAlias = "redis"
-  val RedisHostValue = s"$RedisAlias:6379"
+  // RedisAlias / RedisHostValue / Placeholder / ComponentFileNames / SeededConfig live once in the
+  // cross-platform ItNames (= scripts/it/components/<name>.yaml); both component renderers reference them.
 
-  private val Placeholder = "${DAPR4S_IT_REDIS_HOST}"
-
-  /** Canonical component manifest file names (= scripts/it/components/<name>.yaml). */
-  val ComponentFileNames: List[String] =
-    List("statestore", "pubsub", "lockstore", "configstore", "cryptostore", "secretstore").map(_ + ".yaml")
-
-  /** Configuration items both harnesses seed into redis (`value||version`). */
-  val SeededConfig: List[(String, String)] =
-    List("dapr4s-it-cfg-a" -> "alpha||v1", "dapr4s-it-cfg-b" -> "beta||v2")
-
-  /** The `redis-cli MSET ...` argv that seeds [[SeededConfig]] (run via the redis container's exec). */
+  /** The `redis-cli MSET ...` argv that seeds [[ItNames.SeededConfig]] (run via the redis container's exec). */
   val SeedConfigArgv: js.Array[String] =
-    js.Array("redis-cli", "MSET") ++ js.Array(SeededConfig.flatMap((k, v) => List(k, v))*)
+    js.Array("redis-cli", "MSET") ++ js.Array(ItNames.SeededConfig.flatMap((k, v) => List(k, v))*)
 
   /** Render the canonical set for `redisHost` and apply it (plus secrets.json + a fresh RSA key) to `dc`, returning the
     * configured container. Mirrors [[JvmItComponents.render]] + `SharedDaprItSuite`'s `withComponent` /
     * `withCopyFileToContainer` loop.
     */
-  def configure(dc: DaprContainer, redisHost: String = RedisHostValue): DaprContainer =
+  def configure(dc: DaprContainer, redisHost: String = ItNames.RedisHostValue): DaprContainer =
     val root = repoRoot()
     val compSrc = NodePath.join(root, "scripts", "it", "components")
     val tmp = NodeFs.mkdtempSync(NodePath.join(NodeOs.tmpdir(), "dapr4s-it-"))
     var c = dc
-    for name <- ComponentFileNames do
-      val rendered = NodeFs.readFileSync(NodePath.join(compSrc, name), "utf8").replace(Placeholder, redisHost)
+    for name <- ItNames.ComponentFileNames do
+      val rendered = NodeFs.readFileSync(NodePath.join(compSrc, name), "utf8").replace(ItNames.Placeholder, redisHost)
       val out = NodePath.join(tmp, name)
       NodeFs.writeFileSync(out, rendered)
       c = c.withComponentFromPath(out)

@@ -18,7 +18,7 @@ import JsItEnv.*
 @scala.caps.assumeSafe
 class ActorJsIntegrationTest extends FunSuite, ServerDaprJsItSuite:
 
-  private def uniqueActorId() = ActorId(s"js-it-actor-${uniqueId()}")
+  private def uniqueActorId() = ActorId(fresh("js-it-actor"))
 
   test("actor: increments accumulate and get reads the final count"):
     withDapr:

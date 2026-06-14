@@ -41,7 +41,7 @@ class EndToEndIntegrationTest extends FunSuite with TestContainersForAll with Da
       waitStrategy = Wait.forLogMessage(".*Ready to accept connections.*", 1),
     )
     redis.container.withNetwork(network)
-    redis.container.withNetworkAliases(JvmItComponents.RedisAlias)
+    redis.container.withNetworkAliases(ItNames.RedisAlias)
     redis.start()
 
     val res = JvmItComponents.render()

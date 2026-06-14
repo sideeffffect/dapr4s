@@ -41,7 +41,7 @@ class WorkflowJsIntegrationTest extends FunSuite, ServerDaprJsItSuite:
   test("workflow: raiseEvent releases a gated workflow and the payload reaches it"):
     withDapr:
       DaprCapability.workflow {
-        val id = WorkflowInstanceId(s"js-it-gated-${uniqueId()}")
+        val id = WorkflowInstanceId(fresh("js-it-gated"))
         val returned = retryUntilSuccess("workflow runtime registered") {
           WorkflowCapability.startWithId(gatedWorkflow, id)
         }

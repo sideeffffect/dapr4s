@@ -20,19 +20,8 @@ import java.util.Base64
   */
 object JvmItComponents:
 
-  /** Network alias of the redis testcontainer; the rendered redisHost is `redis:6379`. */
-  val RedisAlias = "redis"
-  val RedisHostValue = s"$RedisAlias:6379"
-
-  private val Placeholder = "${DAPR4S_IT_REDIS_HOST}"
-
-  /** Canonical component manifest file names (= scripts/it/components/<name>.yaml). */
-  val ComponentFileNames: List[String] =
-    List("statestore", "pubsub", "lockstore", "configstore", "cryptostore", "secretstore").map(_ + ".yaml")
-
-  /** Configuration items both harnesses seed into redis (`value||version`). */
-  val SeededConfig: List[(String, String)] =
-    List("dapr4s-it-cfg-a" -> "alpha||v1", "dapr4s-it-cfg-b" -> "beta||v2")
+  // RedisAlias / RedisHostValue / Placeholder / ComponentFileNames / SeededConfig live once in the
+  // cross-platform ItNames (= scripts/it/components/<name>.yaml); both component renderers reference them.
 
   /** A rendered resource tree: the temp root, the rendered component file Paths keyed by component name (e.g.
     * "statestore"), the keys dir and the secrets.json file (ready to mount into daprd).
@@ -46,12 +35,12 @@ object JvmItComponents:
       )
 
   /** Render the shared set for `redisHost` (default `redis:6379`) into a fresh temp dir. */
-  def render(redisHost: String = RedisHostValue): Rendered =
+  def render(redisHost: String = ItNames.RedisHostValue): Rendered =
     val srcDir = sharedComponentsDir()
     val root = Files.createTempDirectory("dapr4s-it").nn
     val compDir = Files.createDirectories(root.resolve("components")).nn
-    val components = ComponentFileNames.map { name =>
-      val rendered = Files.readString(srcDir.resolve(name)).nn.replace(Placeholder, redisHost)
+    val components = ItNames.ComponentFileNames.map { name =>
+      val rendered = Files.readString(srcDir.resolve(name)).nn.replace(ItNames.Placeholder, redisHost)
       val out = compDir.resolve(name)
       Files.writeString(out, rendered)
       name.stripSuffix(".yaml") -> out
