@@ -35,16 +35,21 @@ STDLIB="es2022"
 # compile-time-only for building dapr4s itself and never reach consumers.
 OUTPUT_PACKAGE="dapr4styped"
 
-# The expected coordinates (npmVersion-digest), kept in lockstep with js-deps.scala.
+# The expected coordinates (npmVersion-digest). The three MAIN roots are kept in lockstep with
+# js-deps.scala (compiled into / embedded in the published jar); the two TEST roots — the Node
+# testcontainers libraries used only by the JS integration suites — with js-test-deps.test.scala.
 EXPECTED_DAPR="3.18.0-d3e034"
 EXPECTED_EXPRESS="4.17.21-8ee06b"
 EXPECTED_NODE="22.13.0-e98bda"
+EXPECTED_TC="11.5.1-fb5244"
+EXPECTED_DAPRTC="0.5.1-13e160"
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IVY_LOCAL="${HOME}/.ivy2/local/org.scalablytyped"
 JS_DEPS="${REPO_ROOT}/js-deps.scala"
+JS_TEST_DEPS="${REPO_ROOT}/js-test-deps.test.scala"
 
-# --- Guard: js-deps.scala must agree with the digests pinned here -------------------------------
+# --- Guard: the deps files must agree with the digests pinned here ------------------------------
 for entry in "dapr__dapr::${EXPECTED_DAPR}" "express::${EXPECTED_EXPRESS}" "node::${EXPECTED_NODE}"; do
   if ! grep -qF "org.scalablytyped::${entry}" "${JS_DEPS}"; then
     echo "ERROR: js-deps.scala does not pin org.scalablytyped::${entry}." >&2
@@ -53,13 +58,22 @@ for entry in "dapr__dapr::${EXPECTED_DAPR}" "express::${EXPECTED_EXPRESS}" "node
     exit 1
   fi
 done
+for entry in "testcontainers::${EXPECTED_TC}" "dapr__testcontainer-node::${EXPECTED_DAPRTC}"; do
+  if ! grep -qF "org.scalablytyped::${entry}" "${JS_TEST_DEPS}"; then
+    echo "ERROR: js-test-deps.test.scala does not pin org.scalablytyped::${entry}." >&2
+    echo "       The digest variables in $(basename "$0") and js-test-deps.test.scala have drifted apart;" >&2
+    echo "       update them together (see the digest-update procedure in js-test-deps.test.scala)." >&2
+    exit 1
+  fi
+done
 
 # --- Skip when the artifacts are already materialised --------------------------------------------
-# All three root jars must exist, not just one: an interrupted converter run can leave ivy2Local
-# partially populated, and a single-jar marker would then no-op forever while `compile --js`
-# keeps failing on the missing org.scalablytyped deps.
+# All five root jars must exist, not just one: an interrupted converter run can leave ivy2Local
+# partially populated, and a single-jar marker would then no-op forever while `compile --js` (or
+# the JS integration `test` link) keeps failing on the missing org.scalablytyped deps.
 all_present=1
-for spec in "dapr__dapr_sjs1_3:${EXPECTED_DAPR}" "express_sjs1_3:${EXPECTED_EXPRESS}" "node_sjs1_3:${EXPECTED_NODE}"; do
+for spec in "dapr__dapr_sjs1_3:${EXPECTED_DAPR}" "express_sjs1_3:${EXPECTED_EXPRESS}" "node_sjs1_3:${EXPECTED_NODE}" \
+            "testcontainers_sjs1_3:${EXPECTED_TC}" "dapr__testcontainer-node_sjs1_3:${EXPECTED_DAPRTC}"; do
   artifact="${spec%%:*}"; version="${spec##*:}"
   [[ -f "${IVY_LOCAL}/${artifact}/${version}/jars/${artifact}.jar" ]] || all_present=0
 done
@@ -92,7 +106,8 @@ trap 'rm -rf "${REPO_ROOT}/out"' EXIT
 
 # --- Verify the expected digests came out --------------------------------------------------------
 status=0
-for spec in "dapr__dapr_sjs1_3:${EXPECTED_DAPR}" "express_sjs1_3:${EXPECTED_EXPRESS}" "node_sjs1_3:${EXPECTED_NODE}"; do
+for spec in "dapr__dapr_sjs1_3:${EXPECTED_DAPR}" "express_sjs1_3:${EXPECTED_EXPRESS}" "node_sjs1_3:${EXPECTED_NODE}" \
+            "testcontainers_sjs1_3:${EXPECTED_TC}" "dapr__testcontainer-node_sjs1_3:${EXPECTED_DAPRTC}"; do
   artifact="${spec%%:*}"; version="${spec##*:}"
   jar="${IVY_LOCAL}/${artifact}/${version}/jars/${artifact}.jar"
   if [[ -f "${jar}" ]]; then
@@ -101,7 +116,8 @@ for spec in "dapr__dapr_sjs1_3:${EXPECTED_DAPR}" "express_sjs1_3:${EXPECTED_EXPR
     echo "ERROR: expected ${jar} after conversion, but it does not exist." >&2
     echo "       Produced versions for ${artifact}:" >&2
     ls "${IVY_LOCAL}/${artifact}/" >&2 || true
-    echo "       The digest changed — update js-deps.scala and the EXPECTED_* variables together." >&2
+    echo "       The digest changed — update js-deps.scala / js-test-deps.test.scala and the" >&2
+    echo "       EXPECTED_* variables together." >&2
     status=1
   fi
 done

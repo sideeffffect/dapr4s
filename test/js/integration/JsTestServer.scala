@@ -62,18 +62,16 @@ object JsItServerApp:
       )
     }
 
-/** Entry point of the JS integration test server — the Scala.js twin of the JVM suites' in-test `DaprAppServer`
-  * threads, but as a separate Node process because `serve` suspends forever (packaged and started by
-  * `scripts/js-integration-env.sh up`, see the build incantation there).
+/** The union of every inbound handler set the server-delivery suites need — invoke/pub-sub ([[JsItServerApp]]), the
+  * `Counter` actor ([[CounterActorApp]]), and the workflows ([[WorkflowApp]] + [[GatedWorkflow]]).
   *
-  * Hosts [[JsItServerApp]] plus the shared cross-platform fixtures: the `Counter` actor ([[CounterActorApp]]) and the
-  * `AddingWorkflow` + derived `AddActivities` pair ([[WorkflowApp]]), plus [[GatedWorkflow]] for the raiseEvent path.
-  * The single `js.async` at the program edge satisfies the Wasm/JSPI requirement documented on [[dapr4s.Dapr]].
+  * This is hosted ONCE in-process by [[DaprJsIt.sharedServerConfig]] (via `Dapr(serverCfg).serveAsync`, reachable
+  * from the daprd container through `host.testcontainers.internal`) — the Scala.js twin of the JVM suites' in-test
+  * `DaprAppServer`. Unlike the JVM, where each server suite starts and stops its own app-server thread in `afterAll`,
+  * on JS `serve` suspends forever with no clean stop, so the four server-delivery suites (Actor/PubSub/Invoke/Workflow)
+  * share ONE sidecar + ONE union server for the whole run (the topology of the retired `scripts/js-integration-env.sh`,
+  * now driven by testcontainers). There is no standalone server `@main` any more: the fixture fire-and-forgets
+  * `serveAsync` and lets the JSPI event loop multiplex it with the test fibers.
   */
-@main def jsTestServerMain(): Unit =
-  js.async {
-    println(s"[js-it-server] starting on port ${JsItEnv.AppPort}")
-    Dapr(JsItEnv.serverConfig).serve {
-      JsItServerApp() ++ CounterActorApp() ++ WorkflowApp() ++ DaprApp(workflows = List(new GatedWorkflow))
-    }
-  }: Unit
+def jsItUnionApp(using DaprCapability): DaprApp =
+  JsItServerApp() ++ CounterActorApp() ++ WorkflowApp() ++ DaprApp(workflows = List(new GatedWorkflow))

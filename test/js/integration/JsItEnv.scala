@@ -3,18 +3,16 @@ package dapr4s.test.integration
 
 import dapr4s.*
 import dapr4s.given
-import java.net.URI
 import scala.scalajs.js
 import scala.util.control.NonFatal
 import unsafeExceptions.canThrowAny
 
-/** Shared constants and polling helpers for the Scala.js integration suites and the [[jsTestServerMain]] test server
-  * they talk to.
+/** Shared constants and polling helpers for the Scala.js integration suites.
   *
-  * ==Port map (single source of truth on the Scala side)==
-  * The infra twin of this table lives in `scripts/js-integration-env.sh` — keep the two in sync. All ports are
-  * non-default to avoid collisions with a locally `dapr init`-ed stack (see the script header for the full map
-  * including placement/scheduler/metrics).
+  * Bring-up now lives in [[DaprJsIt]] / [[SharedDaprJsItSuite]] / [[ServerDaprJsItSuite]], which drive a real Dapr
+  * sidecar from inside the test runtime via `@dapr/testcontainer-node` — the twin of the JVM testcontainers fixtures.
+  * The sidecar endpoints (and the in-process app-server port) are therefore dynamic, read from the started container;
+  * there is no fixed port map any more.
   *
   * ==Why polling helpers==
   * The JVM integration suites poll for sidecar-startup effects (placement table dissemination, workflow runtime
@@ -31,9 +29,9 @@ import unsafeExceptions.canThrowAny
 @scala.caps.assumeSafe
 object JsItEnv:
 
-  val DaprHttpPort: Int = 3591
-  val DaprGrpcPort: Int = 50191
-  val AppPort: Int = 8391
+  /** The app id every server-delivery suite registers its routes under (what `InvokeScenarios` targets); the daprd
+    * container's `--app-id` is set to this.
+    */
   val ServerAppId: AppId = AppId("js-it-server")
 
   // Component names match the shared canonical set scripts/it/components/<name>.yaml.
@@ -44,17 +42,6 @@ object JsItEnv:
   val SecretStore: SecretStoreName = SecretStoreName("secretstore")
   val CryptoStore: CryptoComponentName = CryptoComponentName("cryptostore")
   val CryptoKey: CryptoKeyName = CryptoKeyName("rsa-key")
-
-  /** Client config pointing at the harness sidecar; every suite's `Dapr(...)` uses this. */
-  def clientConfig: DaprConfig = DaprConfig(
-    sidecar = SidecarConfig(
-      httpEndpoint = URI.create(s"http://localhost:$DaprHttpPort"),
-      grpcEndpoint = URI.create(s"http://localhost:$DaprGrpcPort"),
-    ),
-  )
-
-  /** Server config for [[jsTestServerMain]]: same sidecar, app server on [[AppPort]]. */
-  def serverConfig: DaprConfig = clientConfig.copy(appServer = AppServerConfig(port = DaprPort(AppPort)))
 
   /** Unique-enough id for test resources. NOT `java.util.UUID.randomUUID()`: that does not '''link''' on Scala.js (it
     * reaches for `java.security.SecureRandom`, which the Scala.js javalib does not provide). Test ids need uniqueness

@@ -56,8 +56,10 @@ jobs:
             # the plain-backend unit-test leg; the integration command runs them on the
             # Wasm backend instead.
             unit-test-args: --exclude test/js/integration
-            # Brings up redis + placement + scheduler + daprd + the Wasm-packaged test
-            # server, runs the munit suites on Wasm+JSPI (Node 25), tears down.
+            # Runs the munit suites on Wasm+JSPI (Node 25). The Dapr sidecar + Redis +
+            # placement + scheduler are started from INSIDE the test runtime via
+            # @dapr/testcontainer-node (Docker is preinstalled on ubuntu-latest) — the
+            # twin of the JVM testcontainers-dapr leg; no separate env bring-up.
             integration-command: scripts/test-js-integration.sh
     name: test (${{ matrix.platform }})
     runs-on: ubuntu-latest
@@ -78,7 +80,7 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 25
-    - name: Install npm dependencies (@dapr/dapr)
+    - name: Install npm dependencies (@dapr/dapr, testcontainers)
       if: matrix.platform == 'js'
       run: npm ci
     # The ScalablyTyped-generated facades (js-deps.scala) live in ~/.ivy2/local; the
@@ -119,7 +121,7 @@ jobs:
     # (compileOnly in js-deps.scala), so the artifacts must exist in ~/.ivy2/local
     # here too — generation is a BUILD-time requirement only; consumers of the
     # published artifact never need it (see the embed step below).
-    - name: Install npm dependencies (@dapr/dapr)
+    - name: Install npm dependencies (@dapr/dapr, testcontainers)
       run: npm ci
     - name: Cache ScalablyTyped facades
       uses: actions/cache@v4
