@@ -9,6 +9,7 @@ import com.dimafeng.testcontainers.munit.TestContainersForAll
 import munit.FunSuite
 import org.testcontainers.containers.Network
 import org.testcontainers.containers.wait.strategy.Wait
+import scala.concurrent.duration.{Duration, DurationInt}
 import unsafeExceptions.canThrowAny
 
 /** Server-delivery fixture — the JVM implementation of the cross-platform `ServerDaprItSuite` (the JS twin lives in
@@ -33,6 +34,10 @@ trait ServerDaprItSuite extends TestContainersForAll, RedisFixture, DaprServerTe
   self: FunSuite =>
 
   override type Containers = DaprTestContainer
+
+  // Match the JS fixture: the bodies use retryUntilSuccess (≤60s for placement/runtime registration)
+  // and waitForCompletion(60s), which would trip munit's 30s default.
+  override def munitTimeout: Duration = 120.seconds
 
   protected def serverAppId: AppId = ItNames.ServerAppId
   // The sidecar app-health-check gates channel establishment, but the placement/runtime tables still

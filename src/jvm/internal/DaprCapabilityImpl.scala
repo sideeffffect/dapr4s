@@ -28,10 +28,10 @@ private[dapr4s] final class DaprCapabilityImpl(
     private[internal] val clientPreview: DaprPreviewClient,
     private val actorClientRef: AtomicReference[ActorClient],
     private val workflowClientRef: AtomicReference[DaprWorkflowClient],
-    // gRPC/TLS overrides for the workflow client and runtime. Without these, the Java SDK's
-    // DaprWorkflowClient / WorkflowRuntimeBuilder default to localhost:50001 and ignore the
-    // gRPC endpoint configured in DaprConfig (which breaks any non-default sidecar port).
-    private[internal] val workflowProperties: io.dapr.config.Properties,
+    // Sidecar endpoint / TLS / token overrides. Without these, the Java SDK's no-arg
+    // DaprWorkflowClient / WorkflowRuntimeBuilder / ActorClient default to localhost:3500/50001 and
+    // ignore the endpoints configured in DaprConfig (which breaks any non-default sidecar port).
+    private[internal] val sidecarProperties: io.dapr.config.Properties,
 ) extends DaprCapability:
 
   import DaprCapabilityImpl.*
@@ -65,7 +65,7 @@ private[dapr4s] final class DaprCapabilityImpl(
   def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this} =
     val ac = actorClientRef.get() match
       case null =>
-        val newAc = new ActorClient()
+        val newAc = new ActorClient(sidecarProperties)
         if actorClientRef.compareAndSet(null, newAc) then newAc
         else
           // Lost the CAS race — close the redundant client and use the winner's.
@@ -80,7 +80,7 @@ private[dapr4s] final class DaprCapabilityImpl(
   def workflow: WorkflowCapability^{this} =
     val wc = workflowClientRef.get() match
       case null =>
-        val newWc = new DaprWorkflowClient(workflowProperties)
+        val newWc = new DaprWorkflowClient(sidecarProperties)
         if workflowClientRef.compareAndSet(null, newWc) then newWc
         else
           // Lost the CAS race — close the redundant client and use the winner's.
