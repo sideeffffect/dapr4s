@@ -440,7 +440,414 @@ flowchart LR
 
 ---
 
-## 8. Caveats
+## 8. Worked example — "Design C" applied to *every* capability
+
+This section shows the concrete shape of the new capabilities if the name/instance tier were applied uniformly. The rule is mechanical:
+
+> Every `def x(name: N): XCapability` on `DaprCapability` becomes `def x: AccessXCapability` (no argument), and the name moves to `AccessXCapability#apply(name): XCapability`. Where a capability carries the name on its *methods* today (invoke, jobs, workflow instances), that name is lifted out the same way.
+
+So the root shrinks to a set of **argument-less accessors**:
+
+```mermaid
+flowchart LR
+    D["DaprCapability"]
+    D --> AS["AccessStateCapability"]
+    D --> AP["AccessPublishCapability"]
+    D --> AI["AccessInvokeCapability"]
+    D --> ASe["AccessSecretsCapability"]
+    D --> AC["AccessConfigurationCapability"]
+    D --> AB["AccessBindingsCapability"]
+    D --> AL["AccessLockCapability"]
+    D --> AA["AccessActorCapability"]
+    D --> AW["AccessWorkflowCapability"]
+    D --> ACr["AccessCryptoCapability"]
+    D --> AJ["AccessJobsCapability (JVM)"]
+    D --> ACo["AccessConversationCapability (JVM)"]
+```
+
+### 8.1 The uniform pattern
+
+Every accessor is the same two-trait shape. Shown generically, then instantiated for state:
+
+```mermaid
+classDiagram
+    class AccessXCapability {
+        <<trait>>
+        +apply(name: N) X
+    }
+    class XCapability {
+        <<trait>>
+        +name: N
+        +op1(...)
+        +op2(...)
+    }
+    AccessXCapability ..> XCapability : "apply returns (rung 3)"
+    note for AccessXCapability "rung 2 — 'any X' — argument-less; held and passed around"
+    note for XCapability "rung 3 — 'this X' — methods never mention N"
+```
+
+```mermaid
+classDiagram
+    class AccessStateCapability {
+        <<trait>>
+        +apply(storeName: StateStoreName) StateCapability
+    }
+    class StateCapability {
+        <<trait>>
+        +storeName: StateStoreName
+        +get(key, consistency) Option~T~
+        +save(key, value)
+        +transaction(ops)
+        +queryState(query) List
+    }
+    AccessStateCapability ..> StateCapability
+```
+
+**Key point:** for the eight capabilities that already take the name in the factory (state, publish, secrets, configuration, bindings, lock, crypto, conversation), **rung 3 is today's trait, unchanged** — only the rung-2 `Access*` trait is new. `dapr.state(name)` keeps reading identically because `apply` is invoked with the same argument list; the gain is that `dapr.state` is now itself a passable "any store" handle.
+
+### 8.2 The three capabilities whose methods lose an argument
+
+For these, the name lives on the methods today, so uniform Design C changes rung 3 too — every method drops the lifted name.
+
+```mermaid
+classDiagram
+    class AccessInvokeCapability {
+        <<trait>>
+        +apply(appId: AppId) InvokeCapability
+    }
+    class InvokeCapability {
+        <<trait>>
+        +appId: AppId
+        +invoke(method, data, httpMethod, metadata) Resp
+        +invoke(method) Resp
+    }
+    AccessInvokeCapability ..> InvokeCapability
+    note for InvokeCapability "appId dropped from every method"
+```
+
+```mermaid
+classDiagram
+    class AccessJobsCapability {
+        <<trait>>
+        +apply(name: JobName) JobCapability
+    }
+    class JobCapability {
+        <<trait>>
+        +jobName: JobName
+        +schedule(data, schedule, dueTime, repeats, ttl)
+        +scheduleOnce(data, dueTime, ttl)
+        +get() Option~JobDetails~
+        +delete()
+    }
+    AccessJobsCapability ..> JobCapability
+    note for JobCapability "JobName dropped from every method"
+```
+
+Workflow is the interesting one: `start*` *mints* the instance id, so the accessor keeps the launch methods, and `apply(id)` hands back an instance-scoped capability holding the id-less operations.
+
+```mermaid
+classDiagram
+    class AccessWorkflowCapability {
+        <<trait>>
+        +start(name) WorkflowInstanceId
+        +startWithId(name, id) WorkflowInstanceId
+        +apply(id: WorkflowInstanceId) WorkflowInstanceCapability
+    }
+    class WorkflowInstanceCapability {
+        <<trait>>
+        +instanceId: WorkflowInstanceId
+        +getStatus() Option~WorkflowSnapshot~
+        +suspend()
+        +resume()
+        +terminate()
+        +raiseEvent(event, payload)
+        +waitForCompletion(timeout) Option~WorkflowSnapshot~
+        +purge() Boolean
+    }
+    AccessWorkflowCapability ..> WorkflowInstanceCapability
+```
+
+### 8.3 Actor — two names, two tiers
+
+The actor accessor is the only one that descends **two** rungs (`ActorType` then `ActorId`), each an `apply`:
+
+```mermaid
+flowchart LR
+    D["DaprCapability"] -->|".actor"| AA["AccessActorCapability"]
+    AA -->|"apply(actorType)"| AT["ActorTypeCapability<br/>(val actorType)"]
+    AT -->|"apply(actorId)"| AC["ActorCapability<br/>(val actorType, val actorId)<br/>invoke / invokeVoid — no type/id args"]
+```
+
+### 8.4 Full mapping
+
+| Capability | rung 2 (new) | `apply` arg(s) | rung 3 | rung-3 methods change? |
+|---|---|---|---|---|
+| state | `AccessStateCapability` | `StateStoreName` | `StateCapability` | no |
+| publish | `AccessPublishCapability` | `PubSubName` | `PublishCapability` | no |
+| secrets | `AccessSecretsCapability` | `SecretStoreName` | `SecretsCapability` | no |
+| configuration | `AccessConfigurationCapability` | `ConfigurationStoreName` | `ConfigurationCapability` | no |
+| bindings | `AccessBindingsCapability` | `BindingName` | `BindingsCapability` | no |
+| lock | `AccessLockCapability` | `LockStoreName` | `LockCapability` | no |
+| crypto | `AccessCryptoCapability` | `CryptoComponentName` | `CryptoCapability` | no |
+| conversation | `AccessConversationCapability` | `ConversationComponentName` | `ConversationCapability` | no |
+| invoke | `AccessInvokeCapability` | `AppId` | `InvokeCapability` | **yes** — drop `appId` |
+| jobs | `AccessJobsCapability` | `JobName` | `JobCapability` | **yes** — drop `JobName` |
+| workflow | `AccessWorkflowCapability` (+`start*`) | `WorkflowInstanceId` | `WorkflowInstanceCapability` | **yes** — drop `instanceId` |
+| actor | `AccessActorCapability` | `ActorType` → `ActorId` | `ActorCapability` (via `ActorTypeCapability`) | **yes** — drop type/id |
+
+> Note: `ActorContext` and `WorkflowContext` are framework-provided (not acquired from `DaprCapability`), so the root-level Design C does not reach them. Their internal name args (`ActorStateKey`, `ReminderName`, `EventName`…) could be lifted analogously, but that's a separate, lower-value move.
+
+---
+
+## 9. Worked example — the "authority split" applied to *every* capability
+
+Here the mechanism is **trait subtyping**: define narrow sub-traits, and let the full capability `extend` all of them. No factory, no new runtime object, identical `^{c}` capture set — you attenuate by *upcasting* to a sub-trait. The diagrams below show the new sub-traits each capability would gain.
+
+### 9.1 The capabilities with a clean authority axis
+
+```mermaid
+classDiagram
+    direction LR
+    class ReadStateCapability {
+        <<trait>>
+        +get() +getWithETag() +getBulk() +queryState()
+    }
+    class WriteStateCapability {
+        <<trait>>
+        +save() +saveBulk() +saveWithETag()
+        +delete() +deleteWithETag() +transaction()
+    }
+    class StateCapability
+    ReadStateCapability <|-- StateCapability
+    WriteStateCapability <|-- StateCapability
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class EncryptCapability {
+        <<trait>>
+        +encrypt() +encryptString()
+    }
+    class DecryptCapability {
+        <<trait>>
+        +decrypt() +decryptString()
+    }
+    class CryptoCapability
+    EncryptCapability <|-- CryptoCapability
+    DecryptCapability <|-- CryptoCapability
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class SingleSecretReader {
+        <<trait>>
+        +get(key) Option~SecretValue~
+    }
+    class BulkSecretReader {
+        <<trait>>
+        +getBulk() Map
+    }
+    class SecretsCapability
+    SingleSecretReader <|-- SecretsCapability
+    BulkSecretReader <|-- SecretsCapability
+    note for BulkSecretReader "reads ALL secrets — higher authority"
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class ConfigReader {
+        <<trait>>
+        +get(keys) Map
+    }
+    class ConfigSubscriber {
+        <<trait>>
+        +subscribe(keys)(onChange) AutoCloseable
+    }
+    class ConfigurationCapability
+    ConfigReader <|-- ConfigurationCapability
+    ConfigSubscriber <|-- ConfigurationCapability
+    note for ConfigSubscriber "opens a stream + callback — heavier"
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class WorkflowLauncher {
+        <<trait>>
+        +start() +startWithId()
+    }
+    class WorkflowObserver {
+        <<trait>>
+        +getStatus() +waitForCompletion()
+    }
+    class WorkflowController {
+        <<trait>>
+        +suspend() +resume() +terminate() +purge() +raiseEvent()
+    }
+    class WorkflowCapability
+    WorkflowLauncher <|-- WorkflowCapability
+    WorkflowObserver <|-- WorkflowCapability
+    WorkflowController <|-- WorkflowCapability
+    note for WorkflowController "terminate / purge are destructive"
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class JobReader {
+        <<trait>>
+        +get(name) Option~JobDetails~
+    }
+    class JobScheduler {
+        <<trait>>
+        +schedule(...) +scheduleOnce(...)
+    }
+    class JobAdmin {
+        <<trait>>
+        +delete(name)
+    }
+    class JobsCapability
+    JobReader <|-- JobsCapability
+    JobScheduler <|-- JobsCapability
+    JobAdmin <|-- JobsCapability
+```
+
+The two context capabilities split the same way:
+
+```mermaid
+classDiagram
+    direction LR
+    class ActorStateReader {
+        <<trait>>
+        +get(key)
+    }
+    class ActorStateWriter {
+        <<trait>>
+        +set(key, value) +remove(key)
+    }
+    class ReminderContext {
+        <<trait>>
+        +registerReminder(...) +unregisterReminder(...)
+    }
+    class TimerContext {
+        <<trait>>
+        +registerTimer(...) +unregisterTimer(...)
+    }
+    class ActorContext
+    ActorStateReader <|-- ActorContext
+    ActorStateWriter <|-- ActorContext
+    ReminderContext <|-- ActorContext
+    TimerContext <|-- ActorContext
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class WorkflowInfo {
+        <<trait>>
+        +instanceId +isReplaying +getInput() +newUuid()
+    }
+    class WorkflowScheduler {
+        <<trait>>
+        +callActivity() +callActivityByName() +createTimer() +waitForExternalEvent()
+    }
+    class WorkflowCompletion {
+        <<trait>>
+        +complete(output) +continueAsNew(input)
+    }
+    class WorkflowContext
+    WorkflowInfo <|-- WorkflowContext
+    WorkflowScheduler <|-- WorkflowContext
+    WorkflowCompletion <|-- WorkflowContext
+    note for WorkflowCompletion "terminal — ends/restarts the run"
+```
+
+### 9.2 The capabilities where the authority split degenerates
+
+For these the subtyping is *possible* but the sub-traits don't track a real privilege difference — the distinction is request-shape, not authority. Shown for completeness; the honest answer is "don't bother".
+
+```mermaid
+classDiagram
+    direction LR
+    class PublishOne {
+        <<trait>>
+        +publish() +publishWithMetadata()
+    }
+    class PublishBulk {
+        <<trait>>
+        +bulkPublish()
+    }
+    class PublishCapability
+    PublishOne <|-- PublishCapability
+    PublishBulk <|-- PublishCapability
+    note for PublishCapability "all writes — no read side to separate"
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class BindingRequestResponse {
+        <<trait>>
+        +invoke() Option~Resp~
+    }
+    class BindingFireAndForget {
+        <<trait>>
+        +invokeOneWay()
+    }
+    class BindingsCapability
+    BindingRequestResponse <|-- BindingsCapability
+    BindingFireAndForget <|-- BindingsCapability
+    note for BindingsCapability "split is response-shape, not authority"
+```
+
+```mermaid
+classDiagram
+    direction LR
+    class LockAcquirer {
+        <<trait>>
+        +tryLock()
+    }
+    class LockReleaser {
+        <<trait>>
+        +unlock()
+    }
+    class LockCapability
+    LockAcquirer <|-- LockCapability
+    LockReleaser <|-- LockCapability
+    note for LockCapability "tryLock/unlock are a matched pair — rarely split"
+```
+
+`InvokeCapability` (GET-style no-body `invoke` vs body+verb `invoke` — a read/write-ish HTTP distinction), `ActorCapability` (`invoke` query vs `invokeVoid` command — but actor-method semantics are user-defined, so the capability can't really know), and `ConversationCapability` (a single `converse` method — nothing to split) round out the degenerate cases.
+
+### 9.3 Summary of the authority axes
+
+```mermaid
+mindmap
+  root((Authority axes))
+    Clean
+      State :: read / write
+      Crypto :: encrypt / decrypt
+      Secrets :: single / bulk
+      Configuration :: read / subscribe
+      Workflow :: launch / observe / control
+      Jobs :: read / schedule / admin
+      ActorContext :: state / reminders / timers
+      WorkflowContext :: info / schedule / complete
+    Degenerate
+      Publish :: single / bulk only
+      Bindings :: response-shape only
+      Lock :: acquire / release pair
+      Invoke :: GET vs body
+      Actor :: invoke vs invokeVoid
+      Conversation :: none
+```
+
+---
+
+## 10. Caveats
 
 - **Interface-enforced, not CC-enforced** (see §2c). Don't rely on capture checking to stop a holder reaching a method the narrow type omits; rely on the type omitting it.
 - This document was derived from the trait/companion definitions, not every `*Impl`. A split's feasibility could be constrained by an impl detail (e.g. a shared mutable handle); for the pure-subtyping authority splits that's unlikely.
