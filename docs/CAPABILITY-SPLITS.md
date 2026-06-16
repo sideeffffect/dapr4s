@@ -35,7 +35,7 @@ flowchart TD
 | Capture set of result | `^{parent}`, transitively rooted in `dapr` — no lifetime change | identical `^{c}` — no lifetime change |
 | Example today | `state(storeName): StateCapability` | none yet |
 
-The single most useful realisation from the research: **authority tiers are nearly free**. If `StateCapability extends ReadStateCapability`, then a `StateCapability^{c}` already *is a* `ReadStateCapability^{c}`; you attenuate by upcasting — no factory, no extra allocation, same capture set. Only the *name tiers* need the Design-C factory machinery.
+The single most useful realisation from the research: **authority tiers are nearly free**. If `StateCapability extends ReadState`, then a `StateCapability^{c}` already *is a* `ReadState^{c}`; you attenuate by upcasting — no factory, no extra allocation, same capture set. Only the *name tiers* need the Design-C factory machinery.
 
 ---
 
@@ -45,7 +45,7 @@ The single most useful realisation from the research: **authority tiers are near
 
 ```mermaid
 classDiagram
-    class ReadStateCapability {
+    class ReadState {
         <<trait>>
         +get(key) Option~T~
         +getWithETag(key) StateEntry~T~
@@ -61,10 +61,10 @@ classDiagram
         +deleteWithETag(...)
         +transaction(ops)
     }
-    ReadStateCapability <|-- StateCapability : extends
+    ReadState <|-- StateCapability : extends
 ```
 
-`dapr.state(name)` still returns the full `StateCapability`. A query/read handler is declared to take `ReadStateCapability^` — and the full capability passes by ordinary subsumption. The read handler *cannot* name `save`/`delete`/`transaction` because its static type has no such members.
+`dapr.state(name)` still returns the full `StateCapability`. A query/read handler is declared to take `ReadState^` — and the full capability passes by ordinary subsumption. The read handler *cannot* name `save`/`delete`/`transaction` because its static type has no such members.
 
 ### 2b. Name / instance tier = Design-C factory
 
@@ -93,8 +93,8 @@ sequenceDiagram
 
     H->>D: crypto(componentName)
     D-->>H: CryptoCapability^scope
-    Note over H: upcast to EncryptCapability^scope
-    H->>C: pass EncryptCapability only
+    Note over H: upcast to Encrypt^scope
+    H->>C: pass Encrypt only
     Note over C: can seal data…<br/>…cannot decrypt anything
     C-->>H: ciphertext
 ```
@@ -181,12 +181,12 @@ quadrantChart
 
 ```mermaid
 classDiagram
-    class EncryptCapability {
+    class Encrypt {
         <<trait>>
         +encrypt(keyName, plaintext, algorithm) Bytes
         +encryptString(keyName, plaintext, algorithm) Bytes
     }
-    class DecryptCapability {
+    class Decrypt {
         <<trait>>
         +decrypt(ciphertext) Bytes
         +decryptString(ciphertext) String
@@ -195,11 +195,11 @@ classDiagram
         <<trait>>
         +componentName CryptoComponentName
     }
-    EncryptCapability <|-- CryptoCapability : extends
-    DecryptCapability <|-- CryptoCapability : extends
+    Encrypt <|-- CryptoCapability : extends
+    Decrypt <|-- CryptoCapability : extends
 ```
 
-- **Authority tier** (sub-trait + upcast): `EncryptCapability` ⊕ `DecryptCapability`, with `CryptoCapability extends both`.
+- **Authority tier** (sub-trait + upcast): `Encrypt` ⊕ `Decrypt`, with `CryptoCapability extends both`.
 - **Bonus name tier:** `encrypt` carries `keyName` + `algorithm`, so a Design-C sub-tier `crypto(component).key(keyName, algorithm)` yields a "seal with exactly this key" handle.
 - **Verdict:** highest payoff, lowest cost. Real security meaning, pure subtyping.
 
@@ -210,7 +210,7 @@ classDiagram
 ```mermaid
 flowchart LR
     D["DaprCapability"] -->|"secrets(store)"| S["SecretsCapability<br/>(get + getBulk)"]
-    S -. "upcast" .-> RO["SingleSecretReader<br/>(get only)"]
+    S -. "upcast" .-> RO["SecretReader<br/>(get only)"]
     S -->|"key(SecretKey)"| K["OneSecretCapability<br/>(read only 'db-password')"]
 
     classDef danger fill:#fce8e6,stroke:#ea4335;
@@ -283,39 +283,41 @@ flowchart LR
 
 - **Verdict:** biggest API win. Isolating destructive `terminate`/`purge` from "kick off a workflow" code is worth it; the instance grouping already half-exists.
 
-### 🥈 5.4 ActorContext — state / reminders / timers (seams already drawn)
+### 🥈 5.4 ActorContext — read-state / schedule / cancel
 
-The trait is *already* partitioned by `--- State ---`, `--- Reminders ---`, `--- Timers ---` comment banners. Three authority domains in one context.
+The source partitions the trait by `--- State ---`, `--- Reminders ---`, `--- Timers ---` banners, but those banners are *not* the best authority seams. The reminder-vs-timer banner is a persistence detail (persistent vs non-persistent), not a privilege boundary — and you rarely want "may touch reminders but not timers". The privilege boundaries that matter are **read vs the rest of state**, and **scheduling a callback vs cancelling one** — and the latter cuts *across* both reminders and timers. So the split groups by verb, not by reminder/timer:
 
 ```mermaid
 classDiagram
-    class ActorStateContext {
+    class ReadActorState {
         <<trait>>
         +get(key)
-        +set(key, value)
-        +remove(key)
     }
-    class ReminderContext {
+    class ScheduleCallbacks {
         <<trait>>
         +registerReminder(...)
-        +unregisterReminder(name)
-    }
-    class TimerContext {
-        <<trait>>
         +registerTimer(...)
+    }
+    class CancelCallbacks {
+        <<trait>>
+        +unregisterReminder(name)
         +unregisterTimer(name)
     }
     class ActorContext {
         <<trait>>
+        +set(key, value)
+        +remove(key)
     }
-    ActorStateContext <|-- ActorContext
-    ReminderContext <|-- ActorContext
-    TimerContext <|-- ActorContext
-    note for ReminderContext "persistent — survives deactivation"
-    note for TimerContext "non-persistent — lost on deactivation"
+    ReadActorState <|-- ActorContext
+    ScheduleCallbacks <|-- ActorContext
+    CancelCallbacks <|-- ActorContext
+    note for ScheduleCallbacks "register grouped across reminders AND timers"
+    note for CancelCallbacks "cancel grouped across reminders AND timers"
 ```
 
-- **Verdict:** cheap (seams pre-drawn, pure subtyping), medium payoff. `ActorStateContext` is itself read/write-splittable if desired.
+State writes (`set`/`remove`) stay on `ActorContext` itself — by the same reasoning as §9.1, a write-only-actor-state sub-trait has little standalone value.
+
+- **Verdict:** cheap (pure subtyping), medium payoff. `ReadActorState` is the valuable narrow grant; `ScheduleCallbacks`/`CancelCallbacks` let you grant "may schedule but not cancel" (or vice-versa) uniformly across reminders and timers.
 
 ### 🥈 5.5 Actor — type then id (a collapsed instance tier)
 
@@ -426,7 +428,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    P1["Phase 1 (cheap, high value)<br/>• Crypto encrypt/decrypt<br/>• Secrets per-key / no-bulk<br/>• ActorContext domains"]
+    P1["Phase 1 (cheap, high value)<br/>• Crypto Encrypt/Decrypt<br/>• Secrets SecretReader / no-bulk<br/>• ActorContext read/schedule/cancel"]
     P2["Phase 2 (structural)<br/>• Workflow launch/observe/control<br/>  + instance tier<br/>• Invoke per-app tier"]
     P3["Phase 3 (opportunistic)<br/>• Actor type→id<br/>• Config read/subscribe<br/>• Publish per-topic<br/>• Jobs read/write"]
     P1 --> P2 --> P3
@@ -603,57 +605,72 @@ flowchart LR
 
 Here the mechanism is **trait subtyping**: define narrow sub-traits, and let the full capability `extend` all of them. No factory, no new runtime object, identical `^{c}` capture set — you attenuate by *upcasting* to a sub-trait. The diagrams below show the new sub-traits each capability would gain.
 
+Two conventions used throughout this section:
+
+- **Naming.** The concrete, most-powerful trait keeps its original `*Capability` / `*Context` name (`StateCapability`, `CryptoCapability`, `ActorContext`, …). The *new* narrow sub-traits drop that suffix — `ReadState`, `Encrypt`, `SecretReader`, `ScheduleCallbacks`. The suffix marks "the full thing you acquire"; a sub-trait is an attenuated view, not a thing you acquire directly.
+- **Only extract a sub-trait that is independently valuable.** Read-only, non-destructive, and "schedule-only" grants are useful on their own, so they become traits. The *inverse* leftover (write-only, "the dangerous extra method on its own") usually is not — so rather than mint a trait for it, those methods stay on the concrete capability. This is why there is a `ReadState` but no `WriteState`, a `SecretReader` but no `BulkSecretReader`, and so on (see the per-capability notes).
+
 ### 9.1 The capabilities with a clean authority axis
 
 ```mermaid
 classDiagram
     direction LR
-    class ReadStateCapability {
+    class ReadState {
         <<trait>>
         +get() +getWithETag() +getBulk() +queryState()
     }
-    class WriteStateCapability {
+    class StateCapability {
         <<trait>>
         +save() +saveBulk() +saveWithETag()
         +delete() +deleteWithETag() +transaction()
     }
-    class StateCapability
-    ReadStateCapability <|-- StateCapability
-    WriteStateCapability <|-- StateCapability
+    ReadState <|-- StateCapability
+    note for ReadState "reads only — no transaction (see below)"
 ```
+
+**Why no `transaction` on `ReadState`?** You asked whether `ReadState` could carry a read-only `transaction`. It can't be backed by anything: Dapr's transactional API batches **writes only** — a `StateOp` is an upsert or a delete; there is no read operation type to put in a transaction. Consistent multi-key reads are already served by `getBulk`, which is on `ReadState`. So `ReadState` = `get` / `getWithETag` / `getBulk` / `queryState`, and `transaction` lives only on the full `StateCapability`.
+
+**Why no `WriteState`?** Read-only has obvious value; write-only is weaker. Pros and cons of minting a separate `WriteState`:
+
+| | |
+|---|---|
+| **Pros** | Models a genuine "blind sink" — an append-only audit/event writer that should never read back. Defends against exfiltration (can't read what it can't read). Symmetry. |
+| **Cons** | Most writes *need* a prior read: `saveWithETag`/`deleteWithETag` consume an ETag obtained from `get`/`getWithETag`, so optimistic-concurrency flows can't use a write-only handle. `getBulk`/`queryState` are reads too. The only fully write-only path is blind `save`/`delete`/`transaction`, which is a narrow niche. So the trait would rarely be the right grant, and "leftover-of-ReadState" isn't independently compelling. |
+
+**Decision:** keep `ReadState`; **do not** add `WriteState` — the write methods stay on `StateCapability`. (If a real blind-writer consumer ever appears, `WriteState` is a cheap additive sub-trait at that point.)
 
 ```mermaid
 classDiagram
     direction LR
-    class EncryptCapability {
+    class Encrypt {
         <<trait>>
         +encrypt() +encryptString()
     }
-    class DecryptCapability {
+    class Decrypt {
         <<trait>>
         +decrypt() +decryptString()
     }
     class CryptoCapability
-    EncryptCapability <|-- CryptoCapability
-    DecryptCapability <|-- CryptoCapability
+    Encrypt <|-- CryptoCapability
+    Decrypt <|-- CryptoCapability
 ```
 
 ```mermaid
 classDiagram
     direction LR
-    class SingleSecretReader {
+    class SecretReader {
         <<trait>>
         +get(key) Option~SecretValue~
     }
-    class BulkSecretReader {
+    class SecretsCapability {
         <<trait>>
         +getBulk() Map
     }
-    class SecretsCapability
-    SingleSecretReader <|-- SecretsCapability
-    BulkSecretReader <|-- SecretsCapability
-    note for BulkSecretReader "reads ALL secrets — higher authority"
+    SecretReader <|-- SecretsCapability
+    note for SecretsCapability "getBulk reads ALL secrets — the dangerous one; stays here"
 ```
+
+**No `BulkSecretReader`.** You asked whether `getBulk` can just live on `SecretsCapability` — yes, and it should. `getBulk` (read every secret in the store) is the *high-authority* method, so it belongs on the full capability; the only sub-trait worth extracting is the safe `SecretReader` (single-key `get`). Attenuating to `SecretReader` is exactly how you deny bulk reads. A `BulkSecretReader` trait would be the inverse leftover — no standalone value — so it isn't created. (Same shape as `ReadState`: extract the safe view, leave the powerful method on the concrete.)
 
 ```mermaid
 classDiagram
@@ -662,15 +679,15 @@ classDiagram
         <<trait>>
         +get(keys) Map
     }
-    class ConfigSubscriber {
+    class ConfigurationCapability {
         <<trait>>
         +subscribe(keys)(onChange) AutoCloseable
     }
-    class ConfigurationCapability
     ConfigReader <|-- ConfigurationCapability
-    ConfigSubscriber <|-- ConfigurationCapability
-    note for ConfigSubscriber "opens a stream + callback — heavier"
+    note for ConfigurationCapability "subscribe opens a stream + callback — heavier; stays here"
 ```
+
+Same shape again: `subscribe` (the heavier, resource-holding, stream-opening method) stays on `ConfigurationCapability`; only the plain `ConfigReader` (`get`) is extracted, since "may read config but not open live subscriptions" is the valuable narrow grant.
 
 ```mermaid
 classDiagram
@@ -715,32 +732,30 @@ classDiagram
     JobAdmin <|-- JobsCapability
 ```
 
-The two context capabilities split the same way:
+The two context capabilities split the same way. For `ActorContext`, note the seam is by **verb (schedule vs cancel), not by reminder vs timer** — the register/unregister boundary is the real authority line and it cuts across both callback kinds (see §5.4); state writes stay on the concrete `ActorContext`:
 
 ```mermaid
 classDiagram
     direction LR
-    class ActorStateReader {
+    class ReadActorState {
         <<trait>>
         +get(key)
     }
-    class ActorStateWriter {
+    class ScheduleCallbacks {
+        <<trait>>
+        +registerReminder(...) +registerTimer(...)
+    }
+    class CancelCallbacks {
+        <<trait>>
+        +unregisterReminder(...) +unregisterTimer(...)
+    }
+    class ActorContext {
         <<trait>>
         +set(key, value) +remove(key)
     }
-    class ReminderContext {
-        <<trait>>
-        +registerReminder(...) +unregisterReminder(...)
-    }
-    class TimerContext {
-        <<trait>>
-        +registerTimer(...) +unregisterTimer(...)
-    }
-    class ActorContext
-    ActorStateReader <|-- ActorContext
-    ActorStateWriter <|-- ActorContext
-    ReminderContext <|-- ActorContext
-    TimerContext <|-- ActorContext
+    ReadActorState <|-- ActorContext
+    ScheduleCallbacks <|-- ActorContext
+    CancelCallbacks <|-- ActorContext
 ```
 
 ```mermaid
@@ -765,84 +780,40 @@ classDiagram
     note for WorkflowCompletion "terminal — ends/restarts the run"
 ```
 
-### 9.2 The capabilities where the authority split degenerates
+### 9.2 Capabilities we will NOT authority-split
 
-For these the subtyping is *possible* but the sub-traits don't track a real privilege difference — the distinction is request-shape, not authority. Shown for completeness; the honest answer is "don't bother".
+For the following, a sub-trait is *possible* but tracks **request-shape, not privilege** — the narrow view grants no less authority than the full one, so splitting buys nothing. **Decision: these stay as single traits; we will not authority-split them.** (Their *name*-tier splits in §8 are unaffected — this decision is only about the authority axis.)
 
-```mermaid
-classDiagram
-    direction LR
-    class PublishOne {
-        <<trait>>
-        +publish() +publishWithMetadata()
-    }
-    class PublishBulk {
-        <<trait>>
-        +bulkPublish()
-    }
-    class PublishCapability
-    PublishOne <|-- PublishCapability
-    PublishBulk <|-- PublishCapability
-    note for PublishCapability "all writes — no read side to separate"
-```
-
-```mermaid
-classDiagram
-    direction LR
-    class BindingRequestResponse {
-        <<trait>>
-        +invoke() Option~Resp~
-    }
-    class BindingFireAndForget {
-        <<trait>>
-        +invokeOneWay()
-    }
-    class BindingsCapability
-    BindingRequestResponse <|-- BindingsCapability
-    BindingFireAndForget <|-- BindingsCapability
-    note for BindingsCapability "split is response-shape, not authority"
-```
-
-```mermaid
-classDiagram
-    direction LR
-    class LockAcquirer {
-        <<trait>>
-        +tryLock()
-    }
-    class LockReleaser {
-        <<trait>>
-        +unlock()
-    }
-    class LockCapability
-    LockAcquirer <|-- LockCapability
-    LockReleaser <|-- LockCapability
-    note for LockCapability "tryLock/unlock are a matched pair — rarely split"
-```
-
-`InvokeCapability` (GET-style no-body `invoke` vs body+verb `invoke` — a read/write-ish HTTP distinction), `ActorCapability` (`invoke` query vs `invokeVoid` command — but actor-method semantics are user-defined, so the capability can't really know), and `ConversationCapability` (a single `converse` method — nothing to split) round out the degenerate cases.
+| Capability | Would-be axis | Why it is not a real authority boundary | Decision |
+|---|---|---|---|
+| `PublishCapability` | single vs `bulkPublish` | all three methods write to the same component; bulk is a throughput variant, not more authority | **not split** |
+| `BindingsCapability` | `invoke` vs `invokeOneWay` | response-shape (awaits a reply vs fire-and-forget), not privilege | **not split** |
+| `LockCapability` | `tryLock` vs `unlock` | a matched acquire/release pair — you always hold both together | **not split** |
+| `InvokeCapability` | no-body GET vs body+verb | HTTP-shape; the meaningful narrowing is by *target app* (name tier, §5.6), not by method | **not split** |
+| `ActorCapability` | `invoke` vs `invokeVoid` | actor-method semantics are user-defined, so the capability cannot classify a call as read or write | **not split** |
+| `ConversationCapability` | — | a single `converse` method; nothing to divide | **not split** |
 
 ### 9.3 Summary of the authority axes
 
 ```mermaid
 mindmap
-  root((Authority axes))
-    Clean
-      State :: read / write
-      Crypto :: encrypt / decrypt
-      Secrets :: single / bulk
-      Configuration :: read / subscribe
-      Workflow :: launch / observe / control
-      Jobs :: read / schedule / admin
-      ActorContext :: state / reminders / timers
-      WorkflowContext :: info / schedule / complete
-    Degenerate
-      Publish :: single / bulk only
-      Bindings :: response-shape only
-      Lock :: acquire / release pair
-      Invoke :: GET vs body
-      Actor :: invoke vs invokeVoid
-      Conversation :: none
+  root((Authority split))
+    Will split
+      State - ReadState; writes stay on StateCapability
+      Crypto - Encrypt / Decrypt
+      Secrets - SecretReader; getBulk stays on SecretsCapability
+      Configuration - ConfigReader; subscribe stays on ConfigurationCapability
+      Workflow - WorkflowLauncher / WorkflowObserver / WorkflowController
+      Jobs - JobReader / JobScheduler / JobAdmin
+      ActorContext - ReadActorState / ScheduleCallbacks / CancelCallbacks
+      WorkflowContext - info / scheduler / completion
+    Will NOT split
+      Publish
+      Bindings
+      Lock
+      Invoke
+      Actor
+      Conversation
 ```
 
 ---
