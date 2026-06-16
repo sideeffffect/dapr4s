@@ -11,6 +11,16 @@ share the full call+assertion logic; server-delivery suites (actor, workflow, pu
 delivery) keep platform-specific bring-up but run on the same shared redis components.
 Verified locally: all JVM integration suites + the full JS Wasm+JSPI leg green.
 
+> **Update (later work):** two further consolidation steps superseded parts of the above.
+> (1) The `*Scenarios` traits were folded into single cross-platform suite *classes* in
+> `test/shared/integration` (no more `test/shared/scenarios`). (2) The server-delivery
+> suites are now shared too: `Actor/PubSub/Invoke/WorkflowItTest` are single cross-platform
+> classes mixing `ServerDaprItSuite` (defined once per platform), which hosts the shared
+> `itUnionApp` via `Dapr.serve` (JVM, virtual thread) / `serveAsync` (JS). Only bring-up is
+> per-platform now; the JVM `DaprAppServer` HTTP routing checks live in the JVM unit
+> `ActorServerRoutingTest`. The "keep platform-specific bring-up" line above is thus
+> historical.
+
 ## What is already shared (baseline)
 
 - All platform-agnostic production code lives in `src/shared` (models, opaque types, the

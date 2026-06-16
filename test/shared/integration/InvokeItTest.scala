@@ -7,14 +7,14 @@ import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
 /** [[dapr4s.InvokeCapability]] integration suite — a SINGLE cross-platform file: the caller side of service invocation
-  * against an app server that registers the `echo`, `echo-int` and `double` routes. The bring-up and the two hooks the
-  * bodies use — `serverAppId` and `retrying` — come from `InvokeHarness`, a trait with one implementation per platform
-  * under the same name (a two-phase host server + testcontainers sidecar on the JVM; the in-process union server on
-  * Scala.js). `retrying` wraps the first sidecar call: the JS app channel warms up slightly after daprd reports healthy
-  * (the JVM polls health up front and supplies identity).
+  * against the union app server that registers the `echo`, `echo-int` and `double` routes. The bring-up and the two
+  * hooks the bodies use — `serverAppId` and `retrying` — come from `ServerDaprItSuite`, a trait with one implementation
+  * per platform under the same name (sidecar-first host server hosting [[dapr4s.test.integration.apps.itUnionApp]] on
+  * both platforms). `retrying` wraps the first sidecar call: the app channel warms up slightly after daprd reports
+  * healthy.
   */
 @scala.caps.assumeSafe
-class InvokeItTest extends FunSuite, InvokeHarness:
+class InvokeItTest extends FunSuite, ServerDaprItSuite:
 
   test("invoke: echo roundtrip")(withDapr(echoRoundtrip))
   test("invoke: falsy body 0 reaches the handler")(withDapr(falsyZeroBodyRoundtrips))

@@ -4,7 +4,7 @@ package dapr4s.test.integration
 import dapr4s.*
 import dapr4s.given
 import dapr4s.internal.JsAwait
-import dapr4s.test.integration.apps.{InventoryServiceApp, OrderServiceApp}
+import dapr4s.test.integration.apps.{InventoryServiceApp, OrderServiceApp, itUnionApp}
 import java.net.URI
 import munit.FunSuite
 import scala.concurrent.Future
@@ -26,7 +26,7 @@ import dapr4styped.testcontainers.buildTestContainerMod.StartedTestContainer
   * scheduler containers on the network we provide (it `assert`s a network is set), so — unlike the retired shell
   * harness — we do not start them by hand. Its wait strategy is `/v1.0/healthz/outbound`, which is ready WITHOUT the
   * app channel, so the server-delivery fixture can start the sidecar first and the in-process app server second (the
-  * JVM `WorkflowCapabilityServerTest` two-phase order).
+  * same sidecar-first order the JVM `ServerDaprItSuite` uses).
   *
   * ==Per-suite lifecycle on a single-threaded runtime==
   * The JVM `TestContainersForAll` stops a suite's containers + Docker network in `afterAll` before the next suite
@@ -163,7 +163,7 @@ object DaprJsIt:
       // actor state → mapped HTTP). serve suspends forever, so fire-and-forget; attach a catch so a
       // startup failure (bind / validation) does not become an unhandled rejection.
       Dapr(DaprConfig(sidecar = sidecar, appServer = AppServerConfig(port = DaprPort(appPort))))
-        .serveAsync(jsItUnionApp)
+        .serveAsync(itUnionApp)
         .asInstanceOf[js.Dynamic]
         .applyDynamic("catch")(
           ((e: js.Any) => {
@@ -293,17 +293,23 @@ trait SharedDaprItSuite extends FunSuite, DaprItFixture:
       Dapr(cfg).run(body)
     }.toFuture
 
-/** Server-delivery fixture — the JS twin of `RedisFixture` + the two-phase host-server setup the JVM actor/workflow
-  * suites use. The Actor/PubSub/Invoke/Workflow suites mix this in; they all talk to the ONE shared sidecar +
-  * in-process union server [[DaprJsIt.sharedServerConfig]] starts (see [[jsItUnionApp]] for why server-delivery is
-  * shared rather than per-suite on JS), reached via `host.testcontainers.internal` exactly like
-  * `ActorCapabilityServerTest` / `WorkflowCapabilityServerTest`.
+/** Server-delivery fixture — the JS implementation of the cross-platform `ServerDaprItSuite` (the JVM twin lives in
+  * test/jvm). The shared `ActorItTest` / `PubSubItTest` / `WorkflowItTest` / `InvokeItTest` mix it in; they all talk to
+  * the ONE shared sidecar + in-process union server [[DaprJsIt.sharedServerConfig]] starts (see [[itUnionApp]] for why
+  * server-delivery is shared rather than per-suite on JS), reached via `host.testcontainers.internal`.
+  *
+  * Provides the cross-platform hooks the shared suites use: `withDapr` ([[DaprItFixture]]), `eventually` /
+  * `retryUntilSuccess` ([[JsItPolling]]), and the [[serverAppId]] / [[retrying]] that `InvokeItTest` targets. On JS the
+  * sidecar reports healthy slightly before the app channel finishes warming up, so `retrying` retries the first call.
   */
 @scala.caps.assumeSafe
-trait ServerDaprJsItSuite extends FunSuite, DaprItFixture:
+trait ServerDaprItSuite extends FunSuite, DaprItFixture, JsItPolling:
   self: FunSuite =>
 
   override def munitTimeout: Duration = 120.seconds
+
+  protected def serverAppId: AppId = ItNames.ServerAppId
+  protected def retrying[T](label: String)(body: => T): T = retryUntilSuccess(label)(body)
 
   override def withDapr(body: DaprCapability ?=> Unit): Future[Unit] =
     js.async {

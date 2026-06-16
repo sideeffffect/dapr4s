@@ -665,29 +665,34 @@ dapr4s/
     │   │                             # ActorDefinitionsTest, CapabilityDerivationTest, InvokeDerivationTest,
     │   │                             # ServerRouteDerivationTest, WorkflowActivityDerivationTest,
     │   │                             # WorkflowEventsTest, CapabilityHandlerTest, StateCapabilityTest (+ fixtures)
+    │   ├── integration/              # SINGLE cross-platform IT suites (calls + assertions + munit registrations) that
+    │   │                             # mix a per-platform fixture: State/Secrets/Lock/Crypto/Configuration ItTest +
+    │   │                             # Order/Inventory/EndToEnd (via SharedDaprItSuite), and the server-delivery
+    │   │                             # Invoke/Actor/PubSub/Workflow ItTest (via ServerDaprItSuite). Plus DaprItFixture,
+    │   │                             # ServiceHarnessApi, ItPolling, ItNames.
     │   └── apps/                     # cross-compiling DaprApp fixtures: Shared, OrderServiceApp,
     │                                 # InventoryServiceApp, EchoServiceClient, CounterActorApp/-Shared,
-    │                                 # WorkflowApp, TestDurations, TestUpickleCodec
+    │                                 # WorkflowApp, GatedWorkflow + ItServerApp/itUnionApp (the served union app),
+    │                                 # TestDurations, TestUpickleCodec
     ├── jvm/                          # [every file: target.platform jvm]
     │   ├── TestCodecs.scala          # shared test JsonCodec instances (Jackson)
     │   ├── TestDaprExtensions.scala  # test-only Dapr.runWithEndpoints(http, grpc) helper
     │   ├── unit/                     # JVM-server tests: SubscriberTest, BindingDispatchTest, JobDispatchTest,
     │   │                             # DaprServerTestBase, JvmCapabilityDerivationTest (+ fixtures),
     │   │                             # JvmModelsTest, JvmServerRouteDerivationTest
-    │   ├── integration/              # Docker/testcontainers suites. Harnesses: DaprTestContainer, JvmItComponents
-    │   │                             # (renders the shared scripts/it/components set), SharedDaprItSuite (single
-    │   │                             # all-components redis sidecar — direct-call shells), RedisFixture (redis for the
-    │   │                             # bespoke server-delivery suites), TestDaprApp. Thin shells over test/shared
-    │   │                             # scenarios: State/Secrets/Lock/Crypto/Configuration/Invoke ItTest. Server-
-    │   │                             # delivery: Publish/Actor/Workflow/Jobs/Conversation CapabilityServerTest,
-    │   │                             # PubSubIntegrationTest, Order/Inventory/EndToEnd IntegrationTests
+    │   ├── unit/                     # ActorServerRoutingTest (DaprAppServer actor HTTP routing, no sidecar)
+    │   ├── integration/              # JVM bring-up for the shared IT suites + JVM-only suites. Harnesses:
+    │   │                             # DaprTestContainer, JvmItComponents (renders scripts/it/components),
+    │   │                             # SharedDaprItSuite (direct-call), ServerDaprItSuite (hosts the shared itUnionApp
+    │   │                             # via Dapr.serve on a vthread — server-delivery), RedisFixture, ServiceHarness,
+    │   │                             # JvmItPolling, TestDaprApp. JVM-only suites: Jobs/Conversation
+    │   │                             # CapabilityServerTest (no JS SDK twin)
     │   └── apps/                     # OrderServiceMain / InventoryServiceMain @main entry points
     └── js/                           # [every file: target.platform scala-js]
         ├── TestCodecsJs.scala        # same given names over ujson, so shared tests cross-run
-        └── integration/              # Wasm+JSPI thin shells over the SAME test/shared scenarios, against a live
-                                      # sidecar: State/PubSub/Invoke/Secrets/Configuration/Lock/Actor/Workflow/Crypto
-                                      # *JsIntegrationTest + DaprJsItFixtures (testcontainers bring-up) +
-                                      # JsItComponents/JsItFacades + jsItUnionApp (the served app) + JsItEnv
+        └── integration/              # Wasm+JSPI bring-up for the SAME shared IT suites, against a live sidecar:
+                                      # DaprJsItFixtures (SharedDaprItSuite + ServerDaprItSuite testcontainers bring-up)
+                                      # + JsItComponents/JsItFacades + JsItPolling + JsItEnv
 ```
 
 ### Integration-test coverage parity
@@ -699,19 +704,27 @@ platforms share as much as is reasonable — see [JVM-JS-PARITY.md](JVM-JS-PARIT
   source of truth; the only environment-specific value is `redisHost`, substituted to `redis:6379` (the redis
   container's network alias) on both platforms. Each platform renders the manifests IN-CODE and feeds them to its
   testcontainers `DaprContainer` — `JvmItComponents` + `withComponent(Path)` on the JVM, `JsItComponents` +
-  `withComponentFromPath` on JS (`SharedDaprJsItSuite`/`ServerDaprJsItSuite` stand up the redis the manifests point
-  at). `scripts/it/render-components.sh` remains as a standalone renderer for manual use. Both
+  `withComponentFromPath` on JS (the per-platform `SharedDaprItSuite`/`ServerDaprItSuite` stand up the redis the
+  manifests point at). `scripts/it/render-components.sh` remains as a standalone renderer for manual use. Both
   platforms therefore run state/pubsub/lock/configuration on `redis`, secrets on `local.file`, crypto on
   `localstorage` — identical backends, no `state.in-memory` divergence, no `scripts/jvm-it/` twin.
-- **Shared scenarios, thin shells.** Each capability's calls + assertions live once as a trait in
-  `test/shared/scenarios` (`self: munit.Assertions =>`, shared API + `given DaprCapability`). The JVM and JS suites are
-  thin shells that own only bring-up and the sync/`Future` boundary, then call the same scenarios — so the assertions
-  are literally shared, not merely "equivalent". Direct-call capabilities (state, secrets, lock, crypto, configuration,
-  invoke) reduce to `withDapr(scenario)` / `run(scenario)` one-liners.
-- **Irreducibly platform-specific bring-up.** Server-delivery suites (actor, workflow, pub/sub delivery) keep
-  platform-specific harnesses — a per-suite host `DaprAppServer` thread the sidecar calls back into on the JVM, one
-  shared in-process `serveAsync` union server (`jsItUnionApp`) on JS (since `serve` suspends forever with no clean
-  stop) — because the server runtimes differ. They still run on the shared redis components.
+- **One suite, shared body; only the fixture is per-platform.** Each capability's calls + assertions AND their munit
+  registrations live once as a single cross-platform suite class in `test/shared/integration` (`extends FunSuite,
+  <Fixture>`). The only platform-specific part is the mixed-in fixture — `SharedDaprItSuite` (direct-call) or
+  `ServerDaprItSuite` (server-delivery) — defined once per platform under the same name, owning bring-up and the
+  sync/`Future` boundary (`withDapr` returns `Unit` on the JVM, `Future[Unit]` on JS; munit accepts both). So the
+  bodies are literally shared, not merely "equivalent".
+- **Server-delivery suites are shared too; only the fixture differs.** Actor, pub/sub delivery, invoke and workflow
+  live as single cross-platform suites (`Actor/PubSub/Invoke/WorkflowItTest`) that mix `ServerDaprItSuite`, a fixture
+  defined once per platform under the same name. Both implementations host the SAME shared union app
+  (`itUnionApp` = `ItServerApp ++ CounterActorApp ++ WorkflowApp ++ GatedWorkflow`) reachable from the sidecar via
+  `host.testcontainers.internal`, started sidecar-first (the workflow runtime needs the gRPC endpoint at server-start)
+  with daprd app-health-checks pointed at `/dapr/config` so the channel — hence subscriptions and actor types — is
+  established once the app is up. The only platform difference is how the server is hosted: `Dapr(config).serve` on a
+  virtual thread on the JVM, in-process `Dapr(cfg).serveAsync` on JS (since `serve` suspends forever with no clean
+  stop, JS shares ONE sidecar + server across these suites). The test bodies call the *client* capabilities only and
+  are byte-identical across platforms. The few genuinely platform-specific checks — the JVM `DaprAppServer` HTTP
+  routing/status codes — live in the JVM unit `ActorServerRoutingTest`.
 
 The only capabilities not tested on Scala.js are **jobs** and **conversation**: the JS SDK has no such APIs, so they are
 *compile-time absent* on that platform (`DaprCapabilityPlatform`, see the platform-trait section) — not untested.
@@ -968,7 +981,7 @@ Plain `scala-cli compile|test|publish --js .` therefore never resolves the Java 
 Scala.js tests run as **two legs**, mirroring the JVM split:
 
 - **Unit leg** (plain JS backend, no Docker/npm): `scala-cli test --js . --exclude test/js/integration --test-only 'dapr4s.test.unit.*'`. The shared unit suites cross-run unchanged (with `test/js/TestCodecsJs.scala` supplying the codec givens over ujson). The `--exclude` is load-bearing and is the only exclude left in the build: the integration suites contain orphan `js.await`, and the plain-JS linker does not fail on orphan-await test sources — it **wedges** (hangs without error), so they must not even be linked on this leg.
-- **Integration leg** (Wasm + JSPI, real sidecar): `scripts/test-js-integration.sh`. Nine munit suites under `test/js/integration/` — state, pub/sub, invoke, secrets, configuration, lock, actors, workflows, crypto — run on the experimental WebAssembly backend against a live `daprd` 1.17 + Redis-backed components + placement and scheduler (workflows require the scheduler in 1.17). The sidecar is started from INSIDE the test runtime by `@dapr/testcontainer-node` (the twin of the JVM `testcontainers-dapr` leg), driven by `DaprJsItFixtures.scala`; there is no external bring-up script any more (testcontainers and its Ryuk reaper own the containers). Direct-call suites run per-suite (`SharedDaprJsItSuite`, each suite's stack torn down as the next starts — `afterAll` can't await on JS); the four server-delivery suites share ONE sidecar + ONE in-process `serveAsync` union server (`ServerDaprJsItSuite` + `jsItUnionApp`), reached via `host.testcontainers.internal` with daprd app health checks pointed at `/dapr/config`, because `serve` suspends forever with no clean stop. The suites exercise the *client* capabilities through `Dapr().run`; the union server exercises subscriptions, invoke routes, actor hosting and workflow hosting end to end.
+- **Integration leg** (Wasm + JSPI, real sidecar): `scripts/test-js-integration.sh` runs `--test-only 'dapr4s.test.integration.*'`. The nine cross-platform suites — state, pub/sub, invoke, secrets, configuration, lock, actors, workflows, crypto, plus Order/Inventory/EndToEnd — live in `test/shared/integration/` and run on the experimental WebAssembly backend against a live `daprd` 1.17 + Redis-backed components + placement and scheduler (workflows require the scheduler in 1.17). The sidecar is started from INSIDE the test runtime by `@dapr/testcontainer-node` (the twin of the JVM `testcontainers-dapr` leg), driven by `DaprJsItFixtures.scala` (the JS implementations of the per-platform fixtures); there is no external bring-up script any more (testcontainers and its Ryuk reaper own the containers). Direct-call suites run per-suite (`SharedDaprItSuite`, each suite's stack torn down as the next starts — `afterAll` can't await on JS); the four server-delivery suites (actor/pub-sub/invoke/workflow) share ONE sidecar + ONE in-process `serveAsync` union server (`ServerDaprItSuite` + `itUnionApp`), reached via `host.testcontainers.internal` with daprd app health checks pointed at `/dapr/config`, because `serve` suspends forever with no clean stop. The suites exercise the *client* capabilities through `Dapr().run`; the union server exercises subscriptions, invoke routes, actor hosting and workflow hosting end to end.
 
 Harness specifics, each compensating for a verified toolchain gap:
 

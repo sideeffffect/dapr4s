@@ -9,6 +9,11 @@ import dapr4s.*
   * once.
   */
 object ItNames:
+  /** The app id every server-delivery suite registers its routes under (what `InvokeItTest` targets); the daprd
+    * container's `--app-id` is set to this on both platforms.
+    */
+  val ServerAppId: AppId = AppId("it-server")
+
   val StateStore: StateStoreName = StateStoreName("statestore")
   val PubSub: PubSubName = PubSubName("pubsub")
   val LockStore: LockStoreName = LockStoreName("lockstore")
