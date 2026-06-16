@@ -4,7 +4,7 @@ package dapr4s.test.integration
 import dapr4s.*
 import dapr4s.given
 import dapr4s.internal.JsAwait
-import dapr4s.test.integration.apps.{InventoryServiceApp, OrderServiceApp, itUnionApp}
+import dapr4s.test.integration.apps.{InventoryServiceApp, OrderServiceApp}
 import java.net.URI
 import munit.FunSuite
 import scala.concurrent.Future

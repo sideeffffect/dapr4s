@@ -669,11 +669,11 @@ dapr4s/
     │   │                             # mix a per-platform fixture: State/Secrets/Lock/Crypto/Configuration ItTest +
     │   │                             # Order/Inventory/EndToEnd (via SharedDaprItSuite), and the server-delivery
     │   │                             # Invoke/Actor/PubSub/Workflow ItTest (via ServerDaprItSuite). Plus DaprItFixture,
-    │   │                             # ServiceHarnessApi, ItPolling, ItNames.
+    │   │                             # ServiceHarnessApi, ItPolling, ItNames, and ItServerApp/itUnionApp/GatedWorkflow
+    │   │                             # (the served union app — here, not apps/, because it references ItNames).
     │   └── apps/                     # cross-compiling DaprApp fixtures: Shared, OrderServiceApp,
     │                                 # InventoryServiceApp, EchoServiceClient, CounterActorApp/-Shared,
-    │                                 # WorkflowApp, GatedWorkflow + ItServerApp/itUnionApp (the served union app),
-    │                                 # TestDurations, TestUpickleCodec
+    │                                 # WorkflowApp, TestDurations, TestUpickleCodec
     ├── jvm/                          # [every file: target.platform jvm]
     │   ├── TestCodecs.scala          # shared test JsonCodec instances (Jackson)
     │   ├── TestDaprExtensions.scala  # test-only Dapr.runWithEndpoints(http, grpc) helper

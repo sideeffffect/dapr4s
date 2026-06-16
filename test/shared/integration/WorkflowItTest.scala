@@ -2,7 +2,7 @@ package dapr4s.test.integration
 
 import dapr4s.*
 import dapr4s.given
-import dapr4s.test.integration.apps.{AddingWorkflow, CounterState, GatedWorkflow, IncrRequest}
+import dapr4s.test.integration.apps.{AddingWorkflow, CounterState, IncrRequest}
 import munit.FunSuite
 import scala.concurrent.duration.DurationInt
 import unsafeExceptions.canThrowAny
