@@ -112,36 +112,37 @@ mindmap
   root(("DaprCapability"))
     State
       name tier: store
-      authority: read / read-write
+      authority: ReadState then StateCapability
     Crypto
-      authority: encrypt / decrypt
+      authority: Encrypt and Decrypt
       name tier: key+algorithm
     Secrets
-      authority: get / getBulk
+      authority: SecretReader then SecretsCapability
       name tier: per-key
     Workflow
-      authority: launch / observe / control
+      authority: Observer then Controller, plus Launcher
       instance tier: by instanceId
     ActorContext
-      domain: state / reminders / timers
+      authority: read then write state
+      authority: schedule then manage callbacks
     Actor
       instance tier: type then id
     Invoke
       name tier: per app then method
     Jobs
       name tier: per job
-      authority: read / schedule / delete
+      authority: JobReader then JobsCapability
     Configuration
-      authority: read / subscribe
+      authority: ConfigReader then ConfigurationCapability
       name tier: per-key
     Publish
       name tier: per topic
     Bindings
-      (weak — name only)
+      authority split: skip
     Lock
-      (weak — resource only)
+      authority split: skip
     Conversation
-      (none — single method)
+      authority split: skip
 ```
 
 ---
@@ -246,11 +247,6 @@ Authority tiers:
 
 ```mermaid
 classDiagram
-    class WorkflowLauncher {
-        <<trait>>
-        +start(name)
-        +startWithId(name, id)
-    }
     class WorkflowObserver {
         <<trait>>
         +getStatus(id)
@@ -264,13 +260,20 @@ classDiagram
         +purge(id)
         +raiseEvent(id, event, payload)
     }
+    class WorkflowLauncher {
+        <<trait>>
+        +start(name)
+        +startWithId(name, id)
+    }
     class WorkflowCapability {
         <<trait>>
     }
-    WorkflowLauncher <|-- WorkflowCapability
-    WorkflowObserver <|-- WorkflowCapability
+    WorkflowObserver <|-- WorkflowController
     WorkflowController <|-- WorkflowCapability
+    WorkflowLauncher <|-- WorkflowCapability
 ```
+
+Read-only `WorkflowObserver` is the base; `WorkflowController` **extends** it (you can't control an instance you can't observe), so a "monitor only" grant is `WorkflowObserver` and a "manage existing instances" grant is `WorkflowController`. `WorkflowLauncher` (`start*`) is orthogonal — minting instances is a separate authority — and `WorkflowCapability` extends both leaves.
 
 Instance tier (Design C), folding away the repeated `instanceId` argument:
 
@@ -281,7 +284,9 @@ flowchart LR
     ID -.->|"already exposed as<br/>id.suspend() extensions"| INST
 ```
 
-- **Verdict:** biggest API win. Isolating destructive `terminate`/`purge` from "kick off a workflow" code is worth it; the instance grouping already half-exists.
+> **Note — adjust the `WorkflowInstanceId` extension methods.** The companion currently exposes the instance ops as fluent extensions on `WorkflowInstanceId` (`id.suspend()`, `id.getStatus()`, …), each taking a `using WorkflowCapability`. Under this split they should instead require the *narrowest* trait that carries the op — `id.getStatus()` / `id.waitForCompletion()` on `using WorkflowObserver`, and `id.suspend()` / `resume()` / `terminate()` / `purge()` / `raiseEvent()` on `using WorkflowController` — so the extensions don't silently re-demand the full capability and defeat the attenuation. (If the `instance(id)` Design-C tier lands, these extensions largely become methods on `WorkflowInstance` instead.)
+
+- **Verdict:** biggest API win. Read-only observation separates cleanly from control, and isolating destructive `terminate`/`purge` from "kick off a workflow" code is worth it; the instance grouping already half-exists.
 
 ### 🥈 5.4 ActorContext — read-state / schedule / cancel
 
@@ -293,31 +298,35 @@ classDiagram
         <<trait>>
         +get(key)
     }
+    class WriteActorState {
+        <<trait>>
+        +set(key, value)
+        +remove(key)
+    }
     class ScheduleCallbacks {
         <<trait>>
         +registerReminder(...)
         +registerTimer(...)
     }
-    class CancelCallbacks {
+    class ManageCallbacks {
         <<trait>>
         +unregisterReminder(name)
         +unregisterTimer(name)
     }
     class ActorContext {
         <<trait>>
-        +set(key, value)
-        +remove(key)
     }
-    ReadActorState <|-- ActorContext
-    ScheduleCallbacks <|-- ActorContext
-    CancelCallbacks <|-- ActorContext
+    ReadActorState <|-- WriteActorState
+    ScheduleCallbacks <|-- ManageCallbacks
+    WriteActorState <|-- ActorContext
+    ManageCallbacks <|-- ActorContext
     note for ScheduleCallbacks "register grouped across reminders AND timers"
-    note for CancelCallbacks "cancel grouped across reminders AND timers"
+    note for ManageCallbacks "adds unregister — also grouped across both"
 ```
 
-State writes (`set`/`remove`) stay on `ActorContext` itself — by the same reasoning as §9.1, a write-only-actor-state sub-trait has little standalone value.
+Two linear lineages, each read/light → mutating/heavy: `ReadActorState` → `WriteActorState` (adds `set`/`remove`), and `ScheduleCallbacks` → `ManageCallbacks` (adds `unregister*`). `ActorContext` extends the two leaves. `ManageCallbacks` is the renamed `CancelCallbacks` — since it extends `ScheduleCallbacks` it carries both register and unregister, so "manage" reads better than "cancel".
 
-- **Verdict:** cheap (pure subtyping), medium payoff. `ReadActorState` is the valuable narrow grant; `ScheduleCallbacks`/`CancelCallbacks` let you grant "may schedule but not cancel" (or vice-versa) uniformly across reminders and timers.
+- **Verdict:** cheap (pure subtyping), medium payoff. `ReadActorState` is the valuable read-only grant; the lineages let you grant "read+write state but no callbacks", or "schedule callbacks but not cancel them", uniformly across reminders and timers.
 
 ### 🥈 5.5 Actor — type then id (a collapsed instance tier)
 
@@ -352,7 +361,7 @@ flowchart LR
 
 ### 🥉 5.7 Jobs — currently "Design B", plus read/write
 
-`schedule` / `scheduleOnce` / `get` / `delete` all take a `JobName` per call. Two independent splits:
+`schedule` / `scheduleOnce` / `get` / `delete` all take a `JobName` per call. Two independent splits — a name tier and the read-only-base authority split:
 
 ```mermaid
 flowchart TB
@@ -360,13 +369,13 @@ flowchart TB
         J["JobsCapability"] -->|"job(JobName)"| JH["JobHandle<br/>(get/delete, no name arg)"]
     end
     subgraph "Authority tier (subtyping)"
-        JR["JobReader: get"]
-        JS["JobScheduler: schedule, scheduleOnce"]
-        JD["JobAdmin: delete (destructive)"]
+        JR["JobReader<br/>get"] -->|"extended by"| JC["JobsCapability<br/>+ schedule / scheduleOnce / delete"]
     end
 ```
 
-- **Verdict:** modest payoff; `delete` isolation is the main draw.
+Per the read-only-base rule, only `JobReader` (`get`) is extracted; the mutating `schedule` / `scheduleOnce` / `delete` stay on `JobsCapability` (no separate `JobScheduler` / `JobAdmin`).
+
+- **Verdict:** modest payoff; the read-only `JobReader` grant is the main draw.
 
 ### 🥉 5.8 Configuration — read vs subscribe
 
@@ -605,10 +614,12 @@ flowchart LR
 
 Here the mechanism is **trait subtyping**: define narrow sub-traits, and let the full capability `extend` all of them. No factory, no new runtime object, identical `^{c}` capture set — you attenuate by *upcasting* to a sub-trait. The diagrams below show the new sub-traits each capability would gain.
 
-Two conventions used throughout this section:
+**Guiding principle — the line is read-only vs everything-else.** The one seam worth drawing in almost every capability is between **read-only** operations and **anything that creates, changes, or deletes**. So the base sub-trait is the read-only view, and the concrete capability extends it with the mutating methods (`ReadState <|-- StateCapability`, `JobReader <|-- JobsCapability`, `WorkflowInfo <|-- WorkflowContext`, …). Two riders on top of that:
 
-- **Naming.** The concrete, most-powerful trait keeps its original `*Capability` / `*Context` name (`StateCapability`, `CryptoCapability`, `ActorContext`, …). The *new* narrow sub-traits drop that suffix — `ReadState`, `Encrypt`, `SecretReader`, `ScheduleCallbacks`. The suffix marks "the full thing you acquire"; a sub-trait is an attenuated view, not a thing you acquire directly.
-- **Only extract a sub-trait that is independently valuable.** Read-only, non-destructive, and "schedule-only" grants are useful on their own, so they become traits. The *inverse* leftover (write-only, "the dangerous extra method on its own") usually is not — so rather than mint a trait for it, those methods stay on the concrete capability. This is why there is a `ReadState` but no `WriteState`, a `SecretReader` but no `BulkSecretReader`, and so on (see the per-capability notes).
+1. **A finer read/read split is kept only where one read is far more powerful than another** — `SecretReader.get(key)` vs `SecretsCapability.getBulk` (reads *every* secret), and `ConfigReader.get` vs `ConfigurationCapability.subscribe` (opens a live stream). Both sides are read-only, but the broad read is worth denying on its own, so the narrow reader is extracted.
+2. **The mutating side may form a linear lineage** rather than a flat set, when one mutating authority naturally subsumes another — e.g. callback *management* extends callback *scheduling*, and workflow *control* extends workflow *observation*.
+
+**Naming.** The concrete, most-powerful trait keeps its original `*Capability` / `*Context` name (`StateCapability`, `CryptoCapability`, `ActorContext`, …). The *new* narrow sub-traits drop that suffix — `ReadState`, `Encrypt`, `SecretReader`, `ScheduleCallbacks`. The suffix marks "the full thing you acquire"; a sub-trait is an attenuated view, not a thing you acquire directly. A consequence of the read-only-base rule: there is a `ReadState` but no `WriteState` — the write methods simply stay on the concrete `StateCapability` rather than getting an inverse "write-only" trait that nobody can use without reads anyway (see the per-capability notes).
 
 ### 9.1 The capabilities with a clean authority axis
 
@@ -692,10 +703,6 @@ Same shape again: `subscribe` (the heavier, resource-holding, stream-opening met
 ```mermaid
 classDiagram
     direction LR
-    class WorkflowLauncher {
-        <<trait>>
-        +start() +startWithId()
-    }
     class WorkflowObserver {
         <<trait>>
         +getStatus() +waitForCompletion()
@@ -704,12 +711,19 @@ classDiagram
         <<trait>>
         +suspend() +resume() +terminate() +purge() +raiseEvent()
     }
+    class WorkflowLauncher {
+        <<trait>>
+        +start() +startWithId()
+    }
     class WorkflowCapability
-    WorkflowLauncher <|-- WorkflowCapability
-    WorkflowObserver <|-- WorkflowCapability
+    WorkflowObserver <|-- WorkflowController
     WorkflowController <|-- WorkflowCapability
-    note for WorkflowController "terminate / purge are destructive"
+    WorkflowLauncher <|-- WorkflowCapability
+    note for WorkflowObserver "read-only"
+    note for WorkflowController "control extends observe — destructive terminate/purge"
 ```
+
+Here the mutating side is itself a lineage: `WorkflowController` extends `WorkflowObserver` (controlling an instance implies being able to observe it). `WorkflowLauncher` (`start*`) is orthogonal — minting new instances is a different authority from managing existing ones — so `WorkflowCapability` extends both `WorkflowController` and `WorkflowLauncher`.
 
 ```mermaid
 classDiagram
@@ -718,21 +732,21 @@ classDiagram
         <<trait>>
         +get(name) Option~JobDetails~
     }
-    class JobScheduler {
+    class JobsCapability {
         <<trait>>
-        +schedule(...) +scheduleOnce(...)
+        +schedule(...) +scheduleOnce(...) +delete(name)
     }
-    class JobAdmin {
-        <<trait>>
-        +delete(name)
-    }
-    class JobsCapability
     JobReader <|-- JobsCapability
-    JobScheduler <|-- JobsCapability
-    JobAdmin <|-- JobsCapability
 ```
 
-The two context capabilities split the same way. For `ActorContext`, note the seam is by **verb (schedule vs cancel), not by reminder vs timer** — the register/unregister boundary is the real authority line and it cuts across both callback kinds (see §5.4); state writes stay on the concrete `ActorContext`:
+Read-only `get` is the only extracted view; `schedule` / `scheduleOnce` / `delete` are all mutating and stay on `JobsCapability` (no separate `JobScheduler` / `JobAdmin` — those were write-side leftovers, against the read-only-base rule).
+
+The two context capabilities split the same way, but `ActorContext` has **two independent lineages**, each a read/light → mutating/heavy chain:
+
+- **State lineage:** `ReadActorState` (`get`) → `WriteActorState` (adds `set` / `remove`). The write trait extends the read trait, so "may read+write actor state but not schedule callbacks" is a grantable view.
+- **Callback lineage:** `ScheduleCallbacks` (`registerReminder` / `registerTimer`) → `ManageCallbacks` (adds `unregisterReminder` / `unregisterTimer`). Management extends scheduling, so you can grant "schedule only" or "schedule + cancel", but not the odd "cancel only". Note both group by **verb across reminders *and* timers**, not by reminder vs timer (see §5.4).
+
+`ActorContext` then extends the two leaves (`WriteActorState`, `ManageCallbacks`), inheriting everything transitively:
 
 ```mermaid
 classDiagram
@@ -741,22 +755,28 @@ classDiagram
         <<trait>>
         +get(key)
     }
+    class WriteActorState {
+        <<trait>>
+        +set(key, value) +remove(key)
+    }
     class ScheduleCallbacks {
         <<trait>>
         +registerReminder(...) +registerTimer(...)
     }
-    class CancelCallbacks {
+    class ManageCallbacks {
         <<trait>>
         +unregisterReminder(...) +unregisterTimer(...)
     }
     class ActorContext {
         <<trait>>
-        +set(key, value) +remove(key)
     }
-    ReadActorState <|-- ActorContext
-    ScheduleCallbacks <|-- ActorContext
-    CancelCallbacks <|-- ActorContext
+    ReadActorState <|-- WriteActorState
+    ScheduleCallbacks <|-- ManageCallbacks
+    WriteActorState <|-- ActorContext
+    ManageCallbacks <|-- ActorContext
 ```
+
+> `ManageCallbacks` is the renamed `CancelCallbacks` — since it now extends `ScheduleCallbacks` it carries register *and* unregister, so "Manage" fits better than "Cancel".
 
 ```mermaid
 classDiagram
@@ -765,20 +785,17 @@ classDiagram
         <<trait>>
         +instanceId +isReplaying +getInput() +newUuid()
     }
-    class WorkflowScheduler {
+    class WorkflowContext {
         <<trait>>
-        +callActivity() +callActivityByName() +createTimer() +waitForExternalEvent()
-    }
-    class WorkflowCompletion {
-        <<trait>>
+        +callActivity() +callActivityByName()
+        +createTimer() +waitForExternalEvent()
         +complete(output) +continueAsNew(input)
     }
-    class WorkflowContext
     WorkflowInfo <|-- WorkflowContext
-    WorkflowScheduler <|-- WorkflowContext
-    WorkflowCompletion <|-- WorkflowContext
-    note for WorkflowCompletion "terminal — ends/restarts the run"
+    note for WorkflowInfo "read-only / deterministic-pure: safe to hand to helpers"
 ```
+
+`WorkflowInfo` is the read-only (and replay-deterministic) view — `instanceId`, `isReplaying`, `getInput`, `newUuid`. Everything that schedules durable work or ends/restarts the run (`callActivity*`, `createTimer`, `waitForExternalEvent*`, `complete`, `continueAsNew`) is mutating and stays on `WorkflowContext` — no separate `WorkflowScheduler` / `WorkflowCompletion`.
 
 ### 9.2 Capabilities we will NOT authority-split
 
@@ -798,15 +815,17 @@ For the following, a sub-trait is *possible* but tracks **request-shape, not pri
 ```mermaid
 mindmap
   root((Authority split))
-    Will split
-      State - ReadState; writes stay on StateCapability
-      Crypto - Encrypt / Decrypt
-      Secrets - SecretReader; getBulk stays on SecretsCapability
-      Configuration - ConfigReader; subscribe stays on ConfigurationCapability
-      Workflow - WorkflowLauncher / WorkflowObserver / WorkflowController
-      Jobs - JobReader / JobScheduler / JobAdmin
-      ActorContext - ReadActorState / ScheduleCallbacks / CancelCallbacks
-      WorkflowContext - info / scheduler / completion
+    Will split - read-only base
+      State - ReadState then StateCapability
+      Secrets - SecretReader then SecretsCapability, getBulk
+      Configuration - ConfigReader then ConfigurationCapability, subscribe
+      Jobs - JobReader then JobsCapability
+      WorkflowContext - WorkflowInfo then WorkflowContext
+    Will split - lineages
+      Crypto - Encrypt and Decrypt, asymmetric
+      Workflow client - WorkflowObserver then WorkflowController, plus WorkflowLauncher
+      ActorContext state - ReadActorState then WriteActorState
+      ActorContext callbacks - ScheduleCallbacks then ManageCallbacks
     Will NOT split
       Publish
       Bindings
