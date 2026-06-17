@@ -32,17 +32,25 @@ private[internal] final class PublishCapabilityImpl(
       .awaitResult(): Unit
 
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult =
-    val javaEntries: java.util.List[io.dapr.client.domain.BulkPublishEntry[String]] =
+    // Two reasons this mirrors `publish` (raw byte[]) and uses the BulkPublishRequest overload:
+    //   1. byte[] vs String: the SDK serializer passes byte[] through untouched but re-serializes a
+    //      String, double-encoding the event into a JSON string subscribers then fail to decode.
+    //   2. The `publishEvents(pubsub, topic, contentType, List<T>)` overload treats the list as the raw
+    //      events (T), so passing List<BulkPublishEntry<...>> there wraps each ENTRY as the payload and
+    //      discards the caller's entryIds. The BulkPublishRequest overload is the one that carries
+    //      per-entry ids + content type.
+    val javaEntries: java.util.List[io.dapr.client.domain.BulkPublishEntry[Array[Byte]]] =
       entries.map { entry =>
-        val json = summon[JsonCodec[T]].encode(entry.event)
-        new io.dapr.client.domain.BulkPublishEntry[String](
+        val json = summon[JsonCodec[T]].encode(entry.event).getBytes(UTF_8)
+        new io.dapr.client.domain.BulkPublishEntry[Array[Byte]](
           entry.entryId.value,
           json,
           "application/json",
         )
       }.asJava
-    val response =
-      scope.client.publishEvents(pubsubName.value, topic.value, "application/json", javaEntries).awaitResult()
+    val request =
+      new io.dapr.client.domain.BulkPublishRequest[Array[Byte]](pubsubName.value, topic.value, javaEntries)
+    val response = scope.client.publishEvents(request).awaitResult()
     if response == null then return BulkPublishResult(List.empty)
     val failedItems = response.getFailedEntries
     if failedItems == null then BulkPublishResult(List.empty)

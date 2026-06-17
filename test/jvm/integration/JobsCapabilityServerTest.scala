@@ -15,9 +15,10 @@ import java.util.concurrent.ConcurrentHashMap
 /** Round-trip tests for [[JobsCapability]] / [[JobRoute]] against a real Dapr sidecar and its scheduler service (the
   * testcontainers `DaprContainer` starts a scheduler container automatically).
   *
-  * Like [[ActorCapabilityServerTest]], the app server is started first and exposed to Docker so the sidecar can deliver
-  * the scheduled job back to `/job/<name>`. A test schedules a one-shot job through the client API and then polls until
-  * the [[JobRoute]] handler has recorded the delivered payload.
+  * Like the server-delivery suites, the app server is started and exposed to Docker so the sidecar can deliver the
+  * scheduled job back to `/job/<name>`. A test schedules a one-shot job through the client API and then polls until the
+  * [[JobRoute]] handler has recorded the delivered payload. (JVM-only: the Dapr JS SDK has no jobs API, so there is no
+  * shared twin.)
   */
 @scala.caps.assumeSafe
 class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with DaprServerTestBase with JvmItPolling:

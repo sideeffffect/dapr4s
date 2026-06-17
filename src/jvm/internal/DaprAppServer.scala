@@ -316,6 +316,14 @@ private[dapr4s] final class DaprAppServer(app: DaprApp):
         // immediately and then stop the server cleanly before re-throwing.
         Thread.currentThread().interrupt()
         server.stop(shutdownGrace.toSeconds.toInt)
+        // Also shut the workflow runtime's gRPC channel on this path. The shutdown hook above only
+        // runs at JVM exit, so stopping a served app by interrupting its thread (e.g. a test's
+        // afterAll) would otherwise leave the channel open until GC — at which point grpc-java's
+        // orphan-channel detector logs "ManagedChannel ... was not shutdown properly". close() is
+        // idempotent with the hook; guard against any double-close throw so it never masks `e`.
+        if workflowRuntime != null then
+          try workflowRuntime.close()
+          catch case scala.util.control.NonFatal(_) => ()
         throw e
     throw AssertionError("unreachable: Thread.join() on current thread blocks until interrupted")
 

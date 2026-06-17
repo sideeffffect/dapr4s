@@ -30,16 +30,19 @@ import java.util.concurrent.atomic.AtomicReference
 @scala.caps.assumeSafe
 class Dapr(config: DaprConfig = DaprConfig()):
 
-  /** gRPC/TLS overrides for the workflow client and runtime, derived from [[config]].
+  /** Sidecar endpoint / TLS / API-token overrides, derived from [[config]], for the Java-SDK clients whose no-arg
+    * constructors otherwise default to `localhost:3500`/`50001` and ignore the configured endpoints.
     *
-    * The Java SDK's `DaprWorkflowClient()` and `WorkflowRuntimeBuilder()` no-arg constructors default to
-    * `localhost:50001` and ignore any configured gRPC endpoint. Passing these properties makes both honour
-    * `config.sidecar.grpcEndpoint` (and the related TLS / API-token settings), so workflows work against a sidecar on a
-    * non-default port.
+    * `DaprWorkflowClient()`, `WorkflowRuntimeBuilder()` and `ActorClient()` all have this problem (the main
+    * `DaprClient` is the exception — it is built via `DaprClientBuilder.withPropertyOverride` in [[run]]). Passing
+    * these properties makes the workflow client/runtime AND the actor client honour `config.sidecar` (HTTP + gRPC
+    * endpoints, TLS, API token), so workflows and actors work against a sidecar on a non-default port (e.g. a
+    * Testcontainers mapped port).
     */
-  private def workflowProperties: Properties =
+  private def sidecarProperties: Properties =
     val sc = config.sidecar
     val overrides = new java.util.HashMap[String, String]()
+    overrides.put(Properties.HTTP_ENDPOINT.getName, sc.httpEndpoint.toString)
     overrides.put(Properties.GRPC_ENDPOINT.getName, sc.grpcEndpoint.toString)
     overrides.put(Properties.GRPC_TLS_INSECURE.getName, sc.grpcTlsInsecure.toString)
     sc.apiToken.foreach(t => overrides.put(Properties.API_TOKEN.getName, t.value))
@@ -114,7 +117,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
     val actorClientRef = new AtomicReference[ActorClient](null)
     val workflowClientRef = new AtomicReference[DaprWorkflowClient](null)
     val impl =
-      new internal.DaprCapabilityImpl(client, clientPreview, actorClientRef, workflowClientRef, workflowProperties)
+      new internal.DaprCapabilityImpl(client, clientPreview, actorClientRef, workflowClientRef, sidecarProperties)
     var primary: Throwable | Null = null
     try body(using impl)
     catch
@@ -187,7 +190,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
         port = config.appServer.port.value,
         daprCapability = cap,
         sidecarHttpEndpoint = () => config.sidecar.httpEndpoint,
-        workflowProperties = workflowProperties,
+        workflowProperties = sidecarProperties,
         shutdownGrace = config.appServer.shutdownGrace,
         httpBacklog = config.appServer.httpBacklog,
         actorConfig = config.actors,

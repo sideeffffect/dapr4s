@@ -533,7 +533,7 @@ object MyApp:
 
 Proven by `WorkflowActivityDerivationTest` (Docker-free, recording fakes) and the refactored
 `test/shared/apps/WorkflowApp.scala` (compiles under safe mode; exercised by the real-sidecar
-`WorkflowCapabilityServerTest`).
+cross-platform `WorkflowItTest`).
 
 ---
 
