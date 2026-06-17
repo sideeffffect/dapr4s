@@ -837,7 +837,169 @@ mindmap
 
 ---
 
-## 10. Caveats
+## 10. Combining §8 and §9 — conflicts and how to resolve them
+
+§1 calls the name/instance tier and the authority tier **two orthogonal axes**, and in the abstract they are: one answers *which resource may I reach* (Design C), the other *what may I do to it* (authority split). The full design is the 2-D lattice — every cell is a (name-tier, authority-tier) pair:
+
+```mermaid
+flowchart TB
+    subgraph axes["the 2-D lattice, shown for state"]
+        direction LR
+        A1["AccessReadState<br/>any store, read-only"] -->|"apply(name)"| C1["ReadState<br/>this store, read-only"]
+        A2["AccessStateCapability<br/>any store, full"] -->|"apply(name)"| C2["StateCapability<br/>this store, full"]
+        A1 -. "upcast (authority)" .- A2
+        C1 -. "upcast (authority)" .- C2
+    end
+```
+
+The trouble is that the **mechanics** of the two splits are not independent, even though the axes are. Implementing both at once surfaces six concrete collisions.
+
+### 10.1 The headline conflict — Design C's `apply` re-widens authority
+
+A naive Design C makes `apply(name)` return the **most powerful** rung-3 type (`StateCapability`). So the moment you hand someone an accessor, every `apply` they call mints full authority — any authority attenuation done at rung 3 is undone on the next lookup:
+
+```mermaid
+flowchart LR
+    H["holder of<br/>AccessStateCapability"] -->|"apply(name)"| F["StateCapability<br/>(full authority!)"]
+    F -->|"they *could* upcast to"| R["ReadState"]
+    F -->|"...but nothing forces it"| W["save / delete / transaction"]
+    style W fill:#fdd,stroke:#900
+```
+
+A read-only *store factory* is therefore not expressible by §8 + §9 as written: the narrowest thing you can pass is "any store, full authority". Attenuation only works if it happens *after* `apply`, locally, by the same code that called it — you cannot delegate "read-only access to any store".
+
+**Resolution — mirror the authority lineage onto the accessor, with a covariant `apply` return.** The accessor gets the *same* sub-trait lineage as the capability, and each rung's `apply` covariantly returns the matching capability rung:
+
+```mermaid
+classDiagram
+    direction LR
+    class AccessReadState {
+        <<trait>>
+        +apply(name) ReadState
+    }
+    class AccessStateCapability {
+        <<trait>>
+        +apply(name) StateCapability
+    }
+    class ReadState {
+        <<trait>>
+        +get() +getBulk() +queryState()
+    }
+    class StateCapability {
+        <<trait>>
+        +save() +delete() +transaction()
+    }
+    AccessReadState <|-- AccessStateCapability
+    ReadState <|-- StateCapability
+    AccessReadState ..> ReadState : apply returns
+    AccessStateCapability ..> StateCapability : apply returns (covariant override)
+    note for AccessStateCapability "upcast to AccessReadState and apply now yields only ReadState"
+```
+
+Now "read-only access to any store" *is* a value you hold and pass: `AccessReadState`. Scala 3 allows the covariant return-type override, and both returns share the `^{this}` capture set, so capture checking is satisfied. The cost is that the authority lattice is duplicated on the accessor side — see §10.5.
+
+### 10.2 The §9 sub-traits are written against pre-Design-C signatures
+
+§9 defines `JobReader.get(name)`, `WorkflowObserver.getStatus(id)` etc. with the **name on the method** — that is the *current* shape. But §8 *removes* that argument for invoke, jobs and workflow (the "methods lose an argument" group, §8.2). So the §9 sub-traits as drawn don't typecheck against a §8 world: `JobReader` must become `get(): Option[JobDetails]` (no name), `WorkflowObserver` must become `getStatus(): …` (no id), and so on.
+
+**Resolution — define the authority sub-traits against the *post-Design-C* signatures, and sequence accordingly.** For state, secrets, configuration, crypto the rung-3 signatures are unchanged by §8 (§8.1), so the order is free. For **jobs, invoke and the workflow client** §8 changes the shape, so either land §8 first and write §9's sub-traits against the id-less methods, or co-design the two. Doing §9 first there means rewriting those traits when §8 lands.
+
+```mermaid
+flowchart LR
+    subgraph free["order-independent (rung 3 unchanged by §8)"]
+        S["state · secrets · config · crypto"]
+    end
+    subgraph ordered["do §8 first, then §9"]
+        J["jobs · invoke · workflow-client<br/>(methods lose their name/id arg)"]
+    end
+```
+
+### 10.3 Workflow — both chapters cut the same trait along overlapping planes
+
+This is the only trait both chapters *substantively re-shape*, and they happen to cut compatibly:
+
+- §8 splits the client workflow into **launch-on-accessor** (`start*` stay on `AccessWorkflowCapability`, which needs no id) + an **id-less instance capability** for everything else.
+- §9 splits it into **`WorkflowLauncher`** (`start*`) + **`WorkflowObserver` → `WorkflowController`** lineage.
+
+The two launch axes *coincide*: §9's `WorkflowLauncher` is exactly §8's "methods that stay on the accessor". So they compose by **folding `WorkflowLauncher` into `AccessWorkflowCapability`**, and moving the `Observer → Controller` authority lineage onto the id-less instance capability:
+
+```mermaid
+classDiagram
+    direction LR
+    class AccessWorkflowObserver {
+        <<trait>>
+        +apply(id) WorkflowObserver
+    }
+    class AccessWorkflowCapability {
+        <<trait>>
+        +start() +startWithId()
+        +apply(id) WorkflowInstanceCapability
+    }
+    class WorkflowObserver {
+        <<trait>>
+        +getStatus() +waitForCompletion()
+    }
+    class WorkflowInstanceCapability {
+        <<trait>>
+        +suspend() +resume() +terminate()
+        +purge() +raiseEvent()
+    }
+    AccessWorkflowObserver <|-- AccessWorkflowCapability
+    WorkflowObserver <|-- WorkflowInstanceCapability
+    AccessWorkflowObserver ..> WorkflowObserver : apply returns
+    AccessWorkflowCapability ..> WorkflowInstanceCapability : apply returns
+    note for AccessWorkflowCapability "WorkflowLauncher folds in here — start* need no id"
+    note for WorkflowInstanceCapability "was WorkflowController, now id-less"
+```
+
+This also **subsumes the `WorkflowInstanceId` extension-method note** (§5.3, §9): in a combined world those operations live on `WorkflowInstanceCapability`, reached via `workflow.apply(id)`, so the `using WorkflowObserver` / `using WorkflowController` extension sugar is replaced by upcasting the *accessor* (`AccessWorkflowObserver` vs `AccessWorkflowCapability`) before the `apply(id)`. Decide explicitly whether to keep the extension methods as thin sugar over `apply(id)` or drop them — don't ship both spellings.
+
+### 10.4 The disjoint cases — no conflict, by construction
+
+Three traits are touched by *only one* chapter, so they compose for free; worth stating so nobody hunts for a conflict:
+
+| Trait | §8 (name tier) | §9 (authority) | Interaction |
+|---|---|---|---|
+| `ActorCapability` (client) | two rungs: `ActorType` → `ActorId` (§8.3) | **not split** — `invoke`/`invokeVoid` isn't an authority boundary (§9.2) | none — only §8 acts |
+| `ActorContext` (server) | **not reached** — framework-provided, not from `DaprCapability` (§8.4 note) | two lineages: state + callbacks (§9.1) | none — only §9 acts |
+| `WorkflowContext` (server) | **not reached** — framework-provided | `WorkflowInfo → WorkflowContext` (§9.1) | none — only §9 acts |
+
+The server-side contexts are the cleanest: Design C is a *root-acquisition* pattern and these aren't acquired from the root, so the authority split stands alone exactly as §9 draws it.
+
+### 10.5 Trait proliferation and capture-set consistency
+
+Every node in the lattice is its own `@scala.caps.assumeSafe trait … extends scala.caps.ExclusiveCapability`, sharing one `^{c}` capture set. Combining the axes multiplies the trait count: a capability that is both name-tiered and authority-split needs, in the worst case, an accessor *and* a capability rung **per authority level** (`AccessReadState`, `AccessStateCapability`, `ReadState`, `StateCapability`). Left unchecked that is a cross-product.
+
+**Resolution — only mint the accessor rungs you will actually delegate.** The capability-side authority sub-traits (`ReadState`, …) are cheap and always worth having (local attenuation). The *accessor*-side mirror (`AccessReadState`, …) earns its keep **only when you need to pass a narrowed factory across a boundary** (§10.1). For most capabilities you will mirror at most the read-only rung onto the accessor and stop there — the full middle of the lattice (e.g. a hypothetical `AccessWriteState`) is YAGNI until a consumer asks for it. Keep `^{c}` identical across every rung so an upcast never changes the capture set (it must not — attenuation is interface-only, §2c).
+
+### 10.6 Where the resource name lives once both apply
+
+A small but real placement question: after §8, the name is a `val` field, not a method argument (§8.1); after §9, the read-only base trait is the natural home for read-only metadata. So the `val storeName` / `val instanceId` / … belongs on the **read-only base sub-trait** (`ReadState`, `WorkflowObserver`, …), inherited by everything above it. This keeps "what resource is this?" available at the weakest authority, which is correct — knowing the name is not itself an authority.
+
+### 10.7 Summary
+
+```mermaid
+mindmap
+  root((§8 + §9 together))
+    Real conflicts
+      apply re-widens authority - mirror lineage onto accessor, covariant apply
+      §9 traits use pre-C signatures - define against post-C, sequence §8 first for jobs/invoke/workflow
+      workflow double-cut - fold Launcher into accessor, lineage onto id-less instance cap
+    Non-conflicts
+      ActorCapability - only §8 acts
+      ActorContext - only §9 acts
+      WorkflowContext - only §9 acts
+    Discipline
+      mint accessor rungs only when delegated
+      keep one shared capture set across the lattice
+      name val lives on the read-only base
+```
+
+The bottom line: the two axes compose into a clean lattice, but **Design C must be made authority-aware** (covariant `apply`) or it silently defeats the authority split. Build the capability-side authority sub-traits freely; build the accessor-side mirror sparingly, only where a narrowed factory genuinely crosses a boundary.
+
+---
+
+## 11. Caveats
 
 - **Interface-enforced, not CC-enforced** (see §2c). Don't rely on capture checking to stop a holder reaching a method the narrow type omits; rely on the type omitting it.
 - This document was derived from the trait/companion definitions, not every `*Impl`. A split's feasibility could be constrained by an impl detail (e.g. a shared mutable handle); for the pure-subtyping authority splits that's unlikely.
