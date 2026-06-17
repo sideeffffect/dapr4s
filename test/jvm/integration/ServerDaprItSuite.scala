@@ -12,7 +12,7 @@ import scala.concurrent.duration.{Duration, DurationInt}
 import unsafeExceptions.canThrowAny
 
 /** Shared, started-ONCE Redis + sidecar + in-process union server for ALL JVM server-delivery suites — the JVM twin of
-  * the JS `DaprJsIt.sharedServerConfig` singleton.
+  * the JS `ServerDaprItEnv.sidecar` singleton.
   *
   * ==Why a singleton, not per-suite Testcontainers==
   * [[itUnionApp]] hosts a workflow runtime (a `DurableTaskGrpcWorker` streaming to the sidecar scheduler). Standing one

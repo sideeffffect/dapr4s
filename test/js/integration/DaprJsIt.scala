@@ -6,9 +6,6 @@ import dapr4s.given
 import dapr4s.internal.JsAwait
 import dapr4s.test.integration.apps.{InventoryServiceApp, OrderServiceApp}
 import java.net.URI
-import munit.FunSuite
-import scala.concurrent.Future
-import scala.concurrent.duration.{Duration, DurationInt}
 import scala.scalajs.js
 import scala.util.control.NonFatal
 import unsafeExceptions.canThrowAny
@@ -17,9 +14,11 @@ import dapr4styped.testcontainers.buildGenericContainerGenericContainerMod.Gener
 import dapr4styped.testcontainers.buildNetworkNetworkMod.{Network, StartedNetwork}
 import dapr4styped.testcontainers.buildTestContainerMod.StartedTestContainer
 
-/** Shared constants + helpers for the Scala.js (Wasm+JSPI) integration fixtures, which drive a real Dapr sidecar from
+/** Shared bring-up helpers for the Scala.js (Wasm+JSPI) integration fixtures, which drive a real Dapr sidecar from
   * inside the test runtime via `@dapr/testcontainer-node` — the exact twin of how the JVM suites use
-  * `io.dapr:testcontainers-dapr`.
+  * `io.dapr:testcontainers-dapr`. The two cross-platform suite fixtures that build on these helpers,
+  * [[SharedDaprItSuite]] (direct-call) and [[ServerDaprItSuite]] (server-delivery, via [[ServerDaprItEnv]]), live in
+  * their own files alongside their JVM twins.
   *
   * `@dapr/testcontainer-node` defaults to Dapr 1.15.10; dapr4s targets 1.17.0, so the daprd image is passed to the
   * constructor and the placement/scheduler images are overridden to match. The library auto-manages the placement +
@@ -128,56 +127,6 @@ object DaprJsIt:
       if status >= 200 && status < 400 then Some(()) else None
     }
 
-  // ---- shared server-delivery environment (one sidecar + one in-process union server) ----------
-  // The JVM starts/stops a per-suite app server thread in afterAll; on JS `serve` suspends forever
-  // with no clean stop, so the four server-delivery suites share ONE sidecar + ONE union server for
-  // the whole run (the retired shell harness's topology, now testcontainers-managed). Created lazily
-  // on the first server-delivery test, never torn down (the Reaper reaps it at process exit).
-  private var sharedServerCfg: DaprConfig | Null = null
-
-  def sharedServerConfig(): DaprConfig =
-    val existing = sharedServerCfg
-    if existing != null then existing
-    else
-      // Tolerate the testcontainers forwarder's transient ECONNREFUSED while daprd probes the app
-      // channel before the in-process server binds (see installForwarderErrorGuard).
-      installForwarderErrorGuard()
-      val appPort = nextAppPort()
-      // Make the host-side app server reachable from inside the daprd container.
-      JsAwait.await(TestContainersStatics.exposeHostPorts(appPort))
-      val (net, _) = startNetworkAndRedis()
-      val dc = daprContainer(net, JsItEnv.ServerAppId.value)
-        .withAppPort(appPort.toDouble)
-        .withAppChannelAddress("host.testcontainers.internal")
-        // The in-process server can only start AFTER the sidecar (the workflow runtime needs the
-        // sidecar gRPC endpoint), so it is not listening when daprd first establishes the app
-        // channel — without health checks daprd backs off and never registers our subscriptions /
-        // actor types (on-demand invoke still works, which is why only pub-sub/actor/workflow
-        // failed). Enabling app health checks makes daprd wait for the app to be healthy and THEN
-        // (re)establish the channel. We point the probe at `/dapr/config`, an existing 200 endpoint
-        // the server already answers — no dedicated health route needed.
-        .withAppHealthCheckPath("/dapr/config")
-      val sd = JsAwait.await(dc.start())
-      val sidecar = sidecarOf(sd)
-      // Start the in-process union server pointed at the sidecar (workflow runtime → mapped gRPC,
-      // actor state → mapped HTTP). serve suspends forever, so fire-and-forget; attach a catch so a
-      // startup failure (bind / validation) does not become an unhandled rejection.
-      Dapr(DaprConfig(sidecar = sidecar, appServer = AppServerConfig(port = DaprPort(appPort))))
-        .serveAsync(itUnionApp)
-        .asInstanceOf[js.Dynamic]
-        .applyDynamic("catch")(
-          ((e: js.Any) => {
-            js.Dynamic.global.console.error(s"dapr4s js-it: in-process server failed: $e")
-            ()
-          }): js.Function1[js.Any, Unit],
-        ): Unit
-      // Memoize BEFORE the readiness wait so a slow/failed wait never re-binds the port on retry.
-      val cfg = DaprConfig(sidecar = sidecar)
-      sharedServerCfg = cfg
-      // Wait until daprd has connected the app channel (subscriptions/actors registered) before tests run.
-      awaitHttpOk("daprd healthz (app channel up)", s"${sidecar.httpEndpoint}/v1.0/healthz")
-      cfg
-
   // ---- service-suite environment (one sidecar + one DIRECT-HTTP service server) ----------------
   // The service suites (Order/Inventory/e2e) host OrderServiceApp ++ InventoryServiceApp behind a
   // DaprAppServer they poke DIRECTLY over HTTP (invoke routes + a synthetic CloudEvent POST to the
@@ -185,7 +134,7 @@ object DaprJsIt:
   // (plain `daprContainer`, no withAppPort/withAppChannelAddress), so a handler's fire-and-forget
   // publish is never redelivered — the test's direct POST is the only delivery (no double-count, no
   // poll). The stack is created lazily on the first service test and kept for the run (reaped at exit),
-  // like sharedServerConfig.
+  // like ServerDaprItEnv.sidecar.
   private var serviceClientCfg: DaprConfig | Null = null
   private var serviceServerPort: Int = -1
 
@@ -257,62 +206,3 @@ object DaprJsIt:
             js.Dynamic.global.process.exit(1): Unit
         }): js.Function1[js.Dynamic, Unit],
       ): Unit
-
-/** Direct-call fixture (no app server) — the JS twin of `SharedDaprItSuite`. Mix into the State / Configuration /
-  * Crypto / Lock / Secrets suites; they call the shared scenario traits against the canonical components via the
-  * started sidecar. The sidecar (with placement/scheduler) is started once per suite, lazily, on the first test body
-  * (which runs inside `js.async`, the only place the orphan-await container startup can suspend).
-  */
-@scala.caps.assumeSafe
-trait SharedDaprItSuite extends FunSuite, DaprItFixture:
-  self: FunSuite =>
-
-  override def munitTimeout: Duration = 120.seconds
-
-  protected def appName: String = "shared-it"
-
-  private var clientCfg: DaprConfig | Null = null
-
-  private def ensureEnv(): DaprConfig =
-    val existing = clientCfg
-    if existing != null then existing
-    else
-      val (net, redis) = DaprJsIt.startNetworkAndRedis()
-      val sd = JsAwait.await(DaprJsIt.daprContainer(net, appName).start())
-      DaprJsIt.rotateEnv(DaprJsIt.teardownChain(sd, redis, net))
-      val cfg = DaprConfig(sidecar = DaprJsIt.sidecarOf(sd))
-      clientCfg = cfg
-      cfg
-
-  /** Run `body` against the started sidecar — the JS analogue of the JVM `withDapr`, wrapped in the
-    * `js.async{}.toFuture` boundary munit awaits.
-    */
-  override def withDapr(body: DaprCapability ?=> Unit): Future[Unit] =
-    js.async {
-      val cfg = ensureEnv()
-      Dapr(cfg).run(body)
-    }.toFuture
-
-/** Server-delivery fixture — the JS implementation of the cross-platform `ServerDaprItSuite` (the JVM twin lives in
-  * test/jvm). The shared `ActorItTest` / `PubSubItTest` / `WorkflowItTest` / `InvokeItTest` mix it in; they all talk to
-  * the ONE shared sidecar + in-process union server [[DaprJsIt.sharedServerConfig]] starts (see [[itUnionApp]] for why
-  * server-delivery is shared rather than per-suite on JS), reached via `host.testcontainers.internal`.
-  *
-  * Provides the cross-platform hooks the shared suites use: `withDapr` ([[DaprItFixture]]), `eventually` /
-  * `retryUntilSuccess` ([[JsItPolling]]), and the [[serverAppId]] / [[retrying]] that `InvokeItTest` targets. On JS the
-  * sidecar reports healthy slightly before the app channel finishes warming up, so `retrying` retries the first call.
-  */
-@scala.caps.assumeSafe
-trait ServerDaprItSuite extends FunSuite, DaprItFixture, JsItPolling:
-  self: FunSuite =>
-
-  override def munitTimeout: Duration = 120.seconds
-
-  protected def serverAppId: AppId = ItNames.ServerAppId
-  protected def retrying[T](label: String)(body: => T): T = retryUntilSuccess(label)(body)
-
-  override def withDapr(body: DaprCapability ?=> Unit): Future[Unit] =
-    js.async {
-      val cfg = DaprJsIt.sharedServerConfig()
-      Dapr(cfg).run(body)
-    }.toFuture
