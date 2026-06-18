@@ -111,6 +111,19 @@ jobs:
   publish:
     needs: [format, test]
     if: github.event_name != 'pull_request'
+    # Serialize publishes that would target the same artifact version. The version
+    # is dynver-derived from git state at the commit, so every publish-triggering
+    # event on one commit (master push, tag push, release:published) resolves to the
+    # SAME version — and two such runs racing on Sonatype's bulk/promote is what made
+    # the v1.0.0 tag-push run 400 ("Publish request failed") while the master-push run
+    # for the same commit won. We can't key on the resolved version string itself:
+    # concurrency.group is evaluated at queue time and can only see github/inputs/vars,
+    # not runtime step outputs — and github.sha maps 1:1 to the dynver version anyway.
+    # cancel-in-progress: false so an in-flight publish is never interrupted mid-promote
+    # (which could leave a half-promoted staging repo); the duplicate simply waits.
+    concurrency:
+      group: publish-${{ github.sha }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
