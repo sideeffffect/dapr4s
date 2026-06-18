@@ -1,6 +1,7 @@
 name: CI
 on:
   push:
+    branches: [main, master]
   release:
     types: [ published ]
   pull_request:
@@ -109,7 +110,7 @@ jobs:
 
   publish:
     needs: [format, test]
-    if: github.event_name == 'push'
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
