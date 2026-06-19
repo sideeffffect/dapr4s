@@ -7,6 +7,15 @@ import scala.concurrent.duration.FiniteDuration
 // Individual capability traits
 // ---------------------------------------------------------------------------
 
+/** Accessor (rung 2) for state stores: an "any store" handle obtained argument-less via [[DaprCapability.state]], whose
+  * [[apply]] narrows to a [[StateCapability]] bound to one store. Hold and pass this around to delegate "may reach any
+  * state store"; `dapr.state(name)` reads identically (it is `dapr.state.apply(name)`).
+  */
+@scala.caps.assumeSafe
+trait AccessStateCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[StateCapability]] for the named state store. */
+  def apply(storeName: StateStoreName): StateCapability^{this}
+
 /** Capability for DAPR state management operations against a named store.
   *
   * Acquired via [[DaprCapability.state]].
@@ -142,6 +151,14 @@ object StateCapability:
   * `Subscription` on the same topic consumes. (Derivation binds the two through one trait: `Publish.derive` ↔
   * `Subscriptions.deriveChecked`.)
   */
+/** Accessor (rung 2) for pub/sub components: an "any component" handle obtained argument-less via
+  * [[DaprCapability.publish]], whose [[apply]] narrows to a [[PublishCapability]] bound to one component.
+  */
+@scala.caps.assumeSafe
+trait AccessPublishCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[PublishCapability]] for the named pub/sub component. */
+  def apply(pubsubName: PubSubName): PublishCapability^{this}
+
 @scala.caps.assumeSafe
 trait PublishCapability extends scala.caps.ExclusiveCapability:
   val pubsubName: PubSubName
@@ -190,11 +207,22 @@ object PublishCapability:
   * answered by an `InvokeRoute` for the same method on the target app. (Derivation binds the two through one trait:
   * `Invoke.derive` ↔ `InvokeRoutes.deriveChecked`.)
   */
+/** Accessor (rung 2) for service invocation: an "any app" handle obtained argument-less via [[DaprCapability.invoke]],
+  * whose [[apply]] narrows to an [[InvokeCapability]] bound to one target [[AppId]]. This is the service-to-service
+  * least-privilege seam — hold `AccessInvokeCapability` to reach any app, or `apply(appId)` to restrict a holder to a
+  * single target.
+  */
+@scala.caps.assumeSafe
+trait AccessInvokeCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain an [[InvokeCapability]] bound to the target app. */
+  def apply(appId: AppId): InvokeCapability^{this}
+
 @scala.caps.assumeSafe
 trait InvokeCapability extends scala.caps.ExclusiveCapability:
+  val appId: AppId
 
   /** Invoke a remote method with a request body. `Req` is inferred from `data`; `Resp` is specified at the call site:
-    * {{{invoke.invoke(appId, method, requestData)[ResponseType]}}}
+    * {{{invoke.invoke(method, requestData)[ResponseType]}}}
     *
     * @param httpMethod
     *   HTTP verb to use; defaults to [[HttpMethod.Post]]
@@ -202,7 +230,6 @@ trait InvokeCapability extends scala.caps.ExclusiveCapability:
     *   optional gRPC/HTTP metadata headers forwarded to the target service
     */
   def invoke[Req: JsonCodec](
-      appId: AppId,
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
@@ -213,30 +240,37 @@ trait InvokeCapability extends scala.caps.ExclusiveCapability:
     *
     * Use the body-bearing overload to pass a non-default HTTP verb or metadata headers.
     */
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp
+  def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp
 
 /** Companion-object API for [[InvokeCapability]].
   *
-  * Forwards to the `InvokeCapability` in the enclosing `using` context:
+  * Forwards to the `InvokeCapability` in the enclosing `using` context (already bound to a target app):
   * {{{
   *   def getUser(id: String)(using InvokeCapability): User =
-  *     InvokeCapability.invoke(AppId("user-service"), InvokeMethodName("get"), id)[User]
+  *     InvokeCapability.invoke(InvokeMethodName("get"), id)[User]
   * }}}
   */
 @scala.caps.assumeSafe
 object InvokeCapability:
   def invoke[Req: JsonCodec](
-      appId: AppId,
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec](using cap: InvokeCapability): Resp =
-    cap.invoke(appId, method, data, httpMethod, metadata)[Resp]
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName)(using cap: InvokeCapability): Resp =
-    cap.invoke(appId, method)
+    cap.invoke(method, data, httpMethod, metadata)[Resp]
+  def invoke[Resp: JsonCodec](method: InvokeMethodName)(using cap: InvokeCapability): Resp =
+    cap.invoke(method)
 
 // ---------------------------------------------------------------------------
+
+/** Accessor (rung 2) for secrets stores: an "any store" handle obtained argument-less via [[DaprCapability.secrets]],
+  * whose [[apply]] narrows to a [[SecretsCapability]] bound to one store.
+  */
+@scala.caps.assumeSafe
+trait AccessSecretsCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[SecretsCapability]] for the named secrets store. */
+  def apply(storeName: SecretStoreName): SecretsCapability^{this}
 
 /** Capability for reading secrets from a named DAPR secrets store. */
 @scala.caps.assumeSafe
@@ -277,6 +311,14 @@ object SecretsCapability:
     cap.getBulk(metadata)
 
 // ---------------------------------------------------------------------------
+
+/** Accessor (rung 2) for configuration stores: an "any store" handle obtained argument-less via
+  * [[DaprCapability.configuration]], whose [[apply]] narrows to a [[ConfigurationCapability]] bound to one store.
+  */
+@scala.caps.assumeSafe
+trait AccessConfigurationCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[ConfigurationCapability]] for the named configuration store. */
+  def apply(storeName: ConfigurationStoreName): ConfigurationCapability^{this}
 
 /** Capability for reading configuration items from a named DAPR config store. */
 @scala.caps.assumeSafe
@@ -359,6 +401,14 @@ object ConfigurationCapability:
   * not a request/response contract: this capability issues [[BindingOperation]]s on a binding, while a `BindingRoute`
   * merely receives payloads delivered to a [[BindingName]]. (So `BindingRoutes` has only `derive`, no `deriveChecked`.)
   */
+/** Accessor (rung 2) for output bindings: an "any binding" handle obtained argument-less via
+  * [[DaprCapability.bindings]], whose [[apply]] narrows to a [[BindingsCapability]] bound to one binding.
+  */
+@scala.caps.assumeSafe
+trait AccessBindingsCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[BindingsCapability]] for the named output binding. */
+  def apply(bindingName: BindingName): BindingsCapability^{this}
+
 @scala.caps.assumeSafe
 trait BindingsCapability extends scala.caps.ExclusiveCapability:
   val bindingName: BindingName
@@ -411,6 +461,14 @@ object BindingsCapability:
 
 // ---------------------------------------------------------------------------
 
+/** Accessor (rung 2) for lock stores: an "any store" handle obtained argument-less via [[DaprCapability.lock]], whose
+  * [[apply]] narrows to a [[LockCapability]] bound to one store.
+  */
+@scala.caps.assumeSafe
+trait AccessLockCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[LockCapability]] for the named lock store. */
+  def apply(storeName: LockStoreName): LockCapability^{this}
+
 /** Capability for DAPR distributed locking against a named lock store. */
 @scala.caps.assumeSafe
 trait LockCapability extends scala.caps.ExclusiveCapability:
@@ -453,6 +511,23 @@ object LockCapability:
   * trait: `Actor.derive` ↔ `ActorDefinitions.deriveChecked`. The actor's reminders/timers are a separate sub-dualism,
   * scheduled via [[ActorContext.registerReminder]]/[[ActorContext.registerTimer]] rather than this capability.)
   */
+/** Accessor (rung 2) for actors: an "any actor" handle obtained argument-less via [[DaprCapability.actor]], whose
+  * [[apply]] descends to an [[ActorTypeCapability]] for one actor type. The actor accessor is the only one that
+  * descends two rungs — type then id — so `dapr.actor(actorType)(actorId)` reads as two narrowing steps.
+  */
+@scala.caps.assumeSafe
+trait AccessActorCapability extends scala.caps.ExclusiveCapability:
+  /** Narrow to a single actor type (any instance of it). */
+  def apply(actorType: ActorType): ActorTypeCapability^{this}
+
+/** Accessor (rung 2.5) for a single actor type: narrows to a concrete [[ActorCapability]] for one instance id. */
+@scala.caps.assumeSafe
+trait ActorTypeCapability extends scala.caps.ExclusiveCapability:
+  val actorType: ActorType
+
+  /** Narrow to a single actor instance of this type. */
+  def apply(actorId: ActorId): ActorCapability^{this}
+
 @scala.caps.assumeSafe
 trait ActorCapability extends scala.caps.ExclusiveCapability:
   val actorType: ActorType
@@ -493,9 +568,15 @@ object ActorCapability:
 
 // ---------------------------------------------------------------------------
 
-/** Capability for managing Dapr workflow instances (client-side). */
+/** Accessor (rung 2) for managing Dapr workflow instances (client-side), obtained argument-less via
+  * [[DaprCapability.workflow]].
+  *
+  * The launch operations (`start*`) stay on the accessor because they '''mint''' the instance id; once you have an id,
+  * [[apply]] narrows to a [[WorkflowInstanceCapability]] whose operations all target that one instance (the id is no
+  * longer a per-call argument).
+  */
 @scala.caps.assumeSafe
-trait WorkflowCapability extends scala.caps.ExclusiveCapability:
+trait AccessWorkflowCapability extends scala.caps.ExclusiveCapability:
 
   /** Start a new workflow instance. Returns the generated instance ID. */
   def start(name: WorkflowName): WorkflowInstanceId
@@ -509,83 +590,100 @@ trait WorkflowCapability extends scala.caps.ExclusiveCapability:
   /** Start a new workflow instance with a specific instance ID and typed input. */
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId
 
-  /** Fetch the current status snapshot of a workflow instance. Returns `None` if the instance does not exist.
-    */
-  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot]
+  /** Obtain a [[WorkflowInstanceCapability]] scoped to an existing instance id. */
+  def apply(instanceId: WorkflowInstanceId): WorkflowInstanceCapability^{this}
 
-  /** Suspend a running workflow instance (can be resumed later). */
-  def suspend(instanceId: WorkflowInstanceId): Unit
+/** Capability scoped to a single workflow instance (client-side), reached via [[AccessWorkflowCapability.apply]]. Every
+  * operation targets the bound [[instanceId]], so the id is no longer a per-call argument.
+  */
+@scala.caps.assumeSafe
+trait WorkflowInstanceCapability extends scala.caps.ExclusiveCapability:
+  val instanceId: WorkflowInstanceId
 
-  /** Resume a previously suspended workflow instance. */
-  def resume(instanceId: WorkflowInstanceId): Unit
+  /** Fetch the current status snapshot of this instance. Returns `None` if the instance does not exist. */
+  def getStatus(): Option[WorkflowSnapshot]
 
-  /** Terminate a workflow instance immediately. */
-  def terminate(instanceId: WorkflowInstanceId): Unit
+  /** Suspend this running instance (can be resumed later). */
+  def suspend(): Unit
 
-  /** Send an external event to a waiting workflow instance. */
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit
+  /** Resume this previously suspended instance. */
+  def resume(): Unit
 
-  /** Block until the workflow instance completes (or the timeout expires). Returns the final snapshot, or `None` if the
+  /** Terminate this instance immediately. */
+  def terminate(): Unit
+
+  /** Send an external event to this waiting instance. */
+  def raiseEvent[E: JsonCodec](eventName: EventName, payload: E): Unit
+
+  /** Block until this instance completes (or the timeout expires). Returns the final snapshot, or `None` if the
     * instance was not found.
     */
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot]
+  def waitForCompletion(timeout: FiniteDuration): Option[WorkflowSnapshot]
 
-  /** Purge the workflow instance state from the state store. Returns `true` if purged. */
-  def purge(instanceId: WorkflowInstanceId): Boolean
+  /** Purge this instance's state from the state store. Returns `true` if purged. */
+  def purge(): Boolean
 
-/** Companion-object API for [[WorkflowCapability]].
+/** Companion-object API for [[AccessWorkflowCapability]] — the launch operations.
   *
-  * Forwards to the `WorkflowCapability` in the enclosing `using` context:
+  * Forwards to the `AccessWorkflowCapability` in the enclosing `using` context:
   * {{{
-  *   def processOrder(order: Order)(using WorkflowCapability): WorkflowInstanceId =
-  *     WorkflowCapability.start[Order](
+  *   def processOrder(order: Order)(using AccessWorkflowCapability): WorkflowInstanceId =
+  *     AccessWorkflowCapability.start[Order](
   *       WorkflowName(classOf[OrderWorkflow].getSimpleName),
   *       order,
   *     )
   * }}}
   *
   * Operations that target an existing instance (status, suspend, resume, terminate, raiseEvent, waitForCompletion,
-  * purge) are also available as fluent extension methods on [[WorkflowInstanceId]] — e.g. `id.suspend()` — which read as
-  * a method on the instance rather than `WorkflowCapability.suspend(id)`.
+  * purge) live on [[WorkflowInstanceCapability]] and are also available as fluent extension methods on
+  * [[WorkflowInstanceId]] — e.g. `id.suspend()` — which read as a method on the instance.
   */
 @scala.caps.assumeSafe
-object WorkflowCapability:
-  def start(name: WorkflowName)(using cap: WorkflowCapability): WorkflowInstanceId =
+object AccessWorkflowCapability:
+  def start(name: WorkflowName)(using cap: AccessWorkflowCapability): WorkflowInstanceId =
     cap.start(name)
   def start[I: JsonCodec](name: WorkflowName, input: I)(using
-      cap: WorkflowCapability,
+      cap: AccessWorkflowCapability,
   ): WorkflowInstanceId =
     cap.start(name, input)
   def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId)(using
-      cap: WorkflowCapability,
+      cap: AccessWorkflowCapability,
   ): WorkflowInstanceId =
     cap.startWithId(name, instanceId)
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I)(using
-      cap: WorkflowCapability,
+      cap: AccessWorkflowCapability,
   ): WorkflowInstanceId =
     cap.startWithId(name, instanceId, input)
-  def getStatus(instanceId: WorkflowInstanceId)(using
-      cap: WorkflowCapability,
-  ): Option[WorkflowSnapshot] =
-    cap.getStatus(instanceId)
-  def suspend(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Unit =
-    cap.suspend(instanceId)
-  def resume(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Unit =
-    cap.resume(instanceId)
-  def terminate(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Unit =
-    cap.terminate(instanceId)
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E)(using
-      cap: WorkflowCapability,
-  ): Unit =
-    cap.raiseEvent(instanceId, eventName, payload)
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration)(using
-      cap: WorkflowCapability,
-  ): Option[WorkflowSnapshot] =
-    cap.waitForCompletion(instanceId, timeout)
-  def purge(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Boolean =
-    cap.purge(instanceId)
+
+/** Companion-object API for [[WorkflowInstanceCapability]] — the per-instance operations. Forwards to the
+  * `WorkflowInstanceCapability` in the enclosing `using` context.
+  */
+@scala.caps.assumeSafe
+object WorkflowInstanceCapability:
+  def getStatus()(using cap: WorkflowInstanceCapability): Option[WorkflowSnapshot] =
+    cap.getStatus()
+  def suspend()(using cap: WorkflowInstanceCapability): Unit =
+    cap.suspend()
+  def resume()(using cap: WorkflowInstanceCapability): Unit =
+    cap.resume()
+  def terminate()(using cap: WorkflowInstanceCapability): Unit =
+    cap.terminate()
+  def raiseEvent[E: JsonCodec](eventName: EventName, payload: E)(using cap: WorkflowInstanceCapability): Unit =
+    cap.raiseEvent(eventName, payload)
+  def waitForCompletion(timeout: FiniteDuration)(using cap: WorkflowInstanceCapability): Option[WorkflowSnapshot] =
+    cap.waitForCompletion(timeout)
+  def purge()(using cap: WorkflowInstanceCapability): Boolean =
+    cap.purge()
 
 // ---------------------------------------------------------------------------
+
+/** Accessor (rung 2) for crypto components: an "any component" handle obtained argument-less via
+  * [[DaprCapability.crypto]], whose [[apply]] narrows to a [[CryptoCapability]] bound to one component.
+  */
+@scala.caps.assumeSafe
+trait AccessCryptoCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[CryptoCapability]] for the named crypto component. */
+  def apply(componentName: CryptoComponentName): CryptoCapability^{this}
 
 /** Capability for DAPR cryptography operations against a named crypto component.
   *

@@ -18,7 +18,7 @@ trait ForwardersPlatform:
   // ---- Jobs -----------------------------------------------------------------
 
   def jobSchedule[T](
-      cap: JobsCapability,
+      cap: AccessJobsCapability,
       name: JobName,
       data: T,
       schedule: JobSchedule,
@@ -28,10 +28,10 @@ trait ForwardersPlatform:
       codec: JsonCodec[T],
   ): Unit =
     given JsonCodec[T] = codec
-    cap.schedule[T](name, data, schedule, dueTime, repeats, ttl)
+    cap.apply(name).schedule[T](data, schedule, dueTime, repeats, ttl)
 
   def jobScheduleOnce[T](
-      cap: JobsCapability,
+      cap: AccessJobsCapability,
       name: JobName,
       data: T,
       dueTime: Instant,
@@ -39,7 +39,7 @@ trait ForwardersPlatform:
       codec: JsonCodec[T],
   ): Unit =
     given JsonCodec[T] = codec
-    cap.scheduleOnce[T](name, data, dueTime, ttl)
+    cap.apply(name).scheduleOnce[T](data, dueTime, ttl)
 
-  def jobGet(cap: JobsCapability, name: JobName): Option[JobDetails] =
-    cap.get(name)
+  def jobGet(cap: AccessJobsCapability, name: JobName): Option[JobDetails] =
+    cap.apply(name).get()

@@ -14,8 +14,8 @@ import scala.collection.mutable
   * shared [[ReportJobHandlers]].
   */
 trait ReportJobs:
-  def nightly(spec: Req, schedule: JobSchedule)(using JobsCapability, JsonCodec[Req]): Unit
-  @name("nightly") def status()(using JobsCapability): Option[JobDetails] // getter: not a trigger
+  def nightly(spec: Req, schedule: JobSchedule)(using AccessJobsCapability, JsonCodec[Req]): Unit
+  @name("nightly") def status()(using AccessJobsCapability): Option[JobDetails] // getter: not a trigger
 
 @scala.caps.assumeSafe
 class JvmServerRouteDerivationTest extends FunSuite:

@@ -38,7 +38,7 @@ object Workflow:
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Workflow"
-    val capTpe = TypeRepr.of[WorkflowCapability]
+    val capTpe = TypeRepr.of[AccessWorkflowCapability]
     val instIdTpe = TypeRepr.of[WorkflowInstanceId]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
@@ -52,8 +52,8 @@ object Workflow:
 
       val capExpr = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide a WorkflowCapability."))
-        .asExprOf[WorkflowCapability]
+        .getOrElse(fail("the `using` clause must provide an AccessWorkflowCapability."))
+        .asExprOf[AccessWorkflowCapability]
 
       val instanceRef = values.collectFirst {
         case (n, r, t, _) if n == "instanceId" =>

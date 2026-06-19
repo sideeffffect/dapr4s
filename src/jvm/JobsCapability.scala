@@ -13,7 +13,13 @@ package dapr4s
   * `JobRoutes.deriveChecked`.)
   */
 @scala.caps.assumeSafe
-trait JobsCapability extends scala.caps.ExclusiveCapability:
+trait AccessJobsCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[JobCapability]] bound to the named job. */
+  def apply(name: JobName): JobCapability^{this}
+
+@scala.caps.assumeSafe
+trait JobCapability extends scala.caps.ExclusiveCapability:
+  val jobName: JobName
 
   /** Schedule a recurring job. The `data` payload is delivered to the matching [[JobRoute]] each time the job fires.
     *
@@ -25,7 +31,6 @@ trait JobsCapability extends scala.caps.ExclusiveCapability:
     *   optional expiry instant after which the job is removed
     */
   def schedule[T: JsonCodec](
-      name: JobName,
       data: T,
       schedule: JobSchedule,
       dueTime: Option[java.time.Instant] = None,
@@ -35,45 +40,42 @@ trait JobsCapability extends scala.caps.ExclusiveCapability:
 
   /** Schedule a one-shot job that fires once at `dueTime`. */
   def scheduleOnce[T: JsonCodec](
-      name: JobName,
       data: T,
       dueTime: java.time.Instant,
       ttl: Option[java.time.Instant] = None,
   ): Unit
 
-  /** Fetch a job's stored definition. Returns `None` if no job with that name exists. */
-  def get(name: JobName): Option[JobDetails]
+  /** Fetch this job's stored definition. Returns `None` if no job with this name exists. */
+  def get(): Option[JobDetails]
 
-  /** Delete a scheduled job (no-op if it does not exist). */
-  def delete(name: JobName): Unit
+  /** Delete this scheduled job (no-op if it does not exist). */
+  def delete(): Unit
 
-/** Companion-object API for [[JobsCapability]].
+/** Companion-object API for [[JobCapability]].
   *
-  * Forwards to the `JobsCapability` in the enclosing `using` context:
+  * Forwards to the `JobCapability` in the enclosing `using` context (already bound to a job name):
   * {{{
-  *   def scheduleReminder(id: String)(using JobsCapability): Unit =
-  *     JobsCapability.schedule(JobName(s"reminder-$id"), id, JobSchedule.Every(1.hour))
+  *   def scheduleReminder(id: String)(using JobCapability): Unit =
+  *     JobCapability.schedule(id, JobSchedule.Every(1.hour))
   * }}}
   */
 @scala.caps.assumeSafe
-object JobsCapability:
+object JobCapability:
   def schedule[T: JsonCodec](
-      name: JobName,
       data: T,
       schedule: JobSchedule,
       dueTime: Option[java.time.Instant] = None,
       repeats: Option[Int] = None,
       ttl: Option[java.time.Instant] = None,
-  )(using cap: JobsCapability): Unit =
-    cap.schedule(name, data, schedule, dueTime, repeats, ttl)
+  )(using cap: JobCapability): Unit =
+    cap.schedule(data, schedule, dueTime, repeats, ttl)
   def scheduleOnce[T: JsonCodec](
-      name: JobName,
       data: T,
       dueTime: java.time.Instant,
       ttl: Option[java.time.Instant] = None,
-  )(using cap: JobsCapability): Unit =
-    cap.scheduleOnce(name, data, dueTime, ttl)
-  def get(name: JobName)(using cap: JobsCapability): Option[JobDetails] =
-    cap.get(name)
-  def delete(name: JobName)(using cap: JobsCapability): Unit =
-    cap.delete(name)
+  )(using cap: JobCapability): Unit =
+    cap.scheduleOnce(data, dueTime, ttl)
+  def get()(using cap: JobCapability): Option[JobDetails] =
+    cap.get()
+  def delete()(using cap: JobCapability): Unit =
+    cap.delete()

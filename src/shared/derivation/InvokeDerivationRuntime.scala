@@ -13,9 +13,9 @@ import dapr4s.*
 @scala.caps.assumeSafe
 object InvokeDerivationRuntime:
 
-  /** Forward to the body-bearing `invoke` overload. */
+  /** Forward to the body-bearing `invoke` overload, narrowing the accessor to `appId` first. */
   def invokeBody[Req, Resp](
-      cap: InvokeCapability,
+      cap: AccessInvokeCapability,
       appId: AppId,
       method: InvokeMethodName,
       data: Req,
@@ -26,14 +26,14 @@ object InvokeDerivationRuntime:
   ): Resp =
     given JsonCodec[Req] = reqCodec
     given JsonCodec[Resp] = respCodec
-    cap.invoke[Req](appId, method, data, httpMethod, metadata)[Resp]
+    cap.apply(appId).invoke[Req](method, data, httpMethod, metadata)[Resp]
 
-  /** Forward to the no-body `invoke` overload. */
+  /** Forward to the no-body `invoke` overload, narrowing the accessor to `appId` first. */
   def invokeNoBody[Resp](
-      cap: InvokeCapability,
+      cap: AccessInvokeCapability,
       appId: AppId,
       method: InvokeMethodName,
       respCodec: JsonCodec[Resp],
   ): Resp =
     given JsonCodec[Resp] = respCodec
-    cap.invoke[Resp](appId, method)
+    cap.apply(appId).invoke[Resp](method)

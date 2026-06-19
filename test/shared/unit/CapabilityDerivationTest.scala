@@ -59,7 +59,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Workflow: start, startInput, startWithId, startWithIdInput"):
     val fake = FakeWorkflow()
-    given WorkflowCapability = fake
+    given AccessWorkflowCapability = fake
     val client = WorkflowClient
     client.order()
     client.orderInput(Req(1))

@@ -12,10 +12,10 @@ import language.experimental.safe
   * Declared in safe mode to confirm the derived facade composes with capture-checked, safe-mode user code.
   */
 trait EchoService:
-  def echo(req: String)(using InvokeCapability, JsonCodec[String]): String
+  def echo(req: String)(using AccessInvokeCapability, JsonCodec[String]): String
 
   def double(
       req: IncrRequest,
-  )(using InvokeCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
+  )(using AccessInvokeCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
 
 def EchoService(appId: AppId): EchoService = Invoke.derive[EchoService](appId)

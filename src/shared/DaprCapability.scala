@@ -45,35 +45,35 @@ package dapr4s
 @scala.caps.assumeSafe
 trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatform:
 
-  /** Obtain a [[StateCapability]] for the named state store. */
-  def state(storeName: StateStoreName): StateCapability^{this}
+  /** Obtain the [[AccessStateCapability]] accessor; `state(storeName)` narrows it to one store. */
+  def state: AccessStateCapability^{this}
 
-  /** Obtain a [[PublishCapability]] for the named pub/sub component. */
-  def publish(pubsubName: PubSubName): PublishCapability^{this}
+  /** Obtain the [[AccessPublishCapability]] accessor; `publish(pubsubName)` narrows it to one component. */
+  def publish: AccessPublishCapability^{this}
 
-  /** Obtain the [[InvokeCapability]] (shared; no named store). */
-  def invoke: InvokeCapability^{this}
+  /** Obtain the [[AccessInvokeCapability]] accessor; `invoke(appId)` narrows it to one target app. */
+  def invoke: AccessInvokeCapability^{this}
 
-  /** Obtain a [[SecretsCapability]] for the named secrets store. */
-  def secrets(storeName: SecretStoreName): SecretsCapability^{this}
+  /** Obtain the [[AccessSecretsCapability]] accessor; `secrets(storeName)` narrows it to one store. */
+  def secrets: AccessSecretsCapability^{this}
 
-  /** Obtain a [[ConfigurationCapability]] for the named configuration store. */
-  def configuration(storeName: ConfigurationStoreName): ConfigurationCapability^{this}
+  /** Obtain the [[AccessConfigurationCapability]] accessor; `configuration(storeName)` narrows it to one store. */
+  def configuration: AccessConfigurationCapability^{this}
 
-  /** Obtain a [[BindingsCapability]] for the named output binding. */
-  def bindings(bindingName: BindingName): BindingsCapability^{this}
+  /** Obtain the [[AccessBindingsCapability]] accessor; `bindings(bindingName)` narrows it to one binding. */
+  def bindings: AccessBindingsCapability^{this}
 
-  /** Obtain a [[LockCapability]] for the named lock store. */
-  def lock(storeName: LockStoreName): LockCapability^{this}
+  /** Obtain the [[AccessLockCapability]] accessor; `lock(storeName)` narrows it to one store. */
+  def lock: AccessLockCapability^{this}
 
-  /** Obtain an [[ActorCapability]] for invoking methods on a specific actor instance. */
-  def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this}
+  /** Obtain the [[AccessActorCapability]] accessor; `actor(actorType)(actorId)` narrows it to one instance. */
+  def actor: AccessActorCapability^{this}
 
-  /** Obtain the [[WorkflowCapability]] for managing workflow instances. */
-  def workflow: WorkflowCapability^{this}
+  /** Obtain the [[AccessWorkflowCapability]] accessor for managing workflow instances. */
+  def workflow: AccessWorkflowCapability^{this}
 
-  /** Obtain a [[CryptoCapability]] for the named crypto component. */
-  def crypto(componentName: CryptoComponentName): CryptoCapability^{this}
+  /** Obtain the [[AccessCryptoCapability]] accessor; `crypto(componentName)` narrows it to one component. */
+  def crypto: AccessCryptoCapability^{this}
 
 
 /** Companion-object transformer API for [[DaprCapability]].
@@ -119,8 +119,11 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
   def publish(pubsubName: PubSubName)[T](body: PublishCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.publish(pubsubName).asInstanceOf[PublishCapability])
 
-  def invoke[T](body: InvokeCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.invoke.asInstanceOf[InvokeCapability])
+  /** Make the [[AccessInvokeCapability]] accessor available to `body` — pass it to [[Invoke.derive]] clients, or narrow
+    * to a single target app with `apply(appId)`.
+    */
+  def invoke[T](body: AccessInvokeCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.invoke.asInstanceOf[AccessInvokeCapability])
 
   def secrets(storeName: SecretStoreName)[T](body: SecretsCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.secrets(storeName).asInstanceOf[SecretsCapability])
@@ -135,10 +138,13 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
     body(using cap.lock(storeName).asInstanceOf[LockCapability])
 
   def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.actor(actorType, actorId).asInstanceOf[ActorCapability])
+    body(using cap.actor(actorType)(actorId).asInstanceOf[ActorCapability])
 
-  def workflow[T](body: WorkflowCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.workflow.asInstanceOf[WorkflowCapability])
+  /** Make the [[AccessWorkflowCapability]] accessor available to `body` — the launch operations plus `apply(id)` for
+    * per-instance operations.
+    */
+  def workflow[T](body: AccessWorkflowCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.workflow.asInstanceOf[AccessWorkflowCapability])
 
   def crypto(componentName: CryptoComponentName)[T](body: CryptoCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.crypto(componentName).asInstanceOf[CryptoCapability])

@@ -46,7 +46,7 @@ object Jobs:
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Jobs"
-    val capTpe = TypeRepr.of[JobsCapability]
+    val capTpe = TypeRepr.of[AccessJobsCapability]
     val scheduleTpe = TypeRepr.of[JobSchedule]
     val instantTpe = TypeRepr.of[java.time.Instant]
     val instantOptTpe = TypeRepr.of[Option[java.time.Instant]]
@@ -62,8 +62,8 @@ object Jobs:
 
       val capExpr = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide a JobsCapability."))
-        .asExprOf[JobsCapability]
+        .getOrElse(fail("the `using` clause must provide an AccessJobsCapability."))
+        .asExprOf[AccessJobsCapability]
 
       def codecFor(arg: TypeRepr): Term =
         givens

@@ -30,12 +30,12 @@ private object InvokeCapabilityImpl:
 @scala.caps.assumeSafe
 private[internal] final class InvokeCapabilityImpl(
     scope: DaprCapabilityImpl,
+    val appId: AppId,
 ) extends InvokeCapability:
 
   import InvokeCapabilityImpl.*
 
   def invoke[Req: JsonCodec](
-      appId: AppId,
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
@@ -55,7 +55,7 @@ private[internal] final class InvokeCapabilityImpl(
       ),
     )
 
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
+  def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp =
     JsonCodec.decodeOrThrow[Resp](
       bytesToString(
         scope.client

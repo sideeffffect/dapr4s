@@ -9,6 +9,14 @@ package dapr4s
   * [[converse]] holds a multi-message exchange — message roles, optional tool/function calling, and usage reporting.
   * Acquired via [[DaprCapability.conversation]].
   */
+/** Accessor (rung 2) for conversation components: an "any component" handle obtained argument-less via
+  * [[DaprCapability.conversation]], whose [[apply]] narrows to a [[ConversationCapability]] bound to one component.
+  */
+@scala.caps.assumeSafe
+trait AccessConversationCapability extends scala.caps.ExclusiveCapability:
+  /** Obtain a [[ConversationCapability]] for the named conversation (LLM) component. */
+  def apply(componentName: ConversationComponentName): ConversationCapability^{this}
+
 @scala.caps.assumeSafe
 trait ConversationCapability extends scala.caps.ExclusiveCapability:
   val componentName: ConversationComponentName

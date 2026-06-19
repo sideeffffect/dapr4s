@@ -94,7 +94,7 @@ object Invoke:
     val appId: Expr[AppId] = '{ ${ appIdOpt }.getOrElse(AppId(${ Expr(derivedName) })) }
     val httpMethodTpe = TypeRepr.of[HttpMethod]
     val metadataTpe = TypeRepr.of[Map[MetadataKey, MetadataValue]]
-    val capTpe = TypeRepr.of[InvokeCapability]
+    val capTpe = TypeRepr.of[AccessInvokeCapability]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
       val info = MacroSupport.paramInfo(origSym, newSym, argss)
@@ -132,7 +132,7 @@ object Invoke:
 
       val capRef = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide a InvokeCapability."))
+        .getOrElse(fail("the `using` clause must provide an AccessInvokeCapability."))
 
       def codecRefFor(arg: TypeRepr, role: String): Term =
         givens
@@ -140,7 +140,7 @@ object Invoke:
           .getOrElse(fail(s"the `using` clause must provide a JsonCodec[$role] (JsonCodec[${arg.show}])."))
 
       val nm = MacroSupport.wireName(origSym)
-      val capExpr = capRef.asExprOf[InvokeCapability]
+      val capExpr = capRef.asExprOf[AccessInvokeCapability]
 
       resTpe.asType match
         case '[resp] =>

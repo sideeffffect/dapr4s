@@ -13,11 +13,9 @@ import dapr4styped.daprDapr.workflowClientWorkflowStateMod.WorkflowState
 import dapr4styped.daprDapr.workflowRuntimeWorkflowRuntimeStatusMod.WorkflowRuntimeStatus
 
 @scala.caps.assumeSafe
-private[internal] final class WorkflowCapabilityImpl(
+private[internal] final class AccessWorkflowCapabilityImpl(
     private val client: DaprWorkflowClient,
-) extends WorkflowCapability:
-
-  import WorkflowCapabilityImpl.*
+) extends AccessWorkflowCapability:
 
   def start(name: WorkflowName): WorkflowInstanceId =
     WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value)))
@@ -38,7 +36,18 @@ private[internal] final class WorkflowCapabilityImpl(
     val value = parseJson(summon[JsonCodec[I]].encode(input))
     WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value, instanceId.value)))
 
-  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] =
+  def apply(instanceId: WorkflowInstanceId): WorkflowInstanceCapability^{this} =
+    new WorkflowInstanceCapabilityImpl(client, instanceId).asInstanceOf[WorkflowInstanceCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class WorkflowInstanceCapabilityImpl(
+    private val client: DaprWorkflowClient,
+    val instanceId: WorkflowInstanceId,
+) extends WorkflowInstanceCapability:
+
+  import WorkflowCapabilityImpl.*
+
+  def getStatus(): Option[WorkflowSnapshot] =
     val state = JsAwait.await(client.getWorkflowState(instanceId.value, true))
     // Unknown instances come back as `undefined` (the vendored newOrchestrationState returns
     // nothing when the GetInstance response has exists = false) — unlike the Java SDK, which
@@ -46,13 +55,13 @@ private[internal] final class WorkflowCapabilityImpl(
     // platforms agree should the JS SDK ever mirror the Java behaviour.
     state.toOption.filter(_.name.nonEmpty).map(toSnapshot)
 
-  def suspend(instanceId: WorkflowInstanceId): Unit =
+  def suspend(): Unit =
     JsAwait.await(client.suspendWorkflow(instanceId.value)): Unit
 
-  def resume(instanceId: WorkflowInstanceId): Unit =
+  def resume(): Unit =
     JsAwait.await(client.resumeWorkflow(instanceId.value)): Unit
 
-  def terminate(instanceId: WorkflowInstanceId): Unit =
+  def terminate(): Unit =
     JsAwait.await(client.terminateWorkflow(instanceId.value, null)): Unit
 
   // Unlike workflow inputs, the event payload is passed as the RAW JSON STRING: the vendored client
@@ -60,11 +69,11 @@ private[internal] final class WorkflowCapabilityImpl(
   // content is our document — DOUBLE encoding, which is exactly what the JVM impl puts on the wire
   // (it hands the encoded JSON String to the Java SDK, whose Jackson serializer encodes it again).
   // The server-side waitForEvent decodes symmetrically, so the platforms stay wire-compatible.
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit =
+  def raiseEvent[E: JsonCodec](eventName: EventName, payload: E): Unit =
     val jsonPayload: String = summon[JsonCodec[E]].encode(payload)
     JsAwait.await(client.raiseEvent(instanceId.value, eventName.value, jsonPayload)): Unit
 
-  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot] =
+  def waitForCompletion(timeout: FiniteDuration): Option[WorkflowSnapshot] =
     // On timeout, the vendored client REJECTS with its TimeoutError (a bare `class TimeoutError
     // extends Error` constructed with message "TimeoutError" — workflow/internal/durabletask/
     // exception/timeout-error.js, raced against the gRPC call in waitForOrchestrationCompletion).
@@ -85,7 +94,7 @@ private[internal] final class WorkflowCapabilityImpl(
           else throw e
     state.toOption.map(toSnapshot)
 
-  def purge(instanceId: WorkflowInstanceId): Boolean =
+  def purge(): Boolean =
     JsAwait.await(client.purgeWorkflow(instanceId.value))
 
 @scala.caps.assumeSafe
@@ -95,7 +104,7 @@ private object WorkflowCapabilityImpl:
     * name survives as `constructor.name` (the SDK ships unminified CommonJS, so the name is stable); checking either
     * marker keeps detection robust.
     */
-  private def isVendoredTimeout(error: js.Error): Boolean =
+  private[internal] def isVendoredTimeout(error: js.Error): Boolean =
     // WHAT: asInstanceOf to js.Dynamic for untyped property access.
     // WHY: `constructor.name` is not part of the js.Error facade.
     // WHY SAFE: js.Dynamic is the untyped view of any JS value (no runtime cast); every JS object
@@ -103,7 +112,7 @@ private object WorkflowCapabilityImpl:
     error.message == "TimeoutError" ||
       error.asInstanceOf[js.Dynamic].selectDynamic("constructor").selectDynamic("name").toString == "TimeoutError"
 
-  private def toSnapshot(state: WorkflowState): WorkflowSnapshot =
+  private[internal] def toSnapshot(state: WorkflowState): WorkflowSnapshot =
     WorkflowSnapshot(
       name = WorkflowName(state.name),
       instanceId = WorkflowInstanceId(state.instanceId),
