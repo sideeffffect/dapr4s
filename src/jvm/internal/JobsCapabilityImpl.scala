@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.jobs.*
 import io.dapr.client.domain.{DeleteJobRequest, GetJobRequest, ScheduleJobRequest, JobSchedule as JJobSchedule}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Duration as JDuration
@@ -9,39 +10,38 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[internal] final class JobsCapabilityImpl(
+private[internal] final class JobCapabilityImpl(
     scope: DaprCapabilityImpl,
-) extends JobsCapability:
+    val jobName: JobName,
+) extends JobCapability:
 
-  import JobsCapabilityImpl.*
+  import JobCapabilityImpl.*
 
   def schedule[T: JsonCodec](
-      name: JobName,
       data: T,
       schedule: JobSchedule,
       dueTime: Option[java.time.Instant] = None,
       repeats: Option[Int] = None,
       ttl: Option[java.time.Instant] = None,
   ): Unit =
-    val req = new ScheduleJobRequest(name.value, toJavaSchedule(schedule)).setData(encodeData(data))
+    val req = new ScheduleJobRequest(jobName.value, toJavaSchedule(schedule)).setData(encodeData(data))
     dueTime.foreach(t => req.setDueTime(t))
     repeats.foreach(r => req.setRepeat(r))
     ttl.foreach(t => req.setTtl(t))
     scope.client.scheduleJob(req).awaitResult(): Unit
 
   def scheduleOnce[T: JsonCodec](
-      name: JobName,
       data: T,
       dueTime: java.time.Instant,
       ttl: Option[java.time.Instant] = None,
   ): Unit =
-    val req = new ScheduleJobRequest(name.value, dueTime).setData(encodeData(data))
+    val req = new ScheduleJobRequest(jobName.value, dueTime).setData(encodeData(data))
     ttl.foreach(t => req.setTtl(t))
     scope.client.scheduleJob(req).awaitResult(): Unit
 
-  def get(name: JobName): Option[JobDetails] =
+  def get(): Option[JobDetails] =
     scope.client
-      .getJob(new GetJobRequest(name.value))
+      .getJob(new GetJobRequest(jobName.value))
       .awaitResult()
       .toOption
       .map { resp =>
@@ -55,11 +55,11 @@ private[internal] final class JobsCapabilityImpl(
         )
       }
 
-  def delete(name: JobName): Unit =
-    scope.client.deleteJob(new DeleteJobRequest(name.value)).awaitResult(): Unit
+  def delete(): Unit =
+    scope.client.deleteJob(new DeleteJobRequest(jobName.value)).awaitResult(): Unit
 
 @scala.caps.assumeSafe
-private object JobsCapabilityImpl:
+private object JobCapabilityImpl:
   private def encodeData[T: JsonCodec](data: T): Array[Byte] =
     summon[JsonCodec[T]].encode(data).getBytes(UTF_8).nn
 

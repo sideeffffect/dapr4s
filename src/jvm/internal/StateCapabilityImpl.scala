@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.state.*
 import io.dapr.client.domain.{State as DaprState, StateOptions, TransactionalStateOperation}
 import io.dapr.client.domain.TransactionalStateOperation.OperationType
 

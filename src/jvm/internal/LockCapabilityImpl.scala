@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.lock.*
 import io.dapr.client.domain.{LockRequest, UnlockRequest, UnlockResponseStatus}
 import scala.concurrent.duration.FiniteDuration
 import MonoOps.*

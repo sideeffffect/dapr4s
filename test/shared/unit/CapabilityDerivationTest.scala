@@ -1,6 +1,8 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 import munit.FunSuite
 import scala.collection.immutable.ArraySeq
@@ -59,7 +61,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Workflow: start, startInput, startWithId, startWithIdInput"):
     val fake = FakeWorkflow()
-    given WorkflowCapability = fake
+    given AccessWorkflowCapability = fake
     val client = WorkflowClient
     client.order()
     client.orderInput(Req(1))

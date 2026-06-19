@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.actor.*
 import io.dapr.actors.ActorId as JavaActorId
 import io.dapr.actors.client.{
   ActorClient as JavaActorClient,

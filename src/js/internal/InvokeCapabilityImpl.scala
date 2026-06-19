@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.invoke.*
 import scala.scalajs.js
 import JsInterop.*
 // The TYPE comes from the deep module (types are erased — no import is emitted), but the VALUES
@@ -101,12 +102,12 @@ private object InvokeCapabilityImpl:
 @scala.caps.assumeSafe
 private[internal] final class InvokeCapabilityImpl(
     scope: DaprCapabilityImpl,
+    val appId: AppId,
 ) extends InvokeCapability:
 
   import InvokeCapabilityImpl.*
 
   def invoke[Req: JsonCodec](
-      appId: AppId,
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
@@ -139,6 +140,6 @@ private[internal] final class InvokeCapabilityImpl(
       // maps it to null so the codec sees the same input as on the JVM (empty Mono → null bytes).
       JsonCodec.decodeOrThrow[Resp](jsonStringOrNull(response))
 
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
+  def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp =
     val response = JsAwait.await(scope.client.invoker.invoke(appId.value, method.value, SdkHttpMethods.GET))
     JsonCodec.decodeOrThrow[Resp](jsonStringOrNull(response))

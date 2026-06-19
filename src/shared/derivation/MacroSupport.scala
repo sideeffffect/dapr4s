@@ -9,7 +9,7 @@ import scala.quoted.*
   * that skeleton; each capability supplies a `bodyFn` that builds one method body. The helpers ([[paramInfo]],
   * [[wireName]], [[jsonCodecArg]], [[resultTypeOf]]) cover the analysis every `bodyFn` needs.
   */
-private[derivation] object MacroSupport:
+private[dapr4s] object MacroSupport:
 
   /** Build an instance of trait `T`, implementing each abstract method via `bodyFn`.
     *
@@ -260,7 +260,7 @@ private[derivation] object MacroSupport:
   /** Extract `X` from a `dapr4s.CloudEvent[X]` type, if it is one. */
   def cloudEventArg(using q: Quotes)(tpe: q.reflect.TypeRepr): Option[q.reflect.TypeRepr] =
     import q.reflect.*
-    val ceSym = Symbol.requiredClass("dapr4s.CloudEvent")
+    val ceSym = Symbol.requiredClass("dapr4s.publish.CloudEvent")
     tpe.dealias match
       case AppliedType(tycon, List(arg)) if tycon.typeSymbol == ceSym => Some(arg)
       case _                                                          => None
@@ -270,7 +270,7 @@ private[derivation] object MacroSupport:
     */
   def taskArg(using q: Quotes)(tpe: q.reflect.TypeRepr): Option[q.reflect.TypeRepr] =
     import q.reflect.*
-    val taskSym = Symbol.requiredClass("dapr4s.Task")
+    val taskSym = Symbol.requiredClass("dapr4s.workflow.Task")
     tpe.dealias.baseType(taskSym) match
       case AppliedType(_, List(arg)) => Some(arg)
       case _                         => None

@@ -1,6 +1,8 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 import dapr4s.test.integration.apps.{CounterState, EchoService, IncrRequest}
 import munit.FunSuite
@@ -23,13 +25,15 @@ class InvokeItTest extends FunSuite, ServerDaprItSuite:
 
   def echoRoundtrip(using DaprCapability): Unit =
     DaprCapability.invoke:
-      val resp = retrying("echo")(InvokeCapability.invoke(serverAppId, InvokeMethodName("echo"), "hello")[String])
+      val api = summon[AccessInvokeCapability](serverAppId)
+      val resp = retrying("echo")(api.invoke(InvokeMethodName("echo"), "hello")[String])
       assertEquals(resp, "hello")
 
   def falsyZeroBodyRoundtrips(using DaprCapability): Unit =
     // Exercises the raw-fetch fallback in the JS client (the SDK drops JS-falsy request bodies).
     DaprCapability.invoke:
-      val resp = retrying("echo-int")(InvokeCapability.invoke(serverAppId, InvokeMethodName("echo-int"), 0)[Int])
+      val api = summon[AccessInvokeCapability](serverAppId)
+      val resp = retrying("echo-int")(api.invoke(InvokeMethodName("echo-int"), 0)[Int])
       assertEquals(resp, 0)
 
   def derivedEchoServiceFacade(using DaprCapability): Unit =
@@ -40,6 +44,7 @@ class InvokeItTest extends FunSuite, ServerDaprItSuite:
 
   def nonexistentAppThrows(using DaprCapability): Unit =
     DaprCapability.invoke:
+      val api = summon[AccessInvokeCapability](AppId("no-such-app"))
       val attempt =
-        scala.util.Try(InvokeCapability.invoke(AppId("no-such-app"), InvokeMethodName("method"), "data")[String])
+        scala.util.Try(api.invoke(InvokeMethodName("method"), "data")[String])
       assert(attempt.isFailure, s"invoking a non-existent app should throw, got: $attempt")

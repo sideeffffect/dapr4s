@@ -2,6 +2,7 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*, dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*, dapr4s.conversation.*
 import dapr4s.derivation.*
 import scala.collection.mutable
 
@@ -13,16 +14,21 @@ import scala.collection.mutable
 // ---- Jobs -------------------------------------------------------------------
 
 trait JobClient:
-  def recur(data: Req, schedule: JobSchedule)(using JobsCapability, JsonCodec[Req]): Unit
-  def once(data: Req, dueTime: java.time.Instant)(using JobsCapability, JsonCodec[Req]): Unit
-  @name("recur") def fetch()(using JobsCapability): Option[JobDetails]
+  def recur(data: Req, schedule: JobSchedule)(using AccessJobsCapability, JsonCodec[Req]): Unit
+  def once(data: Req, dueTime: java.time.Instant)(using AccessJobsCapability, JsonCodec[Req]): Unit
+  @name("recur") def fetch()(using AccessJobsCapability): Option[JobDetails]
 lazy val JobClient: JobClient = Jobs.derive[JobClient]
 
 @scala.caps.assumeSafe
-final class FakeJobs extends JobsCapability:
-  val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
+final class FakeJobs extends AccessJobsCapability:
+  val log: mutable.ListBuffer[String]              = mutable.ListBuffer.empty
+  def apply(name: JobName): JobCapability^{this} =
+    new FakeJob(name, log).asInstanceOf[JobCapability]
+
+@scala.caps.assumeSafe
+final class FakeJob(name: JobName, log: mutable.ListBuffer[String]) extends JobCapability:
+  val jobName: JobName = name
   def schedule[T: JsonCodec](
-      name: JobName,
       data: T,
       schedule: JobSchedule,
       dueTime: Option[java.time.Instant],
@@ -31,13 +37,12 @@ final class FakeJobs extends JobsCapability:
   ): Unit =
     log += s"schedule|${name.value}|${summon[JsonCodec[T]].encode(data)}"
   def scheduleOnce[T: JsonCodec](
-      name: JobName,
       data: T,
       dueTime: java.time.Instant,
       ttl: Option[java.time.Instant],
   ): Unit =
     log += s"once|${name.value}|${summon[JsonCodec[T]].encode(data)}"
-  def get(name: JobName): Option[JobDetails] =
+  def get(): Option[JobDetails] =
     log += s"get|${name.value}"
     None
-  def delete(name: JobName): Unit = ???
+  def delete(): Unit = ???

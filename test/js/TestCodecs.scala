@@ -1,6 +1,9 @@
 //> using target.platform "scala-js"
 package dapr4s
 
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
+
 // Scala.js twin of TestCodecs.scala (which is JVM-only because it uses Jackson, a transitive
 // dependency of the Dapr Java SDK). Provides the same test-only JsonCodec given instances,
 // implemented over ujson (from upickle, a cross-platform test dependency), so the shared unit

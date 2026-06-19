@@ -1,6 +1,8 @@
 //> using target.platform "jvm"
 package dapr4s
 
+import dapr4s.jobs.*, dapr4s.conversation.*
+
 /** JVM half of the [[DaprCapability]] surface — the factory methods for building blocks the Dapr
   * Java SDK supports but the Dapr JS SDK does not (jobs, conversation).
   *
@@ -22,11 +24,11 @@ package dapr4s
 trait DaprCapabilityPlatform:
   this: DaprCapability =>
 
-  /** Obtain the [[JobsCapability]] (shared; no named component). */
-  def jobs: JobsCapability^{this}
+  /** Obtain the [[AccessJobsCapability]] accessor; `jobs(name)` narrows it to one job. */
+  def jobs: AccessJobsCapability^{this}
 
-  /** Obtain a [[ConversationCapability]] for the named conversation (LLM) component. */
-  def conversation(componentName: ConversationComponentName): ConversationCapability^{this}
+  /** Obtain the [[AccessConversationCapability]] accessor; `conversation(componentName)` narrows it to one component. */
+  def conversation: AccessConversationCapability^{this}
 
 /** JVM half of the [[DaprCapability$ DaprCapability companion]] transformer API — the
   * transformer methods for the JVM-only building blocks (jobs, conversation), inherited by
@@ -41,8 +43,11 @@ trait DaprCapabilityPlatform:
 @scala.caps.assumeSafe
 trait DaprCapabilityCompanionPlatform:
 
-  def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.jobs.asInstanceOf[JobsCapability])
+  /** Make the [[AccessJobsCapability]] accessor available to `body` — pass it to [[Jobs.derive]] clients, or narrow to a
+    * single job with `apply(name)`.
+    */
+  def jobs[T](body: AccessJobsCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.jobs.asInstanceOf[AccessJobsCapability])
 
   def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability ?=> T)(using
       cap: DaprCapability

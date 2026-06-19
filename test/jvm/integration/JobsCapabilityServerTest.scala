@@ -2,6 +2,8 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*, dapr4s.conversation.*
 import dapr4s.given
 import dapr4s.internal.DaprAppServer
 import dapr4s.test.unit.DaprServerTestBase
@@ -74,8 +76,8 @@ class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with D
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.jobs {
-          JobsCapability.scheduleOnce(
-            JobName("welcome-email"),
+          val job = summon[AccessJobsCapability](JobName("welcome-email"))
+          job.scheduleOnce(
             "user-42",
             java.time.Instant.now().plusSeconds(2),
           )
@@ -87,15 +89,15 @@ class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with D
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.jobs {
-          JobsCapability.schedule(
-            JobName("daily-digest"),
+          val job = summon[AccessJobsCapability](JobName("daily-digest"))
+          job.schedule(
             "digest-payload",
             JobSchedule.Every(scala.concurrent.duration.DurationInt(3).seconds),
           )
-          val details = JobsCapability.get(JobName("daily-digest"))
+          val details = job.get()
           assert(details.isDefined, "expected a stored job definition")
           assertEquals(details.flatMap(_.data).map(_.decodeOrThrow[String]), Some("digest-payload"))
           // Clean up so the recurring job does not keep firing after the test.
-          JobsCapability.delete(JobName("daily-digest"))
+          job.delete()
         }
     }

@@ -1,5 +1,7 @@
 package dapr4s
 
+import dapr4s.actor.*
+
 import java.net.URI
 import scala.concurrent.duration.{FiniteDuration, Duration, DurationInt}
 

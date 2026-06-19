@@ -2,6 +2,8 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*, dapr4s.conversation.*
 import dapr4s.given
 import munit.FunSuite
 
@@ -13,7 +15,7 @@ class JvmCapabilityDerivationTest extends FunSuite:
 
   test("Jobs: schedule, scheduleOnce, get"):
     val fake = FakeJobs()
-    given JobsCapability = fake
+    given AccessJobsCapability = fake
     val client = JobClient
     client.recur(Req(1), JobSchedule.Every(scala.concurrent.duration.DurationInt(5).seconds))
     client.once(Req(2), java.time.Instant.EPOCH)

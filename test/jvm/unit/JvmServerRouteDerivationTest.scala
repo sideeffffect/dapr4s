@@ -2,6 +2,8 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*, dapr4s.conversation.*
 import dapr4s.given
 import dapr4s.derivation.*
 import munit.FunSuite
@@ -14,8 +16,8 @@ import scala.collection.mutable
   * shared [[ReportJobHandlers]].
   */
 trait ReportJobs:
-  def nightly(spec: Req, schedule: JobSchedule)(using JobsCapability, JsonCodec[Req]): Unit
-  @name("nightly") def status()(using JobsCapability): Option[JobDetails] // getter: not a trigger
+  def nightly(spec: Req, schedule: JobSchedule)(using AccessJobsCapability, JsonCodec[Req]): Unit
+  @name("nightly") def status()(using AccessJobsCapability): Option[JobDetails] // getter: not a trigger
 
 @scala.caps.assumeSafe
 class JvmServerRouteDerivationTest extends FunSuite:

@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.actor.*
 import scala.scalajs.js
 import dapr4styped.node.globalsMod.global as NodeGlobals
 import dapr4styped.undiciTypes.fetchMod.RequestInit

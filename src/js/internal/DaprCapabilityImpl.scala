@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*, dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import java.net.URI
 import dapr4styped.daprDapr.anon.{PartialDaprClientOptions, PartialWorkflowClientOpti}
 import dapr4styped.daprDapr.mod.{CommunicationProtocolEnum, DaprClient, DaprWorkflowClient}
@@ -66,36 +67,36 @@ private[dapr4s] final class DaprCapabilityImpl(
   // Explicit ^{this} here overrides the ^{fresh} inference and satisfies the override check.
   // The asInstanceOf cast then erases the capture set so internal Impl types stay package-private.
 
-  def state(storeName: StateStoreName): StateCapability^{this} =
-    new StateCapabilityImpl(this, storeName).asInstanceOf[StateCapability]
+  def state: AccessStateCapability^{this} =
+    new AccessStateCapabilityImpl(this).asInstanceOf[AccessStateCapability]
 
-  def publish(pubsubName: PubSubName): PublishCapability^{this} =
-    new PublishCapabilityImpl(this, pubsubName).asInstanceOf[PublishCapability]
+  def publish: AccessPublishCapability^{this} =
+    new AccessPublishCapabilityImpl(this).asInstanceOf[AccessPublishCapability]
 
-  def invoke: InvokeCapability^{this} =
-    new InvokeCapabilityImpl(this).asInstanceOf[InvokeCapability]
+  def invoke: AccessInvokeCapability^{this} =
+    new AccessInvokeCapabilityImpl(this).asInstanceOf[AccessInvokeCapability]
 
-  def secrets(storeName: SecretStoreName): SecretsCapability^{this} =
-    new SecretsCapabilityImpl(this, storeName).asInstanceOf[SecretsCapability]
+  def secrets: AccessSecretsCapability^{this} =
+    new AccessSecretsCapabilityImpl(this).asInstanceOf[AccessSecretsCapability]
 
-  def configuration(storeName: ConfigurationStoreName): ConfigurationCapability^{this} =
-    new ConfigurationCapabilityImpl(this, storeName).asInstanceOf[ConfigurationCapability]
+  def configuration: AccessConfigurationCapability^{this} =
+    new AccessConfigurationCapabilityImpl(this).asInstanceOf[AccessConfigurationCapability]
 
-  def bindings(bindingName: BindingName): BindingsCapability^{this} =
-    new BindingsCapabilityImpl(this, bindingName).asInstanceOf[BindingsCapability]
+  def bindings: AccessBindingsCapability^{this} =
+    new AccessBindingsCapabilityImpl(this).asInstanceOf[AccessBindingsCapability]
 
-  def lock(storeName: LockStoreName): LockCapability^{this} =
-    new LockCapabilityImpl(this, storeName).asInstanceOf[LockCapability]
+  def lock: AccessLockCapability^{this} =
+    new AccessLockCapabilityImpl(this).asInstanceOf[AccessLockCapability]
 
-  def actor(actorType: ActorType, actorId: ActorId): ActorCapability^{this} =
-    new ActorCapabilityImpl(actorType, actorId, sidecar).asInstanceOf[ActorCapability]
+  def actor: AccessActorCapability^{this} =
+    new AccessActorCapabilityImpl(this).asInstanceOf[AccessActorCapability]
 
-  def workflow: WorkflowCapability^{this} =
+  def workflow: AccessWorkflowCapability^{this} =
     val wc = workflowClientRef.getOrCreate(() => new DaprWorkflowClient(workflowClientOptions(sidecar)))
-    new WorkflowCapabilityImpl(wc).asInstanceOf[WorkflowCapability]
+    new AccessWorkflowCapabilityImpl(wc).asInstanceOf[AccessWorkflowCapability]
 
-  def crypto(componentName: CryptoComponentName): CryptoCapability^{this} =
-    new CryptoCapabilityImpl(this, componentName).asInstanceOf[CryptoCapability]
+  def crypto: AccessCryptoCapability^{this} =
+    new AccessCryptoCapabilityImpl(this).asInstanceOf[AccessCryptoCapability]
 
   // No jobs/conversation here: the Dapr JS SDK (@dapr/dapr 3.x) has no jobs or conversation API,
   // so those factory methods exist only on the JVM DaprCapabilityPlatform parent trait — on this
@@ -180,3 +181,62 @@ private[dapr4s] object DaprCapabilityImpl:
     val options = PartialWorkflowClientOpti().setDaprHost(host).setDaprPort(port)
     sc.apiToken.foreach(t => options.setDaprApiToken(t.value): Unit)
     options
+
+// ---------------------------------------------------------------------------
+// Rung-2 accessor implementations (Design C) — the Scala.js twins of the JVM
+// Access*Impl classes. Each narrows to a rung-3 capability via `apply`; the
+// cast erases the capture set so these internal types stay package-private.
+// (No jobs/conversation: the Dapr JS SDK has neither.)
+// ---------------------------------------------------------------------------
+
+@scala.caps.assumeSafe
+private[internal] final class AccessStateCapabilityImpl(scope: DaprCapabilityImpl) extends AccessStateCapability:
+  def apply(storeName: StateStoreName): StateCapability^{this} =
+    new StateCapabilityImpl(scope, storeName).asInstanceOf[StateCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessPublishCapabilityImpl(scope: DaprCapabilityImpl) extends AccessPublishCapability:
+  def apply(pubsubName: PubSubName): PublishCapability^{this} =
+    new PublishCapabilityImpl(scope, pubsubName).asInstanceOf[PublishCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessInvokeCapabilityImpl(scope: DaprCapabilityImpl) extends AccessInvokeCapability:
+  def apply(appId: AppId): InvokeCapability^{this} =
+    new InvokeCapabilityImpl(scope, appId).asInstanceOf[InvokeCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessSecretsCapabilityImpl(scope: DaprCapabilityImpl) extends AccessSecretsCapability:
+  def apply(storeName: SecretStoreName): SecretsCapability^{this} =
+    new SecretsCapabilityImpl(scope, storeName).asInstanceOf[SecretsCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessConfigurationCapabilityImpl(scope: DaprCapabilityImpl)
+    extends AccessConfigurationCapability:
+  def apply(storeName: ConfigurationStoreName): ConfigurationCapability^{this} =
+    new ConfigurationCapabilityImpl(scope, storeName).asInstanceOf[ConfigurationCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessBindingsCapabilityImpl(scope: DaprCapabilityImpl) extends AccessBindingsCapability:
+  def apply(bindingName: BindingName): BindingsCapability^{this} =
+    new BindingsCapabilityImpl(scope, bindingName).asInstanceOf[BindingsCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessLockCapabilityImpl(scope: DaprCapabilityImpl) extends AccessLockCapability:
+  def apply(storeName: LockStoreName): LockCapability^{this} =
+    new LockCapabilityImpl(scope, storeName).asInstanceOf[LockCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessCryptoCapabilityImpl(scope: DaprCapabilityImpl) extends AccessCryptoCapability:
+  def apply(componentName: CryptoComponentName): CryptoCapability^{this} =
+    new CryptoCapabilityImpl(scope, componentName).asInstanceOf[CryptoCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class AccessActorCapabilityImpl(scope: DaprCapabilityImpl) extends AccessActorCapability:
+  def apply(actorType: ActorType): ActorTypeCapability^{this} =
+    new ActorTypeCapabilityImpl(scope, actorType).asInstanceOf[ActorTypeCapability]
+
+@scala.caps.assumeSafe
+private[internal] final class ActorTypeCapabilityImpl(scope: DaprCapabilityImpl, val actorType: ActorType)
+    extends ActorTypeCapability:
+  def apply(actorId: ActorId): ActorCapability^{this} =
+    new ActorCapabilityImpl(actorType, actorId, scope.sidecar).asInstanceOf[ActorCapability]

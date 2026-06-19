@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.lock.*
 import scala.concurrent.duration.FiniteDuration
 
 @scala.caps.assumeSafe

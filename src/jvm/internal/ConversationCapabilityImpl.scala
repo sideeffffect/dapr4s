@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.conversation.*
 import io.dapr.client.domain.{
   ConversationInputAlpha2,
   ConversationMessage as JConversationMessage,
