@@ -453,6 +453,10 @@ flowchart LR
 
 ## 8. Worked example — "Design C" applied to *every* capability
 
+**Status: implemented.** The name/instance tier below is now the live API — every capability is reached
+through an argument-less accessor on `DaprCapability` returning an `Access*Capability`, and each family lives
+in its own package (`dapr4s.state`, `dapr4s.invoke`, …). (§9 authority splits and §10 are still exploration.)
+
 This section shows the concrete shape of the new capabilities if the name/instance tier were applied uniformly. The rule is mechanical:
 
 > Every `def x(name: N): XCapability` on `DaprCapability` becomes `def x: AccessXCapability` (no argument), and the name moves to `AccessXCapability#apply(name): XCapability`. Where a capability carries the name on its *methods* today (invoke, jobs, workflow instances), that name is lifted out the same way.
