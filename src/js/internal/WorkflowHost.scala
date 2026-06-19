@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.workflow.*
 import scala.scalajs.js
 import dapr4styped.daprDapr.mod.WorkflowRuntime
 import dapr4styped.daprDapr.typesWorkflowActivityDottypeMod.TWorkflowActivity

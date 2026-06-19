@@ -1,5 +1,8 @@
 package dapr4s
 
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
+
 /** A single structural problem found in a [[DaprApp]] (or in the [[ActorRoutes]] an actor builds).
   *
   * Every case represents a *silent* misconfiguration: a collision the dispatch layer

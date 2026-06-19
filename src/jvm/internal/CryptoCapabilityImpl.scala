@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.crypto.*
 import io.dapr.client.domain.{DecryptRequestAlpha1, EncryptRequestAlpha1}
 import reactor.core.publisher.Flux
 import scala.collection.immutable.ArraySeq

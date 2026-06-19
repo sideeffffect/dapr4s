@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.workflow.*
 import scala.scalajs.js
 import scala.scalajs.js.annotation.JSName
 import dapr4styped.daprDapr.workflowInternalDurabletaskTaskTaskMod.Task as SdkTask

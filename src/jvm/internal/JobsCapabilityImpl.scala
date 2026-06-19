@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.jobs.*
 import io.dapr.client.domain.{DeleteJobRequest, GetJobRequest, ScheduleJobRequest, JobSchedule as JJobSchedule}
 import java.nio.charset.StandardCharsets.UTF_8
 import java.time.Duration as JDuration

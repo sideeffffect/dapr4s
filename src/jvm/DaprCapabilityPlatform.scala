@@ -1,6 +1,8 @@
 //> using target.platform "jvm"
 package dapr4s
 
+import dapr4s.jobs.*, dapr4s.conversation.*
+
 /** JVM half of the [[DaprCapability]] surface — the factory methods for building blocks the Dapr
   * Java SDK supports but the Dapr JS SDK does not (jobs, conversation).
   *

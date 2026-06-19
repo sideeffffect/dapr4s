@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.publish.*
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*

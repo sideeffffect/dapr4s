@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.invoke.*
 import scala.scalajs.js
 import JsInterop.*
 // The TYPE comes from the deep module (types are erased — no import is emitted), but the VALUES

@@ -2,6 +2,7 @@
 package dapr4s.derivation
 
 import dapr4s.*
+import dapr4s.jobs.*
 import java.time.Instant
 
 /** JVM half of [[Forwarders]] — the runtime forwarders for the JVM-only [[dapr4s.JobsCapability]] (the Dapr JS SDK has

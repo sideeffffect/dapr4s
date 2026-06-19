@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.invoke.*
 import io.dapr.client.domain.HttpExtension
 import MonoOps.*
 import scala.jdk.CollectionConverters.*

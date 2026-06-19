@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.secrets.*
 import scala.scalajs.js
 import JsInterop.*
 

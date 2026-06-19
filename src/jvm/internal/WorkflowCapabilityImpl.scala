@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.workflow.*
 import io.dapr.workflows.client.{DaprWorkflowClient, NewWorkflowOptions, WorkflowRuntimeStatus, WorkflowState}
 import scala.concurrent.duration.FiniteDuration
 import NullOps.*

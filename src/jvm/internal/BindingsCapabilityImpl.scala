@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.bindings.*
 import io.dapr.utils.TypeRef
 import MonoOps.*
 import scala.jdk.CollectionConverters.*
