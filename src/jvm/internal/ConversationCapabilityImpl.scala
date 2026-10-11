@@ -22,7 +22,7 @@ import NullOps.*
 private[internal] final class ConversationCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: ConversationComponentName,
-) extends ConversationCapability:
+) extends ConversationCapability.Instance:
 
   import ConversationCapabilityImpl.*
 

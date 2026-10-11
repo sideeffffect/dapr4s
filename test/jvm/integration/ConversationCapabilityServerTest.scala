@@ -12,9 +12,9 @@ import unsafeExceptions.canThrowAny
 
 import java.util.Collections
 
-/** Tests for [[ConversationCapability]] against Dapr's built-in `conversation.echo` component, which echoes each input
-  * prompt straight back as the completion. This exercises the real `converse` wire path without needing a real LLM
-  * provider.
+/** Tests for [[ConversationCapability.Instance]] against Dapr's built-in `conversation.echo` component, which echoes
+  * each input prompt straight back as the completion. This exercises the real `converse` wire path without needing a
+  * real LLM provider.
   */
 @scala.caps.assumeSafe
 class ConversationCapabilityServerTest extends FunSuite with TestContainersForAll:
@@ -35,7 +35,7 @@ class ConversationCapabilityServerTest extends FunSuite with TestContainersForAl
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.conversation(ConversationComponentName("echo")) {
-          val resp = ConversationCapability.converse(Seq(ConversationMessage.user("ping")))
+          val resp = ConversationCapability.Instance.converse(Seq(ConversationMessage.user("ping")))
           val content = resp.outputs.headOption
             .flatMap(_.choices.headOption)
             .map(_.message.content)

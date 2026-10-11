@@ -15,7 +15,7 @@ class JvmCapabilityDerivationTest extends FunSuite:
 
   test("Jobs: schedule, scheduleOnce, get"):
     val fake = FakeJobs()
-    given AccessJobsCapability = fake
+    given JobsCapability = fake
     val client = JobClient
     client.recur(Req(1), JobSchedule.Every(scala.concurrent.duration.DurationInt(5).seconds))
     client.once(Req(2), java.time.Instant.EPOCH)

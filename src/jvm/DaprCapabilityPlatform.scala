@@ -24,11 +24,13 @@ import dapr4s.jobs.*, dapr4s.conversation.*
 trait DaprCapabilityPlatform:
   this: DaprCapability =>
 
-  /** Obtain the [[AccessJobsCapability]] accessor; `jobs(name)` narrows it to one job. */
-  def jobs: AccessJobsCapability^{this}
+  /** Obtain the universal [[JobsCapability]] (any job); `jobs(jobName)` narrows it to one job. */
+  def jobs: JobsCapability^{this}
 
-  /** Obtain the [[AccessConversationCapability]] accessor; `conversation(componentName)` narrows it to one component. */
-  def conversation: AccessConversationCapability^{this}
+  /** Obtain the universal [[ConversationCapability]] (any component); `conversation(componentName)` narrows it to one
+    * component.
+    */
+  def conversation: ConversationCapability^{this}
 
 /** JVM half of the [[DaprCapability$ DaprCapability companion]] transformer API — the
   * transformer methods for the JVM-only building blocks (jobs, conversation), inherited by
@@ -43,13 +45,13 @@ trait DaprCapabilityPlatform:
 @scala.caps.assumeSafe
 trait DaprCapabilityCompanionPlatform:
 
-  /** Make the [[AccessJobsCapability]] accessor available to `body` — pass it to [[Jobs.derive]] clients, or narrow to a
+  /** Make the universal [[JobsCapability]] available to `body` — pass it to [[Jobs.derive]] clients, or narrow to a
     * single job with `apply(name)`.
     */
-  def jobs[T](body: AccessJobsCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.jobs.asInstanceOf[AccessJobsCapability])
+  def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.jobs.asInstanceOf[JobsCapability])
 
-  def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability ?=> T)(using
+  def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability.Instance ?=> T)(using
       cap: DaprCapability
   ): T =
-    body(using cap.conversation(componentName).asInstanceOf[ConversationCapability])
+    body(using cap.conversation(componentName).asInstanceOf[ConversationCapability.Instance])

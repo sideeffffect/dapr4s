@@ -10,12 +10,12 @@ import MonoOps.*
 import NullOps.*
 
 @scala.caps.assumeSafe
-private[internal] final class JobCapabilityImpl(
+private[internal] final class JobsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val jobName: JobName,
-) extends JobCapability:
+) extends JobsCapability.Instance:
 
-  import JobCapabilityImpl.*
+  import JobsCapabilityImpl.*
 
   def schedule[T: JsonCodec](
       data: T,
@@ -59,7 +59,7 @@ private[internal] final class JobCapabilityImpl(
     scope.client.deleteJob(new DeleteJobRequest(jobName.value)).awaitResult(): Unit
 
 @scala.caps.assumeSafe
-private object JobCapabilityImpl:
+private object JobsCapabilityImpl:
   private def encodeData[T: JsonCodec](data: T): Array[Byte] =
     summon[JsonCodec[T]].encode(data).getBytes(UTF_8).nn
 

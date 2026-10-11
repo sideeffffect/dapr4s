@@ -3,28 +3,25 @@ package dapr4s.conversation
 
 import dapr4s.*
 
-/** Capability for invoking a DAPR conversation (LLM) component.
+/** Universal capability for invoking DAPR conversation (LLM) components: reaches **any** component, so every operation
+  * names its component.
+  *
+  * Obtained via [[DaprCapability.conversation]]. Narrow to one component with [[apply]]
+  * (`conversation(componentName)`), which yields a [[ConversationCapability.Instance]].
   *
   * '''JVM-only:''' the Dapr JS SDK has no conversation API, so this capability (and [[DaprCapability.conversation]],
   * via `DaprCapabilityPlatform`) exists only on the JVM — on Scala.js using it is a compile error.
   *
-  * [[converse]] holds a multi-message exchange — message roles, optional tool/function calling, and usage reporting.
-  * Acquired via [[DaprCapability.conversation]].
+  * `converse` holds a multi-message exchange — message roles, optional tool/function calling, and usage reporting.
   */
-/** Accessor (rung 2) for conversation components: an "any component" handle obtained argument-less via
-  * [[DaprCapability.conversation]], whose [[apply]] narrows to a [[ConversationCapability]] bound to one component.
-  */
-@scala.caps.assumeSafe
-trait AccessConversationCapability extends scala.caps.ExclusiveCapability:
-  /** Obtain a [[ConversationCapability]] for the named conversation (LLM) component. */
-  def apply(componentName: ConversationComponentName): ConversationCapability^{this}
-
 @scala.caps.assumeSafe
 trait ConversationCapability extends scala.caps.ExclusiveCapability:
-  val componentName: ConversationComponentName
+  /** Narrow to the named conversation (LLM) component. */
+  def apply(componentName: ConversationComponentName): ConversationCapability.Instance^{this}
 
-  /** Hold a multi-message exchange with optional tool definitions. */
+  /** Hold a multi-message exchange with the named component; see [[ConversationCapability.Instance.converse]]. */
   def converse(
+      componentName: ConversationComponentName,
       messages: Seq[ConversationMessage],
       tools: Seq[ConversationTool] = Nil,
       toolChoice: Option[ToolChoice] = None,
@@ -33,17 +30,57 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
       scrubPii: Boolean = false,
   ): ConversationResponse
 
-/** Companion-object API for [[ConversationCapability]].
+/** The [[ConversationCapability]] family: the component-bound [[ConversationCapability.Instance]] and the
+  * companion-object forwarders for both interfaces.
   *
-  * Forwards to the `ConversationCapability` in the enclosing `using` context:
+  * Every forwarder takes its capability from the enclosing `using` context, so callers never name it:
   * {{{
-  *   def ask(prompt: String)(using ConversationCapability): ConversationResponse =
-  *     ConversationCapability.converse(Seq(ConversationMessage.user(prompt)))
+  *   def ask(prompt: String)(using ConversationCapability.Instance): ConversationResponse =
+  *     ConversationCapability.Instance.converse(Seq(ConversationMessage.user(prompt)))
   * }}}
   */
 @scala.caps.assumeSafe
 object ConversationCapability:
+
+  /** Capability bound to one named conversation (LLM) component. Obtained via `conversation(componentName)`. */
+  @scala.caps.assumeSafe
+  trait Instance extends scala.caps.ExclusiveCapability:
+    /** The conversation component this capability is bound to. */
+    val componentName: ConversationComponentName
+
+    /** Hold a multi-message exchange with optional tool definitions. */
+    def converse(
+        messages: Seq[ConversationMessage],
+        tools: Seq[ConversationTool] = Nil,
+        toolChoice: Option[ToolChoice] = None,
+        temperature: Option[Double] = None,
+        contextId: Option[ConversationContextId] = None,
+        scrubPii: Boolean = false,
+    ): ConversationResponse
+
+  /** Forwarders for [[ConversationCapability.Instance]]. */
+  @scala.caps.assumeSafe
+  object Instance:
+    def converse(
+        messages: Seq[ConversationMessage],
+        tools: Seq[ConversationTool] = Nil,
+        toolChoice: Option[ToolChoice] = None,
+        temperature: Option[Double] = None,
+        contextId: Option[ConversationContextId] = None,
+        scrubPii: Boolean = false,
+    )(using cap: Instance): ConversationResponse =
+      cap.converse(messages, tools, toolChoice, temperature, contextId, scrubPii)
+
+  /** Narrow the universal capability in scope to one component and make it available to `body`. */
+  def instance(componentName: ConversationComponentName)[T](body: Instance ?=> T)(using
+      cap: ConversationCapability,
+  ): T =
+    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
+    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
+    // cannot leak it (pure context function). See DaprCapability's companion.
+    body(using cap.apply(componentName).asInstanceOf[Instance])
   def converse(
+      componentName: ConversationComponentName,
       messages: Seq[ConversationMessage],
       tools: Seq[ConversationTool] = Nil,
       toolChoice: Option[ToolChoice] = None,
@@ -51,4 +88,4 @@ object ConversationCapability:
       contextId: Option[ConversationContextId] = None,
       scrubPii: Boolean = false,
   )(using cap: ConversationCapability): ConversationResponse =
-    cap.converse(messages, tools, toolChoice, temperature, contextId, scrubPii)
+    cap.converse(componentName, messages, tools, toolChoice, temperature, contextId, scrubPii)

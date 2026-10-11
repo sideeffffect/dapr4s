@@ -76,7 +76,7 @@ class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with D
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.jobs {
-          val job = summon[AccessJobsCapability](JobName("welcome-email"))
+          val job = summon[JobsCapability](JobName("welcome-email"))
           job.scheduleOnce(
             "user-42",
             java.time.Instant.now().plusSeconds(2),
@@ -89,7 +89,7 @@ class JobsCapabilityServerTest extends FunSuite with TestContainersForAll with D
     withContainers { c =>
       Dapr.runWithEndpoints(c.httpEndpoint, c.grpcEndpoint):
         DaprCapability.jobs {
-          val job = summon[AccessJobsCapability](JobName("daily-digest"))
+          val job = summon[JobsCapability](JobName("daily-digest"))
           job.schedule(
             "digest-payload",
             JobSchedule.Every(scala.concurrent.duration.DurationInt(3).seconds),

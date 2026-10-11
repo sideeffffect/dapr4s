@@ -14,19 +14,35 @@ import scala.collection.mutable
 // ---- Jobs -------------------------------------------------------------------
 
 trait JobClient:
-  def recur(data: Req, schedule: JobSchedule)(using AccessJobsCapability, JsonCodec[Req]): Unit
-  def once(data: Req, dueTime: java.time.Instant)(using AccessJobsCapability, JsonCodec[Req]): Unit
-  @name("recur") def fetch()(using AccessJobsCapability): Option[JobDetails]
+  def recur(data: Req, schedule: JobSchedule)(using JobsCapability, JsonCodec[Req]): Unit
+  def once(data: Req, dueTime: java.time.Instant)(using JobsCapability, JsonCodec[Req]): Unit
+  @name("recur") def fetch()(using JobsCapability.ReadOnly): Option[JobDetails]
 lazy val JobClient: JobClient = Jobs.derive[JobClient]
 
 @scala.caps.assumeSafe
-final class FakeJobs extends AccessJobsCapability:
+final class FakeJobs extends JobsCapability:
   val log: mutable.ListBuffer[String]              = mutable.ListBuffer.empty
-  def apply(name: JobName): JobCapability^{this} =
-    new FakeJob(name, log).asInstanceOf[JobCapability]
+  def apply(name: JobName): JobsCapability.Instance^{this} =
+    new FakeJob(name, log).asInstanceOf[JobsCapability.Instance]
+  def get(jobName: JobName): Option[JobDetails] = apply(jobName).get()
+  def schedule[T: JsonCodec](
+      jobName: JobName,
+      data: T,
+      schedule: JobSchedule,
+      dueTime: Option[java.time.Instant],
+      repeats: Option[Int],
+      ttl: Option[java.time.Instant],
+  ): Unit = apply(jobName).schedule(data, schedule, dueTime, repeats, ttl)
+  def scheduleOnce[T: JsonCodec](
+      jobName: JobName,
+      data: T,
+      dueTime: java.time.Instant,
+      ttl: Option[java.time.Instant],
+  ): Unit = apply(jobName).scheduleOnce(data, dueTime, ttl)
+  def delete(jobName: JobName): Unit = apply(jobName).delete()
 
 @scala.caps.assumeSafe
-final class FakeJob(name: JobName, log: mutable.ListBuffer[String]) extends JobCapability:
+final class FakeJob(name: JobName, log: mutable.ListBuffer[String]) extends JobsCapability.Instance:
   val jobName: JobName = name
   def schedule[T: JsonCodec](
       data: T,

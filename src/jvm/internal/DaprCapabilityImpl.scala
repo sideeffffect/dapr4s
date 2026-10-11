@@ -72,11 +72,11 @@ private[dapr4s] final class DaprCapabilityImpl(
   def crypto: CryptoCapability^{this} =
     new CryptoCapabilityUniversalImpl(this).asInstanceOf[CryptoCapability]
 
-  def jobs: AccessJobsCapability^{this} =
-    new AccessJobsCapabilityImpl(this).asInstanceOf[AccessJobsCapability]
+  def jobs: JobsCapability^{this} =
+    new JobsCapabilityUniversalImpl(this).asInstanceOf[JobsCapability]
 
-  def conversation: AccessConversationCapability^{this} =
-    new AccessConversationCapabilityImpl(this).asInstanceOf[AccessConversationCapability]
+  def conversation: ConversationCapability^{this} =
+    new ConversationCapabilityUniversalImpl(this).asInstanceOf[ConversationCapability]
 
   /** The shared actor gRPC client, created lazily on first use (CAS so a concurrent caller's redundant client is
     * closed). Read by `Dapr.run` at teardown to close only what was created.
@@ -285,15 +285,47 @@ private[internal] final class CryptoCapabilityUniversalImpl(scope: DaprCapabilit
     apply(componentName).decrypt(ciphertext)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessConversationCapabilityImpl(scope: DaprCapabilityImpl)
-    extends AccessConversationCapability:
-  def apply(componentName: ConversationComponentName): ConversationCapability^{this} =
-    new ConversationCapabilityImpl(scope, componentName).asInstanceOf[ConversationCapability]
+private[internal] final class ConversationCapabilityUniversalImpl(scope: DaprCapabilityImpl)
+    extends ConversationCapability:
+  def apply(componentName: ConversationComponentName): ConversationCapability.Instance^{this} =
+    new ConversationCapabilityImpl(scope, componentName).asInstanceOf[ConversationCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def converse(
+      componentName: ConversationComponentName,
+      messages: Seq[ConversationMessage],
+      tools: Seq[ConversationTool],
+      toolChoice: Option[ToolChoice],
+      temperature: Option[Double],
+      contextId: Option[ConversationContextId],
+      scrubPii: Boolean,
+  ): ConversationResponse =
+    apply(componentName).converse(messages, tools, toolChoice, temperature, contextId, scrubPii)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessJobsCapabilityImpl(scope: DaprCapabilityImpl) extends AccessJobsCapability:
-  def apply(name: JobName): JobCapability^{this} =
-    new JobCapabilityImpl(scope, name).asInstanceOf[JobCapability]
+private[internal] final class JobsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends JobsCapability:
+  def apply(jobName: JobName): JobsCapability.Instance^{this} =
+    new JobsCapabilityImpl(scope, jobName).asInstanceOf[JobsCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def get(jobName: JobName): Option[JobDetails] =
+    apply(jobName).get()
+  def schedule[T: JsonCodec](
+      jobName: JobName,
+      data: T,
+      schedule: JobSchedule,
+      dueTime: Option[java.time.Instant],
+      repeats: Option[Int],
+      ttl: Option[java.time.Instant],
+  ): Unit =
+    apply(jobName).schedule(data, schedule, dueTime, repeats, ttl)
+  def scheduleOnce[T: JsonCodec](
+      jobName: JobName,
+      data: T,
+      dueTime: java.time.Instant,
+      ttl: Option[java.time.Instant],
+  ): Unit =
+    apply(jobName).scheduleOnce(data, dueTime, ttl)
+  def delete(jobName: JobName): Unit =
+    apply(jobName).delete()
 
 @scala.caps.assumeSafe
 private[internal] final class AccessActorCapabilityImpl(scope: DaprCapabilityImpl) extends AccessActorCapability:

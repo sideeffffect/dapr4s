@@ -7,15 +7,15 @@ import dapr4s.*
 import dapr4s.jobs.*
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.JobsCapability]] facades from a trait.
+/** Derivation of [[JobsCapability]] facades from a trait.
   *
   * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.JobName]].
   *
-  *   - returns `Unit` with a `schedule: JobSchedule` parameter → [[dapr4s.JobsCapability.schedule]] (plus optional
+  *   - returns `Unit` with a `schedule: JobSchedule` parameter → [[JobsCapability.schedule]] (plus optional
   *     `dueTime: Option[Instant]`, `repeats: Option[Int]`, `ttl: Option[Instant]`)
-  *   - returns `Unit` with a `dueTime: Instant` parameter (no schedule) → [[dapr4s.JobsCapability.scheduleOnce]] (plus
+  *   - returns `Unit` with a `dueTime: Instant` parameter (no schedule) → [[JobsCapability.scheduleOnce]] (plus
   *     optional `ttl: Option[Instant]`)
-  *   - returns `Option[JobDetails]` with no value parameters → [[dapr4s.JobsCapability.get]]
+  *   - returns `Option[JobDetails]` with no value parameters → [[JobsCapability.ReadOnly.get]]
   *
   * '''Dual.''' [[JobRoutes]] is the inbound (trigger) counterpart: the app schedules jobs through
   * `Jobs.derive[Contract]`, and answers their triggers through `JobRoutes.deriveChecked[Contract, Impl]`. Both read the
@@ -35,7 +35,7 @@ object Jobs:
     * {{{
     *   trait ReportJobs:
     *     def nightlyReport(spec: ReportSpec, schedule: JobSchedule)(using JobsCapability, JsonCodec[ReportSpec]): Unit
-    *     @name("nightlyReport") def status()(using JobsCapability): Option[JobDetails]
+    *     @name("nightlyReport") def status()(using JobsCapability.ReadOnly): Option[JobDetails]
     *   lazy val ReportJobs: ReportJobs = Jobs.derive[ReportJobs]
     *
     *   DaprCapability.jobs {
@@ -49,7 +49,9 @@ object Jobs:
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Jobs"
-    val capTpe = TypeRepr.of[AccessJobsCapability]
+    // Getters need only read authority; scheduling methods need the full universal capability.
+    val readTpe = TypeRepr.of[JobsCapability.ReadOnly]
+    val writeTpe = TypeRepr.of[JobsCapability]
     val scheduleTpe = TypeRepr.of[JobSchedule]
     val instantTpe = TypeRepr.of[java.time.Instant]
     val instantOptTpe = TypeRepr.of[Option[java.time.Instant]]
@@ -63,10 +65,11 @@ object Jobs:
       val values = info.filterNot(_._4)
       def fail(m: String): Nothing = MacroSupport.fail(engine, origSym, m)
 
-      val capExpr = givens
-        .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide an AccessJobsCapability."))
-        .asExprOf[AccessJobsCapability]
+      def capFor(tpe: TypeRepr, what: String): Term =
+        givens
+          .collectFirst { case (_, r, t, _) if t <:< tpe => r }
+          .getOrElse(fail(s"the `using` clause must provide a $what."))
+      def capExpr: Expr[JobsCapability] = capFor(writeTpe, "JobsCapability").asExprOf[JobsCapability]
 
       def codecFor(arg: TypeRepr): Term =
         givens
@@ -88,7 +91,8 @@ object Jobs:
 
       if isGet then
         if values.nonEmpty then fail("a job getter (Option[JobDetails]) takes no value parameters.")
-        '{ Forwarders.jobGet(${ capExpr }, ${ nameExpr }) }.asTerm
+        val readCap = capFor(readTpe, "JobsCapability.ReadOnly").asExprOf[JobsCapability.ReadOnly]
+        '{ Forwarders.jobGet(${ readCap }, ${ nameExpr }) }.asTerm
       else if !MacroSupport.isUnit(resTpe) then
         fail("a job scheduling method must return Unit; a job getter must return Option[JobDetails].")
       else

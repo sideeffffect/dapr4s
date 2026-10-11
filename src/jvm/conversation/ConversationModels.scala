@@ -16,12 +16,12 @@ import dapr4s.*
 // WHERE TO LOOK: src/jvm/JobsModels.scala (same workaround, full explanation); AGENTS.md
 // "Escape hatches" section.
 
-// JVM-only: these models belong to the JVM-only ConversationCapability (the Dapr JS SDK has no
+// JVM-only: these models belong to the JVM-only ConversationCapability.Instance (the Dapr JS SDK has no
 // conversation API — see DaprCapabilityPlatform). The conversation-related opaque types
 // (ConversationComponentName, ConversationContextId, ModelName, ToolName, ToolCallId) stay
 // shared in src/shared/optypes/.
 
-/** Role of a message in a [[ConversationCapability.converse]] exchange. */
+/** Role of a message in a [[ConversationCapability.Instance.converse]] exchange. */
 enum ConversationMessageRole:
   case System, User, Assistant, Tool, Developer
 
@@ -47,7 +47,7 @@ object FinishReason:
       case "content_filter" => ContentFilter
       case _                => Other(raw)
 
-/** Controls whether (and which) tool the model may call in a [[ConversationCapability.converse]] request. */
+/** Controls whether (and which) tool the model may call in a [[ConversationCapability.Instance.converse]] request. */
 enum ToolChoice:
   /** Let the model decide whether to call a tool. */
   case Auto
@@ -70,7 +70,7 @@ object ToolChoice:
       case ToolChoice.Required    => "required"
       case ToolChoice.Named(name) => name.value
 
-/** A single message in a [[ConversationCapability.converse]] request.
+/** A single message in a [[ConversationCapability.Instance.converse]] request.
   *
   * Use the smart constructors ([[ConversationMessage.user]], [[ConversationMessage.system]], etc.) rather than the raw
   * apply.
@@ -96,7 +96,7 @@ object ConversationMessage:
     ConversationMessage(ConversationMessageRole.Tool, text, name)
   def developer(text: String): ConversationMessage = ConversationMessage(ConversationMessageRole.Developer, text)
 
-/** A function/tool the model may call during a [[ConversationCapability.converse]] exchange.
+/** A function/tool the model may call during a [[ConversationCapability.Instance.converse]] exchange.
   *
   * @param name
   *   The function name the model uses to invoke the tool.
@@ -134,7 +134,7 @@ final case class ConversationResult(
     usage: Option[ConversationResultCompletionUsage],
 )
 
-/** The full response of a [[ConversationCapability.converse]] call. */
+/** The full response of a [[ConversationCapability.Instance.converse]] call. */
 final case class ConversationResponse(
     contextId: Option[ConversationContextId],
     outputs: List[ConversationResult],
