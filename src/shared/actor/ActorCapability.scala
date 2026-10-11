@@ -120,10 +120,10 @@ object ActorCapability:
     def invokeVoid(method: ActorMethodName)(using cap: Instance): Unit =
       cap.invokeVoid(method)
 
-  /** Narrow the universal capability in scope to one actor type and make it available to `body`. Named `type` (in
-    * backticks, as `type` is a keyword) to mirror the [[ActorCapability.Type]] it provides.
+  /** Narrow the universal capability in scope to one actor type and make it available to `body` as an
+    * [[ActorCapability.Type]].
     */
-  def `type`(actorType: ActorType)[T](body: Type ?=> T)(using cap: ActorCapability): T =
+  def forType(actorType: ActorType)[T](body: Type ?=> T)(using cap: ActorCapability): T =
     // Capture-set erasure as in Type.instance above.
     body(using cap.apply(actorType).asInstanceOf[Type])
 
