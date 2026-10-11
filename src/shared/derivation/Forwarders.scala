@@ -143,11 +143,11 @@ object Forwarders extends ForwardersPlatform:
 
   // ---- Workflow (client) ----------------------------------------------------
 
-  def wfStart(cap: AccessWorkflowCapability, name: WorkflowName): WorkflowInstanceId =
+  def wfStart(cap: WorkflowCapability, name: WorkflowName): WorkflowInstanceId =
     cap.start(name)
 
   def wfStartInput[I](
-      cap: AccessWorkflowCapability,
+      cap: WorkflowCapability,
       name: WorkflowName,
       input: I,
       codec: JsonCodec[I],
@@ -156,14 +156,14 @@ object Forwarders extends ForwardersPlatform:
     cap.start[I](name, input)
 
   def wfStartWithId(
-      cap: AccessWorkflowCapability,
+      cap: WorkflowCapability,
       name: WorkflowName,
       instanceId: WorkflowInstanceId,
   ): WorkflowInstanceId =
     cap.startWithId(name, instanceId)
 
   def wfStartWithIdInput[I](
-      cap: AccessWorkflowCapability,
+      cap: WorkflowCapability,
       name: WorkflowName,
       instanceId: WorkflowInstanceId,
       input: I,

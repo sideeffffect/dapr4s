@@ -13,10 +13,10 @@ import language.experimental.safe
   *     cleared.
   *   - [[WorkflowStatus.Failed]] — terminated due to an unhandled exception in workflow logic.
   *   - [[WorkflowStatus.Canceled]] — cancelled by the runtime or via an explicit API call.
-  *   - [[WorkflowStatus.Terminated]] — forcibly stopped via [[WorkflowInstanceCapability.terminate]].
+  *   - [[WorkflowStatus.Terminated]] — forcibly stopped via [[WorkflowCapability.Instance.terminate]].
   *   - [[WorkflowStatus.Pending]] — scheduled but not yet started (placement in progress).
-  *   - [[WorkflowStatus.Suspended]] — paused via [[WorkflowInstanceCapability.suspend]]; resumes via
-  *     [[WorkflowInstanceCapability.resume]].
+  *   - [[WorkflowStatus.Suspended]] — paused via [[WorkflowCapability.Instance.suspend]]; resumes via
+  *     [[WorkflowCapability.Instance.resume]].
   */
 enum WorkflowStatus:
   case Running
@@ -30,7 +30,7 @@ enum WorkflowStatus:
 
 /** A point-in-time snapshot of a workflow instance's state.
   *
-  * Returned by [[WorkflowInstanceCapability.getStatus]] and [[WorkflowInstanceCapability.waitForCompletion]].
+  * Returned by [[WorkflowCapability.Instance.getStatus]] and [[WorkflowCapability.Instance.waitForCompletion]].
   *
   * @param name
   *   The [[WorkflowName]] (simple class name) that identifies the workflow type.

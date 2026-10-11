@@ -71,8 +71,8 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
   /** Obtain the [[AccessActorCapability]] accessor; `actor(actorType)(actorId)` narrows it to one instance. */
   def actor: AccessActorCapability^{this}
 
-  /** Obtain the [[AccessWorkflowCapability]] accessor for managing workflow instances. */
-  def workflow: AccessWorkflowCapability^{this}
+  /** Obtain the universal [[WorkflowCapability]] (any instance) for starting and managing workflow instances. */
+  def workflow: WorkflowCapability^{this}
 
   /** Obtain the universal [[CryptoCapability]] (any component); `crypto(componentName)` narrows it to one component. */
   def crypto: CryptoCapability^{this}
@@ -142,11 +142,11 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
   def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.actor(actorType)(actorId).asInstanceOf[ActorCapability])
 
-  /** Make the [[AccessWorkflowCapability]] accessor available to `body` — the launch operations plus `apply(id)` for
-    * per-instance operations.
+  /** Make the universal [[WorkflowCapability]] available to `body` — the launch operations plus the per-instance
+    * operations (by id, or via `apply(id)`).
     */
-  def workflow[T](body: AccessWorkflowCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.workflow.asInstanceOf[AccessWorkflowCapability])
+  def workflow[T](body: WorkflowCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.workflow.asInstanceOf[WorkflowCapability])
 
   def crypto(componentName: CryptoComponentName)[T](body: CryptoCapability.Instance ?=> T)(using cap: DaprCapability): T =
     body(using cap.crypto(componentName).asInstanceOf[CryptoCapability.Instance])

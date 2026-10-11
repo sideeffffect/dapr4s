@@ -27,15 +27,15 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
   test("workflow: start with no input returns a non-empty instanceId"):
     withDapr:
       DaprCapability.workflow {
-        val id = retrying("workflow runtime registered")(AccessWorkflowCapability.start(addingWorkflow))
+        val id = retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow))
         assert(id.value.nonEmpty, "instanceId should be non-empty")
       }
 
   test("workflow: start + waitForCompletion returns the activity-doubled output"):
     withDapr:
       DaprCapability.workflow {
-        val id = retrying("workflow runtime registered")(AccessWorkflowCapability.start(addingWorkflow, IncrRequest(5)))
-        val snap = summon[AccessWorkflowCapability](id)
+        val id = retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow, IncrRequest(5)))
+        val snap = summon[WorkflowCapability](id)
           .waitForCompletion(60.seconds)
           .getOrElse(fail("workflow did not complete within 60s"))
         assertEquals(snap.status, WorkflowStatus.Completed)
@@ -48,7 +48,7 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
       DaprCapability.workflow {
         val customId = WorkflowInstanceId(ItNames.fresh("it-wf"))
         val returned =
-          retrying("workflow runtime registered")(AccessWorkflowCapability.startWithId(addingWorkflow, customId))
+          retrying("workflow runtime registered")(WorkflowCapability.startWithId(addingWorkflow, customId))
         assertEquals(returned, customId)
       }
 
@@ -56,9 +56,9 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
     withDapr:
       DaprCapability.workflow {
         // touch the runtime first so a None below means "unknown id", not "runtime not ready".
-        retrying("workflow runtime registered")(AccessWorkflowCapability.start(addingWorkflow))
+        retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow))
         assertEquals(
-          summon[AccessWorkflowCapability](WorkflowInstanceId(ItNames.fresh("does-not-exist"))).getStatus(),
+          summon[WorkflowCapability](WorkflowInstanceId(ItNames.fresh("does-not-exist"))).getStatus(),
           None,
         )
       }
@@ -66,8 +66,8 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
   test("workflow: purge after completion returns true and getStatus returns None"):
     withDapr:
       DaprCapability.workflow {
-        val id = retrying("workflow runtime registered")(AccessWorkflowCapability.start(addingWorkflow, IncrRequest(3)))
-        val instance = summon[AccessWorkflowCapability](id)
+        val id = retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow, IncrRequest(3)))
+        val instance = summon[WorkflowCapability](id)
         instance.waitForCompletion(60.seconds).getOrElse(fail("workflow did not complete before purge"))
         assert(instance.purge(), "purge should return true for a completed workflow")
         assertEquals(instance.getStatus(), None)
@@ -77,9 +77,9 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
     withDapr:
       DaprCapability.workflow {
         val id = WorkflowInstanceId(ItNames.fresh("it-gated"))
-        val returned = retrying("workflow runtime registered")(AccessWorkflowCapability.startWithId(gatedWorkflow, id))
+        val returned = retrying("workflow runtime registered")(WorkflowCapability.startWithId(gatedWorkflow, id))
         assertEquals(returned, id)
-        val instance = summon[AccessWorkflowCapability](id)
+        val instance = summon[WorkflowCapability](id)
         // Wait until the instance is parked on the external event before raising it (events raised earlier are
         // buffered by the runtime, but asserting Running makes the test deterministic).
         val running = eventually(s"gated workflow $id running") {

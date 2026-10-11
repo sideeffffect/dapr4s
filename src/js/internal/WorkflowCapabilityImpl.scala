@@ -14,9 +14,9 @@ import dapr4styped.daprDapr.workflowClientWorkflowStateMod.WorkflowState
 import dapr4styped.daprDapr.workflowRuntimeWorkflowRuntimeStatusMod.WorkflowRuntimeStatus
 
 @scala.caps.assumeSafe
-private[internal] final class AccessWorkflowCapabilityImpl(
+private[internal] final class WorkflowCapabilityUniversalImpl(
     private val client: DaprWorkflowClient,
-) extends AccessWorkflowCapability:
+) extends WorkflowCapability:
 
   def start(name: WorkflowName): WorkflowInstanceId =
     WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value)))
@@ -37,14 +37,30 @@ private[internal] final class AccessWorkflowCapabilityImpl(
     val value = parseJson(summon[JsonCodec[I]].encode(input))
     WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value, instanceId.value)))
 
-  def apply(instanceId: WorkflowInstanceId): WorkflowInstanceCapability^{this} =
-    new WorkflowInstanceCapabilityImpl(client, instanceId).asInstanceOf[WorkflowInstanceCapability]
+  def apply(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this} =
+    new WorkflowCapabilityInstanceImpl(client, instanceId).asInstanceOf[WorkflowCapability.Instance]
+
+  // Id-taking operations delegate to a freshly bound instance (cheap: the instance holds only the client and id).
+  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] =
+    apply(instanceId).getStatus()
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot] =
+    apply(instanceId).waitForCompletion(timeout)
+  def suspend(instanceId: WorkflowInstanceId): Unit =
+    apply(instanceId).suspend()
+  def resume(instanceId: WorkflowInstanceId): Unit =
+    apply(instanceId).resume()
+  def terminate(instanceId: WorkflowInstanceId): Unit =
+    apply(instanceId).terminate()
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit =
+    apply(instanceId).raiseEvent(eventName, payload)
+  def purge(instanceId: WorkflowInstanceId): Boolean =
+    apply(instanceId).purge()
 
 @scala.caps.assumeSafe
-private[internal] final class WorkflowInstanceCapabilityImpl(
+private[internal] final class WorkflowCapabilityInstanceImpl(
     private val client: DaprWorkflowClient,
     val instanceId: WorkflowInstanceId,
-) extends WorkflowInstanceCapability:
+) extends WorkflowCapability.Instance:
 
   import WorkflowCapabilityImpl.*
 

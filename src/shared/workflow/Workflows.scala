@@ -323,11 +323,11 @@ object ActivityDef:
 // Workflow client-facade derivation (companion of the Workflow base class above).
 // ---------------------------------------------------------------------------
 
-/** Derivation of [[dapr4s.WorkflowCapability]] start facades from a trait.
+/** Derivation of [[WorkflowCapability]] start facades from a trait.
   *
   * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.WorkflowName]]. Each method returns a
   * [[dapr4s.WorkflowInstanceId]]; its value parameters select the overload:
-  *   - none → [[dapr4s.WorkflowCapability.start(name:* start(name)]]
+  *   - none → [[WorkflowCapability.start(name:* start(name)]]
   *   - `input` only → `start(name, input)`
   *   - `instanceId: WorkflowInstanceId` only → `startWithId(name, instanceId)`
   *   - `instanceId` + `input` → `startWithId(name, instanceId, input)`
@@ -339,7 +339,7 @@ object Workflow:
     *
     * Each method's Scala name is the [[dapr4s.WorkflowName]] it starts — `def orderSaga` starts the workflow
     * `"orderSaga"` — overridable per method with [[name `@name`]]. The workflow runtime is fixed by the per-call
-    * [[dapr4s.WorkflowCapability]], so `derive` takes no argument.
+    * [[WorkflowCapability]], so `derive` takes no argument.
     *
     * {{{
     *   trait Workflows:
@@ -358,7 +358,7 @@ object Workflow:
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Workflow"
-    val capTpe = TypeRepr.of[AccessWorkflowCapability]
+    val capTpe = TypeRepr.of[WorkflowCapability]
     val instIdTpe = TypeRepr.of[WorkflowInstanceId]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
@@ -372,8 +372,8 @@ object Workflow:
 
       val capExpr = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide an AccessWorkflowCapability."))
-        .asExprOf[AccessWorkflowCapability]
+        .getOrElse(fail("the `using` clause must provide a WorkflowCapability."))
+        .asExprOf[WorkflowCapability]
 
       val instanceRef = values.collectFirst {
         case (n, r, t, _) if n == "instanceId" =>

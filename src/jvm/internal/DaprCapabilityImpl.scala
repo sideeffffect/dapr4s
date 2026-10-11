@@ -66,8 +66,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   def actor: AccessActorCapability^{this} =
     new AccessActorCapabilityImpl(this).asInstanceOf[AccessActorCapability]
 
-  def workflow: AccessWorkflowCapability^{this} =
-    new AccessWorkflowCapabilityImpl(workflowClient).asInstanceOf[AccessWorkflowCapability]
+  def workflow: WorkflowCapability^{this} =
+    new WorkflowCapabilityUniversalImpl(workflowClient).asInstanceOf[WorkflowCapability]
 
   def crypto: CryptoCapability^{this} =
     new CryptoCapabilityUniversalImpl(this).asInstanceOf[CryptoCapability]

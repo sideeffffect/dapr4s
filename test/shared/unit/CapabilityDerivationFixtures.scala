@@ -121,17 +121,17 @@ final class FakeCrypto extends CryptoCapability.Instance:
 // ---- Workflow (client) ------------------------------------------------------
 
 trait WorkflowClient:
-  def order()(using AccessWorkflowCapability): WorkflowInstanceId
-  def orderInput(input: Req)(using AccessWorkflowCapability, JsonCodec[Req]): WorkflowInstanceId
-  def orderWithId(instanceId: WorkflowInstanceId)(using AccessWorkflowCapability): WorkflowInstanceId
+  def order()(using WorkflowCapability): WorkflowInstanceId
+  def orderInput(input: Req)(using WorkflowCapability, JsonCodec[Req]): WorkflowInstanceId
+  def orderWithId(instanceId: WorkflowInstanceId)(using WorkflowCapability): WorkflowInstanceId
   def orderFull(instanceId: WorkflowInstanceId, input: Req)(using
-      AccessWorkflowCapability,
+      WorkflowCapability,
       JsonCodec[Req],
   ): WorkflowInstanceId
 lazy val WorkflowClient: WorkflowClient = Workflow.derive[WorkflowClient]
 
 @scala.caps.assumeSafe
-final class FakeWorkflow extends AccessWorkflowCapability:
+final class FakeWorkflow extends WorkflowCapability:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   def start(name: WorkflowName): WorkflowInstanceId =
     log += s"start|${name.value}"; WorkflowInstanceId("wf")
@@ -141,8 +141,15 @@ final class FakeWorkflow extends AccessWorkflowCapability:
     log += s"startWithId|${name.value}|${instanceId.value}"; instanceId
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
     log += s"startWithIdInput|${name.value}|${instanceId.value}|${summon[JsonCodec[I]].encode(input)}"; instanceId
-  // The derived facades under test only call the launch ops; per-instance ops are reached via apply(id).
-  def apply(instanceId: WorkflowInstanceId): WorkflowInstanceCapability^{this} = ???
+  // The derived facades under test only call the launch ops; the per-instance ops are never reached.
+  def apply(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this}                         = ???
+  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot]                               = ???
+  def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot] = ???
+  def suspend(instanceId: WorkflowInstanceId): Unit                                                     = ???
+  def resume(instanceId: WorkflowInstanceId): Unit                                                      = ???
+  def terminate(instanceId: WorkflowInstanceId): Unit                                                   = ???
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit  = ???
+  def purge(instanceId: WorkflowInstanceId): Boolean                                                    = ???
 
 // ---- State (app-level) ------------------------------------------------------
 
