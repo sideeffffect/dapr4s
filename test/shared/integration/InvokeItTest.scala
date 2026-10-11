@@ -8,12 +8,11 @@ import dapr4s.test.integration.apps.{CounterState, EchoService, IncrRequest}
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-/** [[dapr4s.InvokeCapability]] integration suite — a SINGLE cross-platform file: the caller side of service invocation
-  * against the union app server that registers the `echo`, `echo-int` and `double` routes. The bring-up and the two
-  * hooks the bodies use — `serverAppId` and `retrying` — come from `ServerDaprItSuite`, a trait with one implementation
-  * per platform under the same name (sidecar-first host server hosting [[dapr4s.test.integration.apps.itUnionApp]] on
-  * both platforms). `retrying` wraps the first sidecar call: the app channel warms up slightly after daprd reports
-  * healthy.
+/** [[InvokeCapability]] integration suite — a SINGLE cross-platform file: the caller side of service invocation against
+  * the union app server that registers the `echo`, `echo-int` and `double` routes. The bring-up and the two hooks the
+  * bodies use — `serverAppId` and `retrying` — come from `ServerDaprItSuite`, a trait with one implementation per
+  * platform under the same name (sidecar-first host server hosting [[dapr4s.test.integration.apps.itUnionApp]] on both
+  * platforms). `retrying` wraps the first sidecar call: the app channel warms up slightly after daprd reports healthy.
   */
 @scala.caps.assumeSafe
 class InvokeItTest extends FunSuite, ServerDaprItSuite:
@@ -25,14 +24,14 @@ class InvokeItTest extends FunSuite, ServerDaprItSuite:
 
   def echoRoundtrip(using DaprCapability): Unit =
     DaprCapability.invoke:
-      val api = summon[AccessInvokeCapability](serverAppId)
+      val api = summon[InvokeCapability](serverAppId)
       val resp = retrying("echo")(api.invoke(InvokeMethodName("echo"), "hello")[String])
       assertEquals(resp, "hello")
 
   def falsyZeroBodyRoundtrips(using DaprCapability): Unit =
     // Exercises the raw-fetch fallback in the JS client (the SDK drops JS-falsy request bodies).
     DaprCapability.invoke:
-      val api = summon[AccessInvokeCapability](serverAppId)
+      val api = summon[InvokeCapability](serverAppId)
       val resp = retrying("echo-int")(api.invoke(InvokeMethodName("echo-int"), 0)[Int])
       assertEquals(resp, 0)
 
@@ -44,7 +43,7 @@ class InvokeItTest extends FunSuite, ServerDaprItSuite:
 
   def nonexistentAppThrows(using DaprCapability): Unit =
     DaprCapability.invoke:
-      val api = summon[AccessInvokeCapability](AppId("no-such-app"))
+      val api = summon[InvokeCapability](AppId("no-such-app"))
       val attempt =
         scala.util.Try(api.invoke(InvokeMethodName("method"), "data")[String])
       assert(attempt.isFailure, s"invoking a non-existent app should throw, got: $attempt")

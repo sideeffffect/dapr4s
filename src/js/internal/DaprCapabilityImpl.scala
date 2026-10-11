@@ -73,8 +73,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   def publish: PublishCapability^{this} =
     new PublishCapabilityUniversalImpl(this).asInstanceOf[PublishCapability]
 
-  def invoke: AccessInvokeCapability^{this} =
-    new AccessInvokeCapabilityImpl(this).asInstanceOf[AccessInvokeCapability]
+  def invoke: InvokeCapability^{this} =
+    new InvokeCapabilityUniversalImpl(this).asInstanceOf[InvokeCapability]
 
   def secrets: SecretsCapability^{this} =
     new SecretsCapabilityUniversalImpl(this).asInstanceOf[SecretsCapability]
@@ -255,9 +255,20 @@ private[internal] final class PublishCapabilityUniversalImpl(scope: DaprCapabili
     apply(pubsubName).bulkPublish(topic, entries)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessInvokeCapabilityImpl(scope: DaprCapabilityImpl) extends AccessInvokeCapability:
-  def apply(appId: AppId): InvokeCapability^{this} =
-    new InvokeCapabilityImpl(scope, appId).asInstanceOf[InvokeCapability]
+private[internal] final class InvokeCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends InvokeCapability:
+  def apply(appId: AppId): InvokeCapability.Instance^{this} =
+    new InvokeCapabilityImpl(scope, appId).asInstanceOf[InvokeCapability.Instance]
+  // App-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and app id).
+  def invoke[Req: JsonCodec](
+      appId: AppId,
+      method: InvokeMethodName,
+      data: Req,
+      httpMethod: HttpMethod,
+      metadata: Map[MetadataKey, MetadataValue],
+  )[Resp: JsonCodec]: Resp =
+    apply(appId).invoke(method, data, httpMethod, metadata)[Resp]
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
+    apply(appId).invoke[Resp](method)
 
 @scala.caps.assumeSafe
 private[internal] final class SecretsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends SecretsCapability:

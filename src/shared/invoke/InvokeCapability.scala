@@ -1,68 +1,100 @@
 package dapr4s.invoke
 
 import dapr4s.*
-import scala.collection.immutable.ArraySeq
-import scala.concurrent.duration.FiniteDuration
 
-
-/** Capability for synchronous service invocation (RPC) via DAPR.
+/** Universal capability for synchronous service invocation (RPC) via DAPR: reaches **any** app, so every operation
+  * names its target [[AppId]].
+  *
+  * Obtained via [[DaprCapability.invoke]]. Narrow to one target app with [[apply]] (`invoke(appId)`), which yields an
+  * [[InvokeCapability.Instance]]. This is the service-to-service least-privilege seam — hold `InvokeCapability` to
+  * reach any app, or an `InvokeCapability.Instance` to restrict a holder to a single target.
   *
   * '''Dual:''' [[InvokeRoute]] is the inbound counterpart — a call this capability makes to an [[InvokeMethodName]] is
   * answered by an `InvokeRoute` for the same method on the target app. (Derivation binds the two through one trait:
   * `Invoke.derive` ↔ `InvokeRoutes.deriveChecked`.)
   */
-/** Accessor (rung 2) for service invocation: an "any app" handle obtained argument-less via [[DaprCapability.invoke]],
-  * whose [[apply]] narrows to an [[InvokeCapability]] bound to one target [[AppId]]. This is the service-to-service
-  * least-privilege seam — hold `AccessInvokeCapability` to reach any app, or `apply(appId)` to restrict a holder to a
-  * single target.
-  */
-@scala.caps.assumeSafe
-trait AccessInvokeCapability extends scala.caps.ExclusiveCapability:
-  /** Obtain an [[InvokeCapability]] bound to the target app. */
-  def apply(appId: AppId): InvokeCapability^{this}
-
 @scala.caps.assumeSafe
 trait InvokeCapability extends scala.caps.ExclusiveCapability:
-  val appId: AppId
+  /** Narrow to the target app. */
+  def apply(appId: AppId): InvokeCapability.Instance^{this}
 
-  /** Invoke a remote method with a request body. `Req` is inferred from `data`; `Resp` is specified at the call site:
-    * {{{invoke.invoke(method, requestData)[ResponseType]}}}
-    *
-    * @param httpMethod
-    *   HTTP verb to use; defaults to [[HttpMethod.Post]]
-    * @param metadata
-    *   optional gRPC/HTTP metadata headers forwarded to the target service
-    */
+  /** Invoke a remote method on `appId` with a request body; see [[InvokeCapability.Instance.invoke]]. */
   def invoke[Req: JsonCodec](
+      appId: AppId,
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec]: Resp
 
-  /** Invoke a remote method with no request body (GET, no metadata).
-    *
-    * Use the body-bearing overload to pass a non-default HTTP verb or metadata headers.
-    */
-  def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp
+  /** Invoke a remote method on `appId` with no request body (GET, no metadata). */
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp
 
-/** Companion-object API for [[InvokeCapability]].
+/** The [[InvokeCapability]] family: the app-bound [[InvokeCapability.Instance]] and the companion-object forwarders for
+  * both interfaces.
   *
-  * Forwards to the `InvokeCapability` in the enclosing `using` context (already bound to a target app):
+  * Every forwarder takes its capability from the enclosing `using` context, so callers never name it:
   * {{{
-  *   def getUser(id: String)(using InvokeCapability): User =
-  *     InvokeCapability.invoke(InvokeMethodName("get"), id)[User]
+  *   def getUser(id: String)(using InvokeCapability.Instance): User =
+  *     InvokeCapability.Instance.invoke(InvokeMethodName("get"), id)[User]
   * }}}
   */
 @scala.caps.assumeSafe
 object InvokeCapability:
+
+  /** Capability bound to one target app. Obtained via `invoke(appId)`. */
+  @scala.caps.assumeSafe
+  trait Instance extends scala.caps.ExclusiveCapability:
+    /** The target app this capability is bound to. */
+    val appId: AppId
+
+    /** Invoke a remote method with a request body. `Req` is inferred from `data`; `Resp` is specified at the call
+      * site: {{{invoke.invoke(method, requestData)[ResponseType]}}}
+      *
+      * @param httpMethod
+      *   HTTP verb to use; defaults to [[HttpMethod.Post]]
+      * @param metadata
+      *   optional gRPC/HTTP metadata headers forwarded to the target service
+      */
+    def invoke[Req: JsonCodec](
+        method: InvokeMethodName,
+        data: Req,
+        httpMethod: HttpMethod = HttpMethod.Post,
+        metadata: Map[MetadataKey, MetadataValue] = Map.empty,
+    )[Resp: JsonCodec]: Resp
+
+    /** Invoke a remote method with no request body (GET, no metadata).
+      *
+      * Use the body-bearing overload to pass a non-default HTTP verb or metadata headers.
+      */
+    def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp
+
+  /** Forwarders for [[InvokeCapability.Instance]]. */
+  @scala.caps.assumeSafe
+  object Instance:
+    def invoke[Req: JsonCodec](
+        method: InvokeMethodName,
+        data: Req,
+        httpMethod: HttpMethod = HttpMethod.Post,
+        metadata: Map[MetadataKey, MetadataValue] = Map.empty,
+    )[Resp: JsonCodec](using cap: Instance): Resp =
+      cap.invoke(method, data, httpMethod, metadata)[Resp]
+    def invoke[Resp: JsonCodec](method: InvokeMethodName)(using cap: Instance): Resp =
+      cap.invoke(method)
+
+  /** Narrow the universal capability in scope to one target app and make it available to `body`. */
+  def instance(appId: AppId)[T](body: Instance ?=> T)(using cap: InvokeCapability): T =
+    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
+    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
+    // cannot leak it (pure context function). See DaprCapability's companion.
+    body(using cap.apply(appId).asInstanceOf[Instance])
   def invoke[Req: JsonCodec](
+      appId: AppId,
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec](using cap: InvokeCapability): Resp =
-    cap.invoke(method, data, httpMethod, metadata)[Resp]
-  def invoke[Resp: JsonCodec](method: InvokeMethodName)(using cap: InvokeCapability): Resp =
-    cap.invoke(method)
-
+    cap.invoke(appId, method, data, httpMethod, metadata)[Resp]
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName)(using cap: InvokeCapability): Resp =
+    cap.invoke(appId, method)

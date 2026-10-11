@@ -6,7 +6,7 @@ import dapr4s.*
 import dapr4s.invoke.*
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.InvokeCapability]] client facades from a trait.
+/** Derivation of [[InvokeCapability]] client facades from a trait.
   *
   * Instead of hand-writing every remote call:
   * {{{
@@ -42,8 +42,8 @@ import scala.quoted.*
   *   - `httpMethod` and `metadata`, if present, must be named exactly `httpMethod` (type [[dapr4s.HttpMethod]]) and
   *     `metadata` (type `Map[MetadataKey, MetadataValue]`), with `httpMethod` before `metadata`. Either may be omitted;
   *     the macro then supplies `HttpMethod.Post` / `Map.empty`.
-  *   - The `using` clause must provide a [[dapr4s.InvokeCapability]] and the required `JsonCodec`s (`JsonCodec[Resp]`
-  *     always; `JsonCodec[Req]` when there is a body).
+  *   - The `using` clause must provide a [[InvokeCapability]] and the required `JsonCodec`s (`JsonCodec[Resp]` always;
+  *     `JsonCodec[Req]` when there is a body).
   *
   * '''Dual.''' [[InvokeRoutes]] is the inbound counterpart: the app calls out through `Invoke.derive[Contract]`, and
   * the app answers calls through `InvokeRoutes.deriveChecked[Contract, Impl]`. Both read the same `Contract` trait —
@@ -97,7 +97,7 @@ object Invoke:
     val appId: Expr[AppId] = '{ ${ appIdOpt }.getOrElse(AppId(${ Expr(derivedName) })) }
     val httpMethodTpe = TypeRepr.of[HttpMethod]
     val metadataTpe = TypeRepr.of[Map[MetadataKey, MetadataValue]]
-    val capTpe = TypeRepr.of[AccessInvokeCapability]
+    val capTpe = TypeRepr.of[InvokeCapability]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
       val info = MacroSupport.paramInfo(origSym, newSym, argss)
@@ -135,7 +135,7 @@ object Invoke:
 
       val capRef = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide an AccessInvokeCapability."))
+        .getOrElse(fail("the `using` clause must provide an InvokeCapability."))
 
       def codecRefFor(arg: TypeRepr, role: String): Term =
         givens
@@ -143,7 +143,7 @@ object Invoke:
           .getOrElse(fail(s"the `using` clause must provide a JsonCodec[$role] (JsonCodec[${arg.show}])."))
 
       val nm = MacroSupport.wireName(origSym)
-      val capExpr = capRef.asExprOf[AccessInvokeCapability]
+      val capExpr = capRef.asExprOf[InvokeCapability]
 
       resTpe.asType match
         case '[resp] =>

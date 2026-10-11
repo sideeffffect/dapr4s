@@ -53,8 +53,8 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
   /** Obtain the universal [[PublishCapability]] (any component); `publish(pubsubName)` narrows it to one component. */
   def publish: PublishCapability^{this}
 
-  /** Obtain the [[AccessInvokeCapability]] accessor; `invoke(appId)` narrows it to one target app. */
-  def invoke: AccessInvokeCapability^{this}
+  /** Obtain the universal [[InvokeCapability]] (any app); `invoke(appId)` narrows it to one target app. */
+  def invoke: InvokeCapability^{this}
 
   /** Obtain the universal [[SecretsCapability]] (any store); `secrets(storeName)` narrows it to one store. */
   def secrets: SecretsCapability^{this}
@@ -121,11 +121,11 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
   def publish(pubsubName: PubSubName)[T](body: PublishCapability.Instance ?=> T)(using cap: DaprCapability): T =
     body(using cap.publish(pubsubName).asInstanceOf[PublishCapability.Instance])
 
-  /** Make the [[AccessInvokeCapability]] accessor available to `body` — pass it to [[Invoke.derive]] clients, or narrow
+  /** Make the universal [[InvokeCapability]] available to `body` — pass it to [[Invoke.derive]] clients, or narrow
     * to a single target app with `apply(appId)`.
     */
-  def invoke[T](body: AccessInvokeCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.invoke.asInstanceOf[AccessInvokeCapability])
+  def invoke[T](body: InvokeCapability ?=> T)(using cap: DaprCapability): T =
+    body(using cap.invoke.asInstanceOf[InvokeCapability])
 
   def secrets(storeName: SecretStoreName)[T](body: SecretsCapability.Instance ?=> T)(using cap: DaprCapability): T =
     body(using cap.secrets(storeName).asInstanceOf[SecretsCapability.Instance])

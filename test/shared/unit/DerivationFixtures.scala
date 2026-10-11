@@ -35,42 +35,52 @@ trait Greeter:
       req: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
-  )(using AccessInvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
+  )(using InvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
 
   // body-bearing, no knobs at all
-  def plain(req: Req)(using AccessInvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def plain(req: Req)(using InvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
 
   // no-body, with a wire-name override
   @name("get-stats")
-  def stats()(using AccessInvokeCapability, JsonCodec[Resp]): Resp
+  def stats()(using InvokeCapability, JsonCodec[Resp]): Resp
 
   // Req and Resp are the same type — exercises the single-codec branch
-  def echo(req: Resp)(using AccessInvokeCapability, JsonCodec[Resp]): Resp
+  def echo(req: Resp)(using InvokeCapability, JsonCodec[Resp]): Resp
 
 /** Same shape as [[Greeter]] but exposed through a `MixinGreeter(appId)` factory built on
   * [[dapr4s.derivation.Invoke.derive]].
   */
 trait MixinGreeter:
-  def plain(req: Req)(using AccessInvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def plain(req: Req)(using InvokeCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
 
   @name("get-stats")
-  def stats()(using AccessInvokeCapability, JsonCodec[Resp]): Resp
+  def stats()(using InvokeCapability, JsonCodec[Resp]): Resp
 
 def MixinGreeter(appId: AppId): MixinGreeter = Invoke.derive[MixinGreeter](appId)
 
-/** Recording fake accessor: narrows to a [[RecordingInvoke]] bound to the requested app, which logs each call into the
+/** Recording fake universal invoke capability: narrows to a [[RecordingInvoke]] bound to the requested app, which logs each call into the
   * shared buffer (the app id is recorded so the existing assertions still see it).
   */
 @scala.caps.assumeSafe
-final class RecordingInvoker(response: String) extends AccessInvokeCapability:
+final class RecordingInvoker(response: String) extends InvokeCapability:
   val calls: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-  def apply(appId: AppId): InvokeCapability^{this} =
-    new RecordingInvoke(appId, response, calls).asInstanceOf[InvokeCapability]
+  def apply(appId: AppId): InvokeCapability.Instance^{this} =
+    new RecordingInvoke(appId, response, calls).asInstanceOf[InvokeCapability.Instance]
+  def invoke[Req: JsonCodec](
+      appId: AppId,
+      method: InvokeMethodName,
+      data: Req,
+      httpMethod: HttpMethod,
+      metadata: Map[MetadataKey, MetadataValue],
+  )[Resp: JsonCodec]: Resp =
+    apply(appId).invoke(method, data, httpMethod, metadata)[Resp]
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
+    apply(appId).invoke[Resp](method)
 
 /** Recording fake capability bound to one app: logs each call and returns a fixed response payload. */
 @scala.caps.assumeSafe
 final class RecordingInvoke(val appId: AppId, response: String, calls: mutable.ListBuffer[String])
-    extends InvokeCapability:
+    extends InvokeCapability.Instance:
 
   def invoke[Req: JsonCodec](
       method: InvokeMethodName,

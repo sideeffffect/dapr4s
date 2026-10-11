@@ -103,7 +103,7 @@ private object InvokeCapabilityImpl:
 private[internal] final class InvokeCapabilityImpl(
     scope: DaprCapabilityImpl,
     val appId: AppId,
-) extends InvokeCapability:
+) extends InvokeCapability.Instance:
 
   import InvokeCapabilityImpl.*
 
