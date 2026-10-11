@@ -5,7 +5,7 @@ import dapr4s.*
 /** Universal capability for DAPR pub/sub publishing: reaches **any** pub/sub component, so every operation names its
   * component.
   *
-  * Obtained via [[DaprCapability.publish]]. Narrow to one component with [[apply]] (`publish(pubsubName)`), which
+  * Obtained via [[DaprCapability.publish]]. Narrow to one component with [[instance]] (`publish.instance(pubsubName)`), which
   * yields a [[PublishCapability.Instance]].
   *
   * '''Dual:''' [[Subscription]] is the inbound counterpart — what this capability publishes to a [[Topic]], a
@@ -47,7 +47,7 @@ trait PublishCapability extends scala.caps.ExclusiveCapability:
 @scala.caps.assumeSafe
 object PublishCapability:
 
-  /** Capability bound to one named pub/sub component. Obtained via `publish(pubsubName)`. */
+  /** Capability bound to one named pub/sub component. Obtained via `publish.instance(pubsubName)`. */
   @scala.caps.assumeSafe
   trait Instance extends scala.caps.ExclusiveCapability:
     /** The pub/sub component this capability is bound to. */

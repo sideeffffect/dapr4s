@@ -27,7 +27,7 @@ import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr
   * {{{
   *   // Direct factory style (for tests and advanced use)
   *   val cap = summon[DaprCapability]
-  *   given StateCapability.Instance = cap.state(StateStoreName("statestore"))
+  *   given StateCapability.Instance = cap.state.instance(StateStoreName("statestore"))
   *
   *   // Transformer style (recommended for service handlers): a dedicated
   *   // `*App` object whose `apply` takes the capabilities it needs and
@@ -47,34 +47,34 @@ import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr
 @scala.caps.assumeSafe
 trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatform:
 
-  /** Obtain the universal [[StateCapability]] (any store); `state(storeName)` narrows it to one store. */
+  /** Obtain the universal [[StateCapability]] (any store); `state.instance(storeName)` narrows it to one store. */
   def state: StateCapability^{this}
 
-  /** Obtain the universal [[PublishCapability]] (any component); `publish(pubsubName)` narrows it to one component. */
+  /** Obtain the universal [[PublishCapability]] (any component); `publish.instance(pubsubName)` narrows it to one component. */
   def publish: PublishCapability^{this}
 
-  /** Obtain the universal [[InvokeCapability]] (any app); `invoke(appId)` narrows it to one target app. */
+  /** Obtain the universal [[InvokeCapability]] (any app); `invoke.instance(appId)` narrows it to one target app. */
   def invoke: InvokeCapability^{this}
 
-  /** Obtain the universal [[SecretsCapability]] (any store); `secrets(storeName)` narrows it to one store. */
+  /** Obtain the universal [[SecretsCapability]] (any store); `secrets.instance(storeName)` narrows it to one store. */
   def secrets: SecretsCapability^{this}
 
-  /** Obtain the universal [[ConfigurationCapability]] (any store); `configuration(storeName)` narrows it to one store. */
+  /** Obtain the universal [[ConfigurationCapability]] (any store); `configuration.instance(storeName)` narrows it to one store. */
   def configuration: ConfigurationCapability^{this}
 
-  /** Obtain the universal [[BindingsCapability]] (any binding); `bindings(bindingName)` narrows it to one binding. */
+  /** Obtain the universal [[BindingsCapability]] (any binding); `bindings.instance(bindingName)` narrows it to one binding. */
   def bindings: BindingsCapability^{this}
 
-  /** Obtain the universal [[LockCapability]] (any store); `lock(storeName)` narrows it to one store. */
+  /** Obtain the universal [[LockCapability]] (any store); `lock.instance(storeName)` narrows it to one store. */
   def lock: LockCapability^{this}
 
-  /** Obtain the universal [[ActorCapability]] (any actor); `actor(actorType)(actorId)` narrows it to one instance. */
+  /** Obtain the universal [[ActorCapability]] (any actor); `actor.forType(actorType).instance(actorId)` narrows it to one instance. */
   def actor: ActorCapability^{this}
 
   /** Obtain the universal [[WorkflowCapability]] (any instance) for starting and managing workflow instances. */
   def workflow: WorkflowCapability^{this}
 
-  /** Obtain the universal [[CryptoCapability]] (any component); `crypto(componentName)` narrows it to one component. */
+  /** Obtain the universal [[CryptoCapability]] (any component); `crypto.instance(componentName)` narrows it to one component. */
   def crypto: CryptoCapability^{this}
 
 
@@ -103,7 +103,7 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
   * }}}
   *
   * WHY @assumeSafe: the transformer methods call into `@assumeSafe` DaprCapability
-  * trait methods.  The sub-capability returned (e.g. `cap.state(storeName)`) carries
+  * trait methods.  The sub-capability returned (e.g. `cap.state.instance(storeName)`) carries
   * a `^{cap}` capture set, but the `body` parameter uses a plain `StateCapability ?=> T`
   * (no `^`) so that handler lambdas inside the body can remain CC-pure and capture
   * the capability freely via the `@assumeSafe` AnyRef-erasure pattern in
@@ -122,7 +122,7 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
     body(using cap.publish.instance(pubsubName).asInstanceOf[PublishCapability.Instance])
 
   /** Make the universal [[InvokeCapability]] available to `body` — pass it to [[Invoke.derive]] clients, or narrow
-    * to a single target app with `apply(appId)`.
+    * to a single target app with `instance(appId)`.
     */
   def invoke[T](body: InvokeCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.invoke.asInstanceOf[InvokeCapability])
@@ -143,7 +143,7 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
     body(using cap.actor.forType(actorType).instance(actorId).asInstanceOf[ActorCapability.Instance])
 
   /** Make the universal [[WorkflowCapability]] available to `body` — the launch operations plus the per-instance
-    * operations (by id, or via `apply(id)`).
+    * operations (by id, or via `instance(id)`).
     */
   def workflow[T](body: WorkflowCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.workflow.asInstanceOf[WorkflowCapability])

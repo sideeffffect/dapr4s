@@ -116,7 +116,7 @@ private object DaprCapabilityImpl:
 
 // ---------------------------------------------------------------------------
 // Universal capability implementations. Each captures the scope (or a resolved
-// client), narrows to its name-bound `.Instance` impl via `apply`, and delegates
+// client), narrows to its name-bound `.Instance` impl via `instance`, and delegates
 // its name-taking operations to that instance. The cast erases the capture set
 // so these internal types stay package-private, exactly as the instance impls do
 // (see the ^{this} note above).

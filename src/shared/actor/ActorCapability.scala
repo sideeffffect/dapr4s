@@ -6,12 +6,12 @@ import dapr4s.*
   * [[ActorType]] and [[ActorId]].
   *
   * Obtained via [[DaprCapability.actor]]. The actor family is the only one that narrows in '''two''' steps — type,
-  * then id — so `actor(actorType)(actorId)` reads as two narrowing steps. Its three interfaces all live in this
+  * then id — so `actor.forType(actorType).instance(actorId)` reads as two narrowing steps. Its three interfaces all live in this
   * companion:
   *
   *   - [[ActorCapability]] — any actor of any type (this trait)
-  *   - [[ActorCapability.Type]] — any instance of one actor type, via [[apply]]
-  *   - [[ActorCapability.Instance]] — one actor instance, via [[ActorCapability.Type.apply]]
+  *   - [[ActorCapability.Type]] — any instance of one actor type, via [[forType]]
+  *   - [[ActorCapability.Instance]] — one actor instance, via [[ActorCapability.Type.instance]]
   *
   * '''Dual:''' [[ActorDefinition]] is the server counterpart — a call this capability makes to an [[ActorMethodName]]
   * is served by the matching method route of the actor's `ActorDefinition`. (Derivation binds the two through one
@@ -50,7 +50,7 @@ trait ActorCapability extends scala.caps.ExclusiveCapability:
 object ActorCapability:
 
   /** Capability bound to one actor type: reaches any instance of it, so every operation names its [[ActorId]].
-    * Obtained via `actor(actorType)`; narrow further with [[apply]].
+    * Obtained via `actor.forType(actorType)`; narrow further with [[instance]].
     */
   @scala.caps.assumeSafe
   trait Type extends scala.caps.ExclusiveCapability:
@@ -84,7 +84,7 @@ object ActorCapability:
     def invokeVoid(actorId: ActorId, method: ActorMethodName)(using cap: Type): Unit =
       cap.invokeVoid(actorId, method)
 
-  /** Capability bound to one actor instance (type + id). Obtained via `actor(actorType)(actorId)`. */
+  /** Capability bound to one actor instance (type + id). Obtained via `actor.forType(actorType).instance(actorId)`. */
   @scala.caps.assumeSafe
   trait Instance extends scala.caps.ExclusiveCapability:
     /** The actor type of the bound instance. */

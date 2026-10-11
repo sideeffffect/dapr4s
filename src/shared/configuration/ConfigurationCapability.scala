@@ -12,8 +12,8 @@ import dapr4s.*
   *   - [[ConfigurationCapability.Instance]] — one store, full authority
   *   - [[ConfigurationCapability.Instance.ReadOnly]] — one store, point-in-time reads only
   *
-  * Narrow by store with [[apply]] (`configuration(storeName)`), and by authority by upcasting to the `ReadOnly`
-  * super-trait. The two narrowings commute: `apply` on a [[ConfigurationCapability.ReadOnly]] yields a
+  * Narrow by store with [[instance]] (`configuration.instance(storeName)`), and by authority by upcasting to the `ReadOnly`
+  * super-trait. The two narrowings commute: `instance` on a [[ConfigurationCapability.ReadOnly]] yields a
   * [[ConfigurationCapability.Instance.ReadOnly]]. `subscribe` is withheld from the read-only tier because it opens a
   * long-lived outbound stream and runs a callback on a background thread — more than a plain read.
   */
@@ -68,7 +68,7 @@ object ConfigurationCapability:
     )(using cap: ReadOnly): Map[ConfigurationKey, ConfigurationItem] =
       cap.get(storeName, keys, metadata)
 
-  /** Capability bound to one named configuration store, full authority. Obtained via `configuration(storeName)`. */
+  /** Capability bound to one named configuration store, full authority. Obtained via `configuration.instance(storeName)`. */
   @scala.caps.assumeSafe
   trait Instance extends Instance.ReadOnly:
     /** Subscribe to live configuration changes for the given keys.

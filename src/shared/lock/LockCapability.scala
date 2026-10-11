@@ -5,7 +5,7 @@ import scala.concurrent.duration.FiniteDuration
 
 /** Universal capability for DAPR distributed locking: reaches **any** lock store, so every operation names its store.
   *
-  * Obtained via [[DaprCapability.lock]]. Narrow to one store with [[apply]] (`lock(storeName)`), which yields a
+  * Obtained via [[DaprCapability.lock]]. Narrow to one store with [[instance]] (`lock.instance(storeName)`), which yields a
   * [[LockCapability.Instance]].
   */
 @scala.caps.assumeSafe
@@ -39,7 +39,7 @@ trait LockCapability extends scala.caps.ExclusiveCapability:
 @scala.caps.assumeSafe
 object LockCapability:
 
-  /** Capability bound to one named lock store. Obtained via `lock(storeName)`. */
+  /** Capability bound to one named lock store. Obtained via `lock.instance(storeName)`. */
   @scala.caps.assumeSafe
   trait Instance extends scala.caps.ExclusiveCapability:
     /** The lock store this capability is bound to. */

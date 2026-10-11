@@ -6,12 +6,12 @@ rename a capability member, update the matching diagram in the same commit.
 
 Each building block has one **universal capability** `X` that takes the component name as an argument on every
 method. Read-capable blocks split it into `X.ReadOnly` (reads only) and `X` (extends `X.ReadOnly`, adds writes).
-`apply(name)` narrows a universal capability to one component and returns `X.Instance`; the override in `X`
-is **covariant**: `X.ReadOnly.apply` returns `X.Instance.ReadOnly`, `X.apply` returns `X.Instance`. Every
-`apply` result is captured by its receiver (`^{this}`; written `^this` in the diagrams). Each trait has a
+`instance(name)` narrows a universal capability to one component and returns `X.Instance`; the override in `X`
+is **covariant**: `X.ReadOnly.instance` returns `X.Instance.ReadOnly`, `X.instance` returns `X.Instance`. Every
+`instance` result is captured by its receiver (`^{this}`; written `^this` in the diagrams). Each trait has a
 companion object with **forwarders** (`(using cap: X)` twins of the trait methods), and each universal companion
 has an `instance(name)` accessor that returns the narrowed capability (`Instance^{cap}`). Actor has two levels:
-`ActorCapability.apply(actorType)` returns `ActorCapability.Type`, and `Type.apply(actorId)` returns
+`ActorCapability.forType(actorType)` returns `ActorCapability.Type`, and `Type.instance(actorId)` returns
 `ActorCapability.Instance`. In the diagrams, parameter default values and `JsonCodec` context bounds are not
 shown; type parameters use Mermaid `~T~` notation.
 
@@ -78,7 +78,7 @@ classDiagram
 
     class StateCapability_ReadOnly["StateCapability.ReadOnly"]
     <<trait>> StateCapability_ReadOnly
-    StateCapability_ReadOnly : +apply(storeName) Instance.ReadOnly^this
+    StateCapability_ReadOnly : +instance(storeName) Instance.ReadOnly^this
     StateCapability_ReadOnly : +get~T~(storeName, key, consistency) Option~T~
     StateCapability_ReadOnly : +getWithETag~T~(storeName, key, consistency) StateEntry~T~
     StateCapability_ReadOnly : +getBulk~T~(storeName, keys) Map~StateStoreKey, StateEntry~
@@ -86,7 +86,7 @@ classDiagram
 
     class StateCapability {
         <<trait>>
-        +apply(storeName) Instance^this
+        +instance(storeName) Instance^this
         +save~T~(storeName, key, value) Unit
         +saveBulk~T~(storeName, entries) Unit
         +saveWithETag~T~(storeName, key, value, etag, metadata, consistency, concurrency) Option~ETagMismatchException~
@@ -116,8 +116,8 @@ classDiagram
     StateCapability_ReadOnly <|-- StateCapability
     ExclusiveCapability <|-- StateCapability_Instance_ReadOnly
     StateCapability_Instance_ReadOnly <|-- StateCapability_Instance
-    StateCapability_ReadOnly ..> StateCapability_Instance_ReadOnly : apply(storeName)
-    StateCapability ..> StateCapability_Instance : apply(storeName)
+    StateCapability_ReadOnly ..> StateCapability_Instance_ReadOnly : instance(storeName)
+    StateCapability ..> StateCapability_Instance : instance(storeName)
 ```
 
 Companions: `StateCapability` (`instance(storeName)` + all read/write forwarders), `StateCapability.ReadOnly`
@@ -134,12 +134,12 @@ classDiagram
 
     class SecretsCapability_ReadOnly["SecretsCapability.ReadOnly"]
     <<trait>> SecretsCapability_ReadOnly
-    SecretsCapability_ReadOnly : +apply(storeName) Instance.ReadOnly^this
+    SecretsCapability_ReadOnly : +instance(storeName) Instance.ReadOnly^this
     SecretsCapability_ReadOnly : +get(storeName, key, metadata) Option~SecretValue~
 
     class SecretsCapability {
         <<trait>>
-        +apply(storeName) Instance^this
+        +instance(storeName) Instance^this
         +getBulk(storeName, metadata) Map~SecretKey, SecretValue~
     }
 
@@ -156,8 +156,8 @@ classDiagram
     SecretsCapability_ReadOnly <|-- SecretsCapability
     ExclusiveCapability <|-- SecretsCapability_Instance_ReadOnly
     SecretsCapability_Instance_ReadOnly <|-- SecretsCapability_Instance
-    SecretsCapability_ReadOnly ..> SecretsCapability_Instance_ReadOnly : apply(storeName)
-    SecretsCapability ..> SecretsCapability_Instance : apply(storeName)
+    SecretsCapability_ReadOnly ..> SecretsCapability_Instance_ReadOnly : instance(storeName)
+    SecretsCapability ..> SecretsCapability_Instance : instance(storeName)
 ```
 
 Companions: `SecretsCapability` (`instance(storeName)`, `get`, `getBulk`), `SecretsCapability.ReadOnly`
@@ -174,12 +174,12 @@ classDiagram
 
     class ConfigurationCapability_ReadOnly["ConfigurationCapability.ReadOnly"]
     <<trait>> ConfigurationCapability_ReadOnly
-    ConfigurationCapability_ReadOnly : +apply(storeName) Instance.ReadOnly^this
+    ConfigurationCapability_ReadOnly : +instance(storeName) Instance.ReadOnly^this
     ConfigurationCapability_ReadOnly : +get(storeName, keys, metadata) Map~ConfigurationKey, ConfigurationItem~
 
     class ConfigurationCapability {
         <<trait>>
-        +apply(storeName) Instance^this
+        +instance(storeName) Instance^this
         +subscribe(storeName, keys, metadata)(onChange) AutoCloseable^this
     }
 
@@ -196,8 +196,8 @@ classDiagram
     ConfigurationCapability_ReadOnly <|-- ConfigurationCapability
     ExclusiveCapability <|-- ConfigurationCapability_Instance_ReadOnly
     ConfigurationCapability_Instance_ReadOnly <|-- ConfigurationCapability_Instance
-    ConfigurationCapability_ReadOnly ..> ConfigurationCapability_Instance_ReadOnly : apply(storeName)
-    ConfigurationCapability ..> ConfigurationCapability_Instance : apply(storeName)
+    ConfigurationCapability_ReadOnly ..> ConfigurationCapability_Instance_ReadOnly : instance(storeName)
+    ConfigurationCapability ..> ConfigurationCapability_Instance : instance(storeName)
 ```
 
 Companions: `ConfigurationCapability` (`instance(storeName)`, `get`, `subscribe`),
@@ -214,12 +214,12 @@ classDiagram
 
     class JobsCapability_ReadOnly["JobsCapability.ReadOnly"]
     <<trait>> JobsCapability_ReadOnly
-    JobsCapability_ReadOnly : +apply(jobName) Instance.ReadOnly^this
+    JobsCapability_ReadOnly : +instance(jobName) Instance.ReadOnly^this
     JobsCapability_ReadOnly : +get(jobName) Option~JobDetails~
 
     class JobsCapability {
         <<trait>>
-        +apply(jobName) Instance^this
+        +instance(jobName) Instance^this
         +schedule~T~(jobName, data, schedule, dueTime, repeats, ttl) Unit
         +scheduleOnce~T~(jobName, data, dueTime, ttl) Unit
         +delete(jobName) Unit
@@ -240,8 +240,8 @@ classDiagram
     JobsCapability_ReadOnly <|-- JobsCapability
     ExclusiveCapability <|-- JobsCapability_Instance_ReadOnly
     JobsCapability_Instance_ReadOnly <|-- JobsCapability_Instance
-    JobsCapability_ReadOnly ..> JobsCapability_Instance_ReadOnly : apply(jobName)
-    JobsCapability ..> JobsCapability_Instance : apply(jobName)
+    JobsCapability_ReadOnly ..> JobsCapability_Instance_ReadOnly : instance(jobName)
+    JobsCapability ..> JobsCapability_Instance : instance(jobName)
 ```
 
 Companions: `JobsCapability` (`instance(jobName)`, `get`, `schedule`, `scheduleOnce`, `delete`),
@@ -260,13 +260,13 @@ classDiagram
 
     class WorkflowCapability_ReadOnly["WorkflowCapability.ReadOnly"]
     <<trait>> WorkflowCapability_ReadOnly
-    WorkflowCapability_ReadOnly : +apply(instanceId) Instance.ReadOnly^this
+    WorkflowCapability_ReadOnly : +instance(instanceId) Instance.ReadOnly^this
     WorkflowCapability_ReadOnly : +getStatus(instanceId) Option~WorkflowSnapshot~
     WorkflowCapability_ReadOnly : +waitForCompletion(instanceId, timeout) Option~WorkflowSnapshot~
 
     class WorkflowCapability {
         <<trait>>
-        +apply(instanceId) Instance^this
+        +instance(instanceId) Instance^this
         +start(name) WorkflowInstanceId
         +start~I~(name, input) WorkflowInstanceId
         +startWithId(name, instanceId) WorkflowInstanceId
@@ -296,8 +296,8 @@ classDiagram
     WorkflowCapability_ReadOnly <|-- WorkflowCapability
     ExclusiveCapability <|-- WorkflowCapability_Instance_ReadOnly
     WorkflowCapability_Instance_ReadOnly <|-- WorkflowCapability_Instance
-    WorkflowCapability_ReadOnly ..> WorkflowCapability_Instance_ReadOnly : apply(instanceId)
-    WorkflowCapability ..> WorkflowCapability_Instance : apply(instanceId)
+    WorkflowCapability_ReadOnly ..> WorkflowCapability_Instance_ReadOnly : instance(instanceId)
+    WorkflowCapability ..> WorkflowCapability_Instance : instance(instanceId)
 ```
 
 Companions: `WorkflowCapability` (`instance(instanceId)` + all forwarders), `WorkflowCapability.ReadOnly`
@@ -316,7 +316,7 @@ classDiagram
 
     class PublishCapability {
         <<trait>>
-        +apply(pubsubName) Instance^this
+        +instance(pubsubName) Instance^this
         +publish~T~(pubsubName, topic, data) Unit
         +publishWithMetadata~T~(pubsubName, topic, data, metadata) Unit
         +bulkPublish~T~(pubsubName, topic, entries) BulkPublishResult
@@ -331,7 +331,7 @@ classDiagram
 
     ExclusiveCapability <|-- PublishCapability
     ExclusiveCapability <|-- PublishCapability_Instance
-    PublishCapability ..> PublishCapability_Instance : apply(pubsubName)
+    PublishCapability ..> PublishCapability_Instance : instance(pubsubName)
 ```
 
 Companions: `PublishCapability` (`instance(pubsubName)`, `publish`, `publishWithMetadata`, `bulkPublish`),
@@ -349,7 +349,7 @@ classDiagram
 
     class BindingsCapability {
         <<trait>>
-        +apply(bindingName) Instance^this
+        +instance(bindingName) Instance^this
         +invoke~Req~(bindingName, operation, data, metadata)~Resp~ Option~Resp~
         +invokeOneWay~Req~(bindingName, operation, data, metadata) Unit
     }
@@ -362,7 +362,7 @@ classDiagram
 
     ExclusiveCapability <|-- BindingsCapability
     ExclusiveCapability <|-- BindingsCapability_Instance
-    BindingsCapability ..> BindingsCapability_Instance : apply(bindingName)
+    BindingsCapability ..> BindingsCapability_Instance : instance(bindingName)
 ```
 
 Companions: `BindingsCapability` (`instance(bindingName)`, `invoke`, `invokeOneWay`),
@@ -378,7 +378,7 @@ classDiagram
 
     class LockCapability {
         <<trait>>
-        +apply(storeName) Instance^this
+        +instance(storeName) Instance^this
         +tryLock(storeName, resourceId, lockOwner, expiry) Boolean
         +unlock(storeName, resourceId, lockOwner) UnlockStatus
     }
@@ -391,7 +391,7 @@ classDiagram
 
     ExclusiveCapability <|-- LockCapability
     ExclusiveCapability <|-- LockCapability_Instance
-    LockCapability ..> LockCapability_Instance : apply(storeName)
+    LockCapability ..> LockCapability_Instance : instance(storeName)
 ```
 
 Companions: `LockCapability` (`instance(storeName)`, `tryLock`, `unlock`), `LockCapability.Instance` (`tryLock`,
@@ -409,7 +409,7 @@ classDiagram
 
     class CryptoCapability {
         <<trait>>
-        +apply(componentName) Instance^this
+        +instance(componentName) Instance^this
         +encrypt(componentName, keyName, plaintext, algorithm) ArraySeq~Byte~
         +decrypt(componentName, ciphertext) ArraySeq~Byte~
         +encryptString(componentName, keyName, plaintext, algorithm) ArraySeq~Byte~
@@ -426,7 +426,7 @@ classDiagram
 
     ExclusiveCapability <|-- CryptoCapability
     ExclusiveCapability <|-- CryptoCapability_Instance
-    CryptoCapability ..> CryptoCapability_Instance : apply(componentName)
+    CryptoCapability ..> CryptoCapability_Instance : instance(componentName)
 ```
 
 Companions: `CryptoCapability` (`instance(componentName)`, `encrypt`, `decrypt`, `encryptString`,
@@ -444,7 +444,7 @@ classDiagram
 
     class InvokeCapability {
         <<trait>>
-        +apply(appId) Instance^this
+        +instance(appId) Instance^this
         +invoke~Req~(appId, method, data, httpMethod, metadata)~Resp~ Resp
         +invoke~Resp~(appId, method) Resp
     }
@@ -457,7 +457,7 @@ classDiagram
 
     ExclusiveCapability <|-- InvokeCapability
     ExclusiveCapability <|-- InvokeCapability_Instance
-    InvokeCapability ..> InvokeCapability_Instance : apply(appId)
+    InvokeCapability ..> InvokeCapability_Instance : instance(appId)
 ```
 
 Companions: `InvokeCapability` (`instance(appId)`, both `invoke` overloads), `InvokeCapability.Instance` (both
@@ -473,7 +473,7 @@ classDiagram
 
     class ConversationCapability {
         <<trait>>
-        +apply(componentName) Instance^this
+        +instance(componentName) Instance^this
         +converse(componentName, messages, tools, toolChoice, temperature, contextId, scrubPii) ConversationResponse
     }
 
@@ -484,7 +484,7 @@ classDiagram
 
     ExclusiveCapability <|-- ConversationCapability
     ExclusiveCapability <|-- ConversationCapability_Instance
-    ConversationCapability ..> ConversationCapability_Instance : apply(componentName)
+    ConversationCapability ..> ConversationCapability_Instance : instance(componentName)
 ```
 
 Companions: `ConversationCapability` (`instance(componentName)`, `converse`), `ConversationCapability.Instance`
@@ -502,7 +502,7 @@ classDiagram
 
     class ActorCapability {
         <<trait>>
-        +apply(actorType) Type^this
+        +forType(actorType) Type^this
         +invoke~Req~(actorType, actorId, method, data)~Resp~ Resp
         +invoke~Resp~(actorType, actorId, method) Resp
         +invokeVoid(actorType, actorId, method) Unit
@@ -511,7 +511,7 @@ classDiagram
     class ActorCapability_Type["ActorCapability.Type"]
     <<trait>> ActorCapability_Type
     ActorCapability_Type : +actorType ActorType
-    ActorCapability_Type : +apply(actorId) Instance^this
+    ActorCapability_Type : +instance(actorId) Instance^this
     ActorCapability_Type : +invoke~Req~(actorId, method, data)~Resp~ Resp
     ActorCapability_Type : +invoke~Resp~(actorId, method) Resp
     ActorCapability_Type : +invokeVoid(actorId, method) Unit
@@ -527,8 +527,8 @@ classDiagram
     ExclusiveCapability <|-- ActorCapability
     ExclusiveCapability <|-- ActorCapability_Type
     ExclusiveCapability <|-- ActorCapability_Instance
-    ActorCapability ..> ActorCapability_Type : apply(actorType)
-    ActorCapability_Type ..> ActorCapability_Instance : apply(actorId)
+    ActorCapability ..> ActorCapability_Type : forType(actorType)
+    ActorCapability_Type ..> ActorCapability_Instance : instance(actorId)
 ```
 
 Companions: `ActorCapability` (`forType(actorType)` returns `Type^{cap}`, `instance(actorType, actorId)` returns

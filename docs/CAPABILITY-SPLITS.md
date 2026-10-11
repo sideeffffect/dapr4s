@@ -1,6 +1,6 @@
 # dapr4s — Capability Splitting (Design Exploration)
 
-**Status:** design exploration, now **implemented in a revised form — see [§11](#11-the-implemented-design--universal-capability--instance--readonly-tiers)** for the live API (a universal capability per family, plus `Instance` and, for State/Secrets/Configuration/Jobs/Workflow, `ReadOnly` tiers). §1–§10 are kept as the historical exploration. Their type names (`Access*Capability`, `ReadState`, `WorkflowInstanceCapability`, `JobCapability`, …) are not the live API.
+**Status:** design exploration, now **implemented in a revised form — see [§11](#11-the-implemented-design--universal-capability--instance--readonly-tiers)** for the live API (a universal capability per family, plus `Instance` (narrowed with `instance(name)`) and, for State/Secrets/Configuration/Jobs/Workflow, `ReadOnly` tiers). §1–§10 are kept as the historical exploration. Their type names (`Access*Capability`, `ReadState`, `WorkflowInstanceCapability`, `JobCapability`, …) are not the live API, and neither is their `apply(name)` narrowing.
 **Scope:** how each DAPR capability trait *could* be subdivided into narrower capabilities, why, and the cost.
 **Audience:** anyone evolving the public capability surface — the per-family `*Capability.scala` files in `src/shared/<family>/` (`dapr4s.<family>` packages) and the JVM-only `src/jvm/jobs/JobsCapability.scala` / `src/jvm/conversation/ConversationCapability.scala`.
 
@@ -453,7 +453,7 @@ flowchart LR
 
 ## 8. Worked example — "Design C" applied to *every* capability
 
-**Status: superseded by [§11](#11-the-implemented-design--universal-capability--instance--readonly-tiers).** This shape was implemented for a while (argument-less accessors on `DaprCapability` returning `Access*Capability` rung-2 traits). The live API has since merged rung 2 into a universal capability that also takes the name on each method, and renamed rung 3 to `X.Instance` — see §11.3. The per-family packages (`dapr4s.state`, `dapr4s.invoke`, …) introduced with it remain. The text below is kept as history.
+**Status: superseded by [§11](#11-the-implemented-design--universal-capability--instance--readonly-tiers).** This shape was implemented for a while (argument-less accessors on `DaprCapability` returning `Access*Capability` rung-2 traits). The live API has since merged rung 2 into a universal capability that also takes the name on each method, and renamed rung 3 to `X.Instance`, reached with `instance(name)` instead of this section's `apply(name)` — see §11.3. The per-family packages (`dapr4s.state`, `dapr4s.invoke`, …) introduced with it remain. The text below is kept as history.
 
 This section shows the concrete shape of the new capabilities if the name/instance tier were applied uniformly. The rule is mechanical:
 
@@ -856,7 +856,7 @@ flowchart TB
 
 The trouble is that the **mechanics** of the two splits are not independent, even though the axes are. Combining them surfaces the concrete collisions below.
 
-> **Status.** Resolved by the implementation — see [§11](#11-the-implemented-design--universal-capability--instance--readonly-tiers). **§10.1** is resolved with the mirrored-traits option: `X.ReadOnly.apply(name)` returns `X.Instance.ReadOnly`, and `X` overrides it covariantly to return `X.Instance` (the "accessor" side is the universal capability itself, §11.2). **§10.5**: the mirror was built only for the read-only rung, and only in State, Secrets, Configuration, Jobs and Workflow (§11.4). **§10.6**: the name `val` lives on `X.Instance.ReadOnly`. **§10.7**: each tier's companion forwards its own methods, and the derivation macros use the narrowest tier (§11.6). §10.2's ordering is settled and §10.3's extensions are gone. The rest of this chapter is kept as the reasoning behind those choices; its names are the exploration names, not the live API.
+> **Status.** Resolved by the implementation — see [§11](#11-the-implemented-design--universal-capability--instance--readonly-tiers). **§10.1** is resolved with the mirrored-traits option: `X.ReadOnly.instance(name)` returns `X.Instance.ReadOnly`, and `X` overrides it covariantly to return `X.Instance` (the "accessor" side is the universal capability itself, §11.2). **§10.5**: the mirror was built only for the read-only rung, and only in State, Secrets, Configuration, Jobs and Workflow (§11.4). **§10.6**: the name `val` lives on `X.Instance.ReadOnly`. **§10.7**: each tier's companion forwards its own methods, and the derivation macros use the narrowest tier (§11.6). §10.2's ordering is settled and §10.3's extensions are gone. The rest of this chapter is kept as the reasoning behind those choices; its names are the exploration names, not the live API.
 
 ### 10.1 The headline conflict — Design C's `apply` re-widens authority
 
@@ -1044,7 +1044,7 @@ The bottom line: the two axes compose into a clean lattice, but **Design C must 
 
 ## 11. The implemented design — universal capability + Instance + ReadOnly tiers
 
-**Status: implemented** (commits `70723d9`..`ecb6a55`). This is the live API. It replaces the §8 accessor shape and resolves §10.1. §1–§10 stay as the exploration that led here; their type names (`Access*Capability`, `ReadState`, `WorkflowInstanceCapability`, …) are not the live API.
+**Status: implemented** (commits `70723d9`..`ecb6a55`). This is the live API. It replaces the §8 accessor shape and resolves §10.1. Narrowing by name is the method `instance(name)` (it was `apply(name)` at first; actor: `forType(actorType)`, then `instance(actorId)`), so there is no `dapr.state(store)` sugar: write `dapr.state.instance(store)`. §1–§10 stay as the exploration that led here; their type names (`Access*Capability`, `ReadState`, `WorkflowInstanceCapability`, …) and their `apply(name)` narrowing are not the live API.
 
 ### 11.1 The shape
 
@@ -1054,17 +1054,17 @@ Each family has one principal capability `X`, and every narrower interface is ne
 |---|---|---|---|
 | `X` — **universal** | any name | full | `DaprCapability.x` (argument-less member) |
 | `X.ReadOnly` | any name | read-only | upcast from `X` |
-| `X.Instance` | one name (`val storeName`, `val appId`, …) | full | `x.apply(name)` |
-| `X.Instance.ReadOnly` | one name | read-only | `readOnly.apply(name)`, or upcast from `X.Instance` |
+| `X.Instance` | one name (`val storeName`, `val appId`, …) | full | `x.instance(name)` |
+| `X.Instance.ReadOnly` | one name | read-only | `readOnly.instance(name)`, or upcast from `X.Instance` |
 
-The universal capability is **not bound to any name**. Its methods take the name as the first parameter: `StateCapability.save(storeName, key, value)`, `InvokeCapability.invoke(appId, method, data)`. The `Instance` methods do not take it, because the instance carries it as a `val`. The two axes of §1 are now the two directions in this one square: `apply(name)` narrows the name, and an upcast narrows the authority.
+The universal capability is **not bound to any name**. Its methods take the name as the first parameter: `StateCapability.save(storeName, key, value)`, `InvokeCapability.invoke(appId, method, data)`. The `Instance` methods do not take it, because the instance carries it as a `val`. The two axes of §1 are now the two directions in this one square: `instance(name)` narrows the name, and an upcast narrows the authority.
 
 ```mermaid
 classDiagram
     direction LR
     class SRO["StateCapability.ReadOnly"] {
         <<trait>>
-        +apply(storeName) StateCapability.Instance.ReadOnly^this
+        +instance(storeName) StateCapability.Instance.ReadOnly^this
         +get(storeName, key)
         +getWithETag(storeName, key)
         +getBulk(storeName, keys)
@@ -1072,7 +1072,7 @@ classDiagram
     }
     class S["StateCapability"] {
         <<trait>>
-        +apply(storeName) StateCapability.Instance^this
+        +instance(storeName) StateCapability.Instance^this
         +save(storeName, key, value)
         +saveBulk(storeName, entries)
         +saveWithETag(storeName, key, value, etag)
@@ -1099,23 +1099,23 @@ classDiagram
     }
     SRO <|-- S
     IRO <|-- I
-    SRO ..> IRO : apply returns
-    S ..> I : apply returns (covariant override)
+    SRO ..> IRO : instance returns
+    S ..> I : instance returns (covariant override)
     note for S "DaprCapability.state returns StateCapability^{dapr}"
 ```
 
 ### 11.2 How it resolves §10.1
 
-This **is** the mirrored-traits option of §10.1. `X.ReadOnly` plays the part of `AccessReadState`, and `X` plays the part of `AccessStateCapability`. `X.ReadOnly.apply(name)` returns `X.Instance.ReadOnly^{this}`, and `X` overrides it covariantly to return `X.Instance^{this}`. So the two narrowings commute: a holder of `X.ReadOnly` who calls `apply(name)` gets only `X.Instance.ReadOnly`. "Read-only access to any store" is a value you can hold and pass, and narrowing it by name can never re-widen its authority. `CapabilityTiersTest` proves this with `compileErrors` checks: `(c: SecretsCapability.ReadOnly) => { val i: SecretsCapability.Instance^{c} = c(store) }` does not compile, and the `ReadOnly` tiers have no write members. As §10.6 suggests, the name `val` is on the read-only base (`X.Instance.ReadOnly`), so a read-only holder can see which resource it is bound to.
+This **is** the mirrored-traits option of §10.1. `X.ReadOnly` plays the part of `AccessReadState`, and `X` plays the part of `AccessStateCapability`. `X.ReadOnly.instance(name)` returns `X.Instance.ReadOnly^{this}`, and `X` overrides it covariantly to return `X.Instance^{this}`. So the two narrowings commute: a holder of `X.ReadOnly` who calls `instance(name)` gets only `X.Instance.ReadOnly`. "Read-only access to any store" is a value you can hold and pass, and narrowing it by name can never re-widen its authority. `CapabilityTiersTest` proves this with `compileErrors` checks: `(c: SecretsCapability.ReadOnly) => { val i: SecretsCapability.Instance^{c} = c.instance(store) }` does not compile, and the `ReadOnly` tiers have no write members. As §10.6 suggests, the name `val` is on the read-only base (`X.Instance.ReadOnly`), so a read-only holder can see which resource it is bound to.
 
 ### 11.3 How it differs from §8
 
-§8 had three rungs: the root, then an `Access*Capability` accessor (rung 2, "any store", with only `apply(name)` and a few extra members such as `start`), then the name-bound capability (rung 3). The implemented design **merges rung 2 into the universal capability**:
+§8 had three rungs: the root, then an `Access*Capability` accessor (rung 2, "any store", with only `apply(name)` (now `instance(name)`) and a few extra members such as `start`), then the name-bound capability (rung 3). The implemented design **merges rung 2 into the universal capability**:
 
 - The accessor is gone. `DaprCapability.state` returns `StateCapability` itself, and that trait is now the "any store" capability.
-- The universal capability also **carries every operation with a name parameter**. You do not have to narrow before each call: `dapr.state.save(store, key, v)` works, and so does `dapr.state(store).save(key, v)`.
+- The universal capability also **carries every operation with a name parameter**. You do not have to narrow before each call: `dapr.state.save(store, key, v)` works, and so does `dapr.state.instance(store).save(key, v)`.
 - The rung-3 capability is renamed `X.Instance` and nested in the companion. `JobCapability` became `JobsCapability.Instance`, `WorkflowInstanceCapability` became `WorkflowCapability.Instance`, and `ActorTypeCapability` became `ActorCapability.Type`.
-- The `WorkflowInstanceId` extension methods (§5.3, §10.3) are gone. Use `WorkflowCapability.suspend(id)` or `dapr.workflow(id).suspend()`.
+- The `WorkflowInstanceId` extension methods (§5.3, §10.3) are gone. Use `WorkflowCapability.suspend(id)` or `dapr.workflow.instance(id).suspend()`.
 
 So the §8 problem "methods lose an argument" (§8.2) is now optional: the name is on the method in the universal tier and lifted into a `val` in the `Instance` tier. Invoke, Workflow and Jobs, which call a different target on each call, use the universal tier. `DaprCapability.invoke { ... }`, `.workflow { ... }` and `.jobs { ... }` put the universal capability into scope, while the other `DaprCapability` transformers put an `Instance` into scope.
 
@@ -1135,12 +1135,12 @@ These are the "Will split — read-only base" families of §9.3, plus the workfl
 
 ### 11.5 Actor — two levels
 
-Actor keeps the two names of §8.3, as two levels of `apply`: `ActorCapability` (any actor, `invoke(actorType, actorId, method, …)`) → `apply(actorType)` → `ActorCapability.Type` (`val actorType`, `invoke(actorId, method, …)`) → `apply(actorId)` → `ActorCapability.Instance` (`val actorType`, `val actorId`, `invoke(method, …)`). There is no `ReadOnly` tier (§9.2).
+Actor keeps the two names of §8.3, as two narrowing steps: `ActorCapability` (any actor, `invoke(actorType, actorId, method, …)`) → `forType(actorType)` → `ActorCapability.Type` (`val actorType`, `invoke(actorId, method, …)`) → `instance(actorId)` → `ActorCapability.Instance` (`val actorType`, `val actorId`, `invoke(method, …)`). There is no `ReadOnly` tier (§9.2).
 
 ### 11.6 Companion forwarders, transformers and derivation (§10.7, resolved)
 
 - **Forwarders.** The companion of **every** interface forwards **all** of that interface's methods, inherited ones included, from a `using` capability of exactly that interface. So read-only code asks for the read-only tier: `StateCapability.Instance.ReadOnly.get[T](key)(using StateCapability.Instance.ReadOnly)`. A full `Instance` in scope also satisfies that `using`, so existing callers keep compiling. This is the §10.7 resolution: each tier's companion forwards its own methods.
-- **Transformers.** Each companion that owns an `apply(name)` has an accessor `instance(name)`, which narrows the capability in scope and **returns** the narrowed capability (`X.Instance^{cap}`, captured by the capability it came from): `X.instance(name)` (`X` → `X.Instance`), `X.ReadOnly.instance(name)` (`X.ReadOnly` → `X.Instance.ReadOnly`). For actors: `ActorCapability.forType(actorType)`, `ActorCapability.instance(actorType, actorId)` and `ActorCapability.Type.instance(actorId)`. As §10.7 says, the `DaprCapability` transformers give the full tier, because their caller holds the root.
+- **Transformers.** Each companion whose trait has an `instance(name)` narrowing method has a same-named accessor `instance(name)`, which narrows the capability in scope and **returns** the narrowed capability (`X.Instance^{cap}`, captured by the capability it came from): `X.instance(name)` (`X` → `X.Instance`), `X.ReadOnly.instance(name)` (`X.ReadOnly` → `X.Instance.ReadOnly`). For actors: `ActorCapability.forType(actorType)`, `ActorCapability.instance(actorType, actorId)` and `ActorCapability.Type.instance(actorId)`. As §10.7 says, the `DaprCapability` transformers give the full tier, because their caller holds the root.
 - **Derivation macros use the narrowest tier.** Derived State, Secrets and Configuration getters require only `X.Instance.ReadOnly`; derived State setters require `StateCapability.Instance`; derived jobs getters require only `JobsCapability.ReadOnly`. The Invoke, Workflow and Jobs derivations call the universal capability (`InvokeCapability`, `WorkflowCapability`, `JobsCapability`) directly, because the target name is part of each call.
 
 ---

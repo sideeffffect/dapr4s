@@ -5,7 +5,7 @@ import dapr4s.*
 /** Universal capability for invoking DAPR output bindings: reaches **any** binding, so every operation names its
   * binding.
   *
-  * Obtained via [[DaprCapability.bindings]]. Narrow to one binding with [[apply]] (`bindings(bindingName)`), which
+  * Obtained via [[DaprCapability.bindings]]. Narrow to one binding with [[instance]] (`bindings.instance(bindingName)`), which
   * yields a [[BindingsCapability.Instance]].
   *
   * '''Dual:''' [[BindingRoute]] is the inbound counterpart (input bindings). Note these are independent directions,
@@ -45,7 +45,7 @@ trait BindingsCapability extends scala.caps.ExclusiveCapability:
 @scala.caps.assumeSafe
 object BindingsCapability:
 
-  /** Capability bound to one named output binding. Obtained via `bindings(bindingName)`. */
+  /** Capability bound to one named output binding. Obtained via `bindings.instance(bindingName)`. */
   @scala.caps.assumeSafe
   trait Instance extends scala.caps.ExclusiveCapability:
     /** The output binding this capability is bound to. */

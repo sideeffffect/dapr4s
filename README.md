@@ -73,10 +73,10 @@ def remember(key: StateStoreKey, value: String)(using DaprCapability): Option[St
 `DaprCapability` has one member per building block (`state`, `publish`, `invoke`, `secrets`,
 `configuration`, `bindings`, `lock`, `actor`, `workflow`, `crypto`; on the JVM also `jobs` and
 `conversation`). Each returns the family's **universal** capability, which reaches any store /
-component / app and takes the name on every call. `apply(name)` narrows it to an `Instance`
+component / app and takes the name on every call. `instance(name)` narrows it to an `Instance`
 bound to one name. State, Secrets, Configuration, Jobs and Workflow also have read-only tiers
 (`X.ReadOnly`, `X.Instance.ReadOnly`): upcast to narrow the authority — narrowing a read-only
-capability by name keeps it read-only. Actors have two levels: actor type, then actor id.
+capability by name keeps it read-only. Actors have two levels: `forType(actorType)`, then `instance(actorId)`.
 
 ```scala
 import dapr4s.*, dapr4s.state.*, dapr4s.invoke.*, dapr4s.actor.*, dapr4s.workflow.*
@@ -84,11 +84,11 @@ import dapr4s.*, dapr4s.state.*, dapr4s.invoke.*, dapr4s.actor.*, dapr4s.workflo
 def tour()(using dapr: DaprCapability): Unit =
   val store = StateStoreName("statestore")
   dapr.state.save(store, StateStoreKey("k"), "v")                         // StateCapability (universal)
-  dapr.state(store).save(StateStoreKey("k"), "v")                         // StateCapability.Instance
+  dapr.state.instance(store).save(StateStoreKey("k"), "v")                // StateCapability.Instance
   dapr.invoke.invoke[String](AppId("orders"), InvokeMethodName("ping"))   // InvokeCapability: appId per call
-  dapr.actor(ActorType("Counter"))(ActorId("c-1")).invokeVoid(ActorMethodName("reset"))
+  dapr.actor.forType(ActorType("Counter")).instance(ActorId("c-1")).invokeVoid(ActorMethodName("reset"))
   val id = dapr.workflow.start(WorkflowName("OrderWorkflow"))             // WorkflowCapability
-  dapr.workflow(id).suspend()                                             // WorkflowCapability.Instance
+  dapr.workflow.instance(id).suspend()                                    // WorkflowCapability.Instance
 ```
 
 Every capability interface's companion object forwards its methods from a `using` capability
@@ -137,7 +137,7 @@ import scala.scalajs.js
 def main(args: Array[String]): Unit =
   js.async {
     Dapr().run:
-      summon[DaprCapability].state(StateStoreName("statestore")).get[String](StateStoreKey("k"))
+      summon[DaprCapability].state.instance(StateStoreName("statestore")).get[String](StateStoreKey("k"))
   }: Unit
 ```
 

@@ -5,7 +5,7 @@ import dapr4s.*
 /** Universal capability for synchronous service invocation (RPC) via DAPR: reaches **any** app, so every operation
   * names its target [[AppId]].
   *
-  * Obtained via [[DaprCapability.invoke]]. Narrow to one target app with [[apply]] (`invoke(appId)`), which yields an
+  * Obtained via [[DaprCapability.invoke]]. Narrow to one target app with [[instance]] (`invoke.instance(appId)`), which yields an
   * [[InvokeCapability.Instance]]. This is the service-to-service least-privilege seam — hold `InvokeCapability` to
   * reach any app, or an `InvokeCapability.Instance` to restrict a holder to a single target.
   *
@@ -42,7 +42,7 @@ trait InvokeCapability extends scala.caps.ExclusiveCapability:
 @scala.caps.assumeSafe
 object InvokeCapability:
 
-  /** Capability bound to one target app. Obtained via `invoke(appId)`. */
+  /** Capability bound to one target app. Obtained via `invoke.instance(appId)`. */
   @scala.caps.assumeSafe
   trait Instance extends scala.caps.ExclusiveCapability:
     /** The target app this capability is bound to. */

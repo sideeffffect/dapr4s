@@ -13,8 +13,8 @@ import dapr4s.*
   *   - [[JobsCapability.Instance]] — one job, full authority
   *   - [[JobsCapability.Instance.ReadOnly]] — one job, read only
   *
-  * Narrow by job with [[apply]] (`jobs(jobName)`), and by authority by upcasting to the `ReadOnly` super-trait. The two
-  * narrowings commute: `apply` on a [[JobsCapability.ReadOnly]] yields a [[JobsCapability.Instance.ReadOnly]].
+  * Narrow by job with [[instance]] (`jobs.instance(jobName)`), and by authority by upcasting to the `ReadOnly` super-trait. The two
+  * narrowings commute: `instance` on a [[JobsCapability.ReadOnly]] yields a [[JobsCapability.Instance.ReadOnly]].
   *
   * '''JVM-only:''' the Dapr JS SDK has no jobs API, so this capability (and [[DaprCapability.jobs]], via
   * `DaprCapabilityPlatform`) exists only on the JVM — on Scala.js using it is a compile error. The inbound counterpart
@@ -80,7 +80,7 @@ object JobsCapability:
     def get(jobName: JobName)(using cap: ReadOnly): Option[JobDetails] =
       cap.get(jobName)
 
-  /** Capability bound to one named job, full authority. Obtained via `jobs(jobName)`. */
+  /** Capability bound to one named job, full authority. Obtained via `jobs.instance(jobName)`. */
   @scala.caps.assumeSafe
   trait Instance extends Instance.ReadOnly:
     /** Schedule a recurring job. The `data` payload is delivered to the matching [[JobRoute]] each time the job fires.

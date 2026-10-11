@@ -209,16 +209,16 @@ overview: `docs/DESIGN.md` "Capability Hierarchy"). Keep new members and new fam
 - The principal capability `X` is **universal** — not bound to any name; each method takes the
   name (`StateCapability.save(storeName, key, value)`, `InvokeCapability.invoke(appId, ...)`).
   `DaprCapability.x` returns it (`def state: StateCapability^{this}`).
-- `X.Instance` (in `X`'s companion) is bound to one name via `X.apply(name)`, carries it as a
+- `X.Instance` (in `X`'s companion) is bound to one name via `X.instance(name)`, carries it as a
   `val` (`storeName`, `appId`, ...) and its methods do not take it.
 - Only families with a read-only subset — State, Secrets, Configuration, Jobs, Workflow — also
   have `X.ReadOnly` (super-trait of `X`) and `X.Instance.ReadOnly` (super-trait of `X.Instance`).
-  `X.ReadOnly.apply(name)` returns `X.Instance.ReadOnly`; `X` overrides it **covariantly** to
-  return `X.Instance`. Never add an `apply` that returns a wider tier than its receiver — narrowing
+  `X.ReadOnly.instance(name)` returns `X.Instance.ReadOnly`; `X` overrides it **covariantly** to
+  return `X.Instance`. Never add an `instance` that returns a wider tier than its receiver — narrowing
   by name must never re-widen authority. Do not add `ReadOnly` tiers to Publish, Invoke, Bindings,
   Lock, Crypto, Actor or Conversation (no read-only subset).
-- Actor is two-level: `ActorCapability` → `apply(actorType)` → `ActorCapability.Type` →
-  `apply(actorId)` → `ActorCapability.Instance`.
+- Actor is two-level: `ActorCapability` → `forType(actorType)` → `ActorCapability.Type` →
+  `instance(actorId)` → `ActorCapability.Instance`.
 - Every interface's companion object forwards **all** of its methods (inherited ones included)
   from a `using` capability, plus `instance(name)` accessors that narrow the capability in scope and
   return it as `X.Instance^{cap}` (`X.instance`, `X.ReadOnly.instance`; actor: `ActorCapability.forType(t)`,
@@ -430,7 +430,7 @@ skills.
 `docs/CAPABILITY-HIERARCHY.md` holds one Mermaid `classDiagram` per capability family (plus the root
 `DaprCapability` and the server-side actor/workflow contexts), showing every interface — universal
 `XCapability`, `X.ReadOnly`, `X.Instance`, `X.Instance.ReadOnly`, actor `Type`/`Instance` — with its
-members, inheritance and `apply` narrowing. It shows the JVM build only (Scala.js is left out for
+members, inheritance and `instance`/`forType` narrowing. It shows the JVM build only (Scala.js is left out for
 simplicity). **Keep it in sync with the code**: any change that adds,
 removes, renames or re-parents a capability trait, or changes a capability member's signature, must
 update the matching diagram in the same commit, and the diagrams must still render (`mmdc`).

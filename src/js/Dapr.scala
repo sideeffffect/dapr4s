@@ -16,7 +16,7 @@ import dapr4styped.daprDapr.mod.{DaprClient, DaprWorkflowClient}
   *   def main(args: Array[String]): Unit =
   *     js.async {
   *       Dapr().run:
-  *         summon[DaprCapability].state(StateStoreName("statestore")).get(StateStoreKey("k"))
+  *         summon[DaprCapability].state.instance(StateStoreName("statestore")).get(StateStoreKey("k"))
   *     }: Unit
   * }}}
   *
@@ -129,8 +129,8 @@ class Dapr(config: DaprConfig = DaprConfig()):
     *     js.async {
     *       Dapr(config).serve:
     *         val scope = summon[DaprCapability]
-    *         given StateCapability.Instance   = scope.state(StateStoreName("statestore"))
-    *         given PublishCapability.Instance = scope.publish(PubSubName("pubsub"))
+    *         given StateCapability.Instance   = scope.state.instance(StateStoreName("statestore"))
+    *         given PublishCapability.Instance = scope.publish.instance(PubSubName("pubsub"))
     *         DaprApp(
     *           subscriptions = List(
     *             Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event =>

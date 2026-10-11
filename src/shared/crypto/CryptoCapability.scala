@@ -6,7 +6,7 @@ import scala.collection.immutable.ArraySeq
 /** Universal capability for DAPR cryptography: reaches **any** crypto component, so every operation names its
   * component.
   *
-  * Obtained via [[DaprCapability.crypto]]. Narrow to one component with [[apply]] (`crypto(componentName)`), which
+  * Obtained via [[DaprCapability.crypto]]. Narrow to one component with [[instance]] (`crypto.instance(componentName)`), which
   * yields a [[CryptoCapability.Instance]].
   *
   * Encryption wraps a freshly generated data encryption key with the named component key using `algorithm`; decryption
@@ -54,7 +54,7 @@ trait CryptoCapability extends scala.caps.ExclusiveCapability:
 @scala.caps.assumeSafe
 object CryptoCapability:
 
-  /** Capability bound to one named crypto component. Obtained via `crypto(componentName)`. */
+  /** Capability bound to one named crypto component. Obtained via `crypto.instance(componentName)`. */
   @scala.caps.assumeSafe
   trait Instance extends scala.caps.ExclusiveCapability:
     /** The crypto component this capability is bound to. */

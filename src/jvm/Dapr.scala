@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicReference
   * {{{
   *   // one-shot request/response:
   *   Dapr().run:
-  *     summon[DaprCapability].state(StateStoreName("statestore")).get(StateStoreKey("k"))
+  *     summon[DaprCapability].state.instance(StateStoreName("statestore")).get(StateStoreKey("k"))
   *
   *   // long-running HTTP server:
   *   Dapr(config).serve:
@@ -154,8 +154,8 @@ class Dapr(config: DaprConfig = DaprConfig()):
     * {{{
     *   Dapr(config).serve:
     *     val scope = summon[DaprCapability]
-    *     given StateCapability.Instance  = scope.state(StateStoreName("statestore"))
-    *     given PublishCapability.Instance = scope.publish(PubSubName("pubsub"))
+    *     given StateCapability.Instance  = scope.state.instance(StateStoreName("statestore"))
+    *     given PublishCapability.Instance = scope.publish.instance(PubSubName("pubsub"))
     *     DaprApp(
     *       subscriptions = List(
     *         Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event =>

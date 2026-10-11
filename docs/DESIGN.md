@@ -51,7 +51,7 @@ graph TB
         SID["SidecarConfig.httpEndpoint\n(default http://localhost:3500)\nSidecarConfig.grpcEndpoint\n(default http://localhost:50001)"]
     end
 
-    UC -->|"summon[DaprCapability].state(...)"| DS
+    UC -->|"summon[DaprCapability].state.instance(...)"| DS
     DS --> SC & PC & IC & SEC & CC & BC & LC
     SC & PC & IC & SEC & CC & BC & LC -->|"implemented by"| IMPL
     IMPL -->|"DaprClient.*().toFuture().get()"| DC
@@ -115,12 +115,12 @@ Note: safe mode is enabled **per-file** via `import language.experimental.safe` 
 
 Each building block is one **capability family**. A family has a principal **universal** capability that is not bound to any name: `StateCapability` reaches any state store, so each of its methods takes the `storeName`; `InvokeCapability` reaches any app, so each call takes the `appId`. The root `DaprCapability` has one argument-less member per building block that returns the universal capability (`dapr.state: StateCapability^{this}`). The universal capability can be held and passed around as it is, or narrowed. All the narrower interfaces live in the companion object of the universal capability, and there are two axes of narrowing:
 
-- **By name.** `apply(name)` returns `X.Instance`, which is bound to one store / component / app / job / workflow instance. It carries the name as a `val` (`storeName`, `pubsubName`, `appId`, `jobName`, `instanceId`, …), so its methods do not take the name again. `dapr.state(storeName)` is `dapr.state.apply(storeName)`, so it reads like a factory call.
-- **By authority.** Five families have a read-only subset: State, Secrets, Configuration, Jobs and Workflow. Each of them also has `X.ReadOnly` (a super-trait of `X`) and `X.Instance.ReadOnly` (a super-trait of `X.Instance`). You narrow the authority with a plain upcast. `X.ReadOnly.apply(name)` returns `X.Instance.ReadOnly`, and `X` overrides `apply` covariantly to return `X.Instance`. So the two narrowings commute: when you narrow a read-only capability by name, you get a read-only instance, never a full one.
+- **By name.** `instance(name)` returns `X.Instance`, which is bound to one store / component / app / job / workflow instance. It carries the name as a `val` (`storeName`, `pubsubName`, `appId`, `jobName`, `instanceId`, …), so its methods do not take the name again: `dapr.state.instance(storeName).save(key, value)`.
+- **By authority.** Five families have a read-only subset: State, Secrets, Configuration, Jobs and Workflow. Each of them also has `X.ReadOnly` (a super-trait of `X`) and `X.Instance.ReadOnly` (a super-trait of `X.Instance`). You narrow the authority with a plain upcast. `X.ReadOnly.instance(name)` returns `X.Instance.ReadOnly`, and `X` overrides `instance` covariantly to return `X.Instance`. So the two narrowings commute: when you narrow a read-only capability by name, you get a read-only instance, never a full one.
 
-Actor has two levels of names: `ActorCapability` (any actor) → `apply(actorType)` → `ActorCapability.Type` (one actor type) → `apply(actorId)` → `ActorCapability.Instance` (one actor). The design and the alternatives that were rejected are in [CAPABILITY-SPLITS.md §11](CAPABILITY-SPLITS.md#11-the-implemented-design--universal-capability--instance--readonly-tiers).
+Actor has two levels of names: `ActorCapability` (any actor) → `forType(actorType)` → `ActorCapability.Type` (one actor type) → `instance(actorId)` → `ActorCapability.Instance` (one actor). The design and the alternatives that were rejected are in [CAPABILITY-SPLITS.md §11](CAPABILITY-SPLITS.md#11-the-implemented-design--universal-capability--instance--readonly-tiers).
 
-| Family (package `dapr4s.<family>`) | Universal capability | `apply(name)` → `Instance` | `ReadOnly` / `Instance.ReadOnly` members | Members only in the full tiers |
+| Family (package `dapr4s.<family>`) | Universal capability | `instance(name)` → `Instance` | `ReadOnly` / `Instance.ReadOnly` members | Members only in the full tiers |
 |---|---|---|---|---|
 | `state` | `StateCapability` | `StateStoreName` | `get`, `getWithETag`, `getBulk`, `queryState` | `save`, `saveBulk`, `saveWithETag`, `delete`, `deleteWithETag`, `transaction` |
 | `secrets` | `SecretsCapability` | `SecretStoreName` | `get` | `getBulk` |
@@ -158,7 +158,7 @@ classDiagram
 
     class StateRO["StateCapability.ReadOnly"] {
         <<trait>>
-        +apply(storeName) StateCapability.Instance.ReadOnly^this
+        +instance(storeName) StateCapability.Instance.ReadOnly^this
         +get[T](storeName, key, consistency) Option[T]
         +getWithETag[T](storeName, key, consistency) StateEntry[T]
         +getBulk[T](storeName, keys) Map[StateStoreKey,StateEntry[T]]
@@ -166,7 +166,7 @@ classDiagram
     }
     class State["StateCapability"] {
         <<trait>>
-        +apply(storeName) StateCapability.Instance^this
+        +instance(storeName) StateCapability.Instance^this
         +save[T](storeName, key, value) Unit
         +saveBulk[T](storeName, entries) Unit
         +saveWithETag[T](storeName, key, value, etag) Option[ETagMismatchException]
@@ -195,7 +195,7 @@ classDiagram
 
     class X["XCapability"] {
         <<trait>>
-        +apply(name: N) XCapability.Instance^this
+        +instance(name: N) XCapability.Instance^this
         +op(name: N, ...) R
     }
     class XInst["XCapability.Instance"] {
@@ -207,7 +207,7 @@ classDiagram
 
     class Actor["ActorCapability"] {
         <<trait>>
-        +apply(actorType) ActorCapability.Type^this
+        +forType(actorType) ActorCapability.Type^this
         +invoke[Req,Resp](actorType, actorId, method, data) Resp
         +invoke[Resp](actorType, actorId, method) Resp
         +invokeVoid(actorType, actorId, method) Unit
@@ -215,7 +215,7 @@ classDiagram
     class ActorTypeCap["ActorCapability.Type"] {
         <<trait>>
         +actorType: ActorType
-        +apply(actorId) ActorCapability.Instance^this
+        +instance(actorId) ActorCapability.Instance^this
         +invoke[Req,Resp](actorId, method, data) Resp
         +invoke[Resp](actorId, method) Resp
         +invokeVoid(actorId, method) Unit
@@ -244,16 +244,16 @@ classDiagram
     StateRO <|-- State : extends
     StateInstRO <|-- StateInst : extends
     DaprCapability --> State : .state
-    State --> StateInst : apply(storeName)
-    StateRO --> StateInstRO : apply(storeName)
+    State --> StateInst : instance(storeName)
+    StateRO --> StateInstRO : instance(storeName)
     DaprCapability --> X : .publish / .invoke / .bindings / .lock / .crypto / .conversation
-    X --> XInst : apply(name)
+    X --> XInst : instance(name)
     DaprCapability --> Actor : .actor
-    Actor --> ActorTypeCap : apply(actorType)
-    ActorTypeCap --> ActorInst : apply(actorId)
+    Actor --> ActorTypeCap : forType(actorType)
+    ActorTypeCap --> ActorInst : instance(actorId)
 ```
 
-**Companion forwarders.** The companion object of **every** interface forwards **all** of that interface's methods, inherited ones included, from a `using` capability. So business logic never names the capability value: `StateCapability.save(storeName, key, value)`, `StateCapability.Instance.save(key, value)`, `StateCapability.Instance.ReadOnly.get[T](key)`, `WorkflowCapability.start(name)`, `WorkflowCapability.Instance.suspend()`, `ActorCapability.Instance.invokeVoid(method)`. Each companion that owns an `apply(name)` also has an accessor that narrows the capability in scope and **returns** it, captured by that capability: `X.instance(name)` (`using X` → `X.Instance^{cap}`), `X.ReadOnly.instance(name)` (`using X.ReadOnly` → `X.Instance.ReadOnly^{cap}`), and for actors `ActorCapability.forType(actorType)` (→ `Type`), `ActorCapability.instance(actorType, actorId)` and `ActorCapability.Type.instance(actorId)` (→ `Instance`). The `DaprCapability` companion transformers start from the root: `DaprCapability.state/publish/secrets/configuration/bindings/lock/crypto/conversation(name) { ... }` and `DaprCapability.actor(actorType, actorId) { ... }` put the **`Instance`** into scope, while `DaprCapability.invoke { ... }`, `DaprCapability.workflow { ... }` and `DaprCapability.jobs { ... }` put the **universal** capability into scope (the target app / workflow instance / job is chosen per call).
+**Companion forwarders.** The companion object of **every** interface forwards **all** of that interface's methods, inherited ones included, from a `using` capability. So business logic never names the capability value: `StateCapability.save(storeName, key, value)`, `StateCapability.Instance.save(key, value)`, `StateCapability.Instance.ReadOnly.get[T](key)`, `WorkflowCapability.start(name)`, `WorkflowCapability.Instance.suspend()`, `ActorCapability.Instance.invokeVoid(method)`. Each companion whose trait has an `instance(name)` (or, for actors, `forType(actorType)`) narrowing method also has a same-named accessor that narrows the capability in scope and **returns** it, captured by that capability: `X.instance(name)` (`using X` → `X.Instance^{cap}`), `X.ReadOnly.instance(name)` (`using X.ReadOnly` → `X.Instance.ReadOnly^{cap}`), and for actors `ActorCapability.forType(actorType)` (→ `Type`), `ActorCapability.instance(actorType, actorId)` and `ActorCapability.Type.instance(actorId)` (→ `Instance`). The `DaprCapability` companion transformers start from the root: `DaprCapability.state/publish/secrets/configuration/bindings/lock/crypto/conversation(name) { ... }` and `DaprCapability.actor(actorType, actorId) { ... }` put the **`Instance`** into scope, while `DaprCapability.invoke { ... }`, `DaprCapability.workflow { ... }` and `DaprCapability.jobs { ... }` put the **universal** capability into scope (the target app / workflow instance / job is chosen per call).
 
 **Derivation uses the narrowest tier.** The derivation macros require only the tier that the derived member uses: derived State/Secrets/Configuration getters need only `X.Instance.ReadOnly` (a full `Instance` also satisfies them, because it is a subtype), derived State setters need `StateCapability.Instance`, derived jobs getters need only `JobsCapability.ReadOnly`, and the Invoke, Workflow and Jobs derivations call the universal capability (`InvokeCapability`, `WorkflowCapability`, `JobsCapability`) directly, because the target name is part of each call.
 
@@ -304,7 +304,7 @@ Pub/sub routes (default `/<topic>`), input binding paths (`/<bindingName>`), ser
 
 ### Job triggers
 
-A scheduled job created via `JobsCapability.schedule`/`scheduleOnce` (`dapr.jobs.schedule(JobName(...), ...)` or `dapr.jobs(JobName(...)).schedule(...)`) is delivered by the sidecar as a POST to `/job/<jobName>` on the app server. A `JobRoute[T](JobName(...)) { payload => ... }` registered on the `DaprApp` decodes the payload (the sidecar sends either the raw value or a `{"data": ...}` envelope — both are accepted) and invokes the handler. Unknown job names return 404; a handler exception returns 500.
+A scheduled job created via `JobsCapability.schedule`/`scheduleOnce` (`dapr.jobs.schedule(JobName(...), ...)` or `dapr.jobs.instance(JobName(...)).schedule(...)`) is delivered by the sidecar as a POST to `/job/<jobName>` on the app server. A `JobRoute[T](JobName(...)) { payload => ... }` registered on the `DaprApp` decodes the payload (the sidecar sends either the raw value or a `{"data": ...}` envelope — both are accepted) and invokes the handler. Unknown job names return 404; a handler exception returns 500.
 
 > **`ExclusiveCapability` as a cornerstone**: Every capability in this library — `DaprCapability`, every interface of every capability family (the universal `X`, `X.ReadOnly`, `X.Instance`, `X.Instance.ReadOnly`, and `ActorCapability.Type`), `ActorContext`, and `WorkflowContext` — extends `scala.caps.ExclusiveCapability`. This is intentional and load-bearing:
 > - `ExclusiveCapability` tells the Scala 3 CC framework that these objects are exclusive (not shared), enabling separation checking that prevents concurrent or escaping use.
@@ -372,10 +372,10 @@ Transformer signature (in `src/shared/DaprCapability.scala`):
 ```scala
 object DaprCapability:
   def state(storeName: StateStoreName)[T](body: StateCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.state(storeName).asInstanceOf[StateCapability.Instance])
+    body(using cap.state.instance(storeName).asInstanceOf[StateCapability.Instance])
 ```
 
-`cap.state(storeName)` is `cap.state.apply(storeName)` — the universal `StateCapability` followed by its `apply`, which narrows it to `StateCapability.Instance`.
+`cap.state.instance(storeName)` is the universal `StateCapability` followed by its `instance`, which narrows it to `StateCapability.Instance`.
 
 **Capability injection lifetime**: Capabilities are bound once per `apply` call and shared across all handler invokeRoutes for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
 
@@ -549,7 +549,7 @@ sequenceDiagram
     Dapr->>DaprClient: DaprClientBuilder()...build()  (endpoints from config.sidecar)
     Dapr->>DaprCapability: new DaprCapabilityImpl(client, ...)
     Dapr->>App: body (given DaprCapability)
-    App->>DaprCapability: .state("my-store")
+    App->>DaprCapability: .state.instance("my-store")
     DaprCapability-->>App: StateCapability.Instance^scope
     App->>DaprCapability: state.save("k", value)
     DaprCapability->>DaprClient: saveState(...).block()
@@ -809,7 +809,7 @@ tests on both); that gap is symmetric by design.
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Capability root | `DaprCapability` returns one universal capability per family (`StateCapability`, …), narrowed by name with `apply(name)` → `X.Instance` and by authority by upcasting to `X.ReadOnly` / `X.Instance.ReadOnly` | Single entry point; child capabilities capture scope, preventing escape; the universal capability is a passable "any store / app / job" handle; read-only narrowing cannot be re-widened by `apply` |
+| Capability root | `DaprCapability` returns one universal capability per family (`StateCapability`, …), narrowed by name with `instance(name)` → `X.Instance` and by authority by upcasting to `X.ReadOnly` / `X.Instance.ReadOnly` | Single entry point; child capabilities capture scope, preventing escape; the universal capability is a passable "any store / app / job" handle; read-only narrowing cannot be re-widened by `instance` |
 | JSON library | upickle | Pure Scala, Scala CLI friendly, automatic derivation |
 | Async model | JVM: blocking (`Mono.toFuture().get()`) on virtual threads; JS: JSPI suspension via orphan `js.await` on the Wasm backend | Direct-style API on both platforms with no effect-library dependency; VT parking and JSPI stack suspension are architectural analogues (see Scala.js platform section) |
 | Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |

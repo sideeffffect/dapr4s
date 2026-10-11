@@ -11,8 +11,8 @@ import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr
   * {{{
   *   Dapr(config).serve:
   *     val scope = summon[DaprCapability]
-  *     given StateCapability.Instance  = scope.state(StateStoreName("statestore"))
-  *     given PublishCapability.Instance = scope.publish(PubSubName("pubsub"))
+  *     given StateCapability.Instance  = scope.state.instance(StateStoreName("statestore"))
+  *     given PublishCapability.Instance = scope.publish.instance(PubSubName("pubsub"))
   *     DaprApp(
   *       subscriptions = List(
   *         Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event => ... }

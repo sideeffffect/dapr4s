@@ -28,7 +28,7 @@ final class FakeSecretsInstance(val storeName: SecretStoreName) extends SecretsC
 
 /** The capability tiers: universal → `Instance` narrowing by name, and full → `ReadOnly` narrowing by authority.
   *
-  * The runtime tests check that `apply(name)` binds the right name. The `compileErrors` tests check the static
+  * The runtime tests check that `instance(name)` binds the right name. The `compileErrors` tests check the static
   * guarantees: a `ReadOnly` tier has no write members, and narrowing a `ReadOnly` universal capability by name keeps it
   * read-only. Each negative check has a positive twin, so a check cannot pass just because the snippet is malformed.
   */
@@ -39,7 +39,7 @@ class CapabilityTiersTest extends FunSuite:
   private val stateStore = StateStoreName("s")
   private val stateKey = StateStoreKey("k")
 
-  test("universal apply(name) returns an Instance bound to that name"):
+  test("universal instance(name) returns an Instance bound to that name"):
     val universal = FakeSecretsUniversal()
     val instance = universal.instance(store)
     assertEquals(instance.storeName, store)
@@ -47,7 +47,7 @@ class CapabilityTiersTest extends FunSuite:
     assertEquals(universal.get(store, SecretKey("k")), Some(SecretValue("vault/k")))
     assertEquals(universal.getBulk(store), Map(SecretKey("all") -> SecretValue("vault")))
 
-  test("ReadOnly universal apply(name) returns an Instance.ReadOnly bound to that name"):
+  test("ReadOnly universal instance(name) returns an Instance.ReadOnly bound to that name"):
     val readOnly: SecretsCapability.ReadOnly = FakeSecretsUniversal()
     val instance: SecretsCapability.Instance.ReadOnly^{readOnly} = readOnly.instance(store)
     assertEquals(instance.storeName, store)
@@ -56,7 +56,7 @@ class CapabilityTiersTest extends FunSuite:
   // Each snippet is a lambda over the capability under test, so the checks run (as asserts on the compile-time
   // error text) without needing a fake for every capability family.
 
-  test("ReadOnly universal apply(name) statically yields Instance.ReadOnly, not Instance"):
+  test("ReadOnly universal instance(name) statically yields Instance.ReadOnly, not Instance"):
     assertNoDiff(
       compileErrors("(c: SecretsCapability) => { val i: SecretsCapability.Instance^{c} = c.instance(store) }"),
       "",

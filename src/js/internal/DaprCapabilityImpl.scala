@@ -185,7 +185,7 @@ private[dapr4s] object DaprCapabilityImpl:
 // ---------------------------------------------------------------------------
 // Universal capability implementations — the Scala.js twins of the JVM
 // *CapabilityUniversalImpl classes. Each narrows to its name-bound `.Instance`
-// impl via `apply`, and its name-taking operations delegate to that instance;
+// impl via `instance`, and its name-taking operations delegate to that instance;
 // the cast erases the capture set so these internal types stay package-private.
 // (No jobs/conversation: the Dapr JS SDK has neither.)
 // ---------------------------------------------------------------------------

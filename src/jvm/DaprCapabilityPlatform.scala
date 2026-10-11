@@ -24,10 +24,10 @@ import dapr4s.jobs.*, dapr4s.conversation.*
 trait DaprCapabilityPlatform:
   this: DaprCapability =>
 
-  /** Obtain the universal [[JobsCapability]] (any job); `jobs(jobName)` narrows it to one job. */
+  /** Obtain the universal [[JobsCapability]] (any job); `jobs.instance(jobName)` narrows it to one job. */
   def jobs: JobsCapability^{this}
 
-  /** Obtain the universal [[ConversationCapability]] (any component); `conversation(componentName)` narrows it to one
+  /** Obtain the universal [[ConversationCapability]] (any component); `conversation.instance(componentName)` narrows it to one
     * component.
     */
   def conversation: ConversationCapability^{this}
@@ -36,7 +36,7 @@ trait DaprCapabilityPlatform:
   * transformer methods for the JVM-only building blocks (jobs, conversation), inherited by
   * `object DaprCapability`. The Scala.js twin of this trait is empty.
   *
-  * WHY @assumeSafe: identical to the shared companion — `cap.jobs` / `cap.conversation(...)`
+  * WHY @assumeSafe: identical to the shared companion — `cap.jobs` / `cap.conversation.instance(...)`
   * return capabilities carrying a `^{cap}` capture set, and passing them to a context function
   * expecting the unannotated capability type widens the capture set. That is safe because the
   * `^{this}` return types on [[DaprCapabilityPlatform]] prevent the sub-capabilities from
@@ -46,7 +46,7 @@ trait DaprCapabilityPlatform:
 trait DaprCapabilityCompanionPlatform:
 
   /** Make the universal [[JobsCapability]] available to `body` — pass it to [[Jobs.derive]] clients, or narrow to a
-    * single job with `apply(name)`.
+    * single job with `instance(name)`.
     */
   def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.jobs.asInstanceOf[JobsCapability])

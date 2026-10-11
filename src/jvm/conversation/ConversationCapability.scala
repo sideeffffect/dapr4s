@@ -6,8 +6,8 @@ import dapr4s.*
 /** Universal capability for invoking DAPR conversation (LLM) components: reaches **any** component, so every operation
   * names its component.
   *
-  * Obtained via [[DaprCapability.conversation]]. Narrow to one component with [[apply]]
-  * (`conversation(componentName)`), which yields a [[ConversationCapability.Instance]].
+  * Obtained via [[DaprCapability.conversation]]. Narrow to one component with [[instance]]
+  * (`conversation.instance(componentName)`), which yields a [[ConversationCapability.Instance]].
   *
   * '''JVM-only:''' the Dapr JS SDK has no conversation API, so this capability (and [[DaprCapability.conversation]],
   * via `DaprCapabilityPlatform`) exists only on the JVM — on Scala.js using it is a compile error.
@@ -42,7 +42,7 @@ trait ConversationCapability extends scala.caps.ExclusiveCapability:
 @scala.caps.assumeSafe
 object ConversationCapability:
 
-  /** Capability bound to one named conversation (LLM) component. Obtained via `conversation(componentName)`. */
+  /** Capability bound to one named conversation (LLM) component. Obtained via `conversation.instance(componentName)`. */
   @scala.caps.assumeSafe
   trait Instance extends scala.caps.ExclusiveCapability:
     /** The conversation component this capability is bound to. */

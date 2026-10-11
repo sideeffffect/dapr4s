@@ -11,8 +11,8 @@ import dapr4s.*
   *   - [[SecretsCapability.Instance]] — one store, full authority
   *   - [[SecretsCapability.Instance.ReadOnly]] — one store, single-secret reads only
   *
-  * Narrow by store with [[apply]] (`secrets(storeName)`), and by authority by upcasting to the `ReadOnly` super-trait.
-  * The two narrowings commute: `apply` on a [[SecretsCapability.ReadOnly]] yields a
+  * Narrow by store with [[instance]] (`secrets.instance(storeName)`), and by authority by upcasting to the `ReadOnly` super-trait.
+  * The two narrowings commute: `instance` on a [[SecretsCapability.ReadOnly]] yields a
   * [[SecretsCapability.Instance.ReadOnly]]. `getBulk` is withheld from the read-only tier because it dumps the whole
   * store — a key-scoped reader should not be able to enumerate every secret.
   */
@@ -65,7 +65,7 @@ object SecretsCapability:
     )(using cap: ReadOnly): Option[SecretValue] =
       cap.get(storeName, key, metadata)
 
-  /** Capability bound to one named secrets store, full authority. Obtained via `secrets(storeName)`. */
+  /** Capability bound to one named secrets store, full authority. Obtained via `secrets.instance(storeName)`. */
   @scala.caps.assumeSafe
   trait Instance extends Instance.ReadOnly:
     /** Retrieve all secrets in the store as a flat key→value map.

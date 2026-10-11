@@ -15,8 +15,8 @@ import scala.concurrent.duration.FiniteDuration
   *   - [[WorkflowCapability.Instance.ReadOnly]] — one instance, observe only
   *
   * The launch operations (`start*`) exist only on this universal trait because they '''mint''' the instance id; once
-  * you have an id, [[apply]] narrows to a [[WorkflowCapability.Instance]] whose operations all target that one instance.
-  * The two narrowings commute: `apply` on a [[WorkflowCapability.ReadOnly]] yields a
+  * you have an id, [[instance]] narrows to a [[WorkflowCapability.Instance]] whose operations all target that one instance.
+  * The two narrowings commute: `instance` on a [[WorkflowCapability.ReadOnly]] yields a
   * [[WorkflowCapability.Instance.ReadOnly]], so an observer cannot regain control by narrowing to an instance.
   */
 @scala.caps.assumeSafe
@@ -94,7 +94,7 @@ object WorkflowCapability:
       cap.waitForCompletion(instanceId, timeout)
 
   /** Capability bound to a single workflow instance (client-side), full authority. Reached via
-    * [[WorkflowCapability.apply]]; every operation targets the bound [[instanceId]].
+    * [[WorkflowCapability.instance]]; every operation targets the bound [[instanceId]].
     */
   @scala.caps.assumeSafe
   trait Instance extends Instance.ReadOnly:

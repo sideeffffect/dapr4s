@@ -13,8 +13,8 @@ import scala.concurrent.duration.FiniteDuration
   *   - [[StateCapability.Instance]] — one store, full authority
   *   - [[StateCapability.Instance.ReadOnly]] — one store, read-only
   *
-  * Narrow by store with [[apply]] (`state(storeName)`), and by authority by upcasting to the `ReadOnly` super-trait.
-  * The two narrowings commute: `apply` on a [[StateCapability.ReadOnly]] yields an [[StateCapability.Instance.ReadOnly]],
+  * Narrow by store with [[instance]] (`state.instance(storeName)`), and by authority by upcasting to the `ReadOnly` super-trait.
+  * The two narrowings commute: `instance` on a [[StateCapability.ReadOnly]] yields an [[StateCapability.Instance.ReadOnly]],
   * so handing someone a read-only universal capability cannot be widened back by narrowing to a store.
   */
 @scala.caps.assumeSafe
@@ -119,7 +119,7 @@ object StateCapability:
     ): List[StateEntry[T]] =
       cap.queryState(storeName, query)
 
-  /** Capability bound to one named state store, full authority. Obtained via `state(storeName)`. */
+  /** Capability bound to one named state store, full authority. Obtained via `state.instance(storeName)`. */
   @scala.caps.assumeSafe
   trait Instance extends Instance.ReadOnly:
     /** Unconditionally save a value. */

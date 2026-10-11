@@ -7,11 +7,11 @@
 --             DaprCapability (root scope) exposes one universal capability per family
 --               (DaprCapability.state, .publish, ...); a universal capability is bound to no
 --               name, so its operations take the store / pubsub / app id / ... per call;
---             X.Instance, obtained by universal.apply(name), is bound to that one name;
+--             X.Instance, obtained by universal.instance(name), is bound to that one name;
 --             X.ReadOnly / X.Instance.ReadOnly are read-only super-traits, for the State,
 --               Secrets, Configuration, Workflow and Jobs families only;
---             actor narrows in two steps: ActorCapability -> apply(type) ->
---               ActorCapability.Type -> apply(id) -> ActorCapability.Instance;
+--             actor narrows in two steps: ActorCapability -> forType(type) ->
+--               ActorCapability.Type -> instance(id) -> ActorCapability.Instance;
 --           families: State, Publish, Invoke, Secrets, Configuration (get + subscribe),
 --           Bindings, Lock, Crypto, Actor client, Workflow client,
 --           JVM-only: Jobs and Conversation,
@@ -417,7 +417,7 @@ contract FamilyCompanionTransformers {
 
 contract StateReadOnlyOperations {
     -- StateCapability.ReadOnly (universal, read-only tier). Every operation takes the store.
-    apply: (store_name: StateStoreName) -> StateCapabilityInstance
+    instance: (store_name: StateStoreName) -> StateCapabilityInstance
     -- Returns StateCapability.Instance.ReadOnly^{this}; StateCapability overrides it to
     -- return StateCapability.Instance^{this} (AuthorityPreservedByNarrowing).
     get: (store_name: StateStoreName, key: StateStoreKey, consistency: StateConsistency) -> Any?
@@ -464,7 +464,7 @@ contract StateInstanceOperations {
 
 contract PublishOperations {
     -- PublishCapability (universal). Every operation takes the pub/sub component.
-    apply: (pubsub_name: PubSubName) -> PublishCapabilityInstance
+    instance: (pubsub_name: PubSubName) -> PublishCapabilityInstance
     publish: (pubsub_name: PubSubName, topic: Topic, data: Any) -> Unit
     publish_with_metadata: (pubsub_name: PubSubName, topic: Topic, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
     bulk_publish: (pubsub_name: PubSubName, topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
@@ -482,7 +482,7 @@ contract PublishInstanceOperations {
 
 contract InvokeOperations {
     -- InvokeCapability (universal). Every operation takes the target app id.
-    apply: (app_id: AppId) -> InvokeCapabilityInstance
+    instance: (app_id: AppId) -> InvokeCapabilityInstance
     invoke: (app_id: AppId, method: InvokeMethodName, data: Any, http_method: HttpMethod, metadata: Map<MetadataKey, MetadataValue>) -> Any
     invoke_get: (app_id: AppId, method: InvokeMethodName) -> Any
 }
@@ -500,7 +500,7 @@ contract InvokeInstanceOperations {
 
 contract SecretsReadOnlyOperations {
     -- SecretsCapability.ReadOnly (universal, read-only tier).
-    apply: (store_name: SecretStoreName) -> SecretsCapabilityInstance
+    instance: (store_name: SecretStoreName) -> SecretsCapabilityInstance
     -- Returns SecretsCapability.Instance.ReadOnly^{this}; SecretsCapability overrides it to
     -- return SecretsCapability.Instance^{this}.
     get: (store_name: SecretStoreName, key: SecretKey, metadata: Map<MetadataKey, MetadataValue>) -> SecretValue?
@@ -525,7 +525,7 @@ contract SecretsInstanceOperations {
 
 contract ConfigurationReadOnlyOperations {
     -- ConfigurationCapability.ReadOnly (universal, read-only tier).
-    apply: (store_name: ConfigurationStoreName) -> ConfigurationCapabilityInstance
+    instance: (store_name: ConfigurationStoreName) -> ConfigurationCapabilityInstance
     -- Returns ConfigurationCapability.Instance.ReadOnly^{this}; ConfigurationCapability
     -- overrides it to return ConfigurationCapability.Instance^{this}.
     get: (store_name: ConfigurationStoreName, keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>) -> Map<ConfigurationKey, ConfigurationItem>
@@ -588,7 +588,7 @@ contract DaprAppBuilders {
 
 contract BindingsOperations {
     -- BindingsCapability (universal). Every operation takes the binding name.
-    apply: (binding_name: BindingName) -> BindingsCapabilityInstance
+    instance: (binding_name: BindingName) -> BindingsCapabilityInstance
     invoke: (binding_name: BindingName, operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Any?
     invoke_one_way: (binding_name: BindingName, operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
 }
@@ -606,7 +606,7 @@ contract BindingsInstanceOperations {
 
 contract LockOperations {
     -- LockCapability (universal). Every operation takes the lock store.
-    apply: (store_name: LockStoreName) -> LockCapabilityInstance
+    instance: (store_name: LockStoreName) -> LockCapabilityInstance
     try_lock: (store_name: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) -> Boolean
     unlock: (store_name: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
 }
@@ -623,7 +623,7 @@ contract LockInstanceOperations {
 
 contract CryptoOperations {
     -- CryptoCapability (universal). Every operation takes the crypto component.
-    apply: (component_name: CryptoComponentName) -> CryptoCapabilityInstance
+    instance: (component_name: CryptoComponentName) -> CryptoCapabilityInstance
     encrypt: (component_name: CryptoComponentName, key_name: CryptoKeyName, plaintext: ByteArray, algorithm: KeyWrapAlgorithm) -> ByteArray
     decrypt: (component_name: CryptoComponentName, ciphertext: ByteArray) -> ByteArray
     encrypt_string: (component_name: CryptoComponentName, key_name: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm) -> ByteArray
@@ -643,7 +643,7 @@ contract CryptoInstanceOperations {
 
 contract ActorOperations {
     -- ActorCapability (universal). Every operation takes the actor type and id.
-    apply: (actor_type: ActorType) -> ActorCapabilityType
+    for_type: (actor_type: ActorType) -> ActorCapabilityType
     invoke: (actor_type: ActorType, actor_id: ActorId, method: ActorMethodName, data: Any) -> Any
     invoke_no_body: (actor_type: ActorType, actor_id: ActorId, method: ActorMethodName) -> Any
     invoke_void: (actor_type: ActorType, actor_id: ActorId, method: ActorMethodName) -> Unit
@@ -651,7 +651,7 @@ contract ActorOperations {
 
 contract ActorTypeOperations {
     -- ActorCapability.Type (bound to actor_type). Every operation takes the actor id.
-    apply: (actor_id: ActorId) -> ActorCapabilityInstance
+    instance: (actor_id: ActorId) -> ActorCapabilityInstance
     invoke: (actor_id: ActorId, method: ActorMethodName, data: Any) -> Any
     invoke_no_body: (actor_id: ActorId, method: ActorMethodName) -> Any
     invoke_void: (actor_id: ActorId, method: ActorMethodName) -> Unit
@@ -670,7 +670,7 @@ contract ActorInstanceOperations {
 
 contract WorkflowReadOnlyOperations {
     -- WorkflowCapability.ReadOnly (universal, read-only tier). Every operation takes the instance id.
-    apply: (instance_id: WorkflowInstanceId) -> WorkflowCapabilityInstance
+    instance: (instance_id: WorkflowInstanceId) -> WorkflowCapabilityInstance
     -- Returns WorkflowCapability.Instance.ReadOnly^{this}; WorkflowCapability overrides it to
     -- return WorkflowCapability.Instance^{this}.
     get_status: (instance_id: WorkflowInstanceId) -> WorkflowSnapshot?
@@ -710,7 +710,7 @@ contract WorkflowInstanceOperations {
 
 contract JobsReadOnlyOperations {
     -- JobsCapability.ReadOnly (universal, read-only tier). Every operation takes the job name.
-    apply: (job_name: JobName) -> JobsCapabilityInstance
+    instance: (job_name: JobName) -> JobsCapabilityInstance
     -- Returns JobsCapability.Instance.ReadOnly^{this}; JobsCapability overrides it to
     -- return JobsCapability.Instance^{this}.
     get: (job_name: JobName) -> JobDetails?
@@ -742,7 +742,7 @@ contract JobsInstanceOperations {
 
 contract ConversationOperations {
     -- ConversationCapability (universal). converse takes the conversation component.
-    apply: (component_name: ConversationComponentName) -> ConversationCapabilityInstance
+    instance: (component_name: ConversationComponentName) -> ConversationCapabilityInstance
     converse: (component_name: ConversationComponentName, messages: List<ConversationMessage>, tools: List<ConversationTool>, tool_choice: ToolChoice?, temperature: Decimal?, context_id: ConversationContextId?, scrub_pii: Boolean) -> ConversationResponse
 }
 
@@ -833,7 +833,7 @@ entity DaprCapability {
 }
 
 -- Universal capabilities: one per building-block family, bound to no name. Every operation
--- takes the store / pubsub / app id / binding / ... name as a parameter, and apply(name)
+-- takes the store / pubsub / app id / binding / ... name as a parameter, and instance(name)
 -- narrows to the family's Instance, bound to that name (return type ^{this}).
 -- Five families split the read operations from the rest: State, Secrets, Configuration,
 -- Workflow and Jobs. For these, X.ReadOnly is a super-trait of X with only the read
@@ -886,7 +886,7 @@ entity CryptoCapability {
 }
 
 entity ActorCapability {
-    -- apply(actorType) narrows to ActorCapability.Type (two-level narrowing).
+    -- forType(actorType) narrows to ActorCapability.Type (two-level narrowing).
     capability: DaprCapability
     status: CapabilityStatus
 }
@@ -970,7 +970,7 @@ value ActorTimerRoute {
     -- handler: Payload -> Unit (captured, CC-erased internally); codec carried
 }
 
--- Instances: X.Instance, obtained by universal.apply(name). Each carries its bound name as a
+-- Instances: X.Instance, obtained by universal.instance(name). Each carries its bound name as a
 -- `val` (storeName, pubsubName, appId, ...), so its operations never take that name again.
 -- For the five split families X.Instance.ReadOnly is a super-trait of X.Instance; `authority`
 -- records which of the two the narrowing produced (AuthorityPreservedByNarrowing).
@@ -1029,7 +1029,7 @@ entity CryptoCapabilityInstance {
 }
 
 entity ActorCapabilityType {
-    -- ActorCapability.Type: bound to one actor type; apply(actorId) narrows to one instance.
+    -- ActorCapability.Type: bound to one actor type; instance(actorId) narrows to one instance.
     universal: ActorCapability
     actor_type: ActorType
     status: CapabilityStatus
@@ -1285,16 +1285,16 @@ rule ConversationCapabilityObtained {
 }
 
 -- ---- Capability Narrowing (universal -> Instance) ----
--- Triggered by universal.apply(name). The companion accessors X.instance(name)
--- (and X.ReadOnly.instance(name) for the split families) apply the ambient capability and return the result;
+-- Triggered by universal.instance(name). The companion accessors X.instance(name)
+-- (and X.ReadOnly.instance(name) for the split families) narrow the ambient capability and return the result;
 -- DaprCapability.state(name) { body }, publish(name), secrets(name), configuration(name),
 -- bindings(name), lock(name), crypto(name), actor(actorType, actorId) and (JVM)
--- conversation(name) read the universal capability and apply it in one step.
--- For the split families X.ReadOnly.apply yields X.Instance.ReadOnly and X overrides it to
+-- conversation(name) read the universal capability and narrow it in one step.
+-- For the split families X.ReadOnly.instance yields X.Instance.ReadOnly and X overrides it to
 -- yield X.Instance, so the instance inherits the universal capability's authority.
 
 rule StateInstanceAcquired {
-    when: StateCapabilityApplied(u, store_name)  -- store_name: StateStoreName
+    when: StateCapabilityNarrowed(u, store_name)  -- store_name: StateStoreName
 
     requires: u.status = open
 
@@ -1303,7 +1303,7 @@ rule StateInstanceAcquired {
 }
 
 rule PublishInstanceAcquired {
-    when: PublishCapabilityApplied(u, pubsub_name)  -- pubsub_name: PubSubName
+    when: PublishCapabilityNarrowed(u, pubsub_name)  -- pubsub_name: PubSubName
 
     requires: u.status = open
 
@@ -1312,7 +1312,7 @@ rule PublishInstanceAcquired {
 }
 
 rule InvokeInstanceAcquired {
-    when: InvokeCapabilityApplied(u, app_id)  -- app_id: AppId
+    when: InvokeCapabilityNarrowed(u, app_id)  -- app_id: AppId
     -- Derived Invoke clients (Invoke.derive) run against the universal InvokeCapability.
 
     requires: u.status = open
@@ -1322,7 +1322,7 @@ rule InvokeInstanceAcquired {
 }
 
 rule SecretsInstanceAcquired {
-    when: SecretsCapabilityApplied(u, store_name)  -- store_name: SecretStoreName
+    when: SecretsCapabilityNarrowed(u, store_name)  -- store_name: SecretStoreName
 
     requires: u.status = open
 
@@ -1331,7 +1331,7 @@ rule SecretsInstanceAcquired {
 }
 
 rule ConfigurationInstanceAcquired {
-    when: ConfigurationCapabilityApplied(u, store_name)  -- store_name: ConfigurationStoreName
+    when: ConfigurationCapabilityNarrowed(u, store_name)  -- store_name: ConfigurationStoreName
 
     requires: u.status = open
 
@@ -1340,7 +1340,7 @@ rule ConfigurationInstanceAcquired {
 }
 
 rule BindingsInstanceAcquired {
-    when: BindingsCapabilityApplied(u, binding_name)  -- binding_name: BindingName
+    when: BindingsCapabilityNarrowed(u, binding_name)  -- binding_name: BindingName
 
     requires: u.status = open
 
@@ -1349,7 +1349,7 @@ rule BindingsInstanceAcquired {
 }
 
 rule LockInstanceAcquired {
-    when: LockCapabilityApplied(u, store_name)  -- store_name: LockStoreName
+    when: LockCapabilityNarrowed(u, store_name)  -- store_name: LockStoreName
 
     requires: u.status = open
 
@@ -1358,7 +1358,7 @@ rule LockInstanceAcquired {
 }
 
 rule CryptoInstanceAcquired {
-    when: CryptoCapabilityApplied(u, component_name)  -- component_name: CryptoComponentName
+    when: CryptoCapabilityNarrowed(u, component_name)  -- component_name: CryptoComponentName
 
     requires: u.status = open
 
@@ -1367,7 +1367,7 @@ rule CryptoInstanceAcquired {
 }
 
 rule ActorTypeAcquired {
-    when: ActorCapabilityApplied(u, actor_type)  -- actor_type: ActorType
+    when: ActorCapabilityNarrowed(u, actor_type)  -- actor_type: ActorType
     -- ActorCapability.forType(actorType) applies the ambient capability and returns the result.
 
     requires: u.status = open
@@ -1377,7 +1377,7 @@ rule ActorTypeAcquired {
 }
 
 rule ActorInstanceAcquired {
-    when: ActorTypeApplied(type_cap, actor_id)  -- actor_id: ActorId
+    when: ActorTypeNarrowed(type_cap, actor_id)  -- actor_id: ActorId
     -- Triggered by typeCapability(actorId). ActorCapability.instance(actorType, actorId) and
     -- ActorCapability.Type.instance(actorId) return the ActorCapability.Instance;
     -- DaprCapability.actor(actorType, actorId) { body } performs both steps and provides it to body.
@@ -1394,7 +1394,7 @@ rule ActorInstanceAcquired {
 }
 
 rule WorkflowInstanceAcquired {
-    when: WorkflowCapabilityApplied(u, instance_id)  -- instance_id: WorkflowInstanceId
+    when: WorkflowCapabilityNarrowed(u, instance_id)  -- instance_id: WorkflowInstanceId
     -- Typically with the id returned by start / startWithId.
 
     requires: u.status = open
@@ -1404,7 +1404,7 @@ rule WorkflowInstanceAcquired {
 }
 
 rule JobsInstanceAcquired {
-    when: JobsCapabilityApplied(u, job_name)  -- job_name: JobName
+    when: JobsCapabilityNarrowed(u, job_name)  -- job_name: JobName
     -- JVM only. Derived Jobs clients (Jobs.derive) run against the universal JobsCapability.
 
     requires: u.status = open
@@ -1414,7 +1414,7 @@ rule JobsInstanceAcquired {
 }
 
 rule ConversationInstanceAcquired {
-    when: ConversationCapabilityApplied(u, component_name)  -- component_name: ConversationComponentName
+    when: ConversationCapabilityNarrowed(u, component_name)  -- component_name: ConversationComponentName
     -- JVM only.
 
     requires: u.status = open
@@ -1561,7 +1561,7 @@ rule ActorInstancesClosedWithType {
 
 -- ---- State Operations ----
 -- Operation rules are stated on the Instance (`cap`). A universal operation op(name, args)
--- behaves as apply(name).op(args) (UniversalDelegatesToInstance). For the split families the
+-- behaves as instance(name).op(args) (UniversalDelegatesToInstance). For the split families the
 -- write operations additionally require full authority: the read-only tiers do not offer them.
 
 rule StateGet {
@@ -2044,8 +2044,8 @@ invariant ScopeContainment {
     -- universal capability, and an open ActorCapability.Instance has an open Type.
     -- Enforced statically by the Scala capture checker, not by a runtime check: all capability
     -- traits extend scala.caps.ExclusiveCapability, DaprCapability's members return X^{this},
-    -- every X.apply / X.ReadOnly.apply returns its Instance ^{this}, ActorCapability.apply
-    -- returns ActorCapability.Type^{this} and Type.apply returns ActorCapability.Instance^{this},
+    -- every X.instance / X.ReadOnly.instance returns its Instance ^{this}, ActorCapability.forType
+    -- returns ActorCapability.Type^{this} and Type.instance returns ActorCapability.Instance^{this},
     -- so each capability's lifetime is bound to its parent.
     for c in StateCapability where c.status = open:
         c.capability.status = open
@@ -2100,8 +2100,8 @@ invariant ScopeContainment {
 }
 
 invariant AuthorityPreservedByNarrowing {
-    -- Narrowing never changes authority. X.ReadOnly.apply(name) yields X.Instance.ReadOnly, and
-    -- X overrides apply to yield X.Instance: a read-only universal capability only produces
+    -- Narrowing never changes authority. X.ReadOnly.instance(name) yields X.Instance.ReadOnly, and
+    -- X overrides instance to yield X.Instance: a read-only universal capability only produces
     -- read-only instances, and a full one only full instances. The ReadOnly tiers are the
     -- super-traits, so a full capability can always be used where a read-only one is required,
     -- never the other way round.
@@ -2226,7 +2226,7 @@ surface DaprCapabilitySurface {
         -- SDK's own exception.
 
     @guarantee UniversalDelegatesToInstance
-        -- Every universal operation op(name, args) behaves exactly as apply(name).op(args).
+        -- Every universal operation op(name, args) behaves exactly as instance(name).op(args).
         -- The operation rules are therefore stated once, on the Instance.
 
     @guarantee PlatformSurface
@@ -2274,7 +2274,7 @@ surface StateCapabilityReadOnlySurface {
     context u: StateCapability where u.authority = read_only
 
     provides:
-        StateCapabilityApplied(u, store_name)
+        StateCapabilityNarrowed(u, store_name)
 
     contracts:
         demands JsonCodec
@@ -2287,7 +2287,7 @@ surface StateCapabilitySurface {
     context u: StateCapability where u.authority = full
 
     provides:
-        StateCapabilityApplied(u, store_name)
+        StateCapabilityNarrowed(u, store_name)
 
     contracts:
         demands JsonCodec
@@ -2347,12 +2347,12 @@ surface StateInstanceSurface {
 -- ---- Publish (dapr4s.publish) ----
 
 surface PublishCapabilitySurface {
-    -- PublishCapability: universal; apply(pubsub_name) -> PublishCapability.Instance^{this}.
+    -- PublishCapability: universal; instance(pubsub_name) -> PublishCapability.Instance^{this}.
     facing _: UserCode
     context u: PublishCapability
 
     provides:
-        PublishCapabilityApplied(u, pubsub_name)
+        PublishCapabilityNarrowed(u, pubsub_name)
 
     contracts:
         demands JsonCodec
@@ -2384,12 +2384,12 @@ surface PublishInstanceSurface {
 -- ---- Invoke (dapr4s.invoke) ----
 
 surface InvokeCapabilitySurface {
-    -- InvokeCapability: universal; apply(app_id) -> InvokeCapability.Instance^{this}.
+    -- InvokeCapability: universal; instance(app_id) -> InvokeCapability.Instance^{this}.
     facing _: UserCode
     context u: InvokeCapability
 
     provides:
-        InvokeCapabilityApplied(u, app_id)
+        InvokeCapabilityNarrowed(u, app_id)
 
     contracts:
         demands JsonCodec
@@ -2421,7 +2421,7 @@ surface SecretsCapabilityReadOnlySurface {
     context u: SecretsCapability where u.authority = read_only
 
     provides:
-        SecretsCapabilityApplied(u, store_name)
+        SecretsCapabilityNarrowed(u, store_name)
 
     contracts:
         fulfils SecretsReadOnlyOperations
@@ -2433,7 +2433,7 @@ surface SecretsCapabilitySurface {
     context u: SecretsCapability where u.authority = full
 
     provides:
-        SecretsCapabilityApplied(u, store_name)
+        SecretsCapabilityNarrowed(u, store_name)
 
     contracts:
         fulfils SecretsReadOnlyOperations
@@ -2480,7 +2480,7 @@ surface ConfigurationCapabilityReadOnlySurface {
     context u: ConfigurationCapability where u.authority = read_only
 
     provides:
-        ConfigurationCapabilityApplied(u, store_name)
+        ConfigurationCapabilityNarrowed(u, store_name)
 
     contracts:
         fulfils ConfigurationReadOnlyOperations
@@ -2492,7 +2492,7 @@ surface ConfigurationCapabilitySurface {
     context u: ConfigurationCapability where u.authority = full
 
     provides:
-        ConfigurationCapabilityApplied(u, store_name)
+        ConfigurationCapabilityNarrowed(u, store_name)
 
     contracts:
         fulfils ConfigurationReadOnlyOperations
@@ -2534,12 +2534,12 @@ surface ConfigurationInstanceSurface {
 -- ---- Bindings (dapr4s.bindings) ----
 
 surface BindingsCapabilitySurface {
-    -- BindingsCapability: universal; apply(binding_name) -> BindingsCapability.Instance^{this}.
+    -- BindingsCapability: universal; instance(binding_name) -> BindingsCapability.Instance^{this}.
     facing _: UserCode
     context u: BindingsCapability
 
     provides:
-        BindingsCapabilityApplied(u, binding_name)
+        BindingsCapabilityNarrowed(u, binding_name)
 
     contracts:
         demands JsonCodec
@@ -2565,12 +2565,12 @@ surface BindingsInstanceSurface {
 -- ---- Lock (dapr4s.lock) ----
 
 surface LockCapabilitySurface {
-    -- LockCapability: universal; apply(store_name) -> LockCapability.Instance^{this}.
+    -- LockCapability: universal; instance(store_name) -> LockCapability.Instance^{this}.
     facing _: UserCode
     context u: LockCapability
 
     provides:
-        LockCapabilityApplied(u, store_name)
+        LockCapabilityNarrowed(u, store_name)
 
     contracts:
         fulfils LockOperations
@@ -2595,12 +2595,12 @@ surface LockInstanceSurface {
 -- ---- Crypto (dapr4s.crypto) ----
 
 surface CryptoCapabilitySurface {
-    -- CryptoCapability: universal; apply(component_name) -> CryptoCapability.Instance^{this}.
+    -- CryptoCapability: universal; instance(component_name) -> CryptoCapability.Instance^{this}.
     facing _: UserCode
     context u: CryptoCapability
 
     provides:
-        CryptoCapabilityApplied(u, component_name)
+        CryptoCapabilityNarrowed(u, component_name)
 
     contracts:
         fulfils CryptoOperations
@@ -2621,12 +2621,12 @@ surface CryptoInstanceSurface {
 -- ---- Actor (dapr4s.actor) ----
 
 surface ActorCapabilitySurface {
-    -- ActorCapability: universal; apply(actor_type) -> ActorCapability.Type^{this}.
+    -- ActorCapability: universal; forType(actor_type) -> ActorCapability.Type^{this}.
     facing _: UserCode
     context u: ActorCapability
 
     provides:
-        ActorCapabilityApplied(u, actor_type)
+        ActorCapabilityNarrowed(u, actor_type)
 
     contracts:
         demands JsonCodec
@@ -2634,7 +2634,7 @@ surface ActorCapabilitySurface {
 }
 
 surface ActorTypeSurface {
-    -- ActorCapability.Type: bound to actor_type; apply(actor_id) -> ActorCapability.Instance^{this}.
+    -- ActorCapability.Type: bound to actor_type; instance(actor_id) -> ActorCapability.Instance^{this}.
     facing _: UserCode
     context t: ActorCapabilityType
 
@@ -2642,7 +2642,7 @@ surface ActorTypeSurface {
         t.actor_type
 
     provides:
-        ActorTypeApplied(t, actor_id)
+        ActorTypeNarrowed(t, actor_id)
 
     contracts:
         demands JsonCodec
@@ -2671,7 +2671,7 @@ surface WorkflowCapabilityReadOnlySurface {
     context u: WorkflowCapability where u.authority = read_only
 
     provides:
-        WorkflowCapabilityApplied(u, instance_id)
+        WorkflowCapabilityNarrowed(u, instance_id)
 
     contracts:
         demands JsonCodec
@@ -2684,7 +2684,7 @@ surface WorkflowCapabilitySurface {
     context u: WorkflowCapability where u.authority = full
 
     provides:
-        WorkflowCapabilityApplied(u, instance_id)
+        WorkflowCapabilityNarrowed(u, instance_id)
 
     contracts:
         demands JsonCodec
@@ -2727,7 +2727,7 @@ surface JobsCapabilityReadOnlySurface {
     context u: JobsCapability where u.authority = read_only
 
     provides:
-        JobsCapabilityApplied(u, job_name)
+        JobsCapabilityNarrowed(u, job_name)
 
     contracts:
         demands JsonCodec
@@ -2740,7 +2740,7 @@ surface JobsCapabilitySurface {
     context u: JobsCapability where u.authority = full
 
     provides:
-        JobsCapabilityApplied(u, job_name)
+        JobsCapabilityNarrowed(u, job_name)
 
     contracts:
         demands JsonCodec
@@ -2778,12 +2778,12 @@ surface JobsInstanceSurface {
 -- ---- Conversation (dapr4s.conversation) ----
 
 surface ConversationCapabilitySurface {
-    -- JVM only. ConversationCapability: universal; apply(component_name) -> ConversationCapability.Instance^{this}.
+    -- JVM only. ConversationCapability: universal; instance(component_name) -> ConversationCapability.Instance^{this}.
     facing _: UserCode
     context u: ConversationCapability
 
     provides:
-        ConversationCapabilityApplied(u, component_name)
+        ConversationCapabilityNarrowed(u, component_name)
 
     contracts:
         fulfils ConversationOperations
