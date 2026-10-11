@@ -4,12 +4,12 @@ import dapr4s.*
 
 /** The plaintext value of a Dapr secret.
   *
-  * Returned by [[SecretsCapability.get]] and [[SecretsCapability.getBulk]]. Wrapping the value in a distinct type
-  * prevents accidental confusion with other string-typed values and makes leakage (e.g. into logs) more visible at call
-  * sites.
+  * Returned by [[SecretsCapability.Instance.ReadOnly.get]] and [[SecretsCapability.Instance.getBulk]]. Wrapping the
+  * value in a distinct type prevents accidental confusion with other string-typed values and makes leakage (e.g. into
+  * logs) more visible at call sites.
   *
   * @see
-  *   [[SecretsCapability.get]], [[SecretsCapability.getBulk]]
+  *   [[SecretsCapability.Instance.ReadOnly.get]], [[SecretsCapability.Instance.getBulk]]
   */
 opaque type SecretValue = String
 

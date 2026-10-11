@@ -37,7 +37,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Secrets: get with @name key"):
     val fake = FakeSecrets()
-    given SecretsCapability = fake
+    given SecretsCapability.Instance = fake
     val client = SecretClient
     assertEquals(client.dbPassword(), Some(SecretValue("sealed")))
     assertEquals(fake.log.toList, List("get|db-password|0"))

@@ -56,8 +56,8 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
   /** Obtain the [[AccessInvokeCapability]] accessor; `invoke(appId)` narrows it to one target app. */
   def invoke: AccessInvokeCapability^{this}
 
-  /** Obtain the [[AccessSecretsCapability]] accessor; `secrets(storeName)` narrows it to one store. */
-  def secrets: AccessSecretsCapability^{this}
+  /** Obtain the universal [[SecretsCapability]] (any store); `secrets(storeName)` narrows it to one store. */
+  def secrets: SecretsCapability^{this}
 
   /** Obtain the [[AccessConfigurationCapability]] accessor; `configuration(storeName)` narrows it to one store. */
   def configuration: AccessConfigurationCapability^{this}
@@ -127,8 +127,8 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
   def invoke[T](body: AccessInvokeCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.invoke.asInstanceOf[AccessInvokeCapability])
 
-  def secrets(storeName: SecretStoreName)[T](body: SecretsCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.secrets(storeName).asInstanceOf[SecretsCapability])
+  def secrets(storeName: SecretStoreName)[T](body: SecretsCapability.Instance ?=> T)(using cap: DaprCapability): T =
+    body(using cap.secrets(storeName).asInstanceOf[SecretsCapability.Instance])
 
   def configuration(storeName: ConfigurationStoreName)[T](body: ConfigurationCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.configuration(storeName).asInstanceOf[ConfigurationCapability])

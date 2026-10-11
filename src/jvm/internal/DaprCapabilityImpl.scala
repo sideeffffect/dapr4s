@@ -51,8 +51,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   def invoke: AccessInvokeCapability^{this} =
     new AccessInvokeCapabilityImpl(this).asInstanceOf[AccessInvokeCapability]
 
-  def secrets: AccessSecretsCapability^{this} =
-    new AccessSecretsCapabilityImpl(this).asInstanceOf[AccessSecretsCapability]
+  def secrets: SecretsCapability^{this} =
+    new SecretsCapabilityUniversalImpl(this).asInstanceOf[SecretsCapability]
 
   def configuration: AccessConfigurationCapability^{this} =
     new AccessConfigurationCapabilityImpl(this).asInstanceOf[AccessConfigurationCapability]
@@ -176,9 +176,14 @@ private[internal] final class AccessInvokeCapabilityImpl(scope: DaprCapabilityIm
     new InvokeCapabilityImpl(scope, appId).asInstanceOf[InvokeCapability]
 
 @scala.caps.assumeSafe
-private[internal] final class AccessSecretsCapabilityImpl(scope: DaprCapabilityImpl) extends AccessSecretsCapability:
-  def apply(storeName: SecretStoreName): SecretsCapability^{this} =
-    new SecretsCapabilityImpl(scope, storeName).asInstanceOf[SecretsCapability]
+private[internal] final class SecretsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends SecretsCapability:
+  def apply(storeName: SecretStoreName): SecretsCapability.Instance^{this} =
+    new SecretsCapabilityImpl(scope, storeName).asInstanceOf[SecretsCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def get(storeName: SecretStoreName, key: SecretKey, metadata: Map[MetadataKey, MetadataValue]): Option[SecretValue] =
+    apply(storeName).get(key, metadata)
+  def getBulk(storeName: SecretStoreName, metadata: Map[MetadataKey, MetadataValue]): Map[SecretKey, SecretValue] =
+    apply(storeName).getBulk(metadata)
 
 @scala.caps.assumeSafe
 private[internal] final class AccessConfigurationCapabilityImpl(scope: DaprCapabilityImpl)

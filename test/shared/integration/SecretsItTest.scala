@@ -25,12 +25,12 @@ class SecretsItTest extends FunSuite, SharedDaprItSuite:
 
   def getSeededReturnsSome(using DaprCapability): Unit =
     DaprCapability.secrets(ItNames.SecretStore):
-      assertEquals(SecretsCapability.get(ItNames.SecretKeyA), Some(ItNames.SecretValueA))
-      assertEquals(SecretsCapability.get(ItNames.SecretKeyB), Some(ItNames.SecretValueB))
+      assertEquals(SecretsCapability.Instance.get(ItNames.SecretKeyA), Some(ItNames.SecretValueA))
+      assertEquals(SecretsCapability.Instance.get(ItNames.SecretKeyB), Some(ItNames.SecretValueB))
 
   def getBulkContainsSeeded(using DaprCapability): Unit =
     DaprCapability.secrets(ItNames.SecretStore):
-      val bulk = SecretsCapability.getBulk()
+      val bulk = SecretsCapability.Instance.getBulk()
       // local.file getBulk nests {secretName: {key: value}}; dapr4s flattens to compound keys.
       assert(
         bulk.exists((k, v) => k.value.contains(ItNames.SecretKeyA.value) && v == ItNames.SecretValueA),
@@ -43,10 +43,10 @@ class SecretsItTest extends FunSuite, SharedDaprItSuite:
 
   def getMissingKeyThrows(using DaprCapability): Unit =
     DaprCapability.secrets(ItNames.SecretStore):
-      val attempt = scala.util.Try(SecretsCapability.get(SecretKey(ItNames.fresh("absent"))))
+      val attempt = scala.util.Try(SecretsCapability.Instance.get(SecretKey(ItNames.fresh("absent"))))
       assert(attempt.isFailure, s"expected a missing secret to throw, got: $attempt")
 
   def getFromUnknownStoreThrows(using DaprCapability): Unit =
     DaprCapability.secrets(SecretStoreName("nonexistent-store")):
-      val attempt = scala.util.Try(SecretsCapability.get(SecretKey("any-key")))
+      val attempt = scala.util.Try(SecretsCapability.Instance.get(SecretKey("any-key")))
       assert(attempt.isFailure, s"expected an unknown store to throw, got: $attempt")

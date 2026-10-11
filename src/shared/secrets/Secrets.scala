@@ -6,15 +6,15 @@ import dapr4s.*
 import dapr4s.secrets.*
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.SecretsCapability]] reader facades from a trait.
+/** Derivation of [[SecretsCapability.Instance]] reader facades from a trait.
   *
   * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.SecretKey]]; the secret store is fixed
-  * by the per-call `SecretsCapability`. Each method takes no request body, an optional
+  * by the per-call `SecretsCapability.Instance`. Each method takes no request body, an optional
   * `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Option[SecretValue]`.
   *
   * {{{
   *   trait Secrets:
-  *     @name("db-password") def dbPassword()(using SecretsCapability): Option[SecretValue]
+  *     @name("db-password") def dbPassword()(using SecretsCapability.Instance.ReadOnly): Option[SecretValue]
   *   lazy val Secrets: Secrets = Secrets.derive[Secrets]
   * }}}
   */
@@ -25,11 +25,11 @@ object Secrets:
     *
     * Each method's Scala name is the [[dapr4s.SecretKey]] it reads — `@name("db-password") def dbPassword` reads the
     * secret `"db-password"` — overridable per method with [[name `@name`]]. The secret store itself is fixed by the
-    * per-call [[dapr4s.SecretsCapability]], so `derive` takes no argument.
+    * per-call [[SecretsCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait Secrets:
-    *     @name("db-password") def dbPassword()(using SecretsCapability): Option[SecretValue]
+    *     @name("db-password") def dbPassword()(using SecretsCapability.Instance.ReadOnly): Option[SecretValue]
     *   lazy val Secrets: Secrets = Secrets.derive[Secrets]
     *
     *   DaprCapability.secrets(SecretStoreName("vault")) {
@@ -43,7 +43,7 @@ object Secrets:
     import quotes.reflect.*
     val engine = "Secrets"
     val metadataTpe = TypeRepr.of[Map[MetadataKey, MetadataValue]]
-    val capTpe = TypeRepr.of[SecretsCapability]
+    val capTpe = TypeRepr.of[SecretsCapability.Instance.ReadOnly]
     val secretValueOpt = TypeRepr.of[Option[SecretValue]]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
@@ -65,8 +65,8 @@ object Secrets:
 
       val capExpr = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide a SecretsCapability."))
-        .asExprOf[SecretsCapability]
+        .getOrElse(fail("the `using` clause must provide a SecretsCapability.Instance.ReadOnly."))
+        .asExprOf[SecretsCapability.Instance.ReadOnly]
 
       val nm = MacroSupport.wireName(origSym)
       val metaExpr =

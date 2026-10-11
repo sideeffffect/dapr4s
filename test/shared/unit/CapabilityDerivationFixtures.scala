@@ -71,11 +71,11 @@ final class FakePubSub extends PublishCapability:
 // ---- Secrets ----------------------------------------------------------------
 
 trait SecretClient:
-  @name("db-password") def dbPassword()(using SecretsCapability): Option[SecretValue]
+  @name("db-password") def dbPassword()(using SecretsCapability.Instance.ReadOnly): Option[SecretValue]
 lazy val SecretClient: SecretClient = Secrets.derive[SecretClient]
 
 @scala.caps.assumeSafe
-final class FakeSecrets extends SecretsCapability:
+final class FakeSecrets extends SecretsCapability.Instance:
   val log: mutable.ListBuffer[String]  = mutable.ListBuffer.empty
   val storeName: SecretStoreName       = SecretStoreName("s")
   def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue]): Option[SecretValue] =

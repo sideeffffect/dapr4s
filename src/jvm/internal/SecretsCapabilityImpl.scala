@@ -12,7 +12,7 @@ import NullOps.*
 private[internal] final class SecretsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: SecretStoreName,
-) extends SecretsCapability:
+) extends SecretsCapability.Instance:
 
   import SecretsCapabilityImpl.toJavaMeta
 

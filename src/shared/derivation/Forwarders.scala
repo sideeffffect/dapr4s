@@ -108,7 +108,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Secrets --------------------------------------------------------------
 
   def secretsGet(
-      cap: SecretsCapability,
+      cap: SecretsCapability.Instance.ReadOnly,
       key: SecretKey,
       metadata: Map[MetadataKey, MetadataValue],
   ): Option[SecretValue] =
