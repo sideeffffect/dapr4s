@@ -15,7 +15,7 @@ import dapr4styped.daprDapr.typesConfigurationSubscribeConfigurationResponseMod.
 private[internal] final class ConfigurationCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: ConfigurationStoreName,
-) extends ConfigurationCapability:
+) extends ConfigurationCapability.Instance:
 
   import ConfigurationCapabilityImpl.*
 

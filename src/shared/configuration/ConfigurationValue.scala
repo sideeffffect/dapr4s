@@ -4,11 +4,12 @@ import dapr4s.*
 
 /** The value of a configuration item.
   *
-  * Returned as part of [[ConfigurationItem]] from [[ConfigurationCapability.get]] and configuration subscriptions.
-  * Wrapping the value in a distinct type prevents accidental confusion with other string-typed values at call sites.
+  * Returned as part of [[ConfigurationItem]] from [[ConfigurationCapability.Instance.ReadOnly.get]] and configuration
+  * subscriptions. Wrapping the value in a distinct type prevents accidental confusion with other string-typed values at
+  * call sites.
   *
   * @see
-  *   [[ConfigurationItem]], [[ConfigurationCapability.get]]
+  *   [[ConfigurationItem]], [[ConfigurationCapability.Instance.ReadOnly.get]]
   */
 opaque type ConfigurationValue = String
 

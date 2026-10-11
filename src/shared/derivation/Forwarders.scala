@@ -117,7 +117,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Configuration --------------------------------------------------------
 
   def configGet(
-      cap: ConfigurationCapability,
+      cap: ConfigurationCapability.Instance.ReadOnly,
       key: ConfigurationKey,
       metadata: Map[MetadataKey, MetadataValue],
   ): Option[ConfigurationItem] =

@@ -15,7 +15,7 @@ import NullOps.*
 private[internal] final class ConfigurationCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: ConfigurationStoreName,
-) extends ConfigurationCapability:
+) extends ConfigurationCapability.Instance:
 
   import ConfigurationCapabilityImpl.*
 

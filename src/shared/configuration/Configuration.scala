@@ -6,16 +6,16 @@ import dapr4s.*
 import dapr4s.configuration.*
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.ConfigurationCapability]] reader facades from a trait.
+/** Derivation of [[ConfigurationCapability.Instance]] reader facades from a trait.
   *
   * The method name maps verbatim (override with [[name `@name`]]) to a single [[dapr4s.ConfigurationKey]]; the config
-  * store is fixed by the per-call `ConfigurationCapability`. Each method takes no request body, an optional
+  * store is fixed by the per-call `ConfigurationCapability.Instance`. Each method takes no request body, an optional
   * `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Option[ConfigurationItem]` (the entry for that one
   * key).
   *
   * {{{
   *   trait Config:
-  *     @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigurationItem]
+  *     @name("feature-x") def featureX()(using ConfigurationCapability.Instance.ReadOnly): Option[ConfigurationItem]
   *   lazy val Config: Config = Configuration.derive[Config]
   * }}}
   */
@@ -26,11 +26,11 @@ object Configuration:
     *
     * Each method's Scala name is the single [[dapr4s.ConfigurationKey]] it reads — `def featureX` reads the config
     * entry `"featureX"` — overridable per method with [[name `@name`]]. The config store itself is fixed by the
-    * per-call [[dapr4s.ConfigurationCapability]], so `derive` takes no argument.
+    * per-call [[ConfigurationCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait AppConfig:
-    *     @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigurationItem]
+    *     @name("feature-x") def featureX()(using ConfigurationCapability.Instance.ReadOnly): Option[ConfigurationItem]
     *   lazy val AppConfig: AppConfig = Configuration.derive[AppConfig]
     *
     *   DaprCapability.configuration(ConfigurationStoreName("appconfig")) {
@@ -44,7 +44,7 @@ object Configuration:
     import quotes.reflect.*
     val engine = "Configuration"
     val metadataTpe = TypeRepr.of[Map[MetadataKey, MetadataValue]]
-    val capTpe = TypeRepr.of[ConfigurationCapability]
+    val capTpe = TypeRepr.of[ConfigurationCapability.Instance.ReadOnly]
     val configItemOpt = TypeRepr.of[Option[ConfigurationItem]]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
@@ -66,8 +66,8 @@ object Configuration:
 
       val capExpr = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide a ConfigurationCapability."))
-        .asExprOf[ConfigurationCapability]
+        .getOrElse(fail("the `using` clause must provide a ConfigurationCapability.Instance.ReadOnly."))
+        .asExprOf[ConfigurationCapability.Instance.ReadOnly]
 
       val nm = MacroSupport.wireName(origSym)
       val metaExpr =

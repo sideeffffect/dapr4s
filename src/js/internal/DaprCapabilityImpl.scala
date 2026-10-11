@@ -79,8 +79,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   def secrets: SecretsCapability^{this} =
     new SecretsCapabilityUniversalImpl(this).asInstanceOf[SecretsCapability]
 
-  def configuration: AccessConfigurationCapability^{this} =
-    new AccessConfigurationCapabilityImpl(this).asInstanceOf[AccessConfigurationCapability]
+  def configuration: ConfigurationCapability^{this} =
+    new ConfigurationCapabilityUniversalImpl(this).asInstanceOf[ConfigurationCapability]
 
   def bindings: AccessBindingsCapability^{this} =
     new AccessBindingsCapabilityImpl(this).asInstanceOf[AccessBindingsCapability]
@@ -254,10 +254,23 @@ private[internal] final class SecretsCapabilityUniversalImpl(scope: DaprCapabili
     apply(storeName).getBulk(metadata)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessConfigurationCapabilityImpl(scope: DaprCapabilityImpl)
-    extends AccessConfigurationCapability:
-  def apply(storeName: ConfigurationStoreName): ConfigurationCapability^{this} =
-    new ConfigurationCapabilityImpl(scope, storeName).asInstanceOf[ConfigurationCapability]
+private[internal] final class ConfigurationCapabilityUniversalImpl(scope: DaprCapabilityImpl)
+    extends ConfigurationCapability:
+  def apply(storeName: ConfigurationStoreName): ConfigurationCapability.Instance^{this} =
+    new ConfigurationCapabilityImpl(scope, storeName).asInstanceOf[ConfigurationCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def get(
+      storeName: ConfigurationStoreName,
+      keys: Seq[ConfigurationKey],
+      metadata: Map[MetadataKey, MetadataValue],
+  ): Map[ConfigurationKey, ConfigurationItem] =
+    apply(storeName).get(keys, metadata)
+  def subscribe(
+      storeName: ConfigurationStoreName,
+      keys: Seq[ConfigurationKey],
+      metadata: Map[MetadataKey, MetadataValue],
+  )(onChange: ConfigurationUpdate => Unit): AutoCloseable^{this} =
+    apply(storeName).subscribe(keys, metadata)(onChange)
 
 @scala.caps.assumeSafe
 private[internal] final class AccessBindingsCapabilityImpl(scope: DaprCapabilityImpl) extends AccessBindingsCapability:

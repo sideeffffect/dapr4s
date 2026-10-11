@@ -4,7 +4,8 @@ import dapr4s.*
 
 import language.experimental.safe
 
-/** A single configuration item returned by [[ConfigurationCapability.get]] or delivered via subscription.
+/** A single configuration item returned by [[ConfigurationCapability.Instance.ReadOnly.get]] or delivered via
+  * subscription.
   *
   * @param key
   *   The [[ConfigurationKey]] identifying this item.

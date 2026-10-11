@@ -86,11 +86,11 @@ final class FakeSecrets extends SecretsCapability.Instance:
 // ---- Configuration ----------------------------------------------------------
 
 trait ConfigurationClient:
-  @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigurationItem]
+  @name("feature-x") def featureX()(using ConfigurationCapability.Instance.ReadOnly): Option[ConfigurationItem]
 lazy val ConfigurationClient: ConfigurationClient = Configuration.derive[ConfigurationClient]
 
 @scala.caps.assumeSafe
-final class FakeConfig extends ConfigurationCapability:
+final class FakeConfig extends ConfigurationCapability.Instance:
   val log: mutable.ListBuffer[String]  = mutable.ListBuffer.empty
   val storeName: ConfigurationStoreName       = ConfigurationStoreName("c")
   def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue]): Map[ConfigurationKey, ConfigurationItem] =

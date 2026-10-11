@@ -59,8 +59,8 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
   /** Obtain the universal [[SecretsCapability]] (any store); `secrets(storeName)` narrows it to one store. */
   def secrets: SecretsCapability^{this}
 
-  /** Obtain the [[AccessConfigurationCapability]] accessor; `configuration(storeName)` narrows it to one store. */
-  def configuration: AccessConfigurationCapability^{this}
+  /** Obtain the universal [[ConfigurationCapability]] (any store); `configuration(storeName)` narrows it to one store. */
+  def configuration: ConfigurationCapability^{this}
 
   /** Obtain the [[AccessBindingsCapability]] accessor; `bindings(bindingName)` narrows it to one binding. */
   def bindings: AccessBindingsCapability^{this}
@@ -130,8 +130,8 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
   def secrets(storeName: SecretStoreName)[T](body: SecretsCapability.Instance ?=> T)(using cap: DaprCapability): T =
     body(using cap.secrets(storeName).asInstanceOf[SecretsCapability.Instance])
 
-  def configuration(storeName: ConfigurationStoreName)[T](body: ConfigurationCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.configuration(storeName).asInstanceOf[ConfigurationCapability])
+  def configuration(storeName: ConfigurationStoreName)[T](body: ConfigurationCapability.Instance ?=> T)(using cap: DaprCapability): T =
+    body(using cap.configuration(storeName).asInstanceOf[ConfigurationCapability.Instance])
 
   def bindings(bindingName: BindingName)[T](body: BindingsCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.bindings(bindingName).asInstanceOf[BindingsCapability])

@@ -44,7 +44,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Configuration: single-key get returns Option[ConfigurationItem]"):
     val fake = FakeConfig()
-    given ConfigurationCapability = fake
+    given ConfigurationCapability.Instance = fake
     val client = ConfigurationClient
     assertEquals(client.featureX().map(_.value), Some(ConfigurationValue("v")))
     assertEquals(fake.log.toList, List("get|feature-x|0"))
