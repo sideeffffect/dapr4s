@@ -39,8 +39,9 @@ Both must stay in sync with the code at all times.
   (`src/jvm/internal/` and `src/js/internal/` are both `dapr4s.internal`).
   Each capability family lives in its own package `dapr4s.<family>` under
   `src/<platform>/<family>/` (`state`, `publish`, `invoke`, `secrets`, `configuration`,
-  `bindings`, `lock`, `actor`, `workflow`, `crypto`, `jobs`, `conversation`): the capability +
-  `Access*Capability` accessor traits, the family's value types, its inbound route type and its
+  `bindings`, `lock`, `actor`, `workflow`, `crypto`, `jobs`, `conversation`): the universal
+  capability trait (with its `Instance`/`ReadOnly` tiers in its companion — see "Capability
+  family shape" below), the family's value types, its inbound route type and its
   derivation macros. Cross-cutting macro infrastructure (`MacroSupport`, `Forwarders`, `@name`,
   annotations) stays in `dapr4s.derivation`; cross-cutting types (`DaprCapability`, `Dapr`,
   `DaprConfig`, `DaprApp`, `JsonCodec`, `HttpMethod`, exceptions, `src/shared/optypes/`) stay in
@@ -53,7 +54,12 @@ Both must stay in sync with the code at all times.
   classes (`scripts/embed-st-facades.sh`), so consumers resolve everything from Maven Central.
 - **Build tool**: Scala CLI (`project.scala` using directives). **scala-cli >= 1.13.0 is required
   for the Scala.js build** (munit 1.3.0 JS needs Scala.js IR 1.21; the JS integration harness
-  wants >= 1.14). Run unit tests with `scala-cli test . --test-only 'dapr4s.test.unit.*'`.
+  wants >= 1.14). **CI pins scala-cli to exactly 1.14.0** (`.github/workflows/ci.yml`): newer
+  scala-cli (1.17+/1.18, Scala.js 1.22 linker) cannot link `js.async`/`js.await` on Wasm without a
+  JSPI switch that scala-cli does not expose ("Uses an async block without JSPI support in
+  WebAssembly"), so the Wasm integration leg fails. Use 1.14.0 locally for the JS legs too; unpin
+  only when scala-cli exposes that switch. Run unit tests with
+  `scala-cli test . --test-only 'dapr4s.test.unit.*'`.
 - **JVM**: Zulu 25 (`//> using jvm "zulu:25.0.3"` or later). JDK 25 is required for stable
   virtual thread support (no carrier pinning on `synchronized`).
 - **Compiler flags** (all active):
@@ -194,6 +200,34 @@ Specific rules currently active in this codebase:
   - **Store names**: `StateStoreName` (`DaprCapability.state`) vs. `LockStoreName` (`DaprCapability.lock`) — distinct Dapr components with distinct YAML. (Mirrors the existing `ConfigurationStoreName`/`SecretStoreName` split.)
   - **State keys**: `StateStoreKey` (app-level `StateCapability`) vs. `ActorStateKey` (per-instance `ActorContext`/`ActorState`).
 
+### Capability family shape (universal + Instance + ReadOnly)
+
+Every building block follows the same shape (design rationale: `docs/CAPABILITY-SPLITS.md` §11;
+overview: `docs/DESIGN.md` "Capability Hierarchy"). Keep new members and new families on it:
+
+- The principal capability `X` is **universal** — not bound to any name; each method takes the
+  name (`StateCapability.save(storeName, key, value)`, `InvokeCapability.invoke(appId, ...)`).
+  `DaprCapability.x` returns it (`def state: StateCapability^{this}`).
+- `X.Instance` (in `X`'s companion) is bound to one name via `X.apply(name)`, carries it as a
+  `val` (`storeName`, `appId`, ...) and its methods do not take it.
+- Only families with a read-only subset — State, Secrets, Configuration, Jobs, Workflow — also
+  have `X.ReadOnly` (super-trait of `X`) and `X.Instance.ReadOnly` (super-trait of `X.Instance`).
+  `X.ReadOnly.apply(name)` returns `X.Instance.ReadOnly`; `X` overrides it **covariantly** to
+  return `X.Instance`. Never add an `apply` that returns a wider tier than its receiver — narrowing
+  by name must never re-widen authority. Do not add `ReadOnly` tiers to Publish, Invoke, Bindings,
+  Lock, Crypto, Actor or Conversation (no read-only subset).
+- Actor is two-level: `ActorCapability` → `apply(actorType)` → `ActorCapability.Type` →
+  `apply(actorId)` → `ActorCapability.Instance`.
+- Every interface's companion object forwards **all** of its methods (inherited ones included)
+  from a `using` capability, plus the `instance(name) { ... }` transformers (`X.instance`,
+  `X.ReadOnly.instance`; actor: `ActorCapability.forType(t) { ... }`,
+  `ActorCapability.instance(t, id) { ... }`, `ActorCapability.Type.instance(id) { ... }`).
+- Derivation macros require the **narrowest** tier the generated member uses: read-only getters
+  need only `X.Instance.ReadOnly` (State/Secrets/Configuration) or `JobsCapability.ReadOnly` (jobs);
+  Invoke/Workflow/Jobs derivation call the universal capability directly.
+- There are no `Access*Capability` traits, no `WorkflowInstanceCapability`/`ActorTypeCapability`/
+  `JobCapability`, and no `WorkflowInstanceId` extension methods any more — do not reintroduce them.
+
 ### SDK interop boundary (Java on JVM, @dapr/dapr on JS)
 Everything in the two `internal/` trees is marked `@scala.caps.assumeSafe`. There are two
 platform walls behind the same boundary:
@@ -232,7 +266,7 @@ THE pattern (jobs/conversation are the worked example):
   forked per platform without duplicating the whole shared surface.
 - Everything reachable only from that surface moves wholly under `src/jvm/` (same family
   packages `dapr4s.jobs`/`dapr4s.conversation` as their shared parts):
-  `AccessJobsCapability`/`JobCapability` and `AccessConversationCapability`/`ConversationCapability`
+  `JobsCapability` (+ its `ReadOnly`/`Instance` tiers) and `ConversationCapability` (+ `Instance`)
   (`src/jvm/jobs/JobsCapability.scala`, `src/jvm/conversation/ConversationCapability.scala`),
   their models (`src/jvm/jobs/JobsModels.scala`, `src/jvm/conversation/ConversationModels.scala`),
   their impls, the `Jobs.derive` engine (`src/jvm/jobs/Jobs.scala`), and the jobs runtime forwarders
@@ -329,7 +363,8 @@ output for parse errors and fails loudly to catch this.
 
 Four legs, exactly as CI runs them (`.github/workflows/ci.yml`, one `test` matrix job with a
 `jvm` and a `js` include entry — a future Scala Native port is a new include entry, not a new
-job; each leg runs compile + unit tests + integration tests):
+job; each leg runs compile + unit tests + integration tests; both legs use scala-cli pinned to
+1.14.0):
 
 - **JVM unit tests** (no Docker): `scala-cli test . --test-only 'dapr4s.test.unit.*'`. Shared
   suites live in `test/shared/unit/` (`JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`,
@@ -354,7 +389,8 @@ job; each leg runs compile + unit tests + integration tests):
   mandatory and load-bearing: the integration suites contain orphan `js.await`, and the plain-JS
   linker **wedges on orphan-await test sources** (hangs, no error) — they must not even be
   linked on this leg.
-- **Scala.js integration tests** (Docker + Node >= 25 first on PATH + the ST facades +
+- **Scala.js integration tests** (scala-cli **1.14.0** — the CI pin, newer versions cannot link
+  `js.async` on Wasm, see Scala stack — + Docker + Node >= 25 first on PATH + the ST facades +
   `npm ci`): `scripts/test-js-integration.sh` runs `--test-only 'dapr4s.test.integration.*'` on the
   **Wasm+JSPI backend**. The suites themselves are cross-platform and live in `test/shared/integration`;
   `test/js/integration/` holds only the JS bring-up (the per-platform `SharedDaprItSuite` /
