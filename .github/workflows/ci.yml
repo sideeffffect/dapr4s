@@ -119,6 +119,7 @@ jobs:
         # testcontainers-node logs container lifecycle (pull/start/wait) under DEBUG; it is the only
         # visibility into a JS-leg hang, which otherwise prints nothing. Ignored by the JVM leg.
         DEBUG: testcontainers*
+        SCALA_CLI: ${{ github.workspace }}/scripts/scala-cli-jvm.sh
         NODE_EXTRA_OPTIONS: --report-on-signal --report-signal=SIGUSR2 --report-directory=/tmp/node-reports
       run: ${{ matrix.integration-command }}
     - name: Diagnostics after a failed integration run
