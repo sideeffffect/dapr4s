@@ -3,7 +3,7 @@
 --
 -- Scope: Safe Scala capability library wrapping DAPR building blocks
 -- Includes: DaprRuntime lifecycle (Dapr(config).run + serve),
---           the capability tiers (CAPABILITY-SPLITS, "Design C" + read-only-vs-rest splits):
+--           the capability tiers (CAPABILITY-SPLITS §11: universal + Instance + ReadOnly):
 --             DaprCapability (root scope) exposes one universal capability per family
 --               (DaprCapability.state, .publish, ...); a universal capability is bound to no
 --               name, so its operations take the store / pubsub / app id / ... per call;
