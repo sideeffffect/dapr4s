@@ -20,9 +20,8 @@ narrowed instances, plus `DaprCapabilityImpl`) live in `dapr4s.internal` and are
 
 ## Root
 
-`DaprCapability` is the entry capability. It gets its JVM-only members from `DaprCapabilityPlatform`. On the JVM,
-`DaprCapabilityPlatform` declares `jobs` and `conversation` (with the self-type `this: DaprCapability =>`). On
-Scala.js, `DaprCapabilityPlatform` is empty, so these members do not exist at compile time.
+`DaprCapability` is the entry capability. It gets `jobs` and `conversation` from `DaprCapabilityPlatform`
+(self-type `this: DaprCapability =>`). This document shows the JVM build only.
 
 ```mermaid
 classDiagram
@@ -42,16 +41,13 @@ classDiagram
         +workflow WorkflowCapability^this
         +crypto CryptoCapability^this
     }
-    class DaprCapabilityPlatform_JVM["DaprCapabilityPlatform (JVM)"]
-    <<trait>> DaprCapabilityPlatform_JVM
-    DaprCapabilityPlatform_JVM : +jobs JobsCapability^this  [JVM only]
-    DaprCapabilityPlatform_JVM : +conversation ConversationCapability^this  [JVM only]
-    class DaprCapabilityPlatform_JS["DaprCapabilityPlatform (Scala.js, empty)"]
-    <<trait>> DaprCapabilityPlatform_JS
+    class DaprCapabilityPlatform
+    <<trait>> DaprCapabilityPlatform
+    DaprCapabilityPlatform : +jobs JobsCapability^this
+    DaprCapabilityPlatform : +conversation ConversationCapability^this
 
     ExclusiveCapability <|-- DaprCapability
-    DaprCapabilityPlatform_JVM <|-- DaprCapability : JVM build
-    DaprCapabilityPlatform_JS <|-- DaprCapability : JS build
+    DaprCapabilityPlatform <|-- DaprCapability
 
     DaprCapability ..> StateCapability
     DaprCapability ..> PublishCapability
@@ -63,14 +59,14 @@ classDiagram
     DaprCapability ..> ActorCapability
     DaprCapability ..> WorkflowCapability
     DaprCapability ..> CryptoCapability
-    DaprCapabilityPlatform_JVM ..> JobsCapability
-    DaprCapabilityPlatform_JVM ..> ConversationCapability
+    DaprCapabilityPlatform ..> JobsCapability
+    DaprCapabilityPlatform ..> ConversationCapability
 ```
 
 Companion `DaprCapability` (extends `DaprCapabilityCompanionPlatform`) has scoped forwarders that run a body with
 the narrowed capability as a context parameter: `state(storeName)`, `publish(pubsubName)`, `invoke`,
 `secrets(storeName)`, `configuration(storeName)`, `bindings(bindingName)`, `lock(storeName)`,
-`actor(actorType, actorId)`, `workflow`, `crypto(componentName)`; JVM only: `jobs`, `conversation(componentName)`.
+`actor(actorType, actorId)`, `workflow`, `crypto(componentName)`, `jobs`, `conversation(componentName)`.
 
 ## State
 
@@ -208,9 +204,7 @@ Companions: `ConfigurationCapability` (`instance(storeName)`, `get`, `subscribe`
 `ConfigurationCapability.ReadOnly` (`instance(storeName)`, `get`), `ConfigurationCapability.Instance` (`get`,
 `subscribe`), `ConfigurationCapability.Instance.ReadOnly` (`get`).
 
-## Jobs (JVM only)
-
-Lives in `src/jvm/jobs/`. It does not exist in the Scala.js artifact.
+## Jobs
 
 ```mermaid
 classDiagram
@@ -469,9 +463,7 @@ classDiagram
 Companions: `InvokeCapability` (`instance(appId)`, both `invoke` overloads), `InvokeCapability.Instance` (both
 `invoke` overloads).
 
-## Conversation (JVM only)
-
-Lives in `src/jvm/conversation/`. It does not exist in the Scala.js artifact.
+## Conversation
 
 ```mermaid
 classDiagram

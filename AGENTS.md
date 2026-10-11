@@ -430,7 +430,8 @@ skills.
 `docs/CAPABILITY-HIERARCHY.md` holds one Mermaid `classDiagram` per capability family (plus the root
 `DaprCapability` and the server-side actor/workflow contexts), showing every interface — universal
 `XCapability`, `X.ReadOnly`, `X.Instance`, `X.Instance.ReadOnly`, actor `Type`/`Instance` — with its
-members, inheritance and `apply` narrowing. **Keep it in sync with the code**: any change that adds,
+members, inheritance and `apply` narrowing. It shows the JVM build only (Scala.js is left out for
+simplicity). **Keep it in sync with the code**: any change that adds,
 removes, renames or re-parents a capability trait, or changes a capability member's signature, must
 update the matching diagram in the same commit, and the diagrams must still render (`mmdc`).
 
