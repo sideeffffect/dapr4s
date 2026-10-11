@@ -118,7 +118,7 @@ object ActorContext:
 
 /** Existential wrapper for a single actor method handler.
   *
-  * Follows the same `AnyRef`-erasure pattern as [[InvokeRoute]].
+  * Follows the same `AnyRef`-erasure pattern as [[dapr4s.invoke.InvokeRoute]].
   *
   * Use [[ActorMethodRoute.apply]] to construct instances.
   */
@@ -133,7 +133,7 @@ sealed abstract class ActorMethodRoute:
 
 /** Factory for [[ActorMethodRoute]] values.
   *
-  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[InvokeRoute]].
+  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[dapr4s.invoke.InvokeRoute]].
   */
 @scala.caps.assumeSafe
 object ActorMethodRoute:
@@ -159,7 +159,7 @@ object ActorMethodRoute:
 /** Existential wrapper for a reminder callback handler.
   *
   * Registered in [[ActorRoutes.reminders]]; dispatched by the framework when the Dapr sidecar delivers a reminder
-  * callback for this actor instance. Follows the same `AnyRef`-erasure pattern as [[Subscription]].
+  * callback for this actor instance. Follows the same `AnyRef`-erasure pattern as [[dapr4s.publish.Subscription]].
   *
   * '''Dual:''' the handler counterpart of [[ActorContext.registerReminder]] — a reminder scheduled under a
   * [[ReminderName]] with payload `T` fires into the `ActorReminderRoute` for that same name, decoding `T`. (Derivation
@@ -177,7 +177,7 @@ sealed abstract class ActorReminderRoute:
 
 /** Factory for [[ActorReminderRoute]] values.
   *
-  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[Subscription]].
+  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[dapr4s.publish.Subscription]].
   */
 @scala.caps.assumeSafe
 object ActorReminderRoute:
@@ -215,7 +215,7 @@ sealed abstract class ActorTimerRoute:
 
 /** Factory for [[ActorTimerRoute]] values.
   *
-  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[Subscription]].
+  * WHY @assumeSafe: same capturing-lambda boundary pattern as [[dapr4s.publish.Subscription]].
   */
 @scala.caps.assumeSafe
 object ActorTimerRoute:
@@ -304,7 +304,8 @@ final class ActorDefinition(
 /** Factory for [[ActorDefinition]] values.
   *
   * WHY @assumeSafe: the build lambda captures DAPR capabilities. We store it as `AnyRef` (`.asInstanceOf[AnyRef]`) to
-  * erase its CC capture set — the same pattern used by [[Subscription]], [[InvokeRoute]], and [[ActorMethodRoute]].
+  * erase its CC capture set — the same pattern used by [[dapr4s.publish.Subscription]], [[dapr4s.invoke.InvokeRoute]],
+  * and [[ActorMethodRoute]].
   */
 @scala.caps.assumeSafe
 object ActorDefinition:

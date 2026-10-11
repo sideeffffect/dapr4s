@@ -7,11 +7,12 @@ import dapr4s.workflow.*
 import scala.concurrent.duration.FiniteDuration
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.WorkflowContext]] external-event waiters from a trait.
+/** Derivation of [[dapr4s.workflow.WorkflowContext]] external-event waiters from a trait.
   *
-  * The method name maps verbatim (override with [[name `@name`]]) to an [[dapr4s.EventName]]. Each method returns the
-  * captured `Task[T]^{ctx}` produced by [[dapr4s.WorkflowContext.waitForExternalEvent]]; an optional
-  * `timeout: FiniteDuration` parameter selects the timed overload.
+  * The method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to an
+  * [[dapr4s.workflow.EventName]]. Each method returns the captured `Task[T]^{ctx}` produced by
+  * [[dapr4s.workflow.WorkflowContext.waitForExternalEvent]]; an optional `timeout: FiniteDuration` parameter selects
+  * the timed overload.
   *
   * Because the returned `Task` captures the per-call `WorkflowContext`, the trait method must annotate its result with
   * that context's capture set, e.g.:
@@ -26,9 +27,9 @@ object WorkflowEvents:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.EventName]] it waits for — `def approval` waits for the external event
-    * `"approval"` — overridable per method with [[name `@name`]]. The workflow whose event is awaited is fixed by the
-    * per-call [[dapr4s.WorkflowContext]], so `derive` takes no argument.
+    * Each method's Scala name is the [[dapr4s.workflow.EventName]] it waits for — `def approval` waits for the external
+    * event `"approval"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The workflow whose event is
+    * awaited is fixed by the per-call [[dapr4s.workflow.WorkflowContext]], so `derive` takes no argument.
     *
     * {{{
     *   trait Events:

@@ -6,13 +6,14 @@ import dapr4s.*
 import dapr4s.workflow.*
 import scala.quoted.*
 
-/** Server-side reification of workflow activities: turn a plain class into registrable [[dapr4s.WorkflowActivity]]
-  * values.
+/** Server-side reification of workflow activities: turn a plain class into registrable
+  * [[dapr4s.workflow.WorkflowActivity]] values.
   *
   * `derive[C]` inspects class `C`'s methods that take a `(using DaprCapability)` clause and builds one
-  * [[dapr4s.WorkflowActivity]] per method, ready to drop into [[dapr4s.DaprApp.activities]]. The method name maps
-  * verbatim (override with [[name `@name`]]); each activity is registered under a stable name derived from the class
-  * and method (`<fully-qualified-class>#<method>`), matched by [[WorkflowActivityCalls]] on the calling side.
+  * [[dapr4s.workflow.WorkflowActivity]] per method, ready to drop into [[dapr4s.DaprApp.activities]]. The method name
+  * maps verbatim (override with [[dapr4s.derivation.name `@name`]]); each activity is registered under a stable name
+  * derived from the class and method (`<fully-qualified-class>#<method>`), matched by [[WorkflowActivityCalls]] on the
+  * calling side.
   *
   * This removes the per-activity `extends WorkflowActivity[I, O]` / `execute` boilerplate and the manual registration.
   *
@@ -36,13 +37,13 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object WorkflowActivities:
 
-  /** Derive the registrable [[dapr4s.WorkflowActivity]] values defined by class `C`.
+  /** Derive the registrable [[dapr4s.workflow.WorkflowActivity]] values defined by class `C`.
     *
-    * Each method's Scala name (overridable with [[name `@name`]]) does not become the activity's registration name on
-    * its own: the activity is registered under the stable, fully-qualified name `<C-full-name>#<method>` — e.g.
-    * `def add` on `com.acme.CounterActivities` registers `"com.acme.CounterActivities#add"`. [[WorkflowActivityCalls]]
-    * computes the very same string from `C`, so the two sides always dispatch to each other. The class is named only
-    * through this scheme, so `derive` takes no argument.
+    * Each method's Scala name (overridable with [[dapr4s.derivation.name `@name`]]) does not become the activity's
+    * registration name on its own: the activity is registered under the stable, fully-qualified name
+    * `<C-full-name>#<method>` — e.g. `def add` on `com.acme.CounterActivities` registers
+    * `"com.acme.CounterActivities#add"`. [[WorkflowActivityCalls]] computes the very same string from `C`, so the two
+    * sides always dispatch to each other. The class is named only through this scheme, so `derive` takes no argument.
     *
     * {{{
     *   class CounterActivities:

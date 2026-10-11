@@ -4,8 +4,8 @@ import dapr4s.*
 
 /** A conversation continuation token returned by the model and replayed to continue a multi-turn exchange.
   *
-  * Pass into [[ConversationCapability.Instance.converse]] to continue a prior conversation; read back from
-  * [[ConversationResponse.contextId]].
+  * Pass into `ConversationCapability.Instance.converse` to continue a prior conversation; read back from
+  * `ConversationResponse.contextId`.
   */
 opaque type ConversationContextId = String
 

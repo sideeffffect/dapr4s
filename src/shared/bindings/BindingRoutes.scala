@@ -6,17 +6,17 @@ import dapr4s.*
 import dapr4s.bindings.*
 import scala.quoted.*
 
-/** Server-side derivation of [[dapr4s.BindingRoute]]s from a handler type.
+/** Server-side derivation of [[dapr4s.bindings.BindingRoute]]s from a handler type.
   *
   * `derive[T]` turns each handler method of `T` (an `object` of handlers, or a class with a no-arg constructor) into a
-  * [[dapr4s.BindingRoute]]: the method name maps verbatim (override with [[name `@name`]]) to the
-  * [[dapr4s.BindingName]] of the input binding it serves, the single value parameter is the decoded payload, and the
-  * method returns `Unit` (input bindings are fire-and-forget). The handler's `using` capabilities/codecs and the
-  * route's own codec are resolved from the ambient scope at the `derive` call site.
+  * [[dapr4s.bindings.BindingRoute]]: the method name maps verbatim (override with [[dapr4s.derivation.name `@name`]])
+  * to the [[dapr4s.bindings.BindingName]] of the input binding it serves, the single value parameter is the decoded
+  * payload, and the method returns `Unit` (input bindings are fire-and-forget). The handler's `using`
+  * capabilities/codecs and the route's own codec are resolved from the ambient scope at the `derive` call site.
   *
   * This is the inbound counterpart of the outbound [[Bindings]] facade. Unlike service invocation or pub/sub, the two
-  * are '''not''' a request/response contract: the outbound side issues [[dapr4s.BindingOperation]]s (`create`, `get`,
-  * …) on a binding, while an input binding merely delivers payloads to the app keyed by binding name. The two
+  * are '''not''' a request/response contract: the outbound side issues [[dapr4s.bindings.BindingOperation]]s (`create`,
+  * `get`, …) on a binding, while an input binding merely delivers payloads to the app keyed by binding name. The two
   * directions are independent, so there is no `deriveChecked` overload here.
   *
   * {{{
@@ -30,11 +30,12 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object BindingRoutes:
 
-  /** Derive the [[dapr4s.BindingRoute]]s exposed by handler type `T`.
+  /** Derive the [[dapr4s.bindings.BindingRoute]]s exposed by handler type `T`.
     *
-    * Each handler method's Scala name is the [[dapr4s.BindingName]] of the input binding it serves — `def orders`
-    * handles deliveries from binding `"orders"` — overridable per method with [[name `@name`]]. Each method takes the
-    * decoded payload as its single value parameter and returns `Unit`.
+    * Each handler method's Scala name is the [[dapr4s.bindings.BindingName]] of the input binding it serves —
+    * `def orders` handles deliveries from binding `"orders"` — overridable per method with
+    * [[dapr4s.derivation.name `@name`]]. Each method takes the decoded payload as its single value parameter and
+    * returns `Unit`.
     *
     * {{{
     *   object IngestRoutes:

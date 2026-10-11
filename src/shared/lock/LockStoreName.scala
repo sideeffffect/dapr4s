@@ -9,8 +9,8 @@ import language.experimental.safe
   * Must not be empty. Must match the `name` field in the lock store component's metadata YAML. Used when constructing a
   * [[LockCapability.Instance]] via [[DaprCapability.lock]].
   *
-  * Distinct from [[StateStoreName]]: a lock store and a state store are different Dapr building blocks with different
-  * component types, so their names are not interchangeable.
+  * Distinct from [[dapr4s.state.StateStoreName]]: a lock store and a state store are different Dapr building blocks
+  * with different component types, so their names are not interchangeable.
   */
 opaque type LockStoreName = String
 object LockStoreName:

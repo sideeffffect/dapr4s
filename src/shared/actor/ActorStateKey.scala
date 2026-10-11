@@ -10,8 +10,8 @@ import language.experimental.safe
   * combination of actor type and actor id; Dapr namespaces actor state by the actor instance internally, so different
   * actor instances may use the same key without conflict.
   *
-  * Distinct from [[StateStoreKey]]: this addresses the per-instance state of a virtual actor, not app-level state held
-  * by a [[StateCapability]].
+  * Distinct from [[dapr4s.state.StateStoreKey]]: this addresses the per-instance state of a virtual actor, not
+  * app-level state held by a [[dapr4s.state.StateCapability]].
   */
 opaque type ActorStateKey = String
 object ActorStateKey:

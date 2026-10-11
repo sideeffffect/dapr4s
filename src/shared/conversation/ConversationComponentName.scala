@@ -7,7 +7,7 @@ import language.experimental.safe
 /** Name of a Dapr conversation (LLM) component.
   *
   * Must not be empty. Must match the `name` field in the conversation component's metadata YAML. Used when constructing
-  * a [[ConversationCapability.Instance]] via [[DaprCapability.conversation]].
+  * a `ConversationCapability.Instance` via `DaprCapability.conversation`.
   */
 opaque type ConversationComponentName = String
 object ConversationComponentName:

@@ -19,7 +19,7 @@ sealed abstract class BindingRoute:
 
 /** Factory for [[BindingRoute]] values.
   *
-  * WHY @assumeSafe: see [[Subscription]] companion — same capturing-lambda boundary pattern.
+  * WHY @assumeSafe: see [[dapr4s.publish.Subscription]] companion — same capturing-lambda boundary pattern.
   */
 @scala.caps.assumeSafe
 object BindingRoute:

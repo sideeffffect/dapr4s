@@ -6,16 +6,17 @@ import dapr4s.*
 import dapr4s.publish.*
 import scala.quoted.*
 
-/** Server-side derivation of [[dapr4s.Subscription]]s from a handler type.
+/** Server-side derivation of [[dapr4s.publish.Subscription]]s from a handler type.
   *
   * `derive[T](pubsubName)` turns each handler method of `T` (an `object`, or a class with a no-arg constructor) into a
-  * `Subscription` on `pubsubName`: the method name maps verbatim (override with [[name `@name`]]) to the
-  * [[dapr4s.Topic]], the handler takes a `CloudEvent[Payload]` and returns a [[dapr4s.SubscriptionResult]], and
-  * [[deadLetter `@deadLetter`]] sets the dead-letter topic. The handler's `using` capabilities/codecs and the
-  * subscription's codec are resolved from the ambient scope at the `derive` call site.
+  * `Subscription` on `pubsubName`: the method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to
+  * the [[dapr4s.publish.Topic]], the handler takes a `CloudEvent[Payload]` and returns a
+  * [[dapr4s.publish.SubscriptionResult]], and [[dapr4s.derivation.deadLetter `@deadLetter`]] sets the dead-letter
+  * topic. The handler's `using` capabilities/codecs and the subscription's codec are resolved from the ambient scope at
+  * the `derive` call site.
   *
-  * The [[dapr4s.PubSubName]] is either given explicitly (`derive[T](pubsubName)`) or, with the no-argument `derive[T]`,
-  * taken from `T`'s simple name (override with `@name` on the type).
+  * The [[dapr4s.publish.PubSubName]] is either given explicitly (`derive[T](pubsubName)`) or, with the no-argument
+  * `derive[T]`, taken from `T`'s simple name (override with `@name` on the type).
   *
   * {{{
   *   object ResultRoutes:
@@ -25,17 +26,17 @@ import scala.quoted.*
   * }}}
   *
   * '''Dual.''' [[Publish]] is the outbound counterpart. Use [[deriveChecked]] to bind subscribers to the same publisher
-  * `Contract` trait that `Publish.derive[Contract]` turns into publishes, matched by [[dapr4s.Topic]].
+  * `Contract` trait that `Publish.derive[Contract]` turns into publishes, matched by [[dapr4s.publish.Topic]].
   */
 @scala.caps.assumeSafe
 object Subscriptions:
 
-  /** Derive the [[dapr4s.Subscription]]s of handler type `T` on the given `pubsubName`.
+  /** Derive the [[dapr4s.publish.Subscription]]s of handler type `T` on the given `pubsubName`.
     *
-    * Each handler method's Scala name is the [[dapr4s.Topic]] it subscribes to — `def onOrder` subscribes to topic
-    * `"onOrder"` — overridable per method with [[name `@name`]]; [[deadLetter `@deadLetter`]] sets the dead-letter
-    * topic. This overload names the [[dapr4s.PubSubName]] explicitly; the no-argument overload derives it from `T`'s
-    * name instead.
+    * Each handler method's Scala name is the [[dapr4s.publish.Topic]] it subscribes to — `def onOrder` subscribes to
+    * topic `"onOrder"` — overridable per method with [[dapr4s.derivation.name `@name`]];
+    * [[dapr4s.derivation.deadLetter `@deadLetter`]] sets the dead-letter topic. This overload names the
+    * [[dapr4s.publish.PubSubName]] explicitly; the no-argument overload derives it from `T`'s name instead.
     *
     * {{{
     *   object ResultRoutes:
@@ -48,11 +49,11 @@ object Subscriptions:
     */
   inline def derive[T](pubsubName: PubSubName): List[Subscription] = ${ deriveImpl[T]('{ Some(pubsubName) }) }
 
-  /** Derive the [[dapr4s.Subscription]]s of handler type `T` on the [[dapr4s.PubSubName]] taken from `T`'s simple name
-    * (override with `@name` on the type).
+  /** Derive the [[dapr4s.publish.Subscription]]s of handler type `T` on the [[dapr4s.publish.PubSubName]] taken from
+    * `T`'s simple name (override with `@name` on the type).
     *
-    * Method names map to [[dapr4s.Topic]]s exactly as in the `pubsubName`-taking overload; only the source of the
-    * `PubSubName` differs — here it is the type's own name rather than an argument.
+    * Method names map to [[dapr4s.publish.Topic]]s exactly as in the `pubsubName`-taking overload; only the source of
+    * the `PubSubName` differs — here it is the type's own name rather than an argument.
     *
     * {{{
     *   @name("pubsub") object ResultRoutes:
@@ -64,15 +65,15 @@ object Subscriptions:
     */
   inline def derive[T]: List[Subscription] = ${ deriveImpl[T]('{ None }) }
 
-  /** Derive the [[dapr4s.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
+  /** Derive the [[dapr4s.publish.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
     * `Contract` on the given `pubsubName`.
     *
     * Same result as [[derive]], but bound to the dual [[Publish]] facade through the shared `Contract` trait. The two
-    * sides agree on the [[dapr4s.Topic]] (the wire name — a publisher method and its subscriber are matched by topic,
-    * since they name their Scala methods independently), and the macro verifies that for every topic the contract
-    * publishes there is an `Impl` handler whose `CloudEvent[Payload]` carries the same payload type. `Impl` stays a
-    * plain subscriber: handlers take `CloudEvent[Payload]`, return [[dapr4s.SubscriptionResult]], and may take their
-    * own ambient `using` dependencies.
+    * sides agree on the [[dapr4s.publish.Topic]] (the wire name — a publisher method and its subscriber are matched by
+    * topic, since they name their Scala methods independently), and the macro verifies that for every topic the
+    * contract publishes there is an `Impl` handler whose `CloudEvent[Payload]` carries the same payload type. `Impl`
+    * stays a plain subscriber: handlers take `CloudEvent[Payload]`, return [[dapr4s.publish.SubscriptionResult]], and
+    * may take their own ambient `using` dependencies.
     *
     * {{{
     *   trait OrderEvents:
@@ -91,8 +92,9 @@ object Subscriptions:
   inline def deriveChecked[Contract, Impl](pubsubName: PubSubName): List[Subscription] =
     ${ deriveCheckedImpl[Contract, Impl]('{ Some(pubsubName) }) }
 
-  /** Derive the [[dapr4s.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
-    * `Contract`, with the [[dapr4s.PubSubName]] taken from `Impl`'s simple name (override with `@name` on the type).
+  /** Derive the [[dapr4s.publish.Subscription]]s of handler type `Impl`, '''checked''' against publisher contract trait
+    * `Contract`, with the [[dapr4s.publish.PubSubName]] taken from `Impl`'s simple name (override with `@name` on the
+    * type).
     *
     * @see
     *   [[Publish.derive]] — the dual publisher facade derived from the same `Contract`.

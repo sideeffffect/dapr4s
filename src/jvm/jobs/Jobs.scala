@@ -9,7 +9,7 @@ import scala.quoted.*
 
 /** Derivation of [[JobsCapability]] facades from a trait.
   *
-  * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.JobName]].
+  * The method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to a [[dapr4s.jobs.JobName]].
   *
   *   - returns `Unit` with a `schedule: JobSchedule` parameter → [[JobsCapability.schedule]] (plus optional
   *     `dueTime: Option[Instant]`, `repeats: Option[Int]`, `ttl: Option[Instant]`)
@@ -19,7 +19,7 @@ import scala.quoted.*
   *
   * '''Dual.''' [[JobRoutes]] is the inbound (trigger) counterpart: the app schedules jobs through
   * `Jobs.derive[Contract]`, and answers their triggers through `JobRoutes.deriveChecked[Contract, Impl]`. Both read the
-  * same `Contract` trait — matched by [[dapr4s.JobName]] — so `deriveChecked` verifies every scheduled job has a
+  * same `Contract` trait — matched by [[dapr4s.jobs.JobName]] — so `deriveChecked` verifies every scheduled job has a
   * trigger handler decoding the same payload (job getters carry no payload and are not triggers).
   */
 @scala.caps.assumeSafe
@@ -27,10 +27,10 @@ object Jobs:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.JobName]] it schedules or reads — `def nightlyReport` addresses the job
-    * `"nightlyReport"` — overridable per method with [[name `@name`]]. The job is identified by this name alone;
-    * whether the method schedules (recurring), schedules once, or gets is chosen by its parameters and return type, so
-    * `derive` takes no argument.
+    * Each method's Scala name is the [[dapr4s.jobs.JobName]] it schedules or reads — `def nightlyReport` addresses the
+    * job `"nightlyReport"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The job is identified by
+    * this name alone; whether the method schedules (recurring), schedules once, or gets is chosen by its parameters and
+    * return type, so `derive` takes no argument.
     *
     * {{{
     *   trait ReportJobs:

@@ -82,15 +82,15 @@ object ConfigurationCapability:
       * underlying subscription is already gone. Close it within the scope (or let the scope close it).
       *
       * '''Why a capability with a callback, not a [[DaprApp]] route?''' The `onChange` callback makes this look like an
-      * inbound handler (DAPR pushing data into the app), which would suggest it belongs alongside [[Subscription]],
-      * [[JobRoute]], and the actor reminder/timer routes in [[DaprApp]]. It does not, because those routes and this
+      * inbound handler (DAPR pushing data into the app), which would suggest it belongs alongside [[dapr4s.publish.Subscription]],
+      * [[dapr4s.jobs.JobRoute]], and the actor reminder/timer routes in [[DaprApp]]. It does not, because those routes and this
       * subscription differ on the axis that actually separates the two layers — connection initiation and lifecycle, not
       * data direction:
       *
       *   - '''[[DaprApp]] routes''' are opened by the sidecar (the sidecar is the client, the app is the HTTP server) and
       *     must be declared '''statically at startup''' so the sidecar can enumerate them (e.g. via `/dapr/subscribe`)
-      *     before any traffic flows. Each is matched by a name fixed ahead of time ([[Topic]], [[JobName]],
-      *     [[ReminderName]]…).
+      *     before any traffic flows. Each is matched by a name fixed ahead of time ([[dapr4s.publish.Topic]], [[dapr4s.jobs.JobName]],
+      *     [[dapr4s.actor.ReminderName]]…).
       *   - '''This subscription''' is opened by the app — it issues an outbound streaming call to the sidecar — and is
       *     '''dynamic and scoped''': the keys are chosen at runtime and the stream is torn down on demand via the returned
       *     `AutoCloseable`. There is no static route to register, and capture checking ties the handle's lifetime to this
@@ -102,8 +102,8 @@ object ConfigurationCapability:
       *
       * Consequently this is the only capability that takes a callback, and the only `DAPR-pushes-to-me` feature without a
       * [[DaprApp]] dual. Features whose delivery target '''is''' known at startup use the split register-here /
-      * handle-in-[[DaprApp]] idiom instead (publish ↔ [[Subscription]], schedule ↔ [[JobRoute]],
-      * `registerReminder` ↔ [[ActorReminderRoute]], `registerTimer` ↔ [[ActorTimerRoute]]).
+      * handle-in-[[DaprApp]] idiom instead (publish ↔ [[dapr4s.publish.Subscription]], schedule ↔ [[dapr4s.jobs.JobRoute]],
+      * `registerReminder` ↔ [[dapr4s.actor.ActorReminderRoute]], `registerTimer` ↔ [[dapr4s.actor.ActorTimerRoute]]).
       *
       * @param metadata
       *   optional metadata passed to the configuration backend

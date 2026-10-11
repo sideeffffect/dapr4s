@@ -4,8 +4,8 @@ import dapr4s.*
 
 /** Existential wrapper for a job trigger handler.
   *
-  * '''Dual:''' the inbound counterpart of [[JobsCapability]] — a job scheduled via [[JobsCapability.schedule]] fires as
-  * an inbound trigger the sidecar POSTs to `/job/<name>`, answered by the `JobRoute` for that same [[JobName]]. The
+  * '''Dual:''' the inbound counterpart of `JobsCapability` — a job scheduled via `JobsCapability.schedule` fires as an
+  * inbound trigger the sidecar POSTs to `/job/<name>`, answered by the `JobRoute` for that same [[JobName]]. The
   * `Payload` type member binds [[codec]] to the payload the job was scheduled with. (Derivation binds the two through
   * one trait: `Jobs.derive` ↔ `JobRoutes.deriveChecked`.)
   *
@@ -20,7 +20,7 @@ sealed abstract class JobRoute:
 
 /** Factory for [[JobRoute]] values.
   *
-  * WHY @assumeSafe: see [[Subscription]] companion — same capturing-lambda boundary pattern.
+  * WHY @assumeSafe: see [[dapr4s.publish.Subscription]] companion — same capturing-lambda boundary pattern.
   */
 @scala.caps.assumeSafe
 object JobRoute:

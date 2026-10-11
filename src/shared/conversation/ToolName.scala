@@ -4,8 +4,8 @@ import dapr4s.*
 
 /** The name of a function/tool the model may call.
   *
-  * Used both when declaring a tool ([[ConversationTool.name]]) and when the model emits a call
-  * ([[ConversationToolCall.functionName]]).
+  * Used both when declaring a tool (`ConversationTool.name`) and when the model emits a call
+  * (`ConversationToolCall.functionName`).
   */
 opaque type ToolName = String
 

@@ -24,10 +24,10 @@ import dapr4s.jobs.*, dapr4s.conversation.*
 trait DaprCapabilityPlatform:
   this: DaprCapability =>
 
-  /** Obtain the universal [[JobsCapability]] (any job); `jobs.instance(jobName)` narrows it to one job. */
+  /** Obtain the universal [[dapr4s.jobs.JobsCapability]] (any job); `jobs.instance(jobName)` narrows it to one job. */
   def jobs: JobsCapability^{this}
 
-  /** Obtain the universal [[ConversationCapability]] (any component); `conversation.instance(componentName)` narrows it to one
+  /** Obtain the universal [[dapr4s.conversation.ConversationCapability]] (any component); `conversation.instance(componentName)` narrows it to one
     * component.
     */
   def conversation: ConversationCapability^{this}
@@ -45,7 +45,7 @@ trait DaprCapabilityPlatform:
 @scala.caps.assumeSafe
 trait DaprCapabilityCompanionPlatform:
 
-  /** Make the universal [[JobsCapability]] available to `body` — pass it to [[Jobs.derive]] clients, or narrow to a
+  /** Make the universal [[dapr4s.jobs.JobsCapability]] available to `body` — pass it to [[dapr4s.jobs.Jobs.derive]] clients, or narrow to a
     * single job with `instance(name)`.
     */
   def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T =

@@ -4,7 +4,7 @@ import dapr4s.*
 
 /** The model identifier a provider reports for a completion (e.g. "gpt-4o").
   *
-  * Read from [[ConversationResult.model]].
+  * Read from `ConversationResult.model`.
   */
 opaque type ModelName = String
 

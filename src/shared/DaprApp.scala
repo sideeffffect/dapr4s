@@ -5,8 +5,9 @@ import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr
 
 /** Immutable, declarative description of all inbound handlers an application exposes.
   *
-  * Build a `DaprApp` using the [[Subscription]], [[InvokeRoute]], [[BindingRoute]], and [[ActorDefinition]] factory
-  * objects, then return it from the [[Dapr.serve]] body:
+  * Build a `DaprApp` using the [[dapr4s.publish.Subscription]], [[dapr4s.invoke.InvokeRoute]],
+  * [[dapr4s.bindings.BindingRoute]], and [[dapr4s.actor.ActorDefinition]] factory objects, then return it from the
+  * [[Dapr.serve]] body:
   *
   * {{{
   *   Dapr(config).serve:

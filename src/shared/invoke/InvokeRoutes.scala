@@ -6,13 +6,13 @@ import dapr4s.*
 import dapr4s.invoke.*
 import scala.quoted.*
 
-/** Server-side derivation of [[dapr4s.InvokeRoute]]s from a handler type.
+/** Server-side derivation of [[dapr4s.invoke.InvokeRoute]]s from a handler type.
   *
   * `derive[T]` turns each handler method of `T` (an `object` of handlers, or a class with a no-arg constructor) into an
-  * `InvokeRoute`: the method name maps verbatim (override with [[name `@name`]]) to the [[dapr4s.InvokeMethodName]],
-  * the first value parameter is the request (or `Unit` if none), and the return type is the response. The handler's
-  * `using` capabilities and `JsonCodec`s — and the route's own codecs — are resolved from the ambient scope at the
-  * `derive` call site (so call it inside the relevant `DaprCapability.…` block).
+  * `InvokeRoute`: the method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to the
+  * [[dapr4s.invoke.InvokeMethodName]], the first value parameter is the request (or `Unit` if none), and the return
+  * type is the response. The handler's `using` capabilities and `JsonCodec`s — and the route's own codecs — are
+  * resolved from the ambient scope at the `derive` call site (so call it inside the relevant `DaprCapability.…` block).
   *
   * {{{
   *   object PaymentRoutes:
@@ -28,12 +28,12 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object InvokeRoutes:
 
-  /** Derive the [[dapr4s.InvokeRoute]]s exposed by handler type `T`.
+  /** Derive the [[dapr4s.invoke.InvokeRoute]]s exposed by handler type `T`.
     *
-    * Each handler method's Scala name is the [[dapr4s.InvokeMethodName]] it answers — `def charge` serves incoming
-    * calls to method `"charge"` — overridable per method with [[name `@name`]]. This is the inbound (server)
-    * counterpart of [[Invoke.derive]], which produces the matching outbound calls; the two agree when they use the same
-    * method names.
+    * Each handler method's Scala name is the [[dapr4s.invoke.InvokeMethodName]] it answers — `def charge` serves
+    * incoming calls to method `"charge"` — overridable per method with [[dapr4s.derivation.name `@name`]]. This is the
+    * inbound (server) counterpart of [[Invoke.derive]], which produces the matching outbound calls; the two agree when
+    * they use the same method names.
     *
     * {{{
     *   object PaymentRoutes:
@@ -46,15 +46,16 @@ object InvokeRoutes:
     */
   inline def derive[T]: List[InvokeRoute] = ${ deriveImpl[T] }
 
-  /** Derive the [[dapr4s.InvokeRoute]]s of handler type `Impl`, '''checked''' against caller contract trait `Contract`.
+  /** Derive the [[dapr4s.invoke.InvokeRoute]]s of handler type `Impl`, '''checked''' against caller contract trait
+    * `Contract`.
     *
     * Same result as [[derive]], but bound to the dual [[Invoke]] facade through the shared `Contract` trait. Where
     * `Invoke.derive[Contract]` turns the trait into outbound calls, `InvokeRoutes.deriveChecked[Contract, Impl]` turns
-    * the plain handler `Impl` into the routes that answer them. The wire [[dapr4s.InvokeMethodName]] of each route is
-    * taken from `Contract` (so a `@name` on the trait governs both sides), and the macro verifies — matching by Scala
-    * method name — that `Impl` implements every `Contract` method with the same request and response types. `Impl`
-    * stays a plain handler: no `InvokeCapability`, no `httpMethod`/`metadata` knobs, and free to take its own ambient
-    * `using` dependencies.
+    * the plain handler `Impl` into the routes that answer them. The wire [[dapr4s.invoke.InvokeMethodName]] of each
+    * route is taken from `Contract` (so a `@name` on the trait governs both sides), and the macro verifies — matching
+    * by Scala method name — that `Impl` implements every `Contract` method with the same request and response types.
+    * `Impl` stays a plain handler: no `InvokeCapability`, no `httpMethod`/`metadata` knobs, and free to take its own
+    * ambient `using` dependencies.
     *
     * {{{
     *   trait GreetingService:
@@ -75,8 +76,8 @@ object InvokeRoutes:
   /** The optional caller-only knobs of an [[Invoke]] contract method, skipped when reading its request body. */
   private val invokeKnobs = Set("httpMethod", "metadata")
 
-  /** Build one [[dapr4s.InvokeRoute]] answering wire name `nm` by calling handler method `m` on `inst`, with request
-    * type `inTpe` and response type `outTpe` (codecs summoned at the derive site).
+  /** Build one [[dapr4s.invoke.InvokeRoute]] answering wire name `nm` by calling handler method `m` on `inst`, with
+    * request type `inTpe` and response type `outTpe` (codecs summoned at the derive site).
     */
   private def route(using
       q: Quotes,

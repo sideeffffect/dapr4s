@@ -9,7 +9,7 @@ import scala.quoted.*
 /** Derivation of [[StateCapability.Instance]] key/value facades from a trait, using the getter/setter convention.
   *
   * The state store is fixed by the per-call `StateCapability.Instance`; the Scala member name maps verbatim (override
-  * with [[name `@name`]]) to a [[dapr4s.StateStoreKey]]:
+  * with [[dapr4s.derivation.name `@name`]]) to a [[dapr4s.state.StateStoreKey]]:
   *   - a getter `def x(using StateCapability.Instance.ReadOnly, JsonCodec[T]): Option[T]` (a full `Instance` also
   *     works) → `get(StateStoreKey("x"))`
   *   - a setter `def x_=(value: T)(using StateCapability.Instance, JsonCodec[T]): Unit` →
@@ -31,10 +31,10 @@ object State:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each member's Scala name is the [[dapr4s.StateStoreKey]] it reads or writes — getter `def count` and setter
+    * Each member's Scala name is the [[dapr4s.state.StateStoreKey]] it reads or writes — getter `def count` and setter
     * `def count_=` both address the key `"count"` (the `_=` setter suffix is dropped when forming the key) —
-    * overridable with [[name `@name`]]. The state store itself is fixed by the per-call [[StateCapability.Instance]],
-    * so `derive` takes no argument.
+    * overridable with [[dapr4s.derivation.name `@name`]]. The state store itself is fixed by the per-call
+    * [[StateCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait Counter:

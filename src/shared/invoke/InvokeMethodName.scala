@@ -9,7 +9,8 @@ import language.experimental.safe
   * Must not be empty. Used as the URL path segment that identifies the target route when one app invokes another via
   * [[InvokeCapability.Instance.invoke]], and as the route key when registering an incoming [[InvokeRoute]].
   *
-  * Distinct from [[ActorMethodName]]: this addresses an HTTP route on a remote app, not a method on a stateful actor.
+  * Distinct from [[dapr4s.actor.ActorMethodName]]: this addresses an HTTP route on a remote app, not a method on a
+  * stateful actor.
   */
 opaque type InvokeMethodName = String
 object InvokeMethodName:

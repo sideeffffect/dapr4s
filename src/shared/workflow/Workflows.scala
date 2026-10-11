@@ -325,8 +325,8 @@ object ActivityDef:
 
 /** Derivation of [[WorkflowCapability]] start facades from a trait.
   *
-  * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.WorkflowName]]. Each method returns a
-  * [[dapr4s.WorkflowInstanceId]]; its value parameters select the overload:
+  * The method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to a [[dapr4s.workflow.WorkflowName]]. Each method returns a
+  * [[dapr4s.workflow.WorkflowInstanceId]]; its value parameters select the overload:
   *   - none → [[WorkflowCapability.start(name:* start(name)]]
   *   - `input` only → `start(name, input)`
   *   - `instanceId: WorkflowInstanceId` only → `startWithId(name, instanceId)`
@@ -337,8 +337,8 @@ object Workflow:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.WorkflowName]] it starts — `def orderSaga` starts the workflow
-    * `"orderSaga"` — overridable per method with [[name `@name`]]. The workflow runtime is fixed by the per-call
+    * Each method's Scala name is the [[dapr4s.workflow.WorkflowName]] it starts — `def orderSaga` starts the workflow
+    * `"orderSaga"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The workflow runtime is fixed by the per-call
     * [[WorkflowCapability]], so `derive` takes no argument.
     *
     * {{{

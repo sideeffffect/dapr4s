@@ -8,9 +8,9 @@ import scala.quoted.*
 
 /** Derivation of [[BindingsCapability.Instance]] client facades from a trait.
   *
-  * The Scala method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.BindingOperation]]. The binding
-  * component itself is fixed by the per-call `BindingsCapability.Instance` (obtained via
-  * `DaprCapability.bindings(name)`), so `derive` takes no argument.
+  * The Scala method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to a
+  * [[dapr4s.bindings.BindingOperation]]. The binding component itself is fixed by the per-call
+  * `BindingsCapability.Instance` (obtained via `DaprCapability.bindings(name)`), so `derive` takes no argument.
   *
   * Each method takes the request body as its first value parameter, plus an optional
   * `metadata: Map[MetadataKey, MetadataValue]` knob. The return type selects the overload:
@@ -24,8 +24,8 @@ import scala.quoted.*
   * }}}
   *
   * '''Dual.''' [[BindingRoutes]] is the inbound counterpart (input bindings). Unlike the other pairs this is '''not'''
-  * a request/response contract: the outbound side issues [[dapr4s.BindingOperation]]s on a binding, while an input
-  * binding merely delivers payloads to the app keyed by binding name. The two directions are independent, so
+  * a request/response contract: the outbound side issues [[dapr4s.bindings.BindingOperation]]s on a binding, while an
+  * input binding merely delivers payloads to the app keyed by binding name. The two directions are independent, so
   * `BindingRoutes` has only `derive` — there is no `deriveChecked` to bind them through a shared trait.
   */
 @scala.caps.assumeSafe
@@ -33,9 +33,10 @@ object Bindings:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.BindingOperation]] it performs — `def create` issues the binding
-    * operation `"create"` — overridable per method with [[name `@name`]]. The binding component itself is fixed by the
-    * per-call [[BindingsCapability.Instance]] (from `DaprCapability.bindings(name)`), so `derive` takes no argument.
+    * Each method's Scala name is the [[dapr4s.bindings.BindingOperation]] it performs — `def create` issues the binding
+    * operation `"create"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The binding component
+    * itself is fixed by the per-call [[BindingsCapability.Instance]] (from `DaprCapability.bindings(name)`), so
+    * `derive` takes no argument.
     *
     * {{{
     *   trait EmailBinding:

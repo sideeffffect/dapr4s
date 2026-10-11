@@ -6,7 +6,7 @@ import scala.collection.immutable.ArraySeq
 import scala.concurrent.duration.FiniteDuration
 
 /** Runtime forwarders for the capability `*.derive` macros (other than Invoke,
-  * which has its own [[InvokeDerivationRuntime]]).
+  * which has its own [[dapr4s.invoke.InvokeDerivationRuntime]]).
   *
   * Each derived method expands to a single flat call into one of these methods, passing the
   * capability and any `JsonCodec`s as plain explicit arguments. Performing the capability call
@@ -230,7 +230,7 @@ object Forwarders extends ForwardersPlatform:
 
   // ---- WorkflowActivity construction (server-side reification) ---------------
 
-  /** Build a [[WorkflowActivity]] from a plain handler, fixing its registered name.
+  /** Build a [[dapr4s.workflow.WorkflowActivity]] from a plain handler, fixing its registered name.
     *
     * The handler receives the decoded input and the runtime-supplied [[DaprCapability]] and returns the output; it is
     * a flat function so the generated derivation tree stays trivial (no synthesised `given`s, no rebinding of the

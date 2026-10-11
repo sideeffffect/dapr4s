@@ -6,15 +6,15 @@ import dapr4s.*
 import dapr4s.jobs.*
 import scala.quoted.*
 
-/** Server-side derivation of [[dapr4s.JobRoute]]s from a handler type.
+/** Server-side derivation of [[dapr4s.jobs.JobRoute]]s from a handler type.
   *
   * `derive[T]` turns each handler method of `T` (an `object` of handlers, or a class with a no-arg constructor) into a
-  * [[dapr4s.JobRoute]]: the method name maps verbatim (override with [[name `@name`]]) to the [[dapr4s.JobName]] whose
-  * trigger it answers (the sidecar POSTs to `/job/<name>` when the job fires), the single value parameter is the
-  * decoded payload the job was scheduled with, and the method returns `Unit`. The handler's `using` capabilities/codecs
-  * and the route's own codec are resolved from the ambient scope at the `derive` call site.
+  * [[dapr4s.jobs.JobRoute]]: the method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to the
+  * [[dapr4s.jobs.JobName]] whose trigger it answers (the sidecar POSTs to `/job/<name>` when the job fires), the single
+  * value parameter is the decoded payload the job was scheduled with, and the method returns `Unit`. The handler's
+  * `using` capabilities/codecs and the route's own codec are resolved from the ambient scope at the `derive` call site.
   *
-  * This is the inbound (trigger) counterpart of the outbound [[Jobs]] scheduling facade: a job scheduled under name `X`
+  * This is the inbound (trigger) counterpart of the outbound `Jobs` scheduling facade: a job scheduled under name `X`
   * with payload `P` fires back into the app at the `JobRoute` for `X`, which decodes `P`. The [[deriveChecked]]
   * overload binds the two through the same `Contract` trait.
   *
@@ -29,11 +29,11 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object JobRoutes:
 
-  /** Derive the [[dapr4s.JobRoute]]s exposed by handler type `T`.
+  /** Derive the [[dapr4s.jobs.JobRoute]]s exposed by handler type `T`.
     *
-    * Each handler method's Scala name is the [[dapr4s.JobName]] whose trigger it answers — `def nightlyReport` handles
-    * the firing of job `"nightlyReport"` — overridable per method with [[name `@name`]]. Each method takes the decoded
-    * payload as its single value parameter and returns `Unit`.
+    * Each handler method's Scala name is the [[dapr4s.jobs.JobName]] whose trigger it answers — `def nightlyReport`
+    * handles the firing of job `"nightlyReport"` — overridable per method with [[dapr4s.derivation.name `@name`]]. Each
+    * method takes the decoded payload as its single value parameter and returns `Unit`.
     *
     * {{{
     *   object JobHandlers:
@@ -46,15 +46,15 @@ object JobRoutes:
     */
   inline def derive[T]: List[JobRoute] = ${ deriveImpl[T] }
 
-  /** Derive the [[dapr4s.JobRoute]]s of handler type `Impl`, '''checked''' against scheduling contract trait
+  /** Derive the [[dapr4s.jobs.JobRoute]]s of handler type `Impl`, '''checked''' against scheduling contract trait
     * `Contract`.
     *
-    * Same result as [[derive]], but bound to the dual [[Jobs]] facade through the shared `Contract` trait: a `Contract`
-    * scheduling method names a [[dapr4s.JobName]] and a payload, and the macro verifies that for every job the contract
-    * schedules there is an `Impl` handler for the same job name decoding the same payload type. Matching is by job name
-    * (the wire name, since the two sides name their Scala methods independently). `Contract` job getters (those
-    * returning `Option[JobDetails]`, which carry no payload) are not triggers and are not checked. `Impl` stays a plain
-    * handler: payload in, `Unit` out, free to take its own ambient `using` dependencies.
+    * Same result as [[derive]], but bound to the dual `Jobs` facade through the shared `Contract` trait: a `Contract`
+    * scheduling method names a [[dapr4s.jobs.JobName]] and a payload, and the macro verifies that for every job the
+    * contract schedules there is an `Impl` handler for the same job name decoding the same payload type. Matching is by
+    * job name (the wire name, since the two sides name their Scala methods independently). `Contract` job getters
+    * (those returning `Option[JobDetails]`, which carry no payload) are not triggers and are not checked. `Impl` stays
+    * a plain handler: payload in, `Unit` out, free to take its own ambient `using` dependencies.
     *
     * {{{
     *   trait ReportJobs:
@@ -68,11 +68,11 @@ object JobRoutes:
     * }}}
     *
     * @see
-    *   [[Jobs.derive]] — the dual scheduling facade derived from the same `Contract`.
+    *   `Jobs.derive` — the dual scheduling facade derived from the same `Contract`.
     */
   inline def deriveChecked[Contract, Impl]: List[JobRoute] = ${ deriveCheckedImpl[Contract, Impl] }
 
-  /** The scheduling knobs of a [[Jobs]] contract method, skipped when reading the job payload. */
+  /** The scheduling knobs of a `Jobs` contract method, skipped when reading the job payload. */
   private val jobKnobs = Set("schedule", "dueTime", "repeats", "ttl")
 
   private def deriveImpl[T: Type](using Quotes): Expr[List[JobRoute]] =
@@ -110,8 +110,8 @@ object JobRoutes:
     }
     Expr.ofList(routes)
 
-  /** Build one [[dapr4s.JobRoute]] from handler method `m` on `inst`. `wireOverride` supplies the [[dapr4s.JobName]]
-    * when it must come from the contract rather than the handler itself.
+  /** Build one [[dapr4s.jobs.JobRoute]] from handler method `m` on `inst`. `wireOverride` supplies the
+    * [[dapr4s.jobs.JobName]] when it must come from the contract rather than the handler itself.
     */
   private def route(using
       q: Quotes,

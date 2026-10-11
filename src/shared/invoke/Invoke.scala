@@ -35,8 +35,8 @@ import scala.quoted.*
   * '''Method contract''' (enforced at compile time):
   *   - The target [[dapr4s.AppId]] is either given explicitly (`derive[T](appId)`) or, with the no-argument
   *     `derive[T]`, taken from the trait's simple name (override with `@name` on the trait).
-  *   - The Scala method name is used verbatim as the [[dapr4s.InvokeMethodName]]; override per method with
-  *     [[name `@name`]].
+  *   - The Scala method name is used verbatim as the [[dapr4s.invoke.InvokeMethodName]]; override per method with
+  *     [[dapr4s.derivation.name `@name`]].
   *   - The first value parameter, if present, is the request body (its type is free). A method with no value parameters
   *     maps to the no-body `invoke` overload.
   *   - `httpMethod` and `metadata`, if present, must be named exactly `httpMethod` (type [[dapr4s.HttpMethod]]) and
@@ -55,9 +55,9 @@ object Invoke:
 
   /** Derive a client facade for trait `T`, routing its calls to `appId`.
     *
-    * Each method's Scala name is the [[dapr4s.InvokeMethodName]] it calls — `def greet` calls method `"greet"` on the
-    * target app — overridable per method with [[name `@name`]]. This overload names the target [[dapr4s.AppId]]
-    * explicitly; the no-argument overload derives it from `T`'s name instead.
+    * Each method's Scala name is the [[dapr4s.invoke.InvokeMethodName]] it calls — `def greet` calls method `"greet"`
+    * on the target app — overridable per method with [[dapr4s.derivation.name `@name`]]. This overload names the target
+    * [[dapr4s.AppId]] explicitly; the no-argument overload derives it from `T`'s name instead.
     *
     * {{{
     *   trait GreetingService:
@@ -77,8 +77,8 @@ object Invoke:
   /** Derive a client facade for trait `T`, routing its calls to the [[dapr4s.AppId]] taken from `T`'s simple name
     * (override with `@name` on the trait).
     *
-    * Method names map to [[dapr4s.InvokeMethodName]]s exactly as in the `appId`-taking overload; only the source of the
-    * target `AppId` differs — here it is the trait's own name rather than an argument.
+    * Method names map to [[dapr4s.invoke.InvokeMethodName]]s exactly as in the `appId`-taking overload; only the source
+    * of the target `AppId` differs — here it is the trait's own name rather than an argument.
     *
     * {{{
     *   @name("greeting-service") trait GreetingService:

@@ -5,7 +5,7 @@ import dapr4s.*
 /** Existential wrapper for a service-invocation handler.
   *
   * `Req` and `Resp` type members bind [[reqCodec]] and [[respCodec]] to concrete types. The handler is stored as
-  * `AnyRef` for the same reasons as [[Subscription.rawHandler]].
+  * `AnyRef` for the same reasons as [[dapr4s.publish.Subscription.rawHandler]].
   *
   * '''Dual:''' the inbound counterpart of [[InvokeCapability]] — an `InvokeRoute` for an [[InvokeMethodName]] answers
   * the calls a caller makes to that method.
@@ -25,7 +25,7 @@ sealed abstract class InvokeRoute:
 
 /** Factory for [[InvokeRoute]] values.
   *
-  * WHY @assumeSafe: see [[Subscription]] companion — same capturing-lambda boundary pattern.
+  * WHY @assumeSafe: see [[dapr4s.publish.Subscription]] companion — same capturing-lambda boundary pattern.
   */
 @scala.caps.assumeSafe
 object InvokeRoute:

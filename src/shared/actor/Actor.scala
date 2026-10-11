@@ -10,8 +10,8 @@ import scala.quoted.*
   * reminders and timers.
   *
   * A '''plain''' method forwards to [[ActorCapability.Instance]]; its name maps verbatim (override with
-  * [[name `@name`]]) to an [[dapr4s.ActorMethodName]], with the target instance fixed by the per-call
-  * `ActorCapability.Instance` (from `DaprCapability.actor(type, id)`):
+  * [[dapr4s.derivation.name `@name`]]) to an [[dapr4s.actor.ActorMethodName]], with the target instance fixed by the
+  * per-call `ActorCapability.Instance` (from `DaprCapability.actor(type, id)`):
   *
   *   - body + non-`Unit` result → `invoke(method, data)[Resp]`
   *   - no body + non-`Unit` result → `invoke[Resp](method)`
@@ -19,11 +19,11 @@ import scala.quoted.*
   *
   * A `Unit`-returning plain method with a request body is rejected (there is no such actor overload).
   *
-  * A [[reminder `@reminder`]] or [[timer `@timer`]] method instead forwards to [[dapr4s.ActorContext.registerReminder]]
-  * / [[dapr4s.ActorContext.registerTimer]]: its name is the [[dapr4s.ReminderName]]/[[dapr4s.TimerName]], its first
-  * non-knob value parameter is the scheduled `data`, and a `dueTime: FiniteDuration` (required) and
-  * `period: Option[FiniteDuration]` (optional) configure the schedule. Such a method returns `Unit` and takes a
-  * `using ActorContext` (these are scheduled from inside the actor).
+  * A [[dapr4s.derivation.reminder `@reminder`]] or [[dapr4s.derivation.timer `@timer`]] method instead forwards to
+  * [[dapr4s.actor.ActorContext.registerReminder]] / [[dapr4s.actor.ActorContext.registerTimer]]: its name is the
+  * [[dapr4s.actor.ReminderName]]/[[dapr4s.actor.TimerName]], its first non-knob value parameter is the scheduled
+  * `data`, and a `dueTime: FiniteDuration` (required) and `period: Option[FiniteDuration]` (optional) configure the
+  * schedule. Such a method returns `Unit` and takes a `using ActorContext` (these are scheduled from inside the actor).
   *
   * '''Dual.''' [[ActorDefinitions]] is the server counterpart: a plain method invokes a route reified from the actor
   * class, and a `@reminder`/`@timer` scheduling method schedules a callback the class's matching `@reminder`/`@timer`
@@ -35,10 +35,10 @@ object Actor:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.ActorMethodName]] it invokes — `def increment` calls the actor method
-    * `"increment"` — overridable per method with [[name `@name`]]. The name addresses only the method: the target actor
-    * instance is fixed by the [[ActorCapability.Instance]] each method receives in its `using` clause (from
-    * `DaprCapability.actor(type, id)`), so `derive` itself takes no argument.
+    * Each method's Scala name is the [[dapr4s.actor.ActorMethodName]] it invokes — `def increment` calls the actor
+    * method `"increment"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The name addresses only the
+    * method: the target actor instance is fixed by the [[ActorCapability.Instance]] each method receives in its `using`
+    * clause (from `DaprCapability.actor(type, id)`), so `derive` itself takes no argument.
     *
     * {{{
     *   trait CounterActor:

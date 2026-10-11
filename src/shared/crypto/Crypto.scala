@@ -9,9 +9,10 @@ import scala.quoted.*
 
 /** Derivation of [[CryptoCapability.Instance]] encrypt facades from a trait.
   *
-  * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.CryptoKeyName]]; the crypto component
-  * is fixed by the per-call `CryptoCapability.Instance`. Each method takes the plaintext as its first value parameter
-  * and a required `algorithm: KeyWrapAlgorithm`, and returns `ArraySeq[Byte]`. The plaintext type selects the overload:
+  * The method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to a
+  * [[dapr4s.crypto.CryptoKeyName]]; the crypto component is fixed by the per-call `CryptoCapability.Instance`. Each
+  * method takes the plaintext as its first value parameter and a required `algorithm: KeyWrapAlgorithm`, and returns
+  * `ArraySeq[Byte]`. The plaintext type selects the overload:
   *   - `ArraySeq[Byte]` → [[CryptoCapability.Instance.encrypt]]
   *   - `String` → [[CryptoCapability.Instance.encryptString]]
   */
@@ -20,9 +21,9 @@ object Crypto:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.CryptoKeyName]] it encrypts under — `def sessionKey` encrypts with the
-    * key named `"sessionKey"` — overridable per method with [[name `@name`]]. The crypto component itself is fixed by
-    * the per-call [[CryptoCapability.Instance]], so `derive` takes no argument.
+    * Each method's Scala name is the [[dapr4s.crypto.CryptoKeyName]] it encrypts under — `def sessionKey` encrypts with
+    * the key named `"sessionKey"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The crypto
+    * component itself is fixed by the per-call [[CryptoCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait Vault:

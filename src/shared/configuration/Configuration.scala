@@ -8,8 +8,9 @@ import scala.quoted.*
 
 /** Derivation of [[ConfigurationCapability.Instance]] reader facades from a trait.
   *
-  * The method name maps verbatim (override with [[name `@name`]]) to a single [[dapr4s.ConfigurationKey]]; the config
-  * store is fixed by the per-call `ConfigurationCapability.Instance`. Each method takes no request body, an optional
+  * The method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to a single
+  * [[dapr4s.configuration.ConfigurationKey]]; the config store is fixed by the per-call
+  * `ConfigurationCapability.Instance`. Each method takes no request body, an optional
   * `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Option[ConfigurationItem]` (the entry for that one
   * key).
   *
@@ -24,9 +25,9 @@ object Configuration:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the single [[dapr4s.ConfigurationKey]] it reads — `def featureX` reads the config
-    * entry `"featureX"` — overridable per method with [[name `@name`]]. The config store itself is fixed by the
-    * per-call [[ConfigurationCapability.Instance]], so `derive` takes no argument.
+    * Each method's Scala name is the single [[dapr4s.configuration.ConfigurationKey]] it reads — `def featureX` reads
+    * the config entry `"featureX"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The config store
+    * itself is fixed by the per-call [[ConfigurationCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait AppConfig:

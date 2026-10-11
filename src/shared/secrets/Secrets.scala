@@ -8,9 +8,9 @@ import scala.quoted.*
 
 /** Derivation of [[SecretsCapability.Instance]] reader facades from a trait.
   *
-  * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.SecretKey]]; the secret store is fixed
-  * by the per-call `SecretsCapability.Instance`. Each method takes no request body, an optional
-  * `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Option[SecretValue]`.
+  * The method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to a [[dapr4s.secrets.SecretKey]];
+  * the secret store is fixed by the per-call `SecretsCapability.Instance`. Each method takes no request body, an
+  * optional `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Option[SecretValue]`.
   *
   * {{{
   *   trait Secrets:
@@ -23,9 +23,9 @@ object Secrets:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.SecretKey]] it reads — `@name("db-password") def dbPassword` reads the
-    * secret `"db-password"` — overridable per method with [[name `@name`]]. The secret store itself is fixed by the
-    * per-call [[SecretsCapability.Instance]], so `derive` takes no argument.
+    * Each method's Scala name is the [[dapr4s.secrets.SecretKey]] it reads — `@name("db-password") def dbPassword`
+    * reads the secret `"db-password"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The secret
+    * store itself is fixed by the per-call [[SecretsCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait Secrets:

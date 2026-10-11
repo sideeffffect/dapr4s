@@ -10,7 +10,7 @@ import scala.quoted.*
   *
   * `derive[Calls, Impl]` implements each method of trait `Calls` by scheduling the matching activity of class `Impl`
   * (the one reified by [[WorkflowActivities]]) through
-  * [[dapr4s.WorkflowContext.callActivityByName(name:* callActivityByName]] by its stable name. The two sides agree on
+  * [[dapr4s.workflow.WorkflowContext.callActivityByName(name:* callActivityByName]] by its stable name. The two sides agree on
   * the name because both compute it from `Impl`.
   *
   * The macro '''verifies''' each `Calls` method against `Impl`: there must be an `Impl` method of the same Scala name,

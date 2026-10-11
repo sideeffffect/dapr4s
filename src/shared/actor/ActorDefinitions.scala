@@ -6,14 +6,14 @@ import dapr4s.*
 import dapr4s.actor.*
 import scala.quoted.*
 
-/** Server-side reification of a Dapr virtual actor: turn an actor class into a [[dapr4s.ActorDefinition]].
+/** Server-side reification of a Dapr virtual actor: turn an actor class into a [[dapr4s.actor.ActorDefinition]].
   *
   * `derive[C]` inspects class `C`'s methods (those with a `(using ActorContext)` clause) and builds the
-  * `ActorDefinition`/`ActorRoutes` the runtime expects. The method name maps verbatim (override with [[name `@name`]])
-  * to the route key; [[reminder `@reminder`]] and [[timer `@timer`]] turn a method into a reminder/timer route (its
-  * result is discarded).
+  * `ActorDefinition`/`ActorRoutes` the runtime expects. The method name maps verbatim (override with
+  * [[dapr4s.derivation.name `@name`]]) to the route key; [[dapr4s.derivation.reminder `@reminder`]] and
+  * [[dapr4s.derivation.timer `@timer`]] turn a method into a reminder/timer route (its result is discarded).
   *
-  * The actor's [[dapr4s.ActorType]] comes from one of two overloads: `derive[C](actorType)` uses the given type
+  * The actor's [[dapr4s.actor.ActorType]] comes from one of two overloads: `derive[C](actorType)` uses the given type
   * verbatim, while the no-argument `derive[C]` derives it from the class's simple name (override with `@name` on the
   * class).
   *
@@ -44,12 +44,13 @@ import scala.quoted.*
 @scala.caps.assumeSafe
 object ActorDefinitions:
 
-  /** Derive an [[dapr4s.ActorDefinition]] for class `C`, registered under `actorType`.
+  /** Derive an [[dapr4s.actor.ActorDefinition]] for class `C`, registered under `actorType`.
     *
-    * Each handler method's Scala name (overridable with [[name `@name`]]) becomes its route key — an
-    * [[dapr4s.ActorMethodName]] for a normal method, or a [[dapr4s.ReminderName]]/[[dapr4s.TimerName]] when the method
-    * carries [[reminder `@reminder`]]/[[timer `@timer`]]. This overload names the [[dapr4s.ActorType]] explicitly; the
-    * no-argument overload derives it from `C`'s name instead.
+    * Each handler method's Scala name (overridable with [[dapr4s.derivation.name `@name`]]) becomes its route key — an
+    * [[dapr4s.actor.ActorMethodName]] for a normal method, or a
+    * [[dapr4s.actor.ReminderName]]/[[dapr4s.actor.TimerName]] when the method carries
+    * [[dapr4s.derivation.reminder `@reminder`]]/[[dapr4s.derivation.timer `@timer`]]. This overload names the
+    * [[dapr4s.actor.ActorType]] explicitly; the no-argument overload derives it from `C`'s name instead.
     *
     * {{{
     *   class Counter(actorId: ActorId):
@@ -63,8 +64,8 @@ object ActorDefinitions:
     */
   inline def derive[C](actorType: ActorType): ActorDefinition = ${ deriveImpl[C]('{ Some(actorType) }) }
 
-  /** Derive an [[dapr4s.ActorDefinition]] for class `C`, with the [[dapr4s.ActorType]] taken from `C`'s simple name
-    * (override with `@name` on the class).
+  /** Derive an [[dapr4s.actor.ActorDefinition]] for class `C`, with the [[dapr4s.actor.ActorType]] taken from `C`'s
+    * simple name (override with `@name` on the class).
     *
     * Method names become route keys exactly as in the `actorType`-taking overload; only the source of the `ActorType`
     * differs — here it is the class's own name rather than an argument.
@@ -76,8 +77,8 @@ object ActorDefinitions:
     */
   inline def derive[C]: ActorDefinition = ${ deriveImpl[C]('{ None }) }
 
-  /** Derive the [[dapr4s.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
-    * `Contract`, with the [[dapr4s.ActorType]] given explicitly.
+  /** Derive the [[dapr4s.actor.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
+    * `Contract`, with the [[dapr4s.actor.ActorType]] given explicitly.
     *
     * Same result as [[derive]], but bound to the dual [[Actor]] facade through the shared `Contract` trait: every
     * `Contract` method must be implemented by an `Impl` actor method of the same Scala name and matching payload types
@@ -91,8 +92,9 @@ object ActorDefinitions:
   inline def deriveChecked[Contract, Impl](actorType: ActorType): ActorDefinition =
     ${ deriveCheckedImpl[Contract, Impl]('{ Some(actorType) }) }
 
-  /** Derive the [[dapr4s.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
-    * `Contract`, with the [[dapr4s.ActorType]] taken from `Impl`'s simple name (override with `@name` on the class).
+  /** Derive the [[dapr4s.actor.ActorDefinition]] for actor class `Impl`, '''checked''' against caller contract trait
+    * `Contract`, with the [[dapr4s.actor.ActorType]] taken from `Impl`'s simple name (override with `@name` on the
+    * class).
     *
     * @see
     *   [[Actor.derive]] — the dual client facade derived from the same `Contract`.

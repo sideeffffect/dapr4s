@@ -8,9 +8,9 @@ import scala.quoted.*
 
 /** Derivation of [[PublishCapability.Instance]] publisher facades from a trait.
   *
-  * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.Topic]]; the pub/sub component is fixed
-  * by the per-call `PublishCapability.Instance`. Each method takes the event as its first value parameter, an optional
-  * `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Unit`.
+  * The method name maps verbatim (override with [[dapr4s.derivation.name `@name`]]) to a [[dapr4s.publish.Topic]]; the
+  * pub/sub component is fixed by the per-call `PublishCapability.Instance`. Each method takes the event as its first
+  * value parameter, an optional `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Unit`.
   *
   * {{{
   *   trait OrderEvents:
@@ -20,16 +20,17 @@ import scala.quoted.*
   *
   * '''Dual.''' [[Subscriptions]] is the inbound counterpart: the app publishes through `Publish.derive[Contract]`, and
   * consumes through `Subscriptions.deriveChecked[Contract, Impl]`. Both read the same `Contract` trait — matched by
-  * [[dapr4s.Topic]] — so `deriveChecked` verifies every published topic has a subscriber carrying the same payload.
+  * [[dapr4s.publish.Topic]] — so `deriveChecked` verifies every published topic has a subscriber carrying the same
+  * payload.
   */
 @scala.caps.assumeSafe
 object Publish:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each method's Scala name is the [[dapr4s.Topic]] it publishes to — `def orders` publishes to topic `"orders"` —
-    * overridable per method with [[name `@name`]]. The pub/sub component itself is fixed by the per-call
-    * [[PublishCapability.Instance]], so `derive` takes no argument.
+    * Each method's Scala name is the [[dapr4s.publish.Topic]] it publishes to — `def orders` publishes to topic
+    * `"orders"` — overridable per method with [[dapr4s.derivation.name `@name`]]. The pub/sub component itself is fixed
+    * by the per-call [[PublishCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait OrderEvents:

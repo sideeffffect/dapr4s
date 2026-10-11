@@ -10,8 +10,8 @@ import language.experimental.safe
   * of app-id and state store component; different applications using the same store may use the same key without
   * conflict because Dapr namespaces keys by app-id internally.
   *
-  * Distinct from [[ActorStateKey]]: this addresses app-level state held by a [[StateCapability]], not the per-instance
-  * state of a virtual actor.
+  * Distinct from [[dapr4s.actor.ActorStateKey]]: this addresses app-level state held by a [[StateCapability]], not the
+  * per-instance state of a virtual actor.
   */
 opaque type StateStoreKey = String
 object StateStoreKey:

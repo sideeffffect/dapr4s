@@ -9,8 +9,9 @@ import language.experimental.safe
   * Must not be empty. Used as the method name when invoking an actor via [[ActorCapability.Instance.invoke]], and as
   * the method key when registering an [[ActorMethodRoute]] on an actor definition.
   *
-  * Distinct from [[InvokeMethodName]]: this dispatches to a method on an addressed, stateful actor instance, not an
-  * HTTP route on a remote app. Actor timer and reminder callbacks use [[TimerName]] and [[ReminderName]] respectively.
+  * Distinct from [[dapr4s.invoke.InvokeMethodName]]: this dispatches to a method on an addressed, stateful actor
+  * instance, not an HTTP route on a remote app. Actor timer and reminder callbacks use [[TimerName]] and
+  * [[ReminderName]] respectively.
   */
 opaque type ActorMethodName = String
 object ActorMethodName:

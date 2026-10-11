@@ -6,10 +6,11 @@ import dapr4s.*
 import dapr4s.actor.*
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.ActorContext]] per-instance state facades from a trait, using the getter/setter convention.
+/** Derivation of [[dapr4s.actor.ActorContext]] per-instance state facades from a trait, using the getter/setter
+  * convention.
   *
-  * Mirrors [[State]] but backed by the per-invocation `ActorContext`; the Scala member name maps verbatim (override
-  * with [[name `@name`]]) to an [[dapr4s.ActorStateKey]]:
+  * Mirrors [[dapr4s.state.State]] but backed by the per-invocation `ActorContext`; the Scala member name maps verbatim
+  * (override with [[dapr4s.derivation.name `@name`]]) to an [[dapr4s.actor.ActorStateKey]]:
   *   - a getter `def x(using ActorContext, JsonCodec[T]): Option[T]` → `ctx.get(ActorStateKey("x"))`
   *   - a setter `def x_=(value: T)(using ActorContext, JsonCodec[T]): Unit` → `ctx.set(ActorStateKey("x"), value)`
   */
@@ -18,10 +19,10 @@ object ActorState:
 
   /** Derive a client facade for trait `T`.
     *
-    * Each member's Scala name is the [[dapr4s.ActorStateKey]] it reads or writes — getter `def count` and setter
+    * Each member's Scala name is the [[dapr4s.actor.ActorStateKey]] it reads or writes — getter `def count` and setter
     * `def count_=` both address the key `"count"` (the `_=` setter suffix is dropped when forming the key) —
-    * overridable with [[name `@name`]]. The name addresses only the key: the actor instance and its store are fixed by
-    * the per-call [[dapr4s.ActorContext]], so `derive` takes no argument.
+    * overridable with [[dapr4s.derivation.name `@name`]]. The name addresses only the key: the actor instance and its
+    * store are fixed by the per-call [[dapr4s.actor.ActorContext]], so `derive` takes no argument.
     *
     * {{{
     *   trait CounterFields:
