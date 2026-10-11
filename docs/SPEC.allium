@@ -215,8 +215,10 @@ value ConfigurationUpdate {
     items: Map<ConfigurationKey, ConfigurationItem>
 }
 
-value StateEntry<T> {
-    value: T?
+value StateEntry {
+    -- Generic in code: StateEntry[T]. Allium value types take no type parameters,
+    -- so the payload is typed Any here (T is the JsonCodec-backed user type).
+    value: Any?
     etag: ETag?
     -- etag is present iff value is present
 }
@@ -227,9 +229,10 @@ value StateKeyValue {
     value: Any
 }
 
-value BulkPublishEntry<T> {
+value BulkPublishEntry {
+    -- Generic in code: BulkPublishEntry[T]; the event payload is typed Any here.
     entry_id: BulkEntryId   -- caller-assigned ID for correlating failures
-    event: T
+    event: Any
 }
 
 value BulkPublishResult {
@@ -253,7 +256,8 @@ value SubscriptionResult {
     -- drop:    silently discard — do not redeliver, no error
 }
 
-value CloudEvent<T> {
+value CloudEvent {
+    -- Generic in code: CloudEvent[T]; the data payload is typed Any here.
     id: CloudEventId
     source: CloudEventSource
     spec_version: CloudEventSpecVersion
@@ -261,15 +265,16 @@ value CloudEvent<T> {
     topic: Topic
     pub_sub_name: PubSubName
     data_content_type: ContentType
-    data: T
+    data: Any
 }
 
-value InvokeRequest<T> {
+value InvokeRequest {
+    -- Generic in code: InvokeRequest[T]; the data payload is typed Any here.
     -- Incoming service invocation request delivered by the sidecar to an InvokeRoute.withRequest handler.
     -- Matches final case class InvokeRequest[T](methodName: InvokeMethodName, httpMethod: HttpMethod, data: T).
     method_name: InvokeMethodName
     http_method: HttpMethod
-    data: T
+    data: Any
 }
 
 value JobDetails {
@@ -292,7 +297,7 @@ contract JsonCodec {
     encode: (value: Any) -> String
     decode: (json: String?) -> DecodeResult
     -- decode accepts null input; returns Left(JsonDecodeException("null input")) for null
-    decode_or_throw: (json: String?) -> Any throws JsonDecodeException
+    decode_or_throw: (json: String?) -> Any   -- throws JsonDecodeException
     -- Convenience: unwraps Right or throws the JsonDecodeException from Left
 
     @invariant Roundtrip
@@ -310,6 +315,231 @@ contract JsonCodec {
     @invariant DecodeNeverThrows
         -- decode always returns Left or Right; it never throws.
         -- decode(null) returns Left(JsonDecodeException("null input")).
+}
+
+-- ---- Public API operation contracts ----
+-- Allium contracts take no type parameters, so the Scala type parameters (T, Req, Resp,
+-- Payload, I, O) are written as Any; the JsonCodec contract supplies the codec for each.
+-- Context functions (X ?=> T) are written as plain function types (X -> Any); the
+-- comments give the exact Scala shape. Overloads get distinct signature names.
+
+contract DaprRuntimeOperations {
+    -- class Dapr(config: DaprConfig = DaprConfig())
+    run: (body: DaprCapability -> Any) -> Any
+    -- Code: run[T](body: DaprCapability ?=> T): T
+    -- Acquires a DaprClient, provides DaprCapability to body, releases on exit.
+    -- Propagates exceptions after releasing resources.
+    serve: (body: DaprCapability -> DaprApp) -> Nothing
+    -- Code: serve(body: DaprCapability ?=> DaprApp): Nothing
+    -- Runs inside run: validates the returned DaprApp (validateOrThrow), starts an HTTP
+    -- server on config.appServer.port, then blocks until the JVM shuts down or the
+    -- calling thread is interrupted. Never returns normally.
+    -- DaprClient lifecycle matches the server's lifetime.
+    --
+    -- Scala.js only: runAsync(body) -> js.Promise[T] and serveAsync(body) -> js.Promise[Nothing]
+    -- are program-edge conveniences.
+}
+
+contract DaprCapabilityAccessors {
+    -- Argument-less accessors (rung 2); each return type carries ^{this}.
+    state:         () -> AccessStateCapability
+    publish:       () -> AccessPublishCapability
+    invoke:        () -> AccessInvokeCapability
+    secrets:       () -> AccessSecretsCapability
+    configuration: () -> AccessConfigurationCapability
+    bindings:      () -> AccessBindingsCapability
+    lock:          () -> AccessLockCapability
+    actor:         () -> AccessActorCapability
+    workflow:      () -> AccessWorkflowCapability
+    crypto:        () -> AccessCryptoCapability
+    jobs:          () -> AccessJobsCapability          -- JVM only
+    conversation:  () -> AccessConversationCapability  -- JVM only
+}
+
+contract DaprCapabilityTransformers {
+    -- Companion-object transformers DaprCapability.<name>: acquire from the ambient
+    -- DaprCapability and pass the result to body as a context parameter
+    -- (code: body: X ?=> T, result T).
+    state:         (store_name: StateStoreName, body: StateCapability -> Any) -> Any
+    publish:       (pubsub_name: PubSubName, body: PublishCapability -> Any) -> Any
+    invoke:        (body: AccessInvokeCapability -> Any) -> Any
+    secrets:       (store_name: SecretStoreName, body: SecretsCapability -> Any) -> Any
+    configuration: (store_name: ConfigurationStoreName, body: ConfigurationCapability -> Any) -> Any
+    bindings:      (binding_name: BindingName, body: BindingsCapability -> Any) -> Any
+    lock:          (store_name: LockStoreName, body: LockCapability -> Any) -> Any
+    actor:         (actor_type: ActorType, actor_id: ActorId, body: ActorCapability -> Any) -> Any
+    workflow:      (body: AccessWorkflowCapability -> Any) -> Any
+    crypto:        (component_name: CryptoComponentName, body: CryptoCapability -> Any) -> Any
+    jobs:          (body: AccessJobsCapability -> Any) -> Any   -- JVM only
+    conversation:  (component_name: ConversationComponentName, body: ConversationCapability -> Any) -> Any   -- JVM only
+    -- invoke, workflow and jobs hand over the rung-2 accessor (one handle covers many
+    -- app ids / instances / job names); the others hand over the rung-3 capability.
+}
+
+contract StateOperations {
+    get: (key: StateStoreKey, consistency: StateConsistency) -> Any?
+    -- Returns Option[T]; None if key not found. consistency defaults to Default.
+    get_with_etag: (key: StateStoreKey, consistency: StateConsistency) -> StateEntry
+    -- Returns StateEntry with value and current ETag
+    get_bulk: (keys: List<StateStoreKey>) -> Map<StateStoreKey, StateEntry>
+    -- Batch fetch; missing keys return StateEntry with value = absent
+    save: (key: StateStoreKey, value: Any) -> Unit
+    save_with_etag: (key: StateStoreKey, value: Any, etag: ETag, metadata: Map<MetadataKey, MetadataValue>, consistency: StateConsistency, concurrency: StateConcurrency) -> ETagMismatchException?
+    -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
+    save_bulk: (entries: List<StateKeyValue>) -> Unit
+    delete: (key: StateStoreKey) -> Unit
+    delete_with_etag: (key: StateStoreKey, etag: ETag, consistency: StateConsistency, concurrency: StateConcurrency) -> ETagMismatchException?
+    -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
+    transaction: (ops: List<StateOp>) -> Unit
+    query_state: (query: StateQuery) -> List<StateEntry>
+    -- Query using DAPR state store query API (store must support queries)
+}
+
+contract PublishOperations {
+    publish: (topic: Topic, data: Any) -> Unit
+    publish_with_metadata: (topic: Topic, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
+    bulk_publish: (topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
+    -- Publishes multiple entries in a single call; returns list of failed entry IDs
+}
+
+contract InvokeOperations {
+    invoke: (method: InvokeMethodName, data: Any, http_method: HttpMethod, metadata: Map<MetadataKey, MetadataValue>) -> Any
+    -- Req inferred from data; Resp given at the call site (clause interleaving).
+    -- http_method defaults to Post; metadata defaults to empty.
+    invoke_get: (method: InvokeMethodName) -> Any
+    -- Code overload invoke[Resp](method): no body, HTTP GET, no metadata.
+}
+
+contract SecretsOperations {
+    get: (key: SecretKey, metadata: Map<MetadataKey, MetadataValue>) -> SecretValue?   -- None when key absent
+    get_bulk: (metadata: Map<MetadataKey, MetadataValue>) -> Map<SecretKey, SecretValue>
+}
+
+contract ConfigurationOperations {
+    get: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>) -> Map<ConfigurationKey, ConfigurationItem>
+    subscribe: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
+    -- Streams config changes from sidecar; close the AutoCloseable to stop.
+    -- The AutoCloseable carries ^{this}.
+}
+
+contract DaprAppBuilders {
+    -- Two Subscription overloads: default route is "/" + topic.value; dead_letter_topic defaults to None
+    subscription: (pubsub_name: PubSubName, topic: Topic, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
+    subscription_with_route: (pubsub_name: PubSubName, topic: Topic, route: Route, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
+    -- InvokeRoute(name, handler) — simple overload: handler receives only the decoded request body.
+    invoke_route: (method_name: InvokeMethodName, handler: Any -> Any) -> InvokeRoute
+    -- InvokeRoute.withRequest — rich overload: handler receives the full InvokeRequest envelope
+    -- (method name, HTTP verb, body); code: handler: InvokeRequest[Req] => Resp.
+    invoke_route_with_request: (method_name: InvokeMethodName, handler: InvokeRequest -> Any) -> InvokeRoute
+    binding_route: (binding_name: BindingName, handler: Any -> Unit) -> BindingRoute
+    job_route: (name: JobName, handler: Any -> Unit) -> JobRoute
+    dapr_app: (subscriptions: List<Subscription>, invokeRoutes: List<InvokeRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>, jobs: List<JobRoute>) -> DaprApp
+    combine: (left: DaprApp, right: DaprApp) -> DaprApp
+    -- Code: left ++ right
+    validation_errors: (app: DaprApp) -> List<DaprAppValidationError>
+    -- Code: app.validationErrors
+    validate_or_throw: (app: DaprApp) -> DaprApp
+    -- Code: app.validateOrThrow()
+    actor_method_route: (method_name: ActorMethodName, handler: Any -> Any) -> ActorMethodRoute
+    actor_reminder_route: (reminder_name: ReminderName, handler: Any -> Unit) -> ActorReminderRoute
+    actor_timer_route: (timer_name: TimerName, handler: Any -> Unit) -> ActorTimerRoute
+    actor_routes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes
+    actor_definition: (actor_type: ActorType, build: ActorId -> ActorRoutes) -> ActorDefinition
+    -- Code: build: ActorId => ActorContext ?=> ActorRoutes
+    -- Handler lambdas may capture sub-capabilities from the enclosing DaprCapability
+    -- transformer bodies.
+    -- The recommended pattern is: business logic in explicit methods with
+    -- anonymous (using Capability) context parameters; companion-object
+    -- forwarders (e.g. StateCapability.save(...), PublishCapability.publish(...))
+    -- dispatch to the implicit instance, so callers never name the capability
+    -- value.  Methods are passed as direct handler references (no wrapping lambda)
+    -- because no library method carries a throws annotation.
+    -- Sub-capabilities are acquired via the DaprCapability accessors or the
+    -- DaprCapability.state/publish/etc. companion transformers.
+}
+
+contract BindingsOperations {
+    invoke: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Any?
+    -- Returns Option[Resp]; None if binding has no response.
+    -- Req inferred from data; Resp given at the call site.
+    invoke_one_way: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
+    -- Fire-and-forget binding invocation; no response expected
+}
+
+contract LockOperations {
+    try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) -> Boolean
+    -- Attempts to acquire lock; returns true if acquired, false if already held
+    unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
+    -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
+}
+
+contract CryptoOperations {
+    encrypt: (key_name: CryptoKeyName, plaintext: ByteArray, algorithm: KeyWrapAlgorithm) -> ByteArray
+    decrypt: (ciphertext: ByteArray) -> ByteArray
+    encrypt_string: (key_name: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm) -> ByteArray
+    decrypt_string: (ciphertext: ByteArray) -> String
+    -- Byte payloads are immutable ArraySeq[Byte].
+}
+
+contract ActorClientOperations {
+    invoke: (method: ActorMethodName, data: Any) -> Any
+    -- Req inferred from data; Resp given at the call site.
+    invoke_no_body: (method: ActorMethodName) -> Any
+    -- Code overload invoke[Resp](method).
+    invoke_void: (method: ActorMethodName) -> Unit
+}
+
+contract WorkflowLaunchOperations {
+    -- AccessWorkflowCapability (code: start / startWithId overloads with and without input)
+    start: (name: WorkflowName) -> WorkflowInstanceId
+    start_with_input: (name: WorkflowName, input: Any) -> WorkflowInstanceId
+    start_with_id: (name: WorkflowName, instance_id: WorkflowInstanceId) -> WorkflowInstanceId
+    start_with_id_and_input: (name: WorkflowName, instance_id: WorkflowInstanceId, input: Any) -> WorkflowInstanceId
+}
+
+contract WorkflowInstanceOperations {
+    -- WorkflowInstanceCapability (bound to instance_id; operations take no id)
+    get_status: () -> WorkflowSnapshot?
+    suspend: () -> Unit
+    resume: () -> Unit
+    terminate: () -> Unit
+    raise_event: (event_name: EventName, payload: Any) -> Unit
+    wait_for_completion: (timeout: FiniteDuration) -> WorkflowSnapshot?
+    purge: () -> Boolean
+}
+
+contract JobsOperations {
+    schedule: (data: Any, schedule: JobSchedule, due_time: Timestamp?, repeats: Integer?, ttl: Timestamp?) -> Unit
+    -- Recurring job; data is delivered to the matching JobRoute each time it fires.
+    schedule_once: (data: Any, due_time: Timestamp, ttl: Timestamp?) -> Unit
+    get: () -> JobDetails?
+    -- None if no job with this name exists.
+    delete: () -> Unit
+    -- No-op if the job does not exist.
+}
+
+contract ConversationOperations {
+    converse: (messages: List<ConversationMessage>, tools: List<ConversationTool>, tool_choice: ToolChoice?, temperature: Decimal?, context_id: ConversationContextId?, scrub_pii: Boolean) -> ConversationResponse
+}
+
+contract ActorContextOperations {
+    -- State
+    get:    (key: ActorStateKey) -> Any?
+    -- Code: get[T](key): Option[T]; None when key absent, Some(T) when present
+    set:    (key: ActorStateKey, value: Any) -> Unit
+    remove: (key: ActorStateKey) -> Unit
+
+    -- Reminders (persistent — survive actor deactivation/restart)
+    register_reminder: (name: ReminderName, data: Any, dueTime: FiniteDuration, period: FiniteDuration?) -> Unit
+    -- Registers a persistent callback; sidecar reactivates the actor to deliver it.
+    -- period = None (default) means fire once; period = Some(d) means fire repeatedly every d.
+    unregister_reminder: (name: ReminderName) -> Unit
+    -- No-op if no reminder with name exists.
+
+    -- Timers (non-persistent — lost on actor deactivation)
+    register_timer: (name: TimerName, data: Any, dueTime: FiniteDuration, period: FiniteDuration?) -> Unit
+    -- Registers a non-persistent callback; silently dropped if actor deactivates before it fires.
+    unregister_timer: (name: TimerName) -> Unit
 }
 
 ------------------------------------------------------------
@@ -433,6 +663,22 @@ value JobRoute {
     -- Inbound side is cross-platform; scheduling jobs (JobCapability) is JVM-only.
 }
 
+-- Actor routes returned (inside ActorRoutes) by ActorDefinition.build on every invocation.
+value ActorMethodRoute {
+    method_name: ActorMethodName
+    -- handler: Req -> Resp (captured, CC-erased internally); reqCodec / respCodec carried
+}
+
+value ActorReminderRoute {
+    reminder_name: ReminderName
+    -- handler: Payload -> Unit (captured, CC-erased internally); codec carried
+}
+
+value ActorTimerRoute {
+    timer_name: TimerName
+    -- handler: Payload -> Unit (captured, CC-erased internally); codec carried
+}
+
 -- Rung 3 of the capability ladder: per-resource capabilities.
 -- Each carries its bound name as a `val` (storeName, pubsubName, appId, ...), so its
 -- operations never take that name again.
@@ -536,6 +782,12 @@ variant UpsertOp : StateOp {
 
 variant DeleteOp : StateOp {
     -- No additional fields beyond those inherited from StateOp
+}
+
+value JsonDecodeException {
+    -- final class JsonDecodeException(message, cause) extends Exception: malformed JSON or a
+    -- type mismatch between the payload and the target Scala type.
+    message: String
 }
 
 value DecodeResult {
@@ -870,6 +1122,7 @@ rule StateSaveWithETag {
             -- Returns None
         else:
             -- Returns Some(ETagMismatchException(key, etag)); no exception thrown, no mutation
+            ETagMismatchReturned(key: key, etag: etag)
 }
 
 rule StateDelete {
@@ -893,6 +1146,7 @@ rule StateDeleteWithETag {
             -- Returns None
         else:
             -- Returns Some(ETagMismatchException(key, etag)); no exception thrown, no mutation
+            ETagMismatchReturned(key: key, etag: etag)
 }
 
 rule StateGetBulk {
@@ -1053,85 +1307,104 @@ rule ConfigSubscribe {
 -- Registration is implicit: DaprAppServer derives routes from DaprApp at startup.
 
 rule DaprAppServed {
-    when: DaprRuntime.serve returns app: DaprApp
+    when: DaprServeBodyReturned(app)
+    -- DaprServeBodyReturned(app) is the serve body (DaprCapability ?=> DaprApp) returning
+    -- app: DaprApp inside Dapr(config).serve { body }.
 
     ensures:
         -- serve first calls app.validateOrThrow(); an invalid app raises
         -- DaprAppValidationException before the port is bound.
         for s in app.subscriptions:
-            PubSubSubscription.registered(
+            PubSubSubscriptionRegistered(
                 pubsub_name: s.pubsub_name,
                 topic: s.topic,
                 route: s.route,
                 dead_letter_topic: s.dead_letter_topic
             )
         for inv in app.invokeRoutes:
-            InvokeHandler.registered(path: "/" + inv.method_name.value)
+            InvokeHandlerRegistered(path: "/" + inv.method_name.value)
         for bin in app.bindings:
-            BindingHandler.registered(path: "/" + bin.binding_name.value)
+            BindingHandlerRegistered(path: "/" + bin.binding_name.value)
         for job in app.jobs:
-            JobHandler.registered(path: "/job/" + job.name.value)
+            JobHandlerRegistered(path: "/job/" + job.name.value)
         -- GET /dapr/subscribe returns all registered subscriptions before any message is handled
 }
 
 -- ---- Inbound Dispatch (during serving) ----
+-- Black box functions used below:
+--   subscription_for_route / invoke_route_for / binding_route_for / job_route_for:
+--     look up the DaprApp route registered under the given route / name.
+--   is_cloud_event_envelope(json): json parses as a CloudEvent envelope with all required fields.
+--   decodes(json, codec): the payload decodes with the route's JsonCodec.
+--   handler_throws(route, json): the route's handler throws on the decoded payload.
+--   handler_outcome(route, json): the SubscriptionResult returned by the subscription handler
+--     for the CloudEvent<sub.Payload> built from the envelope with decoded data.
+--   handler_response(route, json): the inv.Req -> inv.Resp handler result for the decoded request.
 
 rule PubSubMessageDelivered {
     when: SidecarDeliversPubSubMessage(route, cloud_event_json)
     -- Sidecar POSTs to <route> with a CloudEvent JSON body.
     -- The matching Subscription (by route) provides the handler and codec.
 
+    let sub = subscription_for_route(route)
+
     ensures:
-        if cloud_event_json is not parseable as a CloudEvent envelope:
+        if not is_cloud_event_envelope(cloud_event_json):
             -- Malformed JSON or missing required fields — transient, so retry
-            SubscriptionResult.retry
+            SubscriptionResultReturned(outcome: retry)
+        else if not decodes(cloud_event_json, sub.codec):
+            -- Permanently undecodable payload — drop to avoid retry loop
+            SubscriptionResultReturned(outcome: drop)
+        else if handler_throws(sub, cloud_event_json):
+            SubscriptionResultReturned(outcome: retry)
         else:
-            let envelope = ParseCloudEvent(cloud_event_json)
-            if envelope.data decode fails (using sub.codec):
-                -- Permanently undecodable payload — drop to avoid retry loop
-                SubscriptionResult.drop
-            else:
-                let cloud_event: CloudEvent<sub.Payload> = envelope with decoded data
-                let handler = sub.handler  -- CloudEvent<sub.Payload> -> SubscriptionResult
-                if handler(cloud_event) completes:
-                    handler(cloud_event)   -- propagate Success / Retry / Drop
-                if handler throws:
-                    SubscriptionResult.retry
+            -- handler: CloudEvent<sub.Payload> -> SubscriptionResult;
+            -- its Success / Retry / Drop is propagated unchanged.
+            SubscriptionResultReturned(outcome: handler_outcome(sub, cloud_event_json))
 }
 
 rule BindingEventDelivered {
     when: SidecarDeliversBindingEvent(binding_name, payload_json)
     -- The matching BindingRoute (by binding_name) provides the handler and codec.
+    -- handler: bin.Payload -> Unit
+
+    let bin = binding_route_for(binding_name)
 
     ensures:
-        let handler = bin.handler  -- bin.Payload -> Unit
-        if payload_json decodes and handler(payload) completes:
+        if decodes(payload_json, bin.codec) and not handler_throws(bin, payload_json):
             SidecarAcknowledged()
-        if payload_json decode fails or handler throws:
+        else:
+            -- payload_json decode fails or handler throws
             SidecarErrorReturned()
 }
 
 rule JobTriggerDelivered {
     when: SidecarDeliversJobTrigger(job_name, payload_json)
     -- Sidecar POSTs to /job/<name>. The matching JobRoute (by name) provides the handler and codec.
+    -- handler: job.Payload -> Unit
+
+    let job = job_route_for(job_name)
 
     ensures:
-        let handler = job.handler  -- job.Payload -> Unit
-        if payload_json decodes and handler(payload) completes:
+        if decodes(payload_json, job.codec) and not handler_throws(job, payload_json):
             SidecarAcknowledged()
-        if payload_json decode fails or handler throws:
+        else:
+            -- payload_json decode fails or handler throws
             SidecarErrorReturned()
 }
 
 rule InvokeReceived {
     when: SidecarDeliversInvocation(method_name, request_body_json)
     -- The matching InvokeRoute (by method_name) provides the handler and codecs.
+    -- handler: inv.Req -> inv.Resp
+
+    let inv = invoke_route_for(method_name)
 
     ensures:
-        let handler = inv.handler  -- inv.Req -> inv.Resp
-        if request_body_json decodes and handler(request) completes:
-            SidecarResponded(body: inv.respCodec.encode(result))
-        if request_body_json decode fails or handler throws:
+        if decodes(request_body_json, inv.reqCodec) and not handler_throws(inv, request_body_json):
+            SidecarResponded(body: encode(inv.respCodec, handler_response(inv, request_body_json)))
+        else:
+            -- request_body_json decode fails or handler throws
             SidecarErrorReturned()
 }
 
@@ -1149,6 +1422,7 @@ rule LockTryLock {
             -- Returns true
         else:
             -- Returns false; no exception
+            LockNotAcquired(resourceId: resourceId, owner: lockOwner)
 }
 
 rule LockUnlock {
@@ -1161,11 +1435,13 @@ rule LockUnlock {
             if DaprLockOwner(cap.store_name, resourceId) = lockOwner:
                 LockReleased(resourceId: resourceId)
                 -- Returns UnlockStatus.Success
+                UnlockCompleted(status: success)
             else:
                 -- Returns UnlockStatus.InternalError (wrong owner)
+                UnlockCompleted(status: internal_error)
         else:
             -- Returns UnlockStatus.LockNotFound
-
+            UnlockCompleted(status: lock_not_found)
 }
 
 -- ---- Output Bindings ----
@@ -1205,19 +1481,27 @@ rule JsonDecode {
 }
 
 -- ---- Actor Inbound Dispatch ----
+-- Black box functions used below:
+--   actor_definition_for(actorType): the ActorDefinition in DaprApp.actors with that actor type.
+--   build_actor_routes(defn, actorId): defn.build(actorId) evaluated with a fresh ActorContext
+--     constructed for (actorType, actorId); runs on every incoming invocation.
+--   actor_method_route_for / actor_reminder_route_for / actor_timer_route_for(routes, name):
+--     the route in routes.methods / routes.reminders / routes.timers registered under name.
+--   decodes(json, codec), handler_throws(route, json), handler_response(route, json):
+--     as for the inbound dispatch rules above.
 
 rule ActorMethodInvoked {
     when: SidecarDeliversActorMethod(actorType, actorId, methodName, request_body_json)
     -- Sidecar POSTs to /actors/{type}/{id}/method/{name}
 
+    let routes = build_actor_routes(actor_definition_for(actorType), actorId)
+    let route = actor_method_route_for(routes, methodName)
+
     ensures:
-        let defn = DaprApp.actors where defn.actorType = actorType
-        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
-        let routes = defn.build(actorId, ctx)
-        let route = routes.methods where route.methodName = methodName
-        if request_body_json decodes and route.handler(request) completes:
-            SidecarResponded(body: route.respCodec.encode(result))
-        if request_body_json decode fails or route.handler throws:
+        if decodes(request_body_json, route.reqCodec) and not handler_throws(route, request_body_json):
+            SidecarResponded(body: encode(route.respCodec, handler_response(route, request_body_json)))
+        else:
+            -- request_body_json decode fails or route.handler throws
             SidecarErrorReturned()
 }
 
@@ -1227,14 +1511,14 @@ rule ActorReminderDelivered {
     -- Body: {"data":"<base64>","dueTime":"...","period":"..."}
     -- data is base64-encoded JSON of the reminder payload
 
+    let routes = build_actor_routes(actor_definition_for(actorType), actorId)
+    let route = actor_reminder_route_for(routes, reminderName)
+
     ensures:
-        let defn = DaprApp.actors where defn.actorType = actorType
-        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
-        let routes = defn.build(actorId, ctx)
-        let route = routes.reminders where route.reminderName = reminderName
-        if data decodes and route.handler(payload) completes:
+        if decodes(data_base64_json, route.codec) and not handler_throws(route, data_base64_json):
             SidecarAcknowledged()
-        if data decode fails or route.handler throws:
+        else:
+            -- data decode fails or route.handler throws
             SidecarErrorReturned()
 }
 
@@ -1243,14 +1527,14 @@ rule ActorTimerDelivered {
     -- Sidecar PUTs /actors/{type}/{id}/method/timer/{name}
     -- Same body format as reminder; data is base64-encoded JSON of the timer payload
 
+    let routes = build_actor_routes(actor_definition_for(actorType), actorId)
+    let route = actor_timer_route_for(routes, timerName)
+
     ensures:
-        let defn = DaprApp.actors where defn.actorType = actorType
-        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
-        let routes = defn.build(actorId, ctx)
-        let route = routes.timers where route.timerName = timerName
-        if data decodes and route.handler(payload) completes:
+        if decodes(data_base64_json, route.codec) and not handler_throws(route, data_base64_json):
             SidecarAcknowledged()
-        if data decode fails or route.handler throws:
+        else:
+            -- data decode fails or route.handler throws
             SidecarErrorReturned()
 }
 
@@ -1353,27 +1637,24 @@ actor LibraryAuthor {
 ------------------------------------------------------------
 -- Surfaces
 ------------------------------------------------------------
+-- Method signatures live in the module-level *Operations / *Builders contracts (Contracts
+-- section); each surface references them with `fulfils`. A rung-3 surface binds its
+-- capability with `context`, exposes the bound name, and provides the request triggers
+-- that the Rules section handles.
 
 surface DaprRuntimeSurface {
     -- The entry point is class Dapr(config: DaprConfig = DaprConfig()).
     facing user: UserCode
 
+    provides:
+        DaprRun()
+        DaprBodyCompleted()
+        DaprBodyThrew(exception)
+        DaprServeBodyReturned(app)
+
     contracts:
         demands JsonCodec
-
-    exposes:
-        run: (body: DaprCapability ?=> T) -> T
-        -- Acquires a DaprClient, provides DaprCapability to body, releases on exit.
-        -- Propagates exceptions after releasing resources.
-
-        serve: (body: DaprCapability ?=> DaprApp) -> Nothing
-        -- Runs inside run: validates the returned DaprApp (validateOrThrow), starts an HTTP
-        -- server on config.appServer.port, then blocks until the JVM shuts down or the
-        -- calling thread is interrupted. Never returns normally.
-        -- DaprClient lifecycle matches the server's lifetime.
-        --
-        -- Scala.js only: runAsync(body) -> js.Promise[T] and serveAsync(body) -> js.Promise[Nothing]
-        -- are program-edge conveniences.
+        fulfils DaprRuntimeOperations
 
     @guarantee ResourceCleanup
         -- Dapr.run and serve always close the DaprClient (and any lazily created actor /
@@ -1383,38 +1664,14 @@ surface DaprRuntimeSurface {
 surface DaprCapabilitySurface {
     -- Rung 1. DaprCapability is provided as a context parameter inside Dapr(config).run / serve bodies.
     facing user: UserCode
+    context cap: DaprCapability
 
-    exposes:
-        -- Argument-less accessors (rung 2); each return type carries ^{this}.
-        state:         () -> AccessStateCapability
-        publish:       () -> AccessPublishCapability
-        invoke:        () -> AccessInvokeCapability
-        secrets:       () -> AccessSecretsCapability
-        configuration: () -> AccessConfigurationCapability
-        bindings:      () -> AccessBindingsCapability
-        lock:          () -> AccessLockCapability
-        actor:         () -> AccessActorCapability
-        workflow:      () -> AccessWorkflowCapability
-        crypto:        () -> AccessCryptoCapability
-        jobs:          () -> AccessJobsCapability          -- JVM only
-        conversation:  () -> AccessConversationCapability  -- JVM only
-        --
-        -- Companion-object transformers: acquire from the ambient DaprCapability and pass the
-        -- result to body as a context parameter (body: X ?=> T, result T).
-        DaprCapability.state:         (store_name: StateStoreName,                body: StateCapability ?=> T)         -> T
-        DaprCapability.publish:       (pubsub_name: PubSubName,                   body: PublishCapability ?=> T)       -> T
-        DaprCapability.invoke:        (                                           body: AccessInvokeCapability ?=> T)  -> T
-        DaprCapability.secrets:       (store_name: SecretStoreName,               body: SecretsCapability ?=> T)       -> T
-        DaprCapability.configuration: (store_name: ConfigurationStoreName,        body: ConfigurationCapability ?=> T) -> T
-        DaprCapability.bindings:      (binding_name: BindingName,                 body: BindingsCapability ?=> T)      -> T
-        DaprCapability.lock:          (store_name: LockStoreName,                 body: LockCapability ?=> T)          -> T
-        DaprCapability.actor:         (actor_type: ActorType, actor_id: ActorId,  body: ActorCapability ?=> T)         -> T
-        DaprCapability.workflow:      (                                           body: AccessWorkflowCapability ?=> T) -> T
-        DaprCapability.crypto:        (component_name: CryptoComponentName,       body: CryptoCapability ?=> T)        -> T
-        DaprCapability.jobs:          (                                           body: AccessJobsCapability ?=> T)    -> T   -- JVM only
-        DaprCapability.conversation:  (component_name: ConversationComponentName, body: ConversationCapability ?=> T) -> T   -- JVM only
-        -- invoke, workflow and jobs hand over the rung-2 accessor (one handle covers many
-        -- app ids / instances / job names); the others hand over the rung-3 capability.
+    provides:
+        DaprCapabilityAccessorRequested(cap, family)
+
+    contracts:
+        fulfils DaprCapabilityAccessors
+        fulfils DaprCapabilityTransformers
 
     @guarantee CapabilityLifetime
         -- Every accessor and sub-capability is open iff its parent rung is open
@@ -1435,28 +1692,24 @@ surface DaprCapabilitySurface {
 surface StateCapabilitySurface {
     -- dapr4s.state. AccessStateCapability.apply(store_name: StateStoreName) -> StateCapability.
     facing user: UserCode
+    context cap: StateCapability
+
+    exposes:
+        cap.store_name
+
+    provides:
+        StateGetRequested(cap, key)
+        StateSaveRequested(cap, key, value)
+        StateSaveWithETagRequested(cap, key, value, etag)
+        StateDeleteRequested(cap, key)
+        StateDeleteWithETagRequested(cap, key, etag)
+        StateGetBulkRequested(cap, keys)
+        StateSaveBulkRequested(cap, entries)
+        StateTransactionRequested(cap, ops)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        store_name: StateStoreName
-        get: (key: StateStoreKey, consistency: StateConsistency) -> Any
-        -- Returns Option[T]; None if key not found. consistency defaults to Default.
-        get_with_etag: (key: StateStoreKey, consistency: StateConsistency) -> StateEntry
-        -- Returns StateEntry with value and current ETag
-        get_bulk: (keys: List<StateStoreKey>) -> Map<StateStoreKey, StateEntry>
-        -- Batch fetch; missing keys return StateEntry with value = absent
-        save: (key: StateStoreKey, value: Any) -> Unit
-        save_with_etag: (key: StateStoreKey, value: Any, etag: ETag, metadata: Map<MetadataKey, MetadataValue>, consistency: StateConsistency, concurrency: StateConcurrency) -> Option<ETagMismatchException>
-        -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
-        save_bulk: (entries: List<StateKeyValue>) -> Unit
-        delete: (key: StateStoreKey) -> Unit
-        delete_with_etag: (key: StateStoreKey, etag: ETag, consistency: StateConsistency, concurrency: StateConcurrency) -> Option<ETagMismatchException>
-        -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
-        transaction: (ops: List<StateOp>) -> Unit
-        query_state: (query: StateQuery) -> List<StateEntry>
-        -- Query using DAPR state store query API (store must support queries)
+        fulfils StateOperations
 
     @guarantee AtomicTransaction
         -- transaction applies all operations or none (TransactionAtomicity).
@@ -1470,16 +1723,19 @@ surface StateCapabilitySurface {
 surface PubSubCapabilitySurface {
     -- dapr4s.publish. AccessPublishCapability.apply(pubsub_name: PubSubName) -> PublishCapability.
     facing user: UserCode
+    context cap: PublishCapability
+
+    exposes:
+        cap.pubsub_name
+
+    provides:
+        PubSubPublishRequested(cap, topic, data)
+        PubSubPublishWithMetadataRequested(cap, topic, data, metadata)
+        PubSubBulkPublishRequested(cap, topic, entries)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        pubsub_name: PubSubName
-        publish: (topic: Topic, data: Any) -> Unit
-        publish_with_metadata: (topic: Topic, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
-        bulk_publish: (topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
-        -- Publishes multiple entries in a single call; returns list of failed entry IDs
+        fulfils PublishOperations
 
     @guarantee PublishAtLeastOnce
         -- publish completing successfully means DAPR has accepted the message.
@@ -1490,39 +1746,50 @@ surface InvokeSurface {
     -- dapr4s.invoke. AccessInvokeCapability.apply(app_id: AppId) -> InvokeCapability.
     -- The InvokeCapability is bound to app_id; its methods take no AppId.
     facing user: UserCode
+    context cap: InvokeCapability
+
+    exposes:
+        cap.app_id
+
+    provides:
+        ServiceInvokeRequested(cap, method, data, http_method, metadata)
+        ServiceInvokeGetRequested(cap, method)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        app_id: AppId
-        invoke: (method: InvokeMethodName, data: Any, http_method: HttpMethod, metadata: Map<MetadataKey, MetadataValue>) -> Any
-        -- Req inferred from data; Resp given at the call site (clause interleaving).
-        -- http_method defaults to Post; metadata defaults to empty.
-        invoke_get: (method: InvokeMethodName) -> Any
-        -- Code overload invoke[Resp](method): no body, HTTP GET, no metadata.
+        fulfils InvokeOperations
 }
 
 surface SecretsSurface {
     -- dapr4s.secrets. AccessSecretsCapability.apply(store_name: SecretStoreName) -> SecretsCapability.
     facing user: UserCode
+    context cap: SecretsCapability
 
     exposes:
-        store_name: SecretStoreName
-        get: (key: SecretKey, metadata: Map<MetadataKey, MetadataValue>) -> SecretValue?   -- None when key absent
-        get_bulk: (metadata: Map<MetadataKey, MetadataValue>) -> Map<SecretKey, SecretValue>
+        cap.store_name
+
+    provides:
+        SecretsGetRequested(cap, key, metadata)
+        SecretsGetBulkRequested(cap, metadata)
+
+    contracts:
+        fulfils SecretsOperations
 }
 
 surface ConfigurationSurface {
     -- dapr4s.configuration. AccessConfigurationCapability.apply(store_name) -> ConfigurationCapability.
     facing user: UserCode
+    context cap: ConfigurationCapability
 
     exposes:
-        store_name: ConfigurationStoreName
-        get: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>) -> Map<ConfigurationKey, ConfigurationItem>
-        subscribe: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
-        -- Streams config changes from sidecar; close the AutoCloseable to stop.
-        -- The AutoCloseable carries ^{this}.
+        cap.store_name
+
+    provides:
+        ConfigGetRequested(cap, keys, metadata)
+        ConfigSubscribeRequested(cap, keys, metadata, on_change)
+
+    contracts:
+        fulfils ConfigurationOperations
 }
 
 surface DaprAppSurface {
@@ -1530,36 +1797,7 @@ surface DaprAppSurface {
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        -- Two overloads: default route is "/" + topic.value; dead_letter_topic defaults to None
-        Subscription: (pubsub_name: PubSubName, topic: Topic, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
-        Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
-        -- Simple overload: handler receives only the decoded request body.
-        InvokeRoute: (method_name: InvokeMethodName, handler: Req -> Resp) -> InvokeRoute
-        -- Rich overload: handler receives the full InvokeRequest envelope (method name, HTTP verb, body).
-        InvokeRoute.withRequest: (method_name: InvokeMethodName, handler: InvokeRequest<Req> -> Resp) -> InvokeRoute
-        BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
-        JobRoute: (name: JobName, handler: Payload -> Unit) -> JobRoute
-        DaprApp: (subscriptions: List<Subscription>, invokeRoutes: List<InvokeRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>, jobs: List<JobRoute>) -> DaprApp
-        ++: (DaprApp, DaprApp) -> DaprApp
-        validationErrors: (DaprApp) -> List<DaprAppValidationError>
-        validateOrThrow: (DaprApp) -> DaprApp
-        ActorMethodRoute: (method_name: ActorMethodName, handler: Req -> Resp) -> ActorMethodRoute
-        ActorReminderRoute: (reminder_name: ReminderName, handler: Payload -> Unit) -> ActorReminderRoute
-        ActorTimerRoute: (timer_name: TimerName, handler: Payload -> Unit) -> ActorTimerRoute
-        ActorRoutes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes
-        ActorDefinition: (actor_type: ActorType, build: ActorId => ActorContext ?=> ActorRoutes) -> ActorDefinition
-        -- Handler lambdas may capture sub-capabilities from the enclosing DaprCapability
-        -- transformer bodies.
-        -- The recommended pattern is: business logic in explicit methods with
-        -- anonymous (using Capability) context parameters; companion-object
-        -- forwarders (e.g. StateCapability.save(...), PublishCapability.publish(...))
-        -- dispatch to the implicit instance, so callers never name the capability
-        -- value.  Methods are passed as direct handler references (no wrapping lambda)
-        -- because no library method carries a throws annotation.
-        -- Sub-capabilities are acquired via the DaprCapability accessors or the
-        -- DaprCapability.state/publish/etc. companion transformers.
+        fulfils DaprAppBuilders
 
     @guarantee SubscriptionDiscovery
         -- GET /dapr/subscribe returns all registered pub/sub subscriptions
@@ -1580,65 +1818,66 @@ surface DaprAppSurface {
 surface BindingsSurface {
     -- dapr4s.bindings. AccessBindingsCapability.apply(binding_name: BindingName) -> BindingsCapability.
     facing user: UserCode
+    context cap: BindingsCapability
+
+    exposes:
+        cap.binding_name
+
+    provides:
+        BindingInvokeRequested(cap, operation, data, metadata)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        binding_name: BindingName
-        invoke: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Any?
-        -- Returns Option[Resp]; None if binding has no response.
-        -- Req inferred from data; Resp given at the call site.
-        invoke_one_way: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
-        -- Fire-and-forget binding invocation; no response expected
+        fulfils BindingsOperations
 }
 
 surface LockSurface {
     -- dapr4s.lock. AccessLockCapability.apply(store_name: LockStoreName) -> LockCapability.
     facing user: UserCode
+    context cap: LockCapability
 
     exposes:
-        store_name: LockStoreName
-        try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) -> Boolean
-        -- Attempts to acquire lock; returns true if acquired, false if already held
-        unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
-        -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
+        cap.store_name
+
+    provides:
+        LockTryLockRequested(cap, resourceId, lockOwner, expiry)
+        LockUnlockRequested(cap, resourceId, lockOwner)
+
+    contracts:
+        fulfils LockOperations
 }
 
 surface CryptoSurface {
     -- dapr4s.crypto. AccessCryptoCapability.apply(component_name) -> CryptoCapability.
     facing user: UserCode
+    context cap: CryptoCapability
 
     exposes:
-        component_name: CryptoComponentName
-        encrypt: (key_name: CryptoKeyName, plaintext: ByteArray, algorithm: KeyWrapAlgorithm) -> ByteArray
-        decrypt: (ciphertext: ByteArray) -> ByteArray
-        encrypt_string: (key_name: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm) -> ByteArray
-        decrypt_string: (ciphertext: ByteArray) -> String
-        -- Byte payloads are immutable ArraySeq[Byte].
+        cap.component_name
+
+    contracts:
+        fulfils CryptoOperations
 }
 
 surface ActorClientSurface {
     -- dapr4s.actor. AccessActorCapability.apply(actor_type) -> ActorTypeCapability;
     -- ActorTypeCapability.apply(actor_id) -> ActorCapability (each with ^{this}).
     facing user: UserCode
+    context cap: ActorCapability
+
+    exposes:
+        cap.actor_type
+        cap.actor_id
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        actor_type: ActorType
-        actor_id: ActorId
-        invoke: (method: ActorMethodName, data: Any) -> Any
-        -- Req inferred from data; Resp given at the call site.
-        invoke_no_body: (method: ActorMethodName) -> Any
-        -- Code overload invoke[Resp](method).
-        invoke_void: (method: ActorMethodName) -> Unit
+        fulfils ActorClientOperations
 }
 
 surface WorkflowClientSurface {
     -- dapr4s.workflow. AccessWorkflowCapability owns the launch operations and narrows to one
-    -- instance via apply(instance_id) -> WorkflowInstanceCapability^{this}.
+    -- instance via apply(instance_id) -> WorkflowInstanceCapability^{this}
+    -- (see WorkflowInstanceSurface).
     -- Companion forwarders: AccessWorkflowCapability.start/startWithId and
     -- WorkflowInstanceCapability.getStatus/suspend/... (using the ambient capability).
     -- No fluent extension methods on WorkflowInstanceId exist.
@@ -1646,51 +1885,46 @@ surface WorkflowClientSurface {
 
     contracts:
         demands JsonCodec
+        fulfils WorkflowLaunchOperations
+}
+
+surface WorkflowInstanceSurface {
+    -- dapr4s.workflow. WorkflowInstanceCapability: bound to instance_id; operations take no id.
+    facing user: UserCode
+    context cap: WorkflowInstanceCapability
 
     exposes:
-        -- AccessWorkflowCapability
-        start: (name: WorkflowName) -> WorkflowInstanceId
-        start_with_input: (name: WorkflowName, input: Any) -> WorkflowInstanceId
-        start_with_id: (name: WorkflowName, instance_id: WorkflowInstanceId) -> WorkflowInstanceId
-        start_with_id_and_input: (name: WorkflowName, instance_id: WorkflowInstanceId, input: Any) -> WorkflowInstanceId
-        -- (code: start / startWithId overloads with and without input)
-        -- WorkflowInstanceCapability (bound to instance_id; operations take no id)
-        instance_id: WorkflowInstanceId
-        get_status: () -> WorkflowSnapshot?
-        suspend: () -> Unit
-        resume: () -> Unit
-        terminate: () -> Unit
-        raise_event: (event_name: EventName, payload: Any) -> Unit
-        wait_for_completion: (timeout: FiniteDuration) -> WorkflowSnapshot?
-        purge: () -> Boolean
+        cap.instance_id
+
+    contracts:
+        demands JsonCodec
+        fulfils WorkflowInstanceOperations
 }
 
 surface JobsSurface {
     -- JVM only. dapr4s.jobs. AccessJobsCapability.apply(name: JobName) -> JobCapability^{this}.
     -- JobCapability is bound to job_name; its operations take no name.
     facing user: UserCode
+    context cap: JobCapability
+
+    exposes:
+        cap.job_name
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        job_name: JobName
-        schedule: (data: Any, schedule: JobSchedule, due_time: Timestamp?, repeats: Integer?, ttl: Timestamp?) -> Unit
-        -- Recurring job; data is delivered to the matching JobRoute each time it fires.
-        schedule_once: (data: Any, due_time: Timestamp, ttl: Timestamp?) -> Unit
-        get: () -> JobDetails?
-        -- None if no job with this name exists.
-        delete: () -> Unit
-        -- No-op if the job does not exist.
+        fulfils JobsOperations
 }
 
 surface ConversationSurface {
     -- JVM only. dapr4s.conversation. AccessConversationCapability.apply(component_name) -> ConversationCapability.
     facing user: UserCode
+    context cap: ConversationCapability
 
     exposes:
-        component_name: ConversationComponentName
-        converse: (messages: List<ConversationMessage>, tools: List<ConversationTool>, tool_choice: ToolChoice?, temperature: Decimal?, context_id: ConversationContextId?, scrub_pii: Boolean) -> ConversationResponse
+        cap.component_name
+
+    contracts:
+        fulfils ConversationOperations
 }
 
 surface ActorContextSurface {
@@ -1701,25 +1935,7 @@ surface ActorContextSurface {
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        -- State
-        get:    (key: ActorStateKey) -> Option<T>
-        -- None when key absent; Some(T) when present
-        set:    (key: ActorStateKey, value: T) -> Unit
-        remove: (key: ActorStateKey) -> Unit
-
-        -- Reminders (persistent — survive actor deactivation/restart)
-        register_reminder: (name: ReminderName, data: T, dueTime: FiniteDuration, period: Option<FiniteDuration>) -> Unit
-        -- Registers a persistent callback; sidecar reactivates the actor to deliver it.
-        -- period = None (default) means fire once; period = Some(d) means fire repeatedly every d.
-        unregister_reminder: (name: ReminderName) -> Unit
-        -- No-op if no reminder with name exists.
-
-        -- Timers (non-persistent — lost on actor deactivation)
-        register_timer: (name: TimerName, data: T, dueTime: FiniteDuration, period: Option<FiniteDuration>) -> Unit
-        -- Registers a non-persistent callback; silently dropped if actor deactivates before it fires.
-        unregister_timer: (name: TimerName) -> Unit
+        fulfils ActorContextOperations
 
     @guarantee ActorStateIsolation
         -- State operations (get, set, remove) are scoped to the specific (actorType, actorId) pair.
