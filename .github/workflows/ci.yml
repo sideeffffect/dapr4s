@@ -125,7 +125,15 @@ jobs:
       if: failure()
       run: |
         docker ps -a || true
-        for p in $(pgrep -f 'bin/node'); do echo "=== node $p: $(tr '\0' ' ' < /proc/$p/cmdline)"; kill -USR2 "$p" || true; done
+        sudo apt-get install -y -qq gdb >/dev/null 2>&1 || true
+        for p in $(pgrep -f 'bin/node|scala-js-ld'); do
+          echo "=== pid $p: $(tr '\0' ' ' < /proc/$p/cmdline)"
+          grep -E 'State|Threads' /proc/$p/status; echo "wchan: $(cat /proc/$p/wchan)"; awk '{print "utime="$14" stime="$15}' /proc/$p/stat
+          sudo ls -l /proc/$p/fd | head -40
+          sudo cat /proc/$p/stack 2>/dev/null | head -20
+          sudo gdb -p "$p" -batch -ex 'info threads' -ex 'thread apply all bt 12' 2>/dev/null | grep -vE '^\[New LWP|^$' | head -150
+          sleep 3; awk '{print "after 3s utime="$14" stime="$15}' /proc/$p/stat
+        done
         sleep 10
         for f in /tmp/node-reports/*.json; do echo "=== $f"; jq '{js: .javascriptStack, native: .nativeStack[0:25], handles: [.libuv[] | {type, is_active, address, localEndpoint, remoteEndpoint, filename}], workers: (.workers|length)}' "$f" || cat "$f"; done
         for c in $(docker ps -aq); do echo "=== $c"; docker logs --tail 60 "$c" 2>&1 || true; done
