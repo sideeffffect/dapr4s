@@ -22,7 +22,6 @@ jobs:
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
-        scala-cli-version: 1.14.0  # see the pin note on the format job
         scala-cli-version: 1.14.0
     - name: Check formatting (scalafmt)
       run: |
