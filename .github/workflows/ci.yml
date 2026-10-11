@@ -125,6 +125,7 @@ jobs:
       if: failure()
       run: |
         docker ps -a || true
+        for p in $(pgrep -f 'bin/node$|bin/node '); do echo "=== inspect node $p"; kill -USR1 "$p"; sleep 2; node scripts/js-it/inspect-hung-node.mjs || true; done
         sudo apt-get install -y -qq gdb >/dev/null 2>&1 || true
         for p in $(pgrep -f 'bin/node|scala-js-ld'); do
           echo "=== pid $p: $(tr '\0' ' ' < /proc/$p/cmdline)"
