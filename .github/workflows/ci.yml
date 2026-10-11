@@ -14,9 +14,16 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
+    # scala-cli pinned to 1.14.0. Newer versions (1.17+/1.18, Scala.js 1.22 linker) no longer
+    # raise the ES version for --js-emit-wasm and require an explicit JSPI linker switch that
+    # scala-cli does not expose, so the Wasm integration leg cannot link js.async/js.await
+    # ("Uses an async block without JSPI support in WebAssembly"). Unpin once scala-cli has a
+    # JSPI option. Pinned on every job so all jobs build with the same toolchain.
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
+        scala-cli-version: 1.14.0  # see the pin note on the format job
+        scala-cli-version: 1.14.0
     - name: Check formatting (scalafmt)
       run: |
         # `scala-cli fmt --check` reports a scalafmt parse error but still exits 0,
@@ -77,6 +84,7 @@ jobs:
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
+        scala-cli-version: 1.14.0  # see the pin note on the format job
     # JSPI is on by default from Node 25; the runner's default Node has no JSPI and
     # scala-cli's runner passes no V8 flags, so the Wasm integration tests need this.
     - name: Set up Node 25
@@ -134,6 +142,7 @@ jobs:
     - uses: VirtusLab/scala-cli-setup@v1
       with:
         power: true
+        scala-cli-version: 1.14.0  # see the pin note on the format job
     # The Scala.js publish compiles against the ScalablyTyped facade deps
     # (compileOnly in js-deps.scala), so the artifacts must exist in ~/.ivy2/local
     # here too — generation is a BUILD-time requirement only; consumers of the
