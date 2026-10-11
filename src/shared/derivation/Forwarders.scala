@@ -50,7 +50,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Actor ----------------------------------------------------------------
 
   def actorInvokeBody[Req, Resp](
-      cap: ActorCapability,
+      cap: ActorCapability.Instance,
       method: ActorMethodName,
       data: Req,
       reqCodec: JsonCodec[Req],
@@ -60,11 +60,11 @@ object Forwarders extends ForwardersPlatform:
     given JsonCodec[Resp] = respCodec
     cap.invoke[Req](method, data)[Resp]
 
-  def actorInvokeNoBody[Resp](cap: ActorCapability, method: ActorMethodName, respCodec: JsonCodec[Resp]): Resp =
+  def actorInvokeNoBody[Resp](cap: ActorCapability.Instance, method: ActorMethodName, respCodec: JsonCodec[Resp]): Resp =
     given JsonCodec[Resp] = respCodec
     cap.invoke[Resp](method)
 
-  def actorInvokeVoid(cap: ActorCapability, method: ActorMethodName): Unit =
+  def actorInvokeVoid(cap: ActorCapability.Instance, method: ActorMethodName): Unit =
     cap.invokeVoid(method)
 
   def actorRegisterReminder[T](

@@ -23,8 +23,8 @@ class Counter(actorId: ActorId):
   * `Actor.derive[CounterActorClient]` ↔ `ActorDefinitions.deriveChecked[CounterActorClient, Counter]`.
   */
 trait CounterActorClient:
-  def increment(req: Req)(using ActorCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
-  def get()(using ActorCapability, JsonCodec[Resp]): Resp
+  def increment(req: Req)(using ActorCapability.Instance, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def get()(using ActorCapability.Instance, JsonCodec[Resp]): Resp
   @reminder def onReset(msg: String, dueTime: FiniteDuration, period: Option[FiniteDuration] = None)(using
       ActorContext,
       JsonCodec[String],

@@ -20,7 +20,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Actor: invoke body, invoke no-body, invokeVoid"):
     val fake = FakeActor("res")
-    given ActorCapability = fake
+    given ActorCapability.Instance = fake
     val client = ActorClient
     assertEquals(client.increment(Req(5)), Resp("res"))
     assertEquals(client.get(), Resp("res"))

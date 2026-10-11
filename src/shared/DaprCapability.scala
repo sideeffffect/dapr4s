@@ -68,8 +68,8 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
   /** Obtain the universal [[LockCapability]] (any store); `lock(storeName)` narrows it to one store. */
   def lock: LockCapability^{this}
 
-  /** Obtain the [[AccessActorCapability]] accessor; `actor(actorType)(actorId)` narrows it to one instance. */
-  def actor: AccessActorCapability^{this}
+  /** Obtain the universal [[ActorCapability]] (any actor); `actor(actorType)(actorId)` narrows it to one instance. */
+  def actor: ActorCapability^{this}
 
   /** Obtain the universal [[WorkflowCapability]] (any instance) for starting and managing workflow instances. */
   def workflow: WorkflowCapability^{this}
@@ -139,8 +139,8 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
   def lock(storeName: LockStoreName)[T](body: LockCapability.Instance ?=> T)(using cap: DaprCapability): T =
     body(using cap.lock(storeName).asInstanceOf[LockCapability.Instance])
 
-  def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.actor(actorType)(actorId).asInstanceOf[ActorCapability])
+  def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability.Instance ?=> T)(using cap: DaprCapability): T =
+    body(using cap.actor(actorType)(actorId).asInstanceOf[ActorCapability.Instance])
 
   /** Make the universal [[WorkflowCapability]] available to `body` — the launch operations plus the per-instance
     * operations (by id, or via `apply(id)`).

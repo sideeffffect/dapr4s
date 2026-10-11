@@ -33,7 +33,7 @@ private[internal] final class ActorCapabilityImpl(
     val actorType: ActorType,
     val actorId: ActorId,
     private val sidecar: SidecarConfig,
-) extends ActorCapability:
+) extends ActorCapability.Instance:
 
   import ActorCapabilityImpl.*
 

@@ -32,13 +32,13 @@ final class FakeBindings(resp: String) extends BindingsCapability.Instance:
 // ---- Actor ------------------------------------------------------------------
 
 trait ActorClient:
-  def increment(req: Req)(using ActorCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
-  def get()(using ActorCapability, JsonCodec[Resp]): Resp
-  def reset()(using ActorCapability): Unit
+  def increment(req: Req)(using ActorCapability.Instance, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def get()(using ActorCapability.Instance, JsonCodec[Resp]): Resp
+  def reset()(using ActorCapability.Instance): Unit
 lazy val ActorClient: ActorClient = Actor.derive[ActorClient]
 
 @scala.caps.assumeSafe
-final class FakeActor(resp: String) extends ActorCapability:
+final class FakeActor(resp: String) extends ActorCapability.Instance:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   val actorType: ActorType            = ActorType("A")
   val actorId: ActorId                = ActorId("1")

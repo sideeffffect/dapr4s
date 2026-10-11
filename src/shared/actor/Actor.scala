@@ -9,9 +9,9 @@ import scala.quoted.*
 /** Derivation of actor client facades from a trait — covering both invoking actor methods and scheduling the actor's
   * reminders and timers.
   *
-  * A '''plain''' method forwards to [[dapr4s.ActorCapability]]; its name maps verbatim (override with [[name `@name`]])
-  * to an [[dapr4s.ActorMethodName]], with the target instance fixed by the per-call `ActorCapability` (from
-  * `DaprCapability.actor(type, id)`):
+  * A '''plain''' method forwards to [[ActorCapability.Instance]]; its name maps verbatim (override with
+  * [[name `@name`]]) to an [[dapr4s.ActorMethodName]], with the target instance fixed by the per-call
+  * `ActorCapability.Instance` (from `DaprCapability.actor(type, id)`):
   *
   *   - body + non-`Unit` result → `invoke(method, data)[Resp]`
   *   - no body + non-`Unit` result → `invoke[Resp](method)`
@@ -37,14 +37,14 @@ object Actor:
     *
     * Each method's Scala name is the [[dapr4s.ActorMethodName]] it invokes — `def increment` calls the actor method
     * `"increment"` — overridable per method with [[name `@name`]]. The name addresses only the method: the target actor
-    * instance is fixed by the [[dapr4s.ActorCapability]] each method receives in its `using` clause (from
+    * instance is fixed by the [[ActorCapability.Instance]] each method receives in its `using` clause (from
     * `DaprCapability.actor(type, id)`), so `derive` itself takes no argument.
     *
     * {{{
     *   trait CounterActor:
-    *     def increment(req: IncrRequest)(using ActorCapability, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
-    *     def get()(using ActorCapability, JsonCodec[CounterState]): CounterState
-    *     def reset()(using ActorCapability): Unit
+    *     def increment(req: IncrRequest)(using ActorCapability.Instance, JsonCodec[IncrRequest], JsonCodec[CounterState]): CounterState
+    *     def get()(using ActorCapability.Instance, JsonCodec[CounterState]): CounterState
+    *     def reset()(using ActorCapability.Instance): Unit
     *     // scheduling: forwards to ActorContext.registerReminder / registerTimer
     *     @reminder def scheduledReset(msg: String, dueTime: FiniteDuration)(using ActorContext, JsonCodec[String]): Unit
     *     @timer def autoIncrement(req: IncrRequest, dueTime: FiniteDuration)(using ActorContext, JsonCodec[IncrRequest]): Unit
@@ -67,7 +67,7 @@ object Actor:
   private def deriveImpl[T: Type](using Quotes): Expr[T] =
     import quotes.reflect.*
     val engine = "Actor"
-    val capTpe = TypeRepr.of[ActorCapability]
+    val capTpe = TypeRepr.of[ActorCapability.Instance]
     val ctxTpe = TypeRepr.of[ActorContext]
     val reminderTpe = TypeRepr.of[reminder]
     val timerTpe = TypeRepr.of[timer]
@@ -141,13 +141,13 @@ object Actor:
                 )
               }.asTerm
       else
-        // Invocation method: forward to ActorCapability.invoke / invokeVoid.
+        // Invocation method: forward to ActorCapability.Instance.invoke / invokeVoid.
         if values.sizeIs > 1 then fail("an actor method takes at most one request-body parameter.")
         val bodyEntry = values.headOption
         val capExpr = givens
           .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-          .getOrElse(fail("the `using` clause must provide an ActorCapability."))
-          .asExprOf[ActorCapability]
+          .getOrElse(fail("the `using` clause must provide an ActorCapability.Instance."))
+          .asExprOf[ActorCapability.Instance]
         val methodExpr = '{ ActorMethodName(${ Expr(nm) }) }
 
         (bodyEntry, MacroSupport.isUnit(resTpe)) match

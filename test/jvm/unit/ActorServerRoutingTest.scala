@@ -11,10 +11,10 @@ import unsafeExceptions.canThrowAny
 
 /** JVM-only structural checks for the [[dapr4s.internal.DaprAppServer]] actor HTTP dispatch layer, hosting
   * [[CounterActorApp]] directly over HTTP (no sidecar, no Docker) — the residue of the former
-  * `ActorCapabilityServerTest` that asserts the server's own routing/status codes rather than the [[ActorCapability]]
-  * client path (which is covered cross-platform by `ActorItTest`). These cases (unknown route → 404, the `/dapr/config`
-  * registration response, DELETE deactivation) cannot be exercised through a real sidecar, which only ever issues
-  * valid, known requests.
+  * `ActorCapabilityServerTest` that asserts the server's own routing/status codes rather than the
+  * [[ActorCapability.Instance]] client path (which is covered cross-platform by `ActorItTest`). These cases (unknown
+  * route → 404, the `/dapr/config` registration response, DELETE deactivation) cannot be exercised through a real
+  * sidecar, which only ever issues valid, known requests.
   */
 @scala.caps.assumeSafe
 class ActorServerRoutingTest extends FunSuite, DaprServerTestBase:

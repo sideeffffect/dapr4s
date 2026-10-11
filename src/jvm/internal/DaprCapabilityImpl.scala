@@ -63,8 +63,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   def lock: LockCapability^{this} =
     new LockCapabilityUniversalImpl(this).asInstanceOf[LockCapability]
 
-  def actor: AccessActorCapability^{this} =
-    new AccessActorCapabilityImpl(this).asInstanceOf[AccessActorCapability]
+  def actor: ActorCapability^{this} =
+    new ActorCapabilityUniversalImpl(this).asInstanceOf[ActorCapability]
 
   def workflow: WorkflowCapability^{this} =
     new WorkflowCapabilityUniversalImpl(workflowClient).asInstanceOf[WorkflowCapability]
@@ -115,10 +115,11 @@ private object DaprCapabilityImpl:
   private val log = Logger.getLogger("dapr4s.internal.DaprCapabilityImpl")
 
 // ---------------------------------------------------------------------------
-// Rung-2 accessor implementations (Design C). Each captures the scope (or a
-// resolved client) and narrows to a rung-3 capability via `apply`. The cast
-// erases the capture set so these internal types stay package-private, exactly
-// as the rung-3 impls do (see the ^{this} note above).
+// Universal capability implementations. Each captures the scope (or a resolved
+// client), narrows to its name-bound `.Instance` impl via `apply`, and delegates
+// its name-taking operations to that instance. The cast erases the capture set
+// so these internal types stay package-private, exactly as the instance impls do
+// (see the ^{this} note above).
 // ---------------------------------------------------------------------------
 
 @scala.caps.assumeSafe
@@ -328,12 +329,31 @@ private[internal] final class JobsCapabilityUniversalImpl(scope: DaprCapabilityI
     apply(jobName).delete()
 
 @scala.caps.assumeSafe
-private[internal] final class AccessActorCapabilityImpl(scope: DaprCapabilityImpl) extends AccessActorCapability:
-  def apply(actorType: ActorType): ActorTypeCapability^{this} =
-    new ActorTypeCapabilityImpl(scope, actorType).asInstanceOf[ActorTypeCapability]
+private[internal] final class ActorCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends ActorCapability:
+  def apply(actorType: ActorType): ActorCapability.Type^{this} =
+    new ActorCapabilityTypeImpl(scope, actorType).asInstanceOf[ActorCapability.Type]
+  // Type/id-taking operations delegate to a freshly bound type capability (cheap: it holds only the scope and type).
+  def invoke[Req: JsonCodec](
+      actorType: ActorType,
+      actorId: ActorId,
+      method: ActorMethodName,
+      data: Req,
+  )[Resp: JsonCodec]: Resp =
+    apply(actorType).invoke(actorId, method, data)[Resp]
+  def invoke[Resp: JsonCodec](actorType: ActorType, actorId: ActorId, method: ActorMethodName): Resp =
+    apply(actorType).invoke[Resp](actorId, method)
+  def invokeVoid(actorType: ActorType, actorId: ActorId, method: ActorMethodName): Unit =
+    apply(actorType).invokeVoid(actorId, method)
 
 @scala.caps.assumeSafe
-private[internal] final class ActorTypeCapabilityImpl(scope: DaprCapabilityImpl, val actorType: ActorType)
-    extends ActorTypeCapability:
-  def apply(actorId: ActorId): ActorCapability^{this} =
-    ActorCapabilityImpl.build(actorType, actorId, scope.actorClient).asInstanceOf[ActorCapability]
+private[internal] final class ActorCapabilityTypeImpl(scope: DaprCapabilityImpl, val actorType: ActorType)
+    extends ActorCapability.Type:
+  def apply(actorId: ActorId): ActorCapability.Instance^{this} =
+    ActorCapabilityImpl.build(actorType, actorId, scope.actorClient).asInstanceOf[ActorCapability.Instance]
+  // Id-taking operations delegate to a freshly bound instance.
+  def invoke[Req: JsonCodec](actorId: ActorId, method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp =
+    apply(actorId).invoke(method, data)[Resp]
+  def invoke[Resp: JsonCodec](actorId: ActorId, method: ActorMethodName): Resp =
+    apply(actorId).invoke[Resp](method)
+  def invokeVoid(actorId: ActorId, method: ActorMethodName): Unit =
+    apply(actorId).invokeVoid(method)
