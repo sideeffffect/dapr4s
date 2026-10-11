@@ -27,7 +27,7 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
       }
       DaprCapability.state(ItNames.StateStore) {
         val qty = eventually(s"order $orderId visible in state") {
-          StateCapability.get[Int](StateStoreKey(s"it-order-$orderId"))
+          StateCapability.Instance.get[Int](StateStoreKey(s"it-order-$orderId"))
         }
         assertEquals(qty, 7)
       }
@@ -36,12 +36,12 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
     withDapr:
       val marker = StateStoreKey("it-zero-marker")
       DaprCapability.state(ItNames.StateStore) {
-        StateCapability.delete(marker)
+        StateCapability.Instance.delete(marker)
         DaprCapability.publish(ItNames.PubSub) {
           PublishCapability.publish(Topic("it-zeros"), 0)
         }
         val received = eventually("zero marker visible in state") {
-          StateCapability.get[Int](marker)
+          StateCapability.Instance.get[Int](marker)
         }
         assertEquals(received, 0)
       }
@@ -58,7 +58,7 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
       DaprCapability.state(ItNames.StateStore) {
         ids.zipWithIndex.foreach { case (id, i) =>
           val qty = eventually(s"bulk order $id visible in state") {
-            StateCapability.get[Int](StateStoreKey(s"it-order-$id"))
+            StateCapability.Instance.get[Int](StateStoreKey(s"it-order-$id"))
           }
           assertEquals(qty, i + 1)
         }

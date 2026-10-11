@@ -42,11 +42,11 @@ object ItServerApp:
         ),
         subscriptions = List(
           Subscription[OrderEvent](ItNames.PubSub, Topic("it-orders")) { ev =>
-            StateCapability.save(StateStoreKey(s"it-order-${ev.data.orderId}"), ev.data.quantity)
+            StateCapability.Instance.save(StateStoreKey(s"it-order-${ev.data.orderId}"), ev.data.quantity)
             SubscriptionResult.Success
           },
           Subscription[Int](ItNames.PubSub, Topic("it-zeros")) { ev =>
-            StateCapability.save(StateStoreKey("it-zero-marker"), ev.data)
+            StateCapability.Instance.save(StateStoreKey("it-zero-marker"), ev.data)
             SubscriptionResult.Success
           },
         ),

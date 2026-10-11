@@ -19,7 +19,7 @@ import scala.quoted.*
   *
   * {{{
   *   object ResultRoutes:
-  *     @name("scan-completed") def onScanCompleted(e: CloudEvent[ScanResult])(using StateCapability, JsonCodec[ScanResult]): SubscriptionResult = ...
+  *     @name("scan-completed") def onScanCompleted(e: CloudEvent[ScanResult])(using StateCapability.Instance, JsonCodec[ScanResult]): SubscriptionResult = ...
   *
   *   DaprApp(subscriptions = Subscriptions.derive[ResultRoutes.type](PubSubName("pubsub")))
   * }}}
@@ -40,7 +40,7 @@ object Subscriptions:
     * {{{
     *   object ResultRoutes:
     *     @name("scan-completed") @deadLetter("scan-failed")
-    *     def onScanCompleted(e: CloudEvent[ScanResult])(using StateCapability, JsonCodec[ScanResult]): SubscriptionResult = ...
+    *     def onScanCompleted(e: CloudEvent[ScanResult])(using StateCapability.Instance, JsonCodec[ScanResult]): SubscriptionResult = ...
     *
     *   // subscribes Topic("scan-completed") on PubSubName("pubsub"), dead-lettering to Topic("scan-failed"):
     *   DaprApp(subscriptions = Subscriptions.derive[ResultRoutes.type](PubSubName("pubsub")))

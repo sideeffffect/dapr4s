@@ -147,12 +147,12 @@ final class FakeWorkflow extends AccessWorkflowCapability:
 // ---- State (app-level) ------------------------------------------------------
 
 trait StateClient:
-  def counter(using StateCapability, JsonCodec[Int]): Option[Int]
-  def counter_=(value: Int)(using StateCapability, JsonCodec[Int]): Unit
+  def counter(using StateCapability.Instance, JsonCodec[Int]): Option[Int]
+  def counter_=(value: Int)(using StateCapability.Instance, JsonCodec[Int]): Unit
 lazy val StateClient: StateClient = State.derive[StateClient]
 
 @scala.caps.assumeSafe
-final class FakeState extends StateCapability:
+final class FakeState extends StateCapability.Instance:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   val storeName: StateStoreName       = StateStoreName("st")
   def get[T: JsonCodec](key: StateStoreKey, consistency: StateConsistency): Option[T] =

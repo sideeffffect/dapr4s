@@ -174,11 +174,11 @@ object Forwarders extends ForwardersPlatform:
 
   // ---- State (app-level) ----------------------------------------------------
 
-  def stateGet[T](cap: StateCapability, key: StateStoreKey, codec: JsonCodec[T]): Option[T] =
+  def stateGet[T](cap: StateCapability.Instance.ReadOnly, key: StateStoreKey, codec: JsonCodec[T]): Option[T] =
     given JsonCodec[T] = codec
     cap.get[T](key)
 
-  def stateSave[T](cap: StateCapability, key: StateStoreKey, value: T, codec: JsonCodec[T]): Unit =
+  def stateSave[T](cap: StateCapability.Instance, key: StateStoreKey, value: T, codec: JsonCodec[T]): Unit =
     given JsonCodec[T] = codec
     cap.save[T](key, value)
 

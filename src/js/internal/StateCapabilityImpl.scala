@@ -115,7 +115,7 @@ private object StateCapabilityImpl:
 private[internal] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StateStoreName,
-) extends StateCapability:
+) extends StateCapability.Instance:
 
   import StateCapabilityImpl.*
 

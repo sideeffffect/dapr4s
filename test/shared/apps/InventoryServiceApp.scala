@@ -9,7 +9,7 @@ import language.experimental.safe
 /** Business logic for the Inventory microservice.
   *
   * Each handler method declares its capability requirements via anonymous `using` parameters, calling companion-object
-  * methods ([[StateCapability.get]], [[LockCapability.tryLock]], etc.) rather than naming a capability. See
+  * methods ([[StateCapability.Instance.get]], [[LockCapability.tryLock]], etc.) rather than naming a capability. See
   * [[OrderServiceApp]] for a full explanation of the capability-as-effect-system pattern.
   *
   * Subscribes to [[OrderEvent]] messages on the `orders` pub/sub topic and decrements the corresponding item's stock
@@ -46,7 +46,7 @@ object InventoryServiceApp:
     * handlers from racing on the same key. If the lock cannot be acquired the event is retried.
     */
   def handleOrderEvent(event: CloudEvent[OrderEvent])(using
-      StateCapability,
+      StateCapability.Instance,
       LockCapability,
   ): SubscriptionResult =
     val item = event.data.item
@@ -56,21 +56,21 @@ object InventoryServiceApp:
 
     if LockCapability.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
       try
-        val current = StateCapability.get[Int](key).getOrElse(DefaultStock)
+        val current = StateCapability.Instance.get[Int](key).getOrElse(DefaultStock)
         val updated = math.max(0, current - qty)
-        StateCapability.save(key, updated)
+        StateCapability.Instance.save(key, updated)
       finally LockCapability.unlock(LockResourceId(item), owner)
       SubscriptionResult.Success
     else SubscriptionResult.Retry
 
   /** Return current stock level for the given item name. */
-  def getStock(item: String)(using StateCapability): StockLevel =
-    val available = StateCapability.get[Int](StateStoreKey(s"stock-$item")).getOrElse(DefaultStock)
+  def getStock(item: String)(using StateCapability.Instance): StockLevel =
+    val available = StateCapability.Instance.get[Int](StateStoreKey(s"stock-$item")).getOrElse(DefaultStock)
     StockLevel(item, available)
 
   /** Seed the stock level for an item (test helper and k8s init). */
-  def seedStock(stock: StockLevel)(using StateCapability): StockLevel =
-    StateCapability.save(StateStoreKey(s"stock-${stock.item}"), stock.available)
+  def seedStock(stock: StockLevel)(using StateCapability.Instance): StockLevel =
+    StateCapability.Instance.save(StateStoreKey(s"stock-${stock.item}"), stock.available)
     stock
 
   // ---------------------------------------------------------------------------

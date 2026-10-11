@@ -27,7 +27,7 @@ import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr
   * {{{
   *   // Direct factory style (for tests and advanced use)
   *   val cap = summon[DaprCapability]
-  *   given StateCapability = cap.state(StateStoreName("statestore"))
+  *   given StateCapability.Instance = cap.state(StateStoreName("statestore"))
   *
   *   // Transformer style (recommended for service handlers): a dedicated
   *   // `*App` object whose `apply` takes the capabilities it needs and
@@ -47,8 +47,8 @@ import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr
 @scala.caps.assumeSafe
 trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatform:
 
-  /** Obtain the [[AccessStateCapability]] accessor; `state(storeName)` narrows it to one store. */
-  def state: AccessStateCapability^{this}
+  /** Obtain the universal [[StateCapability]] (any store); `state(storeName)` narrows it to one store. */
+  def state: StateCapability^{this}
 
   /** Obtain the [[AccessPublishCapability]] accessor; `publish(pubsubName)` narrows it to one component. */
   def publish: AccessPublishCapability^{this}
@@ -115,8 +115,8 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
 @scala.caps.assumeSafe
 object DaprCapability extends DaprCapabilityCompanionPlatform:
 
-  def state(storeName: StateStoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.state(storeName).asInstanceOf[StateCapability])
+  def state(storeName: StateStoreName)[T](body: StateCapability.Instance ?=> T)(using cap: DaprCapability): T =
+    body(using cap.state(storeName).asInstanceOf[StateCapability.Instance])
 
   def publish(pubsubName: PubSubName)[T](body: PublishCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.publish(pubsubName).asInstanceOf[PublishCapability])

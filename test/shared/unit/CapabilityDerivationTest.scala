@@ -74,7 +74,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("State: getter/setter map to get/save on StateStoreKey"):
     val fake = FakeState()
-    given StateCapability = fake
+    given StateCapability.Instance = fake
     val client = StateClient
     client.counter = 9
     assertEquals(client.counter, Some(41))

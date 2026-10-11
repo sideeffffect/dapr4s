@@ -42,8 +42,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   // Explicit ^{this} here overrides the ^{fresh} inference and satisfies the override check.
   // The asInstanceOf cast then erases the capture set so internal Impl types stay package-private.
 
-  def state: AccessStateCapability^{this} =
-    new AccessStateCapabilityImpl(this).asInstanceOf[AccessStateCapability]
+  def state: StateCapability^{this} =
+    new StateCapabilityUniversalImpl(this).asInstanceOf[StateCapability]
 
   def publish: AccessPublishCapability^{this} =
     new AccessPublishCapabilityImpl(this).asInstanceOf[AccessPublishCapability]
@@ -122,9 +122,48 @@ private object DaprCapabilityImpl:
 // ---------------------------------------------------------------------------
 
 @scala.caps.assumeSafe
-private[internal] final class AccessStateCapabilityImpl(scope: DaprCapabilityImpl) extends AccessStateCapability:
-  def apply(storeName: StateStoreName): StateCapability^{this} =
-    new StateCapabilityImpl(scope, storeName).asInstanceOf[StateCapability]
+private[internal] final class StateCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends StateCapability:
+  def apply(storeName: StateStoreName): StateCapability.Instance^{this} =
+    new StateCapabilityImpl(scope, storeName).asInstanceOf[StateCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def get[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, consistency: StateConsistency): Option[T] =
+    apply(storeName).get(key, consistency)
+  def getWithETag[T: JsonCodec](
+      storeName: StateStoreName,
+      key: StateStoreKey,
+      consistency: StateConsistency,
+  ): StateEntry[T] =
+    apply(storeName).getWithETag(key, consistency)
+  def getBulk[T: JsonCodec](storeName: StateStoreName, keys: Seq[StateStoreKey]): Map[StateStoreKey, StateEntry[T]] =
+    apply(storeName).getBulk(keys)
+  def queryState[T: JsonCodec](storeName: StateStoreName, query: StateQuery): List[StateEntry[T]] =
+    apply(storeName).queryState(query)
+  def save[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, value: T): Unit =
+    apply(storeName).save(key, value)
+  def saveBulk[T: JsonCodec](storeName: StateStoreName, entries: Seq[(StateStoreKey, T)]): Unit =
+    apply(storeName).saveBulk(entries)
+  def saveWithETag[T: JsonCodec](
+      storeName: StateStoreName,
+      key: StateStoreKey,
+      value: T,
+      etag: ETag,
+      metadata: Map[MetadataKey, MetadataValue],
+      consistency: StateConsistency,
+      concurrency: StateConcurrency,
+  ): Option[ETagMismatchException] =
+    apply(storeName).saveWithETag(key, value, etag, metadata, consistency, concurrency)
+  def delete(storeName: StateStoreName, key: StateStoreKey): Unit =
+    apply(storeName).delete(key)
+  def deleteWithETag(
+      storeName: StateStoreName,
+      key: StateStoreKey,
+      etag: ETag,
+      consistency: StateConsistency,
+      concurrency: StateConcurrency,
+  ): Option[ETagMismatchException] =
+    apply(storeName).deleteWithETag(key, etag, consistency, concurrency)
+  def transaction(storeName: StateStoreName, ops: Seq[StateOp]): Unit =
+    apply(storeName).transaction(ops)
 
 @scala.caps.assumeSafe
 private[internal] final class AccessPublishCapabilityImpl(scope: DaprCapabilityImpl) extends AccessPublishCapability:

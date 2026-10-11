@@ -129,7 +129,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
     *     js.async {
     *       Dapr(config).serve:
     *         val scope = summon[DaprCapability]
-    *         given StateCapability   = scope.state(StateStoreName("statestore"))
+    *         given StateCapability.Instance   = scope.state(StateStoreName("statestore"))
     *         given PublishCapability = scope.publish(PubSubName("pubsub"))
     *         DaprApp(
     *           subscriptions = List(

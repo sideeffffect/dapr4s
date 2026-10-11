@@ -12,12 +12,12 @@ import dapr4s.given
   *
   * Each public handler method declares its capability requirements via anonymous `using` parameters — the capability
   * type itself is the requirement, and the compiler enforces it statically. Business logic calls companion-object
-  * methods (e.g. [[StateCapability.save]], [[PublishCapability.publish]]) rather than naming a capability value, so the
-  * handler code reads like regular function calls:
+  * methods (e.g. [[StateCapability.Instance.save]], [[PublishCapability.publish]]) rather than naming a capability
+  * value, so the handler code reads like regular function calls:
   *
   * {{{
-  *   def placeOrder(req: OrderRequest)(using StateCapability, PublishCapability): OrderResponse =
-  *     StateCapability.save(StateStoreKey(orderId), req)
+  *   def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability): OrderResponse =
+  *     StateCapability.Instance.save(StateStoreKey(orderId), req)
   *     PublishCapability.publish(OrdersTopic, event)
   * }}}
   *
@@ -50,21 +50,21 @@ object OrderServiceApp:
   /** Place a new order: persist to state store and publish an [[OrderEvent]]. Returns the assigned order ID and
     * acceptance status.
     */
-  def placeOrder(req: OrderRequest)(using StateCapability, PublishCapability): OrderResponse =
+  def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability): OrderResponse =
     orderSeq += 1
     val orderId = s"order-$orderSeq"
-    StateCapability.save(StateStoreKey(orderId), req)
+    StateCapability.Instance.save(StateStoreKey(orderId), req)
     PublishCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
     OrderResponse(orderId, "accepted")
 
   /** Retrieve a previously placed order by ID.  Returns `None` if not found. */
-  def getOrder(orderId: String)(using StateCapability): Option[OrderRequest] =
-    StateCapability.get[OrderRequest](StateStoreKey(orderId))
+  def getOrder(orderId: String)(using StateCapability.Instance): Option[OrderRequest] =
+    StateCapability.Instance.get[OrderRequest](StateStoreKey(orderId))
 
   /** Query orders using a raw JSON filter expression. Returns a JSON array of `{"value": ..., "etag": ...}` objects.
     */
-  def queryOrders(queryJson: String)(using StateCapability): String =
-    val results = StateCapability.queryState[OrderRequest](StateQuery(queryJson))
+  def queryOrders(queryJson: String)(using StateCapability.Instance): String =
+    val results = StateCapability.Instance.queryState[OrderRequest](StateQuery(queryJson))
     val entries = results.map { e =>
       val v = e.value.map(r => s"""{"item":"${r.item}","quantity":${r.quantity}}""").getOrElse("null")
       val etag = e.etag.map(t => s""""${t.value}"""").getOrElse("null")
