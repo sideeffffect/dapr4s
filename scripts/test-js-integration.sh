@@ -41,6 +41,13 @@ if ! docker info >/dev/null 2>&1; then
   exit 1
 fi
 
+# scala-cli picks the Wasm test entry module by directory-listing order, which hangs the run when
+# its linking directory is on ext4 (GitHub runners) — see scripts/scala-cli-tmpfs.sh. Default to
+# that wrapper (temp dir on tmpfs) when /dev/shm and coursier are available; SCALA_CLI overrides.
+if [ -z "${SCALA_CLI:-}" ] && [ -d /dev/shm ] && command -v cs >/dev/null 2>&1; then
+  export SCALA_CLI="$ROOT/scripts/scala-cli-tmpfs.sh"
+fi
+
 # scala-cli runs the linked test module from a temp dir, where Node's ESM resolver cannot see
 # the repo's node_modules (bare specifiers resolve relative to the MODULE's path; NODE_PATH is
 # ignored for ES modules). The resolution hook retries bare specifiers against the repo root, and

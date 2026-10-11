@@ -407,7 +407,9 @@ job; each leg runs compile + unit tests + integration tests; both legs use scala
   JS); the four server-delivery suites (actor/pub-sub/invoke/workflow) share ONE sidecar + ONE in-process
   union server (`ServerDaprItSuite` + `itUnionApp`), reached via `host.testcontainers.internal` with
   daprd app health checks, because `serve` suspends forever with no clean stop on JS. Harness
-  facts: `scripts/wasm-test.sh` tolerates the known scala-cli bug of exiting 1 after a green Wasm
+  facts: `scripts/test-js-integration.sh` runs scala-cli through `scripts/scala-cli-tmpfs.sh` (JVM launcher, temp dir on
+  tmpfs) because scala-cli picks the Wasm test entry module by directory-listing order — on an ext4 `/tmp` (GitHub
+  runners) it can import `__loader.js` instead of `main.js` and the run hangs silently; `scripts/wasm-test.sh` tolerates the known scala-cli bug of exiting 1 after a green Wasm
   run (`DirectoryNotEmptyException` on the linked-output dir); an ESM resolution hook
   (`scripts/js-it/node-resolve-hook.mjs`) lets the `/tmp`-linked test module import bare specifiers
   from the repo's node_modules (ESM ignores NODE_PATH/CWD) and appends `.js` for the deep
