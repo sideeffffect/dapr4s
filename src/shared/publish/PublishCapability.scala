@@ -1,61 +1,103 @@
 package dapr4s.publish
 
 import dapr4s.*
-import scala.collection.immutable.ArraySeq
-import scala.concurrent.duration.FiniteDuration
 
-
-/** Capability for DAPR pub/sub publish operations against a named component.
+/** Universal capability for DAPR pub/sub publishing: reaches **any** pub/sub component, so every operation names its
+  * component.
+  *
+  * Obtained via [[DaprCapability.publish]]. Narrow to one component with [[apply]] (`publish(pubsubName)`), which
+  * yields a [[PublishCapability.Instance]].
   *
   * '''Dual:''' [[Subscription]] is the inbound counterpart — what this capability publishes to a [[Topic]], a
   * `Subscription` on the same topic consumes. (Derivation binds the two through one trait: `Publish.derive` ↔
   * `Subscriptions.deriveChecked`.)
   */
-/** Accessor (rung 2) for pub/sub components: an "any component" handle obtained argument-less via
-  * [[DaprCapability.publish]], whose [[apply]] narrows to a [[PublishCapability]] bound to one component.
-  */
-@scala.caps.assumeSafe
-trait AccessPublishCapability extends scala.caps.ExclusiveCapability:
-  /** Obtain a [[PublishCapability]] for the named pub/sub component. */
-  def apply(pubsubName: PubSubName): PublishCapability^{this}
-
 @scala.caps.assumeSafe
 trait PublishCapability extends scala.caps.ExclusiveCapability:
-  val pubsubName: PubSubName
+  /** Narrow to the named pub/sub component. */
+  def apply(pubsubName: PubSubName): PublishCapability.Instance^{this}
 
-  /** Publish `data` to `topic`. */
-  def publish[T: JsonCodec](topic: Topic, data: T): Unit
+  /** Publish `data` to `topic` on the named component. */
+  def publish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, data: T): Unit
 
-  /** Publish `data` to `topic` with additional metadata headers. */
+  /** Publish `data` to `topic` on the named component with additional metadata headers. */
   def publishWithMetadata[T: JsonCodec](
+      pubsubName: PubSubName,
       topic: Topic,
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
   ): Unit
 
-  /** Publish multiple entries to `topic` in a single call. */
-  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult
+  /** Publish multiple entries to `topic` on the named component in a single call. */
+  def bulkPublish[T: JsonCodec](
+      pubsubName: PubSubName,
+      topic: Topic,
+      entries: Seq[BulkPublishEntry[T]],
+  ): BulkPublishResult
 
-/** Companion-object API for [[PublishCapability]].
+/** The [[PublishCapability]] family: the component-bound [[PublishCapability.Instance]] and the companion-object
+  * forwarders for both interfaces.
   *
-  * Forwards to the `PublishCapability` in the enclosing `using` context:
+  * Every forwarder takes its capability from the enclosing `using` context, so callers never name it:
   * {{{
-  *   def placeOrder(order: Order)(using PublishCapability): Unit =
-  *     PublishCapability.publish(Topic("orders"), order)
+  *   def placeOrder(order: Order)(using PublishCapability.Instance): Unit =
+  *     PublishCapability.Instance.publish(Topic("orders"), order)
   * }}}
   */
 @scala.caps.assumeSafe
 object PublishCapability:
-  def publish[T: JsonCodec](topic: Topic, data: T)(using cap: PublishCapability): Unit =
-    cap.publish(topic, data)
+
+  /** Capability bound to one named pub/sub component. Obtained via `publish(pubsubName)`. */
+  @scala.caps.assumeSafe
+  trait Instance extends scala.caps.ExclusiveCapability:
+    /** The pub/sub component this capability is bound to. */
+    val pubsubName: PubSubName
+
+    /** Publish `data` to `topic`. */
+    def publish[T: JsonCodec](topic: Topic, data: T): Unit
+
+    /** Publish `data` to `topic` with additional metadata headers. */
+    def publishWithMetadata[T: JsonCodec](
+        topic: Topic,
+        data: T,
+        metadata: Map[MetadataKey, MetadataValue],
+    ): Unit
+
+    /** Publish multiple entries to `topic` in a single call. */
+    def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult
+
+  /** Forwarders for [[PublishCapability.Instance]]. */
+  @scala.caps.assumeSafe
+  object Instance:
+    def publish[T: JsonCodec](topic: Topic, data: T)(using cap: Instance): Unit =
+      cap.publish(topic, data)
+    def publishWithMetadata[T: JsonCodec](
+        topic: Topic,
+        data: T,
+        metadata: Map[MetadataKey, MetadataValue],
+    )(using cap: Instance): Unit =
+      cap.publishWithMetadata(topic, data, metadata)
+    def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]])(using
+        cap: Instance,
+    ): BulkPublishResult =
+      cap.bulkPublish(topic, entries)
+
+  /** Narrow the universal capability in scope to one component and make it available to `body`. */
+  def instance(pubsubName: PubSubName)[T](body: Instance ?=> T)(using cap: PublishCapability): T =
+    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
+    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
+    // cannot leak it (pure context function). See DaprCapability's companion.
+    body(using cap.apply(pubsubName).asInstanceOf[Instance])
+  def publish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, data: T)(using cap: PublishCapability): Unit =
+    cap.publish(pubsubName, topic, data)
   def publishWithMetadata[T: JsonCodec](
+      pubsubName: PubSubName,
       topic: Topic,
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
   )(using cap: PublishCapability): Unit =
-    cap.publishWithMetadata(topic, data, metadata)
-  def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]])(using
+    cap.publishWithMetadata(pubsubName, topic, data, metadata)
+  def bulkPublish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, entries: Seq[BulkPublishEntry[T]])(using
       cap: PublishCapability,
   ): BulkPublishResult =
-    cap.bulkPublish(topic, entries)
-
+    cap.bulkPublish(pubsubName, topic, entries)

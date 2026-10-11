@@ -12,13 +12,13 @@ import dapr4s.given
   *
   * Each public handler method declares its capability requirements via anonymous `using` parameters — the capability
   * type itself is the requirement, and the compiler enforces it statically. Business logic calls companion-object
-  * methods (e.g. [[StateCapability.Instance.save]], [[PublishCapability.publish]]) rather than naming a capability
-  * value, so the handler code reads like regular function calls:
+  * methods (e.g. [[StateCapability.Instance.save]], [[PublishCapability.Instance.publish]]) rather than naming a
+  * capability value, so the handler code reads like regular function calls:
   *
   * {{{
-  *   def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability): OrderResponse =
+  *   def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability.Instance): OrderResponse =
   *     StateCapability.Instance.save(StateStoreKey(orderId), req)
-  *     PublishCapability.publish(OrdersTopic, event)
+  *     PublishCapability.Instance.publish(OrdersTopic, event)
   * }}}
   *
   * The `apply` method injects capabilities as `given`s and builds a [[DaprApp]] describing all inbound routes. The
@@ -50,11 +50,11 @@ object OrderServiceApp:
   /** Place a new order: persist to state store and publish an [[OrderEvent]]. Returns the assigned order ID and
     * acceptance status.
     */
-  def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability): OrderResponse =
+  def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability.Instance): OrderResponse =
     orderSeq += 1
     val orderId = s"order-$orderSeq"
     StateCapability.Instance.save(StateStoreKey(orderId), req)
-    PublishCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
+    PublishCapability.Instance.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
     OrderResponse(orderId, "accepted")
 
   /** Retrieve a previously placed order by ID.  Returns `None` if not found. */
@@ -78,8 +78,8 @@ object OrderServiceApp:
 
   /** Build a [[DaprApp]] with all inbound routes for the Order service.
     *
-    * Uses the [[DaprCapability]] transformer API to introduce `StateCapability` and `PublishCapability` into the body
-    * scope, so the handler lambdas capture them without requiring explicit `given` declarations.
+    * Uses the [[DaprCapability]] transformer API to introduce `StateCapability` and `PublishCapability.Instance` into
+    * the body scope, so the handler lambdas capture them without requiring explicit `given` declarations.
     */
   def apply()(using DaprCapability): DaprApp =
     DaprCapability.state(StateName) {

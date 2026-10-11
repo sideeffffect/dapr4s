@@ -26,7 +26,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Bindings -------------------------------------------------------------
 
   def bindingInvoke[Req, Resp](
-      cap: BindingsCapability,
+      cap: BindingsCapability.Instance,
       operation: BindingOperation,
       data: Req,
       metadata: Map[MetadataKey, MetadataValue],
@@ -38,7 +38,7 @@ object Forwarders extends ForwardersPlatform:
     cap.invoke[Req](operation, data, metadata)[Resp]
 
   def bindingInvokeOneWay[Req](
-      cap: BindingsCapability,
+      cap: BindingsCapability.Instance,
       operation: BindingOperation,
       data: Req,
       metadata: Map[MetadataKey, MetadataValue],
@@ -91,12 +91,12 @@ object Forwarders extends ForwardersPlatform:
 
   // ---- Publish ---------------------------------------------------------------
 
-  def publish[T](cap: PublishCapability, topic: Topic, data: T, codec: JsonCodec[T]): Unit =
+  def publish[T](cap: PublishCapability.Instance, topic: Topic, data: T, codec: JsonCodec[T]): Unit =
     given JsonCodec[T] = codec
     cap.publish[T](topic, data)
 
   def publishMeta[T](
-      cap: PublishCapability,
+      cap: PublishCapability.Instance,
       topic: Topic,
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
@@ -126,7 +126,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Crypto ---------------------------------------------------------------
 
   def cryptoEncrypt(
-      cap: CryptoCapability,
+      cap: CryptoCapability.Instance,
       keyName: CryptoKeyName,
       plaintext: ArraySeq[Byte],
       algorithm: KeyWrapAlgorithm,
@@ -134,7 +134,7 @@ object Forwarders extends ForwardersPlatform:
     cap.encrypt(keyName, plaintext, algorithm)
 
   def cryptoEncryptString(
-      cap: CryptoCapability,
+      cap: CryptoCapability.Instance,
       keyName: CryptoKeyName,
       plaintext: String,
       algorithm: KeyWrapAlgorithm,

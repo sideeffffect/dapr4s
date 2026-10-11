@@ -9,8 +9,8 @@ import language.experimental.safe
 /** Business logic for the Inventory microservice.
   *
   * Each handler method declares its capability requirements via anonymous `using` parameters, calling companion-object
-  * methods ([[StateCapability.Instance.get]], [[LockCapability.tryLock]], etc.) rather than naming a capability. See
-  * [[OrderServiceApp]] for a full explanation of the capability-as-effect-system pattern.
+  * methods ([[StateCapability.Instance.get]], [[LockCapability.Instance.tryLock]], etc.) rather than naming a
+  * capability. See [[OrderServiceApp]] for a full explanation of the capability-as-effect-system pattern.
   *
   * Subscribes to [[OrderEvent]] messages on the `orders` pub/sub topic and decrements the corresponding item's stock
   * count in the state store. The decrement is protected by a distributed lock to prevent concurrent over-decrements
@@ -47,19 +47,19 @@ object InventoryServiceApp:
     */
   def handleOrderEvent(event: CloudEvent[OrderEvent])(using
       StateCapability.Instance,
-      LockCapability,
+      LockCapability.Instance,
   ): SubscriptionResult =
     val item = event.data.item
     val qty = event.data.quantity
     val key = StateStoreKey(s"stock-$item")
     val owner = LockOwner(s"inv-${event.id.value}")
 
-    if LockCapability.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
+    if LockCapability.Instance.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
       try
         val current = StateCapability.Instance.get[Int](key).getOrElse(DefaultStock)
         val updated = math.max(0, current - qty)
         StateCapability.Instance.save(key, updated)
-      finally LockCapability.unlock(LockResourceId(item), owner)
+      finally LockCapability.Instance.unlock(LockResourceId(item), owner)
       SubscriptionResult.Success
     else SubscriptionResult.Retry
 

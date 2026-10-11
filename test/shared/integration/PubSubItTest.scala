@@ -9,9 +9,10 @@ import munit.FunSuite
 import scala.concurrent.duration.DurationInt
 import unsafeExceptions.canThrowAny
 
-/** [[PublishCapability]] integration suite — a SINGLE cross-platform file. End to end: publish through the sidecar, the
-  * union server's [[dapr4s.test.integration.apps.ItServerApp]] subscription writes the payload to state, and the test
-  * polls state until the write is visible. Bring-up comes from `ServerDaprItSuite` (one implementation per platform).
+/** [[PublishCapability.Instance]] integration suite — a SINGLE cross-platform file. End to end: publish through the
+  * sidecar, the union server's [[dapr4s.test.integration.apps.ItServerApp]] subscription writes the payload to state,
+  * and the test polls state until the write is visible. Bring-up comes from `ServerDaprItSuite` (one implementation per
+  * platform).
   *
   * The falsy-`0` test guards the raw-fetch fallback in the JS `PublishCapabilityImpl` (the JS SDK silently drops
   * JS-falsy request bodies); it is a harmless regression guard on the JVM, where it simply round-trips.
@@ -23,7 +24,7 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
     withDapr:
       val orderId = ItNames.fresh("o")
       DaprCapability.publish(ItNames.PubSub) {
-        PublishCapability.publish(Topic("it-orders"), OrderEvent(orderId, "widget", 7))
+        PublishCapability.Instance.publish(Topic("it-orders"), OrderEvent(orderId, "widget", 7))
       }
       DaprCapability.state(ItNames.StateStore) {
         val qty = eventually(s"order $orderId visible in state") {
@@ -38,7 +39,7 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
       DaprCapability.state(ItNames.StateStore) {
         StateCapability.Instance.delete(marker)
         DaprCapability.publish(ItNames.PubSub) {
-          PublishCapability.publish(Topic("it-zeros"), 0)
+          PublishCapability.Instance.publish(Topic("it-zeros"), 0)
         }
         val received = eventually("zero marker visible in state") {
           StateCapability.Instance.get[Int](marker)
@@ -53,7 +54,7 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
         BulkPublishEntry(BulkEntryId(s"entry-$i"), OrderEvent(id, "bulk", i + 1))
       }
       DaprCapability.publish(ItNames.PubSub) {
-        assertEquals(PublishCapability.bulkPublish(Topic("it-orders"), entries).failedEntries, Nil)
+        assertEquals(PublishCapability.Instance.bulkPublish(Topic("it-orders"), entries).failedEntries, Nil)
       }
       DaprCapability.state(ItNames.StateStore) {
         ids.zipWithIndex.foreach { case (id, i) =>
@@ -69,9 +70,9 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
   test("pubsub: publish string/int payloads and publishWithMetadata do not throw"):
     withDapr:
       DaprCapability.publish(ItNames.PubSub) {
-        PublishCapability.publish(Topic("it-smoke"), "hello-pubsub")
-        PublishCapability.publish(Topic("it-smoke"), 42)
-        PublishCapability.publishWithMetadata(
+        PublishCapability.Instance.publish(Topic("it-smoke"), "hello-pubsub")
+        PublishCapability.Instance.publish(Topic("it-smoke"), 42)
+        PublishCapability.Instance.publishWithMetadata(
           Topic("it-smoke"),
           "with-metadata",
           Map(MetadataKey("traceparent") -> MetadataValue("00-abc-def-01")),

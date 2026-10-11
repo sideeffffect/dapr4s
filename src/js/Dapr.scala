@@ -130,7 +130,7 @@ class Dapr(config: DaprConfig = DaprConfig()):
     *       Dapr(config).serve:
     *         val scope = summon[DaprCapability]
     *         given StateCapability.Instance   = scope.state(StateStoreName("statestore"))
-    *         given PublishCapability = scope.publish(PubSubName("pubsub"))
+    *         given PublishCapability.Instance = scope.publish(PubSubName("pubsub"))
     *         DaprApp(
     *           subscriptions = List(
     *             Subscription[OrderEvent](PubSubName("pubsub"), Topic("orders")) { event =>

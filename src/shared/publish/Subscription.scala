@@ -9,8 +9,8 @@ import dapr4s.*
   * empty capture set and can live in a plain `List`. Internal dispatch code (in [[dapr4s.internal.DaprAppServer]] and
   * `TestDaprApp`) casts it back using the `Payload` type member under `@assumeSafe`.
   *
-  * '''Dual:''' the inbound counterpart of [[PublishCapability]] — a `Subscription` on a [[Topic]] consumes what a
-  * publisher sends to that same topic.
+  * '''Dual:''' the inbound counterpart of [[PublishCapability.Instance]] — a `Subscription` on a [[Topic]] consumes
+  * what a publisher sends to that same topic.
   *
   * Use [[Subscription.apply]] to construct instances.
   */

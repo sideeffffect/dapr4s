@@ -6,20 +6,20 @@ import dapr4s.*
 import dapr4s.bindings.*
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.BindingsCapability]] client facades from a trait.
+/** Derivation of [[BindingsCapability.Instance]] client facades from a trait.
   *
   * The Scala method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.BindingOperation]]. The binding
-  * component itself is fixed by the per-call `BindingsCapability` (obtained via `DaprCapability.bindings(name)`), so
-  * `derive` takes no argument.
+  * component itself is fixed by the per-call `BindingsCapability.Instance` (obtained via
+  * `DaprCapability.bindings(name)`), so `derive` takes no argument.
   *
   * Each method takes the request body as its first value parameter, plus an optional
   * `metadata: Map[MetadataKey, MetadataValue]` knob. The return type selects the overload:
-  *   - `Option[Resp]` → [[dapr4s.BindingsCapability.invoke]] (response expected)
-  *   - `Unit` → [[dapr4s.BindingsCapability.invokeOneWay]] (fire-and-forget)
+  *   - `Option[Resp]` → [[BindingsCapability.Instance.invoke]] (response expected)
+  *   - `Unit` → [[BindingsCapability.Instance.invokeOneWay]] (fire-and-forget)
   *
   * {{{
   *   trait EmailBinding:
-  *     def create(req: EmailRequest)(using BindingsCapability, JsonCodec[EmailRequest]): Unit
+  *     def create(req: EmailRequest)(using BindingsCapability.Instance, JsonCodec[EmailRequest]): Unit
   *   lazy val EmailBinding: EmailBinding = Bindings.derive[EmailBinding]
   * }}}
   *
@@ -35,12 +35,12 @@ object Bindings:
     *
     * Each method's Scala name is the [[dapr4s.BindingOperation]] it performs — `def create` issues the binding
     * operation `"create"` — overridable per method with [[name `@name`]]. The binding component itself is fixed by the
-    * per-call [[dapr4s.BindingsCapability]] (from `DaprCapability.bindings(name)`), so `derive` takes no argument.
+    * per-call [[BindingsCapability.Instance]] (from `DaprCapability.bindings(name)`), so `derive` takes no argument.
     *
     * {{{
     *   trait EmailBinding:
-    *     def create(req: EmailRequest)(using BindingsCapability, JsonCodec[EmailRequest]): Unit
-    *     def fetch(req: Query)(using BindingsCapability, JsonCodec[Query], JsonCodec[Message]): Option[Message]
+    *     def create(req: EmailRequest)(using BindingsCapability.Instance, JsonCodec[EmailRequest]): Unit
+    *     def fetch(req: Query)(using BindingsCapability.Instance, JsonCodec[Query], JsonCodec[Message]): Option[Message]
     *   lazy val EmailBinding: EmailBinding = Bindings.derive[EmailBinding]
     *
     *   DaprCapability.bindings(BindingName("email")) {
@@ -55,7 +55,7 @@ object Bindings:
     import quotes.reflect.*
     val engine = "Bindings"
     val metadataTpe = TypeRepr.of[Map[MetadataKey, MetadataValue]]
-    val capTpe = TypeRepr.of[BindingsCapability]
+    val capTpe = TypeRepr.of[BindingsCapability.Instance]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
       val info = MacroSupport.paramInfo(origSym, newSym, argss)
@@ -78,8 +78,8 @@ object Bindings:
 
       val capExpr = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide a BindingsCapability."))
-        .asExprOf[BindingsCapability]
+        .getOrElse(fail("the `using` clause must provide a BindingsCapability.Instance."))
+        .asExprOf[BindingsCapability.Instance]
 
       def codecFor(arg: TypeRepr, role: String): Term =
         givens

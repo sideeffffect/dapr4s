@@ -13,12 +13,12 @@ import scala.concurrent.duration.FiniteDuration
 // ---- Bindings ---------------------------------------------------------------
 
 trait BindingClient:
-  def create(req: Req)(using BindingsCapability, JsonCodec[Req]): Unit
-  def query(req: Req)(using BindingsCapability, JsonCodec[Req], JsonCodec[Resp]): Option[Resp]
+  def create(req: Req)(using BindingsCapability.Instance, JsonCodec[Req]): Unit
+  def query(req: Req)(using BindingsCapability.Instance, JsonCodec[Req], JsonCodec[Resp]): Option[Resp]
 lazy val BindingClient: BindingClient = Bindings.derive[BindingClient]
 
 @scala.caps.assumeSafe
-final class FakeBindings(resp: String) extends BindingsCapability:
+final class FakeBindings(resp: String) extends BindingsCapability.Instance:
   val log: mutable.ListBuffer[String]      = mutable.ListBuffer.empty
   val bindingName: BindingName             = BindingName("b")
   def invoke[Req: JsonCodec](operation: BindingOperation, data: Req, metadata: Map[MetadataKey, MetadataValue])[
@@ -54,12 +54,12 @@ final class FakeActor(resp: String) extends ActorCapability:
 // ---- Publish -----------------------------------------------------------------
 
 trait Publisher:
-  def orders(event: Req)(using PublishCapability, JsonCodec[Req]): Unit
-  def audit(event: Req, metadata: Map[MetadataKey, MetadataValue])(using PublishCapability, JsonCodec[Req]): Unit
+  def orders(event: Req)(using PublishCapability.Instance, JsonCodec[Req]): Unit
+  def audit(event: Req, metadata: Map[MetadataKey, MetadataValue])(using PublishCapability.Instance, JsonCodec[Req]): Unit
 lazy val Publisher: Publisher = Publish.derive[Publisher]
 
 @scala.caps.assumeSafe
-final class FakePubSub extends PublishCapability:
+final class FakePubSub extends PublishCapability.Instance:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   val pubsubName: PubSubName           = PubSubName("ps")
   def publish[T: JsonCodec](topic: Topic, data: T): Unit =
@@ -103,12 +103,12 @@ final class FakeConfig extends ConfigurationCapability.Instance:
 // ---- Crypto -----------------------------------------------------------------
 
 trait CryptoClient:
-  def rawKey(plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
-  @name("text-key") def textKey(plaintext: String, algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
+  def rawKey(plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm)(using CryptoCapability.Instance): ArraySeq[Byte]
+  @name("text-key") def textKey(plaintext: String, algorithm: KeyWrapAlgorithm)(using CryptoCapability.Instance): ArraySeq[Byte]
 lazy val CryptoClient: CryptoClient = Crypto.derive[CryptoClient]
 
 @scala.caps.assumeSafe
-final class FakeCrypto extends CryptoCapability:
+final class FakeCrypto extends CryptoCapability.Instance:
   val log: mutable.ListBuffer[String]      = mutable.ListBuffer.empty
   val componentName: CryptoComponentName   = CryptoComponentName("crypto")
   def encrypt(keyName: CryptoKeyName, plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =

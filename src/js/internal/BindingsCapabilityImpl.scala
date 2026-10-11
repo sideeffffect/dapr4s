@@ -10,7 +10,7 @@ import JsInterop.*
 private[internal] final class BindingsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val bindingName: BindingName,
-) extends BindingsCapability:
+) extends BindingsCapability.Instance:
 
   def invoke[Req: JsonCodec](
       operation: BindingOperation,

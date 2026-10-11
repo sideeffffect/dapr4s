@@ -8,7 +8,7 @@ import munit.FunSuite
 import scala.concurrent.duration.DurationInt
 import unsafeExceptions.canThrowAny
 
-/** [[dapr4s.LockCapability]] integration suite — a SINGLE cross-platform file, run via the per-platform
+/** [[LockCapability.Instance]] integration suite — a SINGLE cross-platform file, run via the per-platform
   * [[SharedDaprItSuite]] bring-up against the canonical `lock.redis` store. Unique resource IDs per call keep the
   * shared sidecar contention-free.
   */
@@ -26,18 +26,18 @@ class LockItTest extends FunSuite, SharedDaprItSuite:
 
   def tryLockFreeReturnsTrue(using DaprCapability): Unit =
     DaprCapability.lock(ItNames.LockStore):
-      assert(LockCapability.tryLock(res(), owner(), 30.seconds))
+      assert(LockCapability.Instance.tryLock(res(), owner(), 30.seconds))
 
   def tryLockHeldReturnsFalse(using DaprCapability): Unit =
     DaprCapability.lock(ItNames.LockStore):
       val r = res()
-      assert(LockCapability.tryLock(r, owner(), 30.seconds), "first tryLock should succeed")
-      assert(!LockCapability.tryLock(r, owner(), 30.seconds), "second tryLock should be contended")
+      assert(LockCapability.Instance.tryLock(r, owner(), 30.seconds), "first tryLock should succeed")
+      assert(!LockCapability.Instance.tryLock(r, owner(), 30.seconds), "second tryLock should be contended")
 
   def unlockByOwnerThenLockNotFound(using DaprCapability): Unit =
     DaprCapability.lock(ItNames.LockStore):
       val r = res()
       val o = owner()
-      assert(LockCapability.tryLock(r, o, 30.seconds))
-      assertEquals(LockCapability.unlock(r, o), UnlockStatus.Success)
-      assertEquals(LockCapability.unlock(r, o), UnlockStatus.LockNotFound)
+      assert(LockCapability.Instance.tryLock(r, o, 30.seconds))
+      assertEquals(LockCapability.Instance.unlock(r, o), UnlockStatus.Success)
+      assertEquals(LockCapability.Instance.unlock(r, o), UnlockStatus.LockNotFound)

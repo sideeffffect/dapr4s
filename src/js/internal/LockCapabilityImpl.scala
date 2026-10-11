@@ -9,7 +9,7 @@ import scala.concurrent.duration.FiniteDuration
 private[internal] final class LockCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: LockStoreName,
-) extends LockCapability:
+) extends LockCapability.Instance:
 
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean =
     // expiry.toSeconds truncates to whole seconds — the same rounding the JVM impl applies

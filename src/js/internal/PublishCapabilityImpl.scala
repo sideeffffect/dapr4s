@@ -19,7 +19,7 @@ import dapr4styped.undiciTypes.fetchMod.RequestInit
 private[internal] final class PublishCapabilityImpl(
     scope: DaprCapabilityImpl,
     val pubsubName: PubSubName,
-) extends PublishCapability:
+) extends PublishCapability.Instance:
 
   import PublishCapabilityImpl.*
 

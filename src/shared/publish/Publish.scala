@@ -6,15 +6,15 @@ import dapr4s.*
 import dapr4s.publish.*
 import scala.quoted.*
 
-/** Derivation of [[dapr4s.PublishCapability]] publisher facades from a trait.
+/** Derivation of [[PublishCapability.Instance]] publisher facades from a trait.
   *
   * The method name maps verbatim (override with [[name `@name`]]) to a [[dapr4s.Topic]]; the pub/sub component is fixed
-  * by the per-call `PublishCapability`. Each method takes the event as its first value parameter, an optional
+  * by the per-call `PublishCapability.Instance`. Each method takes the event as its first value parameter, an optional
   * `metadata: Map[MetadataKey, MetadataValue]` knob, and returns `Unit`.
   *
   * {{{
   *   trait OrderEvents:
-  *     def orders(event: OrderEvent)(using PublishCapability, JsonCodec[OrderEvent]): Unit
+  *     def orders(event: OrderEvent)(using PublishCapability.Instance, JsonCodec[OrderEvent]): Unit
   *   lazy val OrderEvents: OrderEvents = Publish.derive[OrderEvents]
   * }}}
   *
@@ -29,11 +29,11 @@ object Publish:
     *
     * Each method's Scala name is the [[dapr4s.Topic]] it publishes to — `def orders` publishes to topic `"orders"` —
     * overridable per method with [[name `@name`]]. The pub/sub component itself is fixed by the per-call
-    * [[dapr4s.PublishCapability]], so `derive` takes no argument.
+    * [[PublishCapability.Instance]], so `derive` takes no argument.
     *
     * {{{
     *   trait OrderEvents:
-    *     def orders(event: OrderEvent)(using PublishCapability, JsonCodec[OrderEvent]): Unit
+    *     def orders(event: OrderEvent)(using PublishCapability.Instance, JsonCodec[OrderEvent]): Unit
     *   lazy val OrderEvents: OrderEvents = Publish.derive[OrderEvents]
     *
     *   DaprCapability.publish(PubSubName("pubsub")) {
@@ -47,7 +47,7 @@ object Publish:
     import quotes.reflect.*
     val engine = "Publish"
     val metadataTpe = TypeRepr.of[Map[MetadataKey, MetadataValue]]
-    val capTpe = TypeRepr.of[PublishCapability]
+    val capTpe = TypeRepr.of[PublishCapability.Instance]
 
     MacroSupport.deriveTrait[T](engine) { (origSym, newSym, argss) =>
       val info = MacroSupport.paramInfo(origSym, newSym, argss)
@@ -72,8 +72,8 @@ object Publish:
 
       val capExpr = givens
         .collectFirst { case (_, r, t, _) if t <:< capTpe => r }
-        .getOrElse(fail("the `using` clause must provide a PublishCapability."))
-        .asExprOf[PublishCapability]
+        .getOrElse(fail("the `using` clause must provide a PublishCapability.Instance."))
+        .asExprOf[PublishCapability.Instance]
 
       val codecRef = givens
         .collectFirst { case (_, r, t, _) if MacroSupport.jsonCodecArg(t).exists(_ =:= dataTpe) => r }

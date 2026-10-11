@@ -7,7 +7,7 @@ import language.experimental.safe
 /** Name of a key managed by a Dapr cryptography component.
   *
   * Must not be empty. Identifies which key the component uses to wrap the data encryption key during
-  * [[CryptoCapability.encrypt]].
+  * [[CryptoCapability.Instance.encrypt]].
   */
 opaque type CryptoKeyName = String
 object CryptoKeyName:

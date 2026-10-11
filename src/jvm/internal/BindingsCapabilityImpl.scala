@@ -12,7 +12,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 private[internal] final class BindingsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val bindingName: BindingName,
-) extends BindingsCapability:
+) extends BindingsCapability.Instance:
 
   import BindingsCapabilityImpl.*
 

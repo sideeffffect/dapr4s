@@ -12,7 +12,7 @@ import NullOps.*
 private[internal] final class LockCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: LockStoreName,
-) extends LockCapability:
+) extends LockCapability.Instance:
 
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean =
     val request = new LockRequest(storeName.value, resourceId.value, lockOwner.value, expiry.toSeconds.toInt)

@@ -76,7 +76,7 @@ object Subscriptions:
     *
     * {{{
     *   trait OrderEvents:
-    *     def orders(event: OrderPlaced)(using PublishCapability, JsonCodec[OrderPlaced]): Unit
+    *     def orders(event: OrderPlaced)(using PublishCapability.Instance, JsonCodec[OrderPlaced]): Unit
     *
     *   object OrderSubscribers:
     *     @name("orders") def onOrder(e: CloudEvent[OrderPlaced]): SubscriptionResult = ...

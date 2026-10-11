@@ -12,7 +12,7 @@ import FluxOps.*
 private[internal] final class CryptoCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: CryptoComponentName,
-) extends CryptoCapability:
+) extends CryptoCapability.Instance:
 
   def encrypt(keyName: CryptoKeyName, plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
     val req = new EncryptRequestAlpha1(

@@ -4,9 +4,9 @@ import dapr4s.*
 
 /** Existential wrapper for an input-binding handler.
   *
-  * '''Dual:''' the inbound counterpart of [[BindingsCapability]] (output bindings). These are independent directions on
-  * a binding component, not a request/response contract: a `BindingRoute` receives payloads delivered to a
-  * [[BindingName]], whereas the capability issues [[BindingOperation]]s.
+  * '''Dual:''' the inbound counterpart of [[BindingsCapability.Instance]] (output bindings). These are independent
+  * directions on a binding component, not a request/response contract: a `BindingRoute` receives payloads delivered to
+  * a [[BindingName]], whereas the capability issues [[BindingOperation]]s.
   *
   * Use [[BindingRoute.apply]] to construct instances.
   */

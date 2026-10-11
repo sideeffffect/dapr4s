@@ -12,7 +12,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Bindings: invokeOneWay (Unit) and invoke (Option[Resp])"):
     val fake = FakeBindings("done")
-    given BindingsCapability = fake
+    given BindingsCapability.Instance = fake
     val client = BindingClient
     client.create(Req(1))
     assertEquals(client.query(Req(2)), Some(Resp("done")))
@@ -29,7 +29,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Publish: publish and publishWithMetadata"):
     val fake = FakePubSub()
-    given PublishCapability = fake
+    given PublishCapability.Instance = fake
     val client = Publisher
     client.orders(Req(1))
     client.audit(Req(2), Map(MetadataKey("k") -> MetadataValue("v")))
@@ -51,7 +51,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Crypto: encrypt (bytes) and encryptString (String)"):
     val fake = FakeCrypto()
-    given CryptoCapability = fake
+    given CryptoCapability.Instance = fake
     val client = CryptoClient
     client.rawKey(ArraySeq.from("hi".getBytes), KeyWrapAlgorithm("RSA"))
     client.textKey("hello", KeyWrapAlgorithm("AES"))

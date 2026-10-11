@@ -14,7 +14,7 @@ import dapr4styped.std.ArrayBufferLike
 private[internal] final class CryptoCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: CryptoComponentName,
-) extends CryptoCapability:
+) extends CryptoCapability.Instance:
 
   import CryptoCapabilityImpl.*
 

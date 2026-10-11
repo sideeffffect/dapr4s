@@ -70,8 +70,8 @@ private[dapr4s] final class DaprCapabilityImpl(
   def state: StateCapability^{this} =
     new StateCapabilityUniversalImpl(this).asInstanceOf[StateCapability]
 
-  def publish: AccessPublishCapability^{this} =
-    new AccessPublishCapabilityImpl(this).asInstanceOf[AccessPublishCapability]
+  def publish: PublishCapability^{this} =
+    new PublishCapabilityUniversalImpl(this).asInstanceOf[PublishCapability]
 
   def invoke: AccessInvokeCapability^{this} =
     new AccessInvokeCapabilityImpl(this).asInstanceOf[AccessInvokeCapability]
@@ -82,11 +82,11 @@ private[dapr4s] final class DaprCapabilityImpl(
   def configuration: ConfigurationCapability^{this} =
     new ConfigurationCapabilityUniversalImpl(this).asInstanceOf[ConfigurationCapability]
 
-  def bindings: AccessBindingsCapability^{this} =
-    new AccessBindingsCapabilityImpl(this).asInstanceOf[AccessBindingsCapability]
+  def bindings: BindingsCapability^{this} =
+    new BindingsCapabilityUniversalImpl(this).asInstanceOf[BindingsCapability]
 
-  def lock: AccessLockCapability^{this} =
-    new AccessLockCapabilityImpl(this).asInstanceOf[AccessLockCapability]
+  def lock: LockCapability^{this} =
+    new LockCapabilityUniversalImpl(this).asInstanceOf[LockCapability]
 
   def actor: AccessActorCapability^{this} =
     new AccessActorCapabilityImpl(this).asInstanceOf[AccessActorCapability]
@@ -95,8 +95,8 @@ private[dapr4s] final class DaprCapabilityImpl(
     val wc = workflowClientRef.getOrCreate(() => new DaprWorkflowClient(workflowClientOptions(sidecar)))
     new AccessWorkflowCapabilityImpl(wc).asInstanceOf[AccessWorkflowCapability]
 
-  def crypto: AccessCryptoCapability^{this} =
-    new AccessCryptoCapabilityImpl(this).asInstanceOf[AccessCryptoCapability]
+  def crypto: CryptoCapability^{this} =
+    new CryptoCapabilityUniversalImpl(this).asInstanceOf[CryptoCapability]
 
   // No jobs/conversation here: the Dapr JS SDK (@dapr/dapr 3.x) has no jobs or conversation API,
   // so those factory methods exist only on the JVM DaprCapabilityPlatform parent trait — on this
@@ -234,9 +234,25 @@ private[internal] final class StateCapabilityUniversalImpl(scope: DaprCapability
     apply(storeName).transaction(ops)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessPublishCapabilityImpl(scope: DaprCapabilityImpl) extends AccessPublishCapability:
-  def apply(pubsubName: PubSubName): PublishCapability^{this} =
-    new PublishCapabilityImpl(scope, pubsubName).asInstanceOf[PublishCapability]
+private[internal] final class PublishCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends PublishCapability:
+  def apply(pubsubName: PubSubName): PublishCapability.Instance^{this} =
+    new PublishCapabilityImpl(scope, pubsubName).asInstanceOf[PublishCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def publish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, data: T): Unit =
+    apply(pubsubName).publish(topic, data)
+  def publishWithMetadata[T: JsonCodec](
+      pubsubName: PubSubName,
+      topic: Topic,
+      data: T,
+      metadata: Map[MetadataKey, MetadataValue],
+  ): Unit =
+    apply(pubsubName).publishWithMetadata(topic, data, metadata)
+  def bulkPublish[T: JsonCodec](
+      pubsubName: PubSubName,
+      topic: Topic,
+      entries: Seq[BulkPublishEntry[T]],
+  ): BulkPublishResult =
+    apply(pubsubName).bulkPublish(topic, entries)
 
 @scala.caps.assumeSafe
 private[internal] final class AccessInvokeCapabilityImpl(scope: DaprCapabilityImpl) extends AccessInvokeCapability:
@@ -273,19 +289,57 @@ private[internal] final class ConfigurationCapabilityUniversalImpl(scope: DaprCa
     apply(storeName).subscribe(keys, metadata)(onChange)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessBindingsCapabilityImpl(scope: DaprCapabilityImpl) extends AccessBindingsCapability:
-  def apply(bindingName: BindingName): BindingsCapability^{this} =
-    new BindingsCapabilityImpl(scope, bindingName).asInstanceOf[BindingsCapability]
+private[internal] final class BindingsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends BindingsCapability:
+  def apply(bindingName: BindingName): BindingsCapability.Instance^{this} =
+    new BindingsCapabilityImpl(scope, bindingName).asInstanceOf[BindingsCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def invoke[Req: JsonCodec](
+      bindingName: BindingName,
+      operation: BindingOperation,
+      data: Req,
+      metadata: Map[MetadataKey, MetadataValue],
+  )[Resp: JsonCodec]: Option[Resp] =
+    apply(bindingName).invoke(operation, data, metadata)[Resp]
+  def invokeOneWay[Req: JsonCodec](
+      bindingName: BindingName,
+      operation: BindingOperation,
+      data: Req,
+      metadata: Map[MetadataKey, MetadataValue],
+  ): Unit =
+    apply(bindingName).invokeOneWay(operation, data, metadata)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessLockCapabilityImpl(scope: DaprCapabilityImpl) extends AccessLockCapability:
-  def apply(storeName: LockStoreName): LockCapability^{this} =
-    new LockCapabilityImpl(scope, storeName).asInstanceOf[LockCapability]
+private[internal] final class LockCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends LockCapability:
+  def apply(storeName: LockStoreName): LockCapability.Instance^{this} =
+    new LockCapabilityImpl(scope, storeName).asInstanceOf[LockCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def tryLock(
+      storeName: LockStoreName,
+      resourceId: LockResourceId,
+      lockOwner: LockOwner,
+      expiry: scala.concurrent.duration.FiniteDuration,
+  ): Boolean =
+    apply(storeName).tryLock(resourceId, lockOwner, expiry)
+  def unlock(storeName: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus =
+    apply(storeName).unlock(resourceId, lockOwner)
 
 @scala.caps.assumeSafe
-private[internal] final class AccessCryptoCapabilityImpl(scope: DaprCapabilityImpl) extends AccessCryptoCapability:
-  def apply(componentName: CryptoComponentName): CryptoCapability^{this} =
-    new CryptoCapabilityImpl(scope, componentName).asInstanceOf[CryptoCapability]
+private[internal] final class CryptoCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends CryptoCapability:
+  def apply(componentName: CryptoComponentName): CryptoCapability.Instance^{this} =
+    new CryptoCapabilityImpl(scope, componentName).asInstanceOf[CryptoCapability.Instance]
+  // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
+  def encrypt(
+      componentName: CryptoComponentName,
+      keyName: CryptoKeyName,
+      plaintext: scala.collection.immutable.ArraySeq[Byte],
+      algorithm: KeyWrapAlgorithm,
+  ): scala.collection.immutable.ArraySeq[Byte] =
+    apply(componentName).encrypt(keyName, plaintext, algorithm)
+  def decrypt(
+      componentName: CryptoComponentName,
+      ciphertext: scala.collection.immutable.ArraySeq[Byte],
+  ): scala.collection.immutable.ArraySeq[Byte] =
+    apply(componentName).decrypt(ciphertext)
 
 @scala.caps.assumeSafe
 private[internal] final class AccessActorCapabilityImpl(scope: DaprCapabilityImpl) extends AccessActorCapability:
