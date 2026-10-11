@@ -58,12 +58,9 @@ object ConfigurationCapability:
   /** Forwarders for [[ConfigurationCapability.ReadOnly]]. */
   @scala.caps.assumeSafe
   object ReadOnly:
-    /** Narrow the read-only capability in scope to one store and make it available to `body`. */
-    def instance(storeName: ConfigurationStoreName)[T](body: Instance.ReadOnly ?=> T)(using cap: ReadOnly): T =
-      // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-      // `Instance.ReadOnly^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside
-      // `body`, which cannot leak it (pure context function). See DaprCapability's companion.
-      body(using cap.apply(storeName).asInstanceOf[Instance.ReadOnly])
+    /** Narrow the read-only capability in scope to one store and return it. */
+    def instance(storeName: ConfigurationStoreName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
+      cap.apply(storeName)
     def get(
         storeName: ConfigurationStoreName,
         keys: Seq[ConfigurationKey],
@@ -151,10 +148,9 @@ object ConfigurationCapability:
     )(using cap: Instance): AutoCloseable^{cap} =
       cap.subscribe(keys, metadata)(onChange)
 
-  /** Narrow the universal capability in scope to one store and make it available to `body`. */
-  def instance(storeName: ConfigurationStoreName)[T](body: Instance ?=> T)(using cap: ConfigurationCapability): T =
-    // Capture-set erasure as in ReadOnly.instance above.
-    body(using cap.apply(storeName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one store and return it. */
+  def instance(storeName: ConfigurationStoreName)(using cap: ConfigurationCapability): Instance^{cap} =
+    cap.apply(storeName)
   def get(
       storeName: ConfigurationStoreName,
       keys: Seq[ConfigurationKey],

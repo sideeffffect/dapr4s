@@ -82,12 +82,9 @@ object PublishCapability:
     ): BulkPublishResult =
       cap.bulkPublish(topic, entries)
 
-  /** Narrow the universal capability in scope to one component and make it available to `body`. */
-  def instance(pubsubName: PubSubName)[T](body: Instance ?=> T)(using cap: PublishCapability): T =
-    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
-    // cannot leak it (pure context function). See DaprCapability's companion.
-    body(using cap.apply(pubsubName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one component and return it. */
+  def instance(pubsubName: PubSubName)(using cap: PublishCapability): Instance^{cap} =
+    cap.apply(pubsubName)
   def publish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, data: T)(using cap: PublishCapability): Unit =
     cap.publish(pubsubName, topic, data)
   def publishWithMetadata[T: JsonCodec](

@@ -219,9 +219,9 @@ overview: `docs/DESIGN.md` "Capability Hierarchy"). Keep new members and new fam
 - Actor is two-level: `ActorCapability` → `apply(actorType)` → `ActorCapability.Type` →
   `apply(actorId)` → `ActorCapability.Instance`.
 - Every interface's companion object forwards **all** of its methods (inherited ones included)
-  from a `using` capability, plus the `instance(name) { ... }` transformers (`X.instance`,
-  `X.ReadOnly.instance`; actor: `ActorCapability.forType(t) { ... }`,
-  `ActorCapability.instance(t, id) { ... }`, `ActorCapability.Type.instance(id) { ... }`).
+  from a `using` capability, plus `instance(name)` accessors that narrow the capability in scope and
+  return it as `X.Instance^{cap}` (`X.instance`, `X.ReadOnly.instance`; actor: `ActorCapability.forType(t)`,
+  `ActorCapability.instance(t, id)`, `ActorCapability.Type.instance(id)`).
 - Derivation macros require the **narrowest** tier the generated member uses: read-only getters
   need only `X.Instance.ReadOnly` (State/Secrets/Configuration) or `JobsCapability.ReadOnly` (jobs);
   Invoke/Workflow/Jobs derivation call the universal capability directly.

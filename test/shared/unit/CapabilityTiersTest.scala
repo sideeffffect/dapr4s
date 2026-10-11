@@ -103,3 +103,20 @@ class CapabilityTiersTest extends FunSuite:
     assertNoDiff(compileErrors("(c: WorkflowCapability) => c(WorkflowInstanceId(\"id\")).terminate()"), "")
     assertNotMember(compileErrors("(c: WorkflowCapability.ReadOnly) => c.start(WorkflowName(\"w\"))"))
     assertNotMember(compileErrors("(c: WorkflowCapability.ReadOnly) => c(WorkflowInstanceId(\"id\")).terminate()"))
+
+  test("companion instance(name) returns the narrowed capability from the one in scope"):
+    given universal: SecretsCapability = FakeSecretsUniversal()
+    val instance = SecretsCapability.instance(store)
+    assertEquals(instance.storeName, store)
+    assertEquals(instance.getBulk(), Map(SecretKey("all") -> SecretValue("vault")))
+    val readOnly = SecretsCapability.ReadOnly.instance(store)
+    assertEquals(readOnly.get(SecretKey("k")), Some(SecretValue("vault/k")))
+
+  test("ReadOnly.instance(name) statically returns Instance.ReadOnly"):
+    assertNoDiff(
+      compileErrors("(c: SecretsCapability) => SecretsCapability.instance(store)(using c).getBulk()"),
+      "",
+    )
+    assertNotMember(
+      compileErrors("(c: SecretsCapability.ReadOnly) => SecretsCapability.ReadOnly.instance(store)(using c).getBulk()"),
+    )

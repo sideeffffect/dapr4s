@@ -82,12 +82,9 @@ object InvokeCapability:
     def invoke[Resp: JsonCodec](method: InvokeMethodName)(using cap: Instance): Resp =
       cap.invoke(method)
 
-  /** Narrow the universal capability in scope to one target app and make it available to `body`. */
-  def instance(appId: AppId)[T](body: Instance ?=> T)(using cap: InvokeCapability): T =
-    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
-    // cannot leak it (pure context function). See DaprCapability's companion.
-    body(using cap.apply(appId).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one target app and return it. */
+  def instance(appId: AppId)(using cap: InvokeCapability): Instance^{cap} =
+    cap.apply(appId)
   def invoke[Req: JsonCodec](
       appId: AppId,
       method: InvokeMethodName,

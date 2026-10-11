@@ -55,12 +55,9 @@ object SecretsCapability:
   /** Forwarders for [[SecretsCapability.ReadOnly]]. */
   @scala.caps.assumeSafe
   object ReadOnly:
-    /** Narrow the read-only capability in scope to one store and make it available to `body`. */
-    def instance(storeName: SecretStoreName)[T](body: Instance.ReadOnly ?=> T)(using cap: ReadOnly): T =
-      // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-      // `Instance.ReadOnly^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside
-      // `body`, which cannot leak it (pure context function). See DaprCapability's companion.
-      body(using cap.apply(storeName).asInstanceOf[Instance.ReadOnly])
+    /** Narrow the read-only capability in scope to one store and return it. */
+    def instance(storeName: SecretStoreName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
+      cap.apply(storeName)
     def get(
         storeName: SecretStoreName,
         key: SecretKey,
@@ -112,10 +109,9 @@ object SecretsCapability:
     ): Map[SecretKey, SecretValue] =
       cap.getBulk(metadata)
 
-  /** Narrow the universal capability in scope to one store and make it available to `body`. */
-  def instance(storeName: SecretStoreName)[T](body: Instance ?=> T)(using cap: SecretsCapability): T =
-    // Capture-set erasure as in ReadOnly.instance above.
-    body(using cap.apply(storeName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one store and return it. */
+  def instance(storeName: SecretStoreName)(using cap: SecretsCapability): Instance^{cap} =
+    cap.apply(storeName)
   def get(
       storeName: SecretStoreName,
       key: SecretKey,

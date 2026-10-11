@@ -93,7 +93,8 @@ def tour()(using dapr: DaprCapability): Unit =
 
 Every capability interface's companion object forwards its methods from a `using` capability
 (`StateCapability.Instance.save(key, value)`, `WorkflowCapability.start(name)`, ...), and has
-`instance(name) { ... }` transformers that narrow the capability in scope.
+`instance(name)` accessors that narrow the capability in scope and return it
+(`StateCapability.ReadOnly.instance(name)` returns a `StateCapability.Instance.ReadOnly`).
 
 ## Platforms
 

@@ -61,12 +61,9 @@ object LockCapability:
     def unlock(resourceId: LockResourceId, lockOwner: LockOwner)(using cap: Instance): UnlockStatus =
       cap.unlock(resourceId, lockOwner)
 
-  /** Narrow the universal capability in scope to one store and make it available to `body`. */
-  def instance(storeName: LockStoreName)[T](body: Instance ?=> T)(using cap: LockCapability): T =
-    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
-    // cannot leak it (pure context function). See DaprCapability's companion.
-    body(using cap.apply(storeName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one store and return it. */
+  def instance(storeName: LockStoreName)(using cap: LockCapability): Instance^{cap} =
+    cap.apply(storeName)
   def tryLock(storeName: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration)(using
       cap: LockCapability,
   ): Boolean =

@@ -90,12 +90,9 @@ object BindingsCapability:
     )(using cap: Instance): Unit =
       cap.invokeOneWay(operation, data, metadata)
 
-  /** Narrow the universal capability in scope to one binding and make it available to `body`. */
-  def instance(bindingName: BindingName)[T](body: Instance ?=> T)(using cap: BindingsCapability): T =
-    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
-    // cannot leak it (pure context function). See DaprCapability's companion.
-    body(using cap.apply(bindingName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one binding and return it. */
+  def instance(bindingName: BindingName)(using cap: BindingsCapability): Instance^{cap} =
+    cap.apply(bindingName)
   def invoke[Req: JsonCodec](
       bindingName: BindingName,
       operation: BindingOperation,

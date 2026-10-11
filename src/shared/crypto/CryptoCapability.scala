@@ -94,12 +94,9 @@ object CryptoCapability:
     def decryptString(ciphertext: ArraySeq[Byte])(using cap: Instance): String =
       cap.decryptString(ciphertext)
 
-  /** Narrow the universal capability in scope to one component and make it available to `body`. */
-  def instance(componentName: CryptoComponentName)[T](body: Instance ?=> T)(using cap: CryptoCapability): T =
-    // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-    // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
-    // cannot leak it (pure context function). See DaprCapability's companion.
-    body(using cap.apply(componentName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one component and return it. */
+  def instance(componentName: CryptoComponentName)(using cap: CryptoCapability): Instance^{cap} =
+    cap.apply(componentName)
   def encrypt(
       componentName: CryptoComponentName,
       keyName: CryptoKeyName,

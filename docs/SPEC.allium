@@ -382,30 +382,30 @@ contract DaprCapabilityTransformers {
 contract FamilyCompanionTransformers {
     -- Transformers on each family's companion objects. Each narrows the ambient capability
     -- (code: using X) and passes the result to body as a context parameter (body: Y ?=> T).
-    state_instance:                 (store_name: StateStoreName, body: StateCapabilityInstance -> Any) -> Any
-    state_read_only_instance:       (store_name: StateStoreName, body: StateCapabilityInstance -> Any) -> Any
-    publish_instance:               (pubsub_name: PubSubName, body: PublishCapabilityInstance -> Any) -> Any
-    invoke_instance:                (app_id: AppId, body: InvokeCapabilityInstance -> Any) -> Any
-    secrets_instance:               (store_name: SecretStoreName, body: SecretsCapabilityInstance -> Any) -> Any
-    secrets_read_only_instance:     (store_name: SecretStoreName, body: SecretsCapabilityInstance -> Any) -> Any
-    configuration_instance:         (store_name: ConfigurationStoreName, body: ConfigurationCapabilityInstance -> Any) -> Any
-    configuration_read_only_instance: (store_name: ConfigurationStoreName, body: ConfigurationCapabilityInstance -> Any) -> Any
-    bindings_instance:              (binding_name: BindingName, body: BindingsCapabilityInstance -> Any) -> Any
-    lock_instance:                  (store_name: LockStoreName, body: LockCapabilityInstance -> Any) -> Any
-    crypto_instance:                (component_name: CryptoComponentName, body: CryptoCapabilityInstance -> Any) -> Any
-    workflow_instance:              (instance_id: WorkflowInstanceId, body: WorkflowCapabilityInstance -> Any) -> Any
-    workflow_read_only_instance:    (instance_id: WorkflowInstanceId, body: WorkflowCapabilityInstance -> Any) -> Any
-    jobs_instance:                  (job_name: JobName, body: JobsCapabilityInstance -> Any) -> Any   -- JVM only
-    jobs_read_only_instance:        (job_name: JobName, body: JobsCapabilityInstance -> Any) -> Any   -- JVM only
-    conversation_instance:          (component_name: ConversationComponentName, body: ConversationCapabilityInstance -> Any) -> Any   -- JVM only
-    actor_for_type:                 (actor_type: ActorType, body: ActorCapabilityType -> Any) -> Any
-    actor_instance:                 (actor_type: ActorType, actor_id: ActorId, body: ActorCapabilityInstance -> Any) -> Any
-    actor_type_instance:            (actor_id: ActorId, body: ActorCapabilityInstance -> Any) -> Any
-    -- Code: X.instance(name) { body } (using X) yields X.Instance;
-    -- X.ReadOnly.instance(name) { body } (using X.ReadOnly) yields X.Instance.ReadOnly
-    -- (the *_read_only_instance entries); ActorCapability.forType(t) { body } yields
-    -- ActorCapability.Type, ActorCapability.instance(t, id) { body } and
-    -- ActorCapability.Type.instance(id) { body } yield ActorCapability.Instance.
+    state_instance:                 (store_name: StateStoreName) -> StateCapabilityInstance
+    state_read_only_instance:       (store_name: StateStoreName) -> StateCapabilityInstance
+    publish_instance:               (pubsub_name: PubSubName) -> PublishCapabilityInstance
+    invoke_instance:                (app_id: AppId) -> InvokeCapabilityInstance
+    secrets_instance:               (store_name: SecretStoreName) -> SecretsCapabilityInstance
+    secrets_read_only_instance:     (store_name: SecretStoreName) -> SecretsCapabilityInstance
+    configuration_instance:         (store_name: ConfigurationStoreName) -> ConfigurationCapabilityInstance
+    configuration_read_only_instance: (store_name: ConfigurationStoreName) -> ConfigurationCapabilityInstance
+    bindings_instance:              (binding_name: BindingName) -> BindingsCapabilityInstance
+    lock_instance:                  (store_name: LockStoreName) -> LockCapabilityInstance
+    crypto_instance:                (component_name: CryptoComponentName) -> CryptoCapabilityInstance
+    workflow_instance:              (instance_id: WorkflowInstanceId) -> WorkflowCapabilityInstance
+    workflow_read_only_instance:    (instance_id: WorkflowInstanceId) -> WorkflowCapabilityInstance
+    jobs_instance:                  (job_name: JobName) -> JobsCapabilityInstance   -- JVM only
+    jobs_read_only_instance:        (job_name: JobName) -> JobsCapabilityInstance   -- JVM only
+    conversation_instance:          (component_name: ConversationComponentName) -> ConversationCapabilityInstance   -- JVM only
+    actor_for_type:                 (actor_type: ActorType) -> ActorCapabilityType
+    actor_instance:                 (actor_type: ActorType, actor_id: ActorId) -> ActorCapabilityInstance
+    actor_type_instance:            (actor_id: ActorId) -> ActorCapabilityInstance
+    -- Code: X.instance(name) (using X) returns X.Instance^{cap};
+    -- X.ReadOnly.instance(name) (using X.ReadOnly) yields X.Instance.ReadOnly
+    -- (the *_read_only_instance entries); ActorCapability.forType(t) yields
+    -- ActorCapability.Type, ActorCapability.instance(t, id) and
+    -- ActorCapability.Type.instance(id) yield ActorCapability.Instance.
 
     @invariant CompanionForwarders
         -- Every capability trait (X, X.ReadOnly, X.Instance, X.Instance.ReadOnly,
@@ -1285,8 +1285,8 @@ rule ConversationCapabilityObtained {
 }
 
 -- ---- Capability Narrowing (universal -> Instance) ----
--- Triggered by universal.apply(name). The companion transformers X.instance(name) { body }
--- (and X.ReadOnly.instance(name) { body } for the split families) apply the ambient capability;
+-- Triggered by universal.apply(name). The companion accessors X.instance(name)
+-- (and X.ReadOnly.instance(name) for the split families) apply the ambient capability and return the result;
 -- DaprCapability.state(name) { body }, publish(name), secrets(name), configuration(name),
 -- bindings(name), lock(name), crypto(name), actor(actorType, actorId) and (JVM)
 -- conversation(name) read the universal capability and apply it in one step.
@@ -1368,7 +1368,7 @@ rule CryptoInstanceAcquired {
 
 rule ActorTypeAcquired {
     when: ActorCapabilityApplied(u, actor_type)  -- actor_type: ActorType
-    -- ActorCapability.forType(actorType) { body } provides the result as a context parameter.
+    -- ActorCapability.forType(actorType) applies the ambient capability and returns the result.
 
     requires: u.status = open
 
@@ -1378,9 +1378,9 @@ rule ActorTypeAcquired {
 
 rule ActorInstanceAcquired {
     when: ActorTypeApplied(type_cap, actor_id)  -- actor_id: ActorId
-    -- Triggered by typeCapability(actorId). ActorCapability.instance(actorType, actorId) { body },
-    -- ActorCapability.Type.instance(actorId) { body } and DaprCapability.actor(actorType, actorId)
-    -- { body } perform both narrowing steps and provide the ActorCapability.Instance to body.
+    -- Triggered by typeCapability(actorId). ActorCapability.instance(actorType, actorId) and
+    -- ActorCapability.Type.instance(actorId) return the ActorCapability.Instance;
+    -- DaprCapability.actor(actorType, actorId) { body } performs both steps and provides it to body.
 
     requires: type_cap.status = open
 

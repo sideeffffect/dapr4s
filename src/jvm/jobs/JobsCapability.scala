@@ -74,12 +74,9 @@ object JobsCapability:
   /** Forwarders for [[JobsCapability.ReadOnly]]. */
   @scala.caps.assumeSafe
   object ReadOnly:
-    /** Narrow the read-only capability in scope to one job and make it available to `body`. */
-    def instance(jobName: JobName)[T](body: Instance.ReadOnly ?=> T)(using cap: ReadOnly): T =
-      // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-      // `Instance.ReadOnly^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside
-      // `body`, which cannot leak it (pure context function). See DaprCapability's companion.
-      body(using cap.apply(jobName).asInstanceOf[Instance.ReadOnly])
+    /** Narrow the read-only capability in scope to one job and return it. */
+    def instance(jobName: JobName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
+      cap.apply(jobName)
     def get(jobName: JobName)(using cap: ReadOnly): Option[JobDetails] =
       cap.get(jobName)
 
@@ -151,10 +148,9 @@ object JobsCapability:
     def delete()(using cap: Instance): Unit =
       cap.delete()
 
-  /** Narrow the universal capability in scope to one job and make it available to `body`. */
-  def instance(jobName: JobName)[T](body: Instance ?=> T)(using cap: JobsCapability): T =
-    // Capture-set erasure as in ReadOnly.instance above.
-    body(using cap.apply(jobName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one job and return it. */
+  def instance(jobName: JobName)(using cap: JobsCapability): Instance^{cap} =
+    cap.apply(jobName)
   def get(jobName: JobName)(using cap: JobsCapability): Option[JobDetails] =
     cap.get(jobName)
   def schedule[T: JsonCodec](

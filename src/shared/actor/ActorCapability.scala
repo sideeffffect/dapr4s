@@ -72,12 +72,9 @@ object ActorCapability:
   /** Forwarders for [[ActorCapability.Type]]. */
   @scala.caps.assumeSafe
   object Type:
-    /** Narrow the type-bound capability in scope to one instance and make it available to `body`. */
-    def instance(actorId: ActorId)[T](body: Instance ?=> T)(using cap: Type): T =
-      // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-      // `Instance^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside `body`, which
-      // cannot leak it (pure context function). See DaprCapability's companion.
-      body(using cap.apply(actorId).asInstanceOf[Instance])
+    /** Narrow the type-bound capability in scope to one instance and return it. */
+    def instance(actorId: ActorId)(using cap: Type): Instance^{cap} =
+      cap.apply(actorId)
     def invoke[Req: JsonCodec](actorId: ActorId, method: ActorMethodName, data: Req)[Resp: JsonCodec](using
         cap: Type,
     ): Resp =
@@ -120,17 +117,15 @@ object ActorCapability:
     def invokeVoid(method: ActorMethodName)(using cap: Instance): Unit =
       cap.invokeVoid(method)
 
-  /** Narrow the universal capability in scope to one actor type and make it available to `body` as an
+  /** Narrow the universal capability in scope to one actor type and return it as an
     * [[ActorCapability.Type]].
     */
-  def forType(actorType: ActorType)[T](body: Type ?=> T)(using cap: ActorCapability): T =
-    // Capture-set erasure as in Type.instance above.
-    body(using cap.apply(actorType).asInstanceOf[Type])
+  def forType(actorType: ActorType)(using cap: ActorCapability): Type^{cap} =
+    cap.apply(actorType)
 
-  /** Narrow the universal capability in scope to one actor instance and make it available to `body`. */
-  def instance(actorType: ActorType, actorId: ActorId)[T](body: Instance ?=> T)(using cap: ActorCapability): T =
-    // Capture-set erasure as in Type.instance above (two narrowing steps, one erasure).
-    body(using cap.apply(actorType).apply(actorId).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one actor instance and return it. */
+  def instance(actorType: ActorType, actorId: ActorId)(using cap: ActorCapability): Instance^{cap} =
+    cap.apply(actorType).apply(actorId)
   def invoke[Req: JsonCodec](actorType: ActorType, actorId: ActorId, method: ActorMethodName, data: Req)[
       Resp: JsonCodec,
   ](using cap: ActorCapability): Resp =

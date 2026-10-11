@@ -83,12 +83,9 @@ object WorkflowCapability:
   /** Forwarders for [[WorkflowCapability.ReadOnly]]. */
   @scala.caps.assumeSafe
   object ReadOnly:
-    /** Narrow the observe-only capability in scope to one instance and make it available to `body`. */
-    def instance(instanceId: WorkflowInstanceId)[T](body: Instance.ReadOnly ?=> T)(using cap: ReadOnly): T =
-      // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-      // `Instance.ReadOnly^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside
-      // `body`, which cannot leak it (pure context function). See DaprCapability's companion.
-      body(using cap.apply(instanceId).asInstanceOf[Instance.ReadOnly])
+    /** Narrow the observe-only capability in scope to one instance and return it. */
+    def instance(instanceId: WorkflowInstanceId)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
+      cap.apply(instanceId)
     def getStatus(instanceId: WorkflowInstanceId)(using cap: ReadOnly): Option[WorkflowSnapshot] =
       cap.getStatus(instanceId)
     def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration)(using
@@ -157,10 +154,9 @@ object WorkflowCapability:
     def purge()(using cap: Instance): Boolean =
       cap.purge()
 
-  /** Narrow the universal capability in scope to one instance and make it available to `body`. */
-  def instance(instanceId: WorkflowInstanceId)[T](body: Instance ?=> T)(using cap: WorkflowCapability): T =
-    // Capture-set erasure as in ReadOnly.instance above.
-    body(using cap.apply(instanceId).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one instance and return it. */
+  def instance(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Instance^{cap} =
+    cap.apply(instanceId)
   def getStatus(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Option[WorkflowSnapshot] =
     cap.getStatus(instanceId)
   def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration)(using

@@ -95,12 +95,9 @@ object StateCapability:
   /** Forwarders for [[StateCapability.ReadOnly]]. */
   @scala.caps.assumeSafe
   object ReadOnly:
-    /** Narrow the read-only capability in scope to one store and make it available to `body`. */
-    def instance(storeName: StateStoreName)[T](body: Instance.ReadOnly ?=> T)(using cap: ReadOnly): T =
-      // WHAT/WHY/SAFE: same capture-set erasure as the DaprCapability transformers — the narrowed capability is
-      // `Instance.ReadOnly^{cap}`, but a context function parameter cannot mention `cap`; it is only used inside
-      // `body`, which cannot leak it (pure context function). See DaprCapability's companion.
-      body(using cap.apply(storeName).asInstanceOf[Instance.ReadOnly])
+    /** Narrow the read-only capability in scope to one store and return it. */
+    def instance(storeName: StateStoreName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
+      cap.apply(storeName)
     def get[T: JsonCodec](
         storeName: StateStoreName,
         key: StateStoreKey,
@@ -264,10 +261,9 @@ object StateCapability:
     def transaction(ops: Seq[StateOp])(using cap: Instance): Unit =
       cap.transaction(ops)
 
-  /** Narrow the universal capability in scope to one store and make it available to `body`. */
-  def instance(storeName: StateStoreName)[T](body: Instance ?=> T)(using cap: StateCapability): T =
-    // Capture-set erasure as in ReadOnly.instance above.
-    body(using cap.apply(storeName).asInstanceOf[Instance])
+  /** Narrow the universal capability in scope to one store and return it. */
+  def instance(storeName: StateStoreName)(using cap: StateCapability): Instance^{cap} =
+    cap.apply(storeName)
   def get[T: JsonCodec](
       storeName: StateStoreName,
       key: StateStoreKey,
