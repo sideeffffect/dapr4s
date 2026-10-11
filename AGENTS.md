@@ -13,8 +13,9 @@ The central design idea: each DAPR effect is a `scala.caps.Capability` subtype, 
 compiler statically verifies which effects a computation may perform and that resources cannot
 escape their managed scope.
 
-Refer to `docs/DESIGN.md` for the full architecture and to `docs/SPEC.allium` for the formal specification.
-Both must stay in sync with the code at all times.
+Refer to `docs/DESIGN.md` for the full architecture, to `docs/SPEC.allium` for the formal specification, and
+to `docs/CAPABILITY-HIERARCHY.md` for the class hierarchy of every capability interface.
+All three must stay in sync with the code at all times.
 
 ---
 
@@ -425,6 +426,13 @@ Both must stay in sync with the code. If you change the code, update the spec an
 If you change the spec or design doc, update the code to match. Verify Mermaid diagrams are
 valid and renderable. The Allium spec is maintained using the `allium:distill` and `allium:elicit`
 skills.
+
+`docs/CAPABILITY-HIERARCHY.md` holds one Mermaid `classDiagram` per capability family (plus the root
+`DaprCapability` and the server-side actor/workflow contexts), showing every interface — universal
+`XCapability`, `X.ReadOnly`, `X.Instance`, `X.Instance.ReadOnly`, actor `Type`/`Instance` — with its
+members, inheritance and `apply` narrowing. **Keep it in sync with the code**: any change that adds,
+removes, renames or re-parents a capability trait, or changes a capability member's signature, must
+update the matching diagram in the same commit, and the diagrams must still render (`mmdc`).
 
 ---
 
