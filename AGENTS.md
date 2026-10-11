@@ -226,8 +226,12 @@ overview: `docs/DESIGN.md` "Capability Hierarchy"). Keep new members and new fam
 - Derivation macros require the **narrowest** tier the generated member uses: read-only getters
   need only `X.Instance.ReadOnly` (State/Secrets/Configuration) or `JobsCapability.ReadOnly` (jobs);
   Invoke/Workflow/Jobs derivation call the universal capability directly.
-- There are no `Access*Capability` traits, no `WorkflowInstanceCapability`/`ActorTypeCapability`/
-  `JobCapability`, and no `WorkflowInstanceId` extension methods any more — do not reintroduce them.
+- There are no `Access*Capability` traits and no `WorkflowInstanceCapability`/`ActorTypeCapability`/
+  `JobCapability` any more — do not reintroduce them.
+- Handle-style sugar exists only for ids you hold and act on: `WorkflowInstanceId` (companion extensions:
+  `id.getStatus`, `id.waitForCompletion(t)`, `id.suspend()`, …) and `JobName` (`src/jvm/jobs/JobNameOps.scala`:
+  `name.get`, `name.schedule(...)`, `name.delete()`, …). Each extension must require the **narrowest** tier that
+  carries the operation (reads: `X.ReadOnly`; mutations: the full `X`) — never the full capability for a read.
 
 ### SDK interop boundary (Java on JVM, @dapr/dapr on JS)
 Everything in the two `internal/` trees is marked `@scala.caps.assumeSafe`. There are two

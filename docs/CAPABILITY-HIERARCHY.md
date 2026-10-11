@@ -248,6 +248,9 @@ Companions: `JobsCapability` (`instance(jobName)`, `get`, `schedule`, `scheduleO
 `JobsCapability.ReadOnly` (`instance(jobName)`, `get`), `JobsCapability.Instance` (`get`, `schedule`,
 `scheduleOnce`, `delete`), `JobsCapability.Instance.ReadOnly` (`get`).
 
+Handle sugar on `JobName` (`import dapr4s.jobs.*`): `name.get` (needs `JobsCapability.ReadOnly`),
+`name.schedule(...)`, `name.scheduleOnce(...)`, `name.delete()` (need `JobsCapability`).
+
 ## Workflow
 
 The workflow client capability. The narrowing key is the workflow instance id, not a component name.
@@ -303,6 +306,10 @@ classDiagram
 Companions: `WorkflowCapability` (`instance(instanceId)` + all forwarders), `WorkflowCapability.ReadOnly`
 (`instance(instanceId)`, `getStatus`, `waitForCompletion`), `WorkflowCapability.Instance` (all forwarders),
 `WorkflowCapability.Instance.ReadOnly` (`getStatus`, `waitForCompletion`).
+
+Handle sugar on `WorkflowInstanceId` (companion extensions): `id.getStatus`, `id.waitForCompletion(timeout)` (need
+`WorkflowCapability.ReadOnly`); `id.suspend()`, `id.resume()`, `id.terminate()`, `id.purge()`,
+`id.raiseEvent(name, payload)` (need `WorkflowCapability`).
 
 ## Publish
 

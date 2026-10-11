@@ -21,3 +21,22 @@ class JvmCapabilityDerivationTest extends FunSuite:
     client.once(Req(2), java.time.Instant.EPOCH)
     client.fetch()
     assertEquals(fake.log.toList, List("schedule|recur|1", "once|once|2", "get|recur"))
+
+  test("JobName sugar forwards to the jobs capability in scope; get needs only ReadOnly"):
+    val fake = FakeJobs()
+    given JobsCapability = fake
+    val digest = JobName("digest")
+    digest.scheduleOnce(Req(3), java.time.Instant.EPOCH)
+    assertEquals(digest.get, None)
+    digest.delete()
+    assertEquals(fake.log.toList, List("once|digest|3", "get|digest", "delete|digest"))
+
+  // No capability in scope here, so each snippet sees only the given it declares.
+  test("JobName sugar: get needs only JobsCapability.ReadOnly; delete needs the full capability"):
+    assertNoDiff(
+      compileErrors("(c: JobsCapability.ReadOnly) => { given JobsCapability.ReadOnly = c; JobName(\"j\").get }"),
+      "",
+    )
+    val denied =
+      compileErrors("(c: JobsCapability.ReadOnly) => { given JobsCapability.ReadOnly = c; JobName(\"j\").delete() }")
+    assert(denied.contains("No given instance"), s"expected a missing-capability error, got: $denied")

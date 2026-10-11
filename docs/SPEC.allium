@@ -2719,7 +2719,17 @@ surface WorkflowInstanceSurface {
         fulfils WorkflowInstanceOperations
 }
 
+-- Handle sugar (WorkflowInstanceId companion extensions): id.getStatus and
+-- id.waitForCompletion(t) behave exactly like the universal getStatus(id) /
+-- waitForCompletion(id, t) and require only a read_only WorkflowCapability; id.suspend(),
+-- resume(), terminate(), purge() and raiseEvent(name, payload) behave like the universal
+-- operations of the same name and require authority = full. No new behaviour, no new rules.
+
 -- ---- Jobs (dapr4s.jobs) ----
+-- Handle sugar (JobName extensions, JVM only): name.get requires a read_only JobsCapability;
+-- name.schedule(...), scheduleOnce(...), delete() require authority = full. Each behaves exactly
+-- like the universal operation with the job name as its first argument.
+
 
 surface JobsCapabilityReadOnlySurface {
     -- JVM only. JobsCapability.ReadOnly: universal, read-only tier.

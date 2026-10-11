@@ -120,3 +120,15 @@ class CapabilityTiersTest extends FunSuite:
     assertNotMember(
       compileErrors("(c: SecretsCapability.ReadOnly) => SecretsCapability.ReadOnly.instance(store)(using c).getBulk()"),
     )
+
+  test("WorkflowInstanceId sugar: reads need only WorkflowCapability.ReadOnly, mutations need the full capability"):
+    val ok = "import scala.concurrent.duration.*; (c: WorkflowCapability.ReadOnly) => { given WorkflowCapability.ReadOnly = c; val id = WorkflowInstanceId(\"i\"); (id.getStatus, id.waitForCompletion(1.second)) }"
+    assertNoDiff(compileErrors(ok), "")
+    assertNoDiff(
+      compileErrors("(c: WorkflowCapability) => { given WorkflowCapability = c; WorkflowInstanceId(\"i\").terminate() }"),
+      "",
+    )
+    val denied = compileErrors(
+      "(c: WorkflowCapability.ReadOnly) => { given WorkflowCapability.ReadOnly = c; WorkflowInstanceId(\"i\").terminate() }",
+    )
+    assert(denied.contains("No given instance"), s"expected a missing-capability error, got: $denied")

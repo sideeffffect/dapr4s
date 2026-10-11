@@ -2,6 +2,8 @@ package dapr4s.workflow
 
 import dapr4s.*
 
+import scala.concurrent.duration.FiniteDuration
+
 import language.experimental.safe
 
 /** Unique identifier of a workflow instance.
@@ -15,3 +17,38 @@ opaque type WorkflowInstanceId = String
 object WorkflowInstanceId:
   def apply(s: String): WorkflowInstanceId = s
   extension (id: WorkflowInstanceId) def value: String = id
+
+  /** Handle-style sugar: act on the instance through the workflow capability in scope, so `start`'s returned id reads
+    * as the instance itself — `id.waitForCompletion(60.seconds)`, `id.terminate()`. Each method requires the
+    * **narrowest** tier that carries the operation (reads need only [[WorkflowCapability.ReadOnly]]), so the sugar
+    * never re-demands authority the caller was not granted. Equivalent to the universal calls
+    * (`WorkflowCapability.waitForCompletion(id, timeout)`) and to `workflow.instance(id).waitForCompletion(timeout)`.
+    */
+  extension (id: WorkflowInstanceId)
+    /** Fetch the current status snapshot; `None` if the instance does not exist. */
+    def getStatus(using cap: WorkflowCapability.ReadOnly): Option[WorkflowSnapshot] =
+      cap.getStatus(id)
+
+    /** Block until the instance completes or `timeout` elapses; `None` on timeout or if the instance does not exist. */
+    def waitForCompletion(timeout: FiniteDuration)(using cap: WorkflowCapability.ReadOnly): Option[WorkflowSnapshot] =
+      cap.waitForCompletion(id, timeout)
+
+    /** Suspend this running instance (it can be resumed later). */
+    def suspend()(using cap: WorkflowCapability): Unit =
+      cap.suspend(id)
+
+    /** Resume this previously suspended instance. */
+    def resume()(using cap: WorkflowCapability): Unit =
+      cap.resume(id)
+
+    /** Terminate this instance immediately. */
+    def terminate()(using cap: WorkflowCapability): Unit =
+      cap.terminate(id)
+
+    /** Purge this instance's state from the state store; `true` if purged. */
+    def purge()(using cap: WorkflowCapability): Boolean =
+      cap.purge(id)
+
+    /** Deliver an external event to this instance. */
+    def raiseEvent[E: JsonCodec](eventName: EventName, payload: E)(using cap: WorkflowCapability): Unit =
+      cap.raiseEvent(id, eventName, payload)

@@ -68,10 +68,10 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
     withDapr:
       DaprCapability.workflow {
         val id = retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow, IncrRequest(3)))
-        val instance = summon[WorkflowCapability].instance(id)
-        instance.waitForCompletion(60.seconds).getOrElse(fail("workflow did not complete before purge"))
-        assert(instance.purge(), "purge should return true for a completed workflow")
-        assertEquals(instance.getStatus(), None)
+        // Handle-style sugar on WorkflowInstanceId (the raiseEvent test below uses the narrowed Instance instead).
+        id.waitForCompletion(60.seconds).getOrElse(fail("workflow did not complete before purge"))
+        assert(id.purge(), "purge should return true for a completed workflow")
+        assertEquals(id.getStatus, None)
       }
 
   test("workflow: raiseEvent releases a gated workflow and the payload reaches it"):

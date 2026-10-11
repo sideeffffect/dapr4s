@@ -61,4 +61,5 @@ final class FakeJob(name: JobName, log: mutable.ListBuffer[String]) extends Jobs
   def get(): Option[JobDetails] =
     log += s"get|${name.value}"
     None
-  def delete(): Unit = ???
+  def delete(): Unit =
+    log += s"delete|${name.value}"
