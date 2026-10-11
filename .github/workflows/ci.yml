@@ -119,6 +119,7 @@ jobs:
         # testcontainers-node logs container lifecycle (pull/start/wait) under DEBUG; it is the only
         # visibility into a JS-leg hang, which otherwise prints nothing. Ignored by the JVM leg.
         DEBUG: testcontainers*
+        DAPR4S_HOOK_DEBUG: "1"
         NODE_EXTRA_OPTIONS: --report-on-signal --report-signal=SIGUSR2 --report-directory=/tmp/node-reports
       run: |
         if [ "${{ matrix.platform }}" = js ]; then sudo tcpdump -i lo -s 0 -U -w /tmp/lo.pcap 'tcp and not port 9229' >/dev/null 2>&1 & sleep 2; fi

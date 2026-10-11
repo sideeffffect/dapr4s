@@ -22,15 +22,29 @@ const isBare = (specifier) =>
   !specifier.startsWith("node:") &&
   !specifier.startsWith("data:");
 
+const dbg = process.env.DAPR4S_HOOK_DEBUG ? (...a) => process.stderr.write(`[hook ${new Date().toISOString()}] ${a.join(" ")}\n`) : () => {};
+
+export async function load(url, context, nextLoad) {
+  dbg("load>", url, context.format ?? "");
+  const r = await nextLoad(url, context);
+  dbg("load<", url, r.format);
+  return r;
+}
+
 export async function resolve(specifier, context, nextResolve) {
+  dbg("resolve>", specifier, "from", context.parentURL ?? "");
   try {
-    return await nextResolve(specifier, context);
+    const r = await nextResolve(specifier, context);
+    dbg("resolve<", specifier, "->", r.url);
+    return r;
   } catch (err) {
     if (err?.code !== "ERR_MODULE_NOT_FOUND" || !isBare(specifier)) throw err;
     const candidates = specifier.endsWith(".js") ? [specifier] : [specifier, `${specifier}.js`];
     for (const candidate of candidates) {
       try {
-        return await nextResolve(candidate, { ...context, parentURL: fallbackParent });
+        const r = await nextResolve(candidate, { ...context, parentURL: fallbackParent });
+        dbg("resolve<fallback", specifier, "->", r.url);
+        return r;
       } catch {
         // try the next candidate
       }
