@@ -47,7 +47,7 @@ fi
 # adds the ".js" extension the ScalablyTyped deep submodule imports (testcontainers,
 # @dapr/testcontainer-node) need under ESM — see scripts/js-it/node-resolve-hook.mjs.
 export DAPR4S_REPO_ROOT="$ROOT"
-export NODE_OPTIONS="--import $ROOT/scripts/js-it/node-resolve-hook.mjs"
+export NODE_OPTIONS="--import $ROOT/scripts/js-it/node-resolve-hook.mjs ${NODE_EXTRA_OPTIONS:-}"
 
 # The ScalablyTyped facades are compileOnly.dep (js-deps.scala), which leaves the three MAIN roots
 # off the classpath this Wasm `test` link uses — add their jars back via --jar. (The testcontainers
