@@ -113,6 +113,12 @@ jobs:
     - name: Unit tests
       run: scala-cli test ${{ matrix.platform-flags }} . ${{ matrix.unit-test-args }} --test-only 'dapr4s.test.unit.*'
     - name: Integration tests
+      # Both legs normally finish in a few minutes; the timeout turns a hang into a failure with logs.
+      timeout-minutes: 20
+      env:
+        # testcontainers-node logs container lifecycle (pull/start/wait) under DEBUG; it is the only
+        # visibility into a JS-leg hang, which otherwise prints nothing. Ignored by the JVM leg.
+        DEBUG: testcontainers*
       run: ${{ matrix.integration-command }}
 
   publish:
