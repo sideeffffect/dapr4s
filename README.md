@@ -57,10 +57,27 @@ the JVM, `dapr4s_sjs1_3` on Scala.js.)
 
 ```scala
 import dapr4s.*
+import dapr4s.state.*   // each capability family has its own package: dapr4s.state, dapr4s.invoke, ...
 
 DaprCapability.state(StateStoreName("statestore")):   // StateCapability^{cap} in scope
   StateCapability.save(key, value)
 // Using StateCapability here — outside the block — is a compile error.
+```
+
+`DaprCapability` exposes one argument-less accessor per building block (`state`, `publish`,
+`invoke`, `secrets`, `configuration`, `bindings`, `lock`, `actor`, `workflow`, `crypto`; on the
+JVM also `jobs` and `conversation`). Each returns an `Access*Capability` ("any store / app /
+job"), whose `apply(name)` narrows it to one named capability:
+
+```scala
+import dapr4s.*, dapr4s.state.*, dapr4s.invoke.*, dapr4s.actor.*, dapr4s.workflow.*
+
+val dapr = summon[DaprCapability]
+dapr.state(StateStoreName("statestore")).save(StateStoreKey("k"), "v")    // StateCapability
+dapr.invoke(AppId("orders")).invoke[String](InvokeMethodName("ping"))    // InvokeCapability (val appId)
+dapr.actor(ActorType("Counter"))(ActorId("c-1")).invokeVoid(ActorMethodName("reset"))
+val id = dapr.workflow.start(WorkflowName("OrderWorkflow"))              // AccessWorkflowCapability
+dapr.workflow(id).suspend()                                              // WorkflowInstanceCapability
 ```
 
 ## Platforms
@@ -97,13 +114,14 @@ JS-only `runAsync`/`serveAsync`, which wrap it for you):
 
 ```scala
 import dapr4s.*
+import dapr4s.state.*
 import scala.scalajs.js
 
 // one-shot request/response, with the single js.async entry at the program edge:
 def main(args: Array[String]): Unit =
   js.async {
     Dapr().run:
-      summon[DaprCapability].state(StateStoreName("statestore")).get(StateStoreKey("k"))
+      summon[DaprCapability].state(StateStoreName("statestore")).get[String](StateStoreKey("k"))
   }: Unit
 ```
 

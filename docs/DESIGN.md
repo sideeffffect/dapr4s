@@ -101,7 +101,7 @@ graph TB
 
 ### Layer 1 — Public API (safe-mode-compatible)
 
-Capability traits, opaque domain types, and the `Dapr(config).run` / `.serve` entry points (on `class Dapr(config: DaprConfig)` — `src/jvm/Dapr.scala` on the JVM, `src/js/Dapr.scala` on Scala.js, same public signatures). These compile cleanly under both safe mode and capture checking. No Java or JS SDK types are visible.
+Capability traits (one package `dapr4s.<family>` per building block, see Capability Hierarchy), opaque domain types, and the `Dapr(config).run` / `.serve` entry points (on `class Dapr(config: DaprConfig)` — `src/jvm/Dapr.scala` on the JVM, `src/js/Dapr.scala` on Scala.js, same public signatures). These compile cleanly under both safe mode and capture checking. No Java or JS SDK types are visible.
 
 ### Layer 2 — Internal implementations (`@assumeSafe`)
 
@@ -113,28 +113,36 @@ Note: safe mode is enabled **per-file** via `import language.experimental.safe` 
 
 ## Capability Hierarchy
 
+The root `DaprCapability` has one **argument-less accessor** per building block (the §8 "Design C" name/instance tier of [CAPABILITY-SPLITS.md](CAPABILITY-SPLITS.md)). Each accessor returns a rung-2 `Access*Capability` — "any store / component / app / job" — that can be held and passed around; its `apply(name)` narrows it to the rung-3 capability for one named resource, which carries that name as a `val` so its methods never take it again. Because `apply` is invoked with the same argument list, `dapr.state(storeName)` reads exactly like a factory call.
+
 ```mermaid
 classDiagram
     class DaprCapability {
         <<trait>>
-        +state(storeName: StateStoreName) StateCapability^this
-        +publish(pubsubName: PubSubName) PublishCapability^this
-        +invoke InvokeCapability^this
-        +secrets(storeName: SecretStoreName) SecretsCapability^this
-        +configuration(storeName: ConfigurationStoreName) ConfigurationCapability^this
-        +bindings(name: BindingName) BindingsCapability^this
-        +lock(storeName: LockStoreName) LockCapability^this
-        +actor(actorType, actorId) ActorCapability^this
-        +workflow WorkflowCapability^this
-        +crypto(componentName: CryptoComponentName) CryptoCapability^this
-        +jobs JobsCapability^this
-        +conversation(componentName: ConversationComponentName) ConversationCapability^this
+        +state AccessStateCapability^this
+        +publish AccessPublishCapability^this
+        +invoke AccessInvokeCapability^this
+        +secrets AccessSecretsCapability^this
+        +configuration AccessConfigurationCapability^this
+        +bindings AccessBindingsCapability^this
+        +lock AccessLockCapability^this
+        +actor AccessActorCapability^this
+        +workflow AccessWorkflowCapability^this
+        +crypto AccessCryptoCapability^this
+        +jobs AccessJobsCapability^this
+        +conversation AccessConversationCapability^this
     }
     note for DaprCapability "Root capability. Companion object provides transformer API:\nDaprCapability.state(name) { ... } introduces StateCapability into body scope.\njobs + conversation come from the JVM platform trait DaprCapabilityPlatform —\non Scala.js they do not exist at compile time (see Scala.js platform section)"
+    class AccessXCapability {
+        <<trait>>
+        +apply(name: N) XCapability^this
+    }
+    note for AccessXCapability "Generic rung-2 shape shared by AccessState/Publish/Secrets/\nConfiguration/Bindings/Lock/Crypto/Conversation/Invoke/JobsCapability:\nN = StateStoreName, PubSubName, SecretStoreName, ConfigurationStoreName,\nBindingName, LockStoreName, CryptoComponentName,\nConversationComponentName, AppId, JobName"
     class StateCapability {
         <<trait>>
-        +get[T](key: StateStoreKey) Option[T]
-        +getWithETag[T](key: StateStoreKey) StateEntry[T]
+        +storeName: StateStoreName
+        +get[T](key: StateStoreKey, consistency) Option[T]
+        +getWithETag[T](key: StateStoreKey, consistency) StateEntry[T]
         +getBulk[T](keys: Seq[StateStoreKey]) Map[StateStoreKey,StateEntry[T]]
         +save[T](key: StateStoreKey, value: T) Unit
         +saveBulk[T](entries: Seq[(StateStoreKey,T)]) Unit
@@ -147,24 +155,97 @@ classDiagram
     note for StateCapability "getBulk and saveBulk use DAPR batch APIs (getBulkState / saveBulkState) — single sidecar call each"
     class PublishCapability {
         <<trait>>
+        +pubsubName: PubSubName
         +publish[T](topic: Topic, data: T) Unit
         +publishWithMetadata[T](topic, data, meta) Unit
         +bulkPublish[T](topic, entries: Seq[BulkPublishEntry[T]]) BulkPublishResult
     }
     class InvokeCapability {
         <<trait>>
-        +invoke[Req,Resp](appId: AppId, method: InvokeMethodName, data: Req) Resp
-        +invokeGet[Resp](appId: AppId, method: InvokeMethodName) Resp
+        +appId: AppId
+        +invoke[Req,Resp](method: InvokeMethodName, data: Req, httpMethod, metadata) Resp
+        +invoke[Resp](method: InvokeMethodName) Resp
     }
     class SecretsCapability {
         <<trait>>
-        +get(key: SecretKey) String
-        +getBulk() Map[SecretKey,String]
+        +storeName: SecretStoreName
+        +get(key: SecretKey, metadata) Option[SecretValue]
+        +getBulk(metadata) Map[SecretKey,SecretValue]
     }
     class ConfigurationCapability {
         <<trait>>
-        +get(keys: Seq[ConfigurationKey]) Map[ConfigurationKey,ConfigurationItem]
-        +subscribe(keys: Seq[ConfigurationKey])(onChange) AutoCloseable
+        +storeName: ConfigurationStoreName
+        +get(keys: Seq[ConfigurationKey], metadata) Map[ConfigurationKey,ConfigurationItem]
+        +subscribe(keys: Seq[ConfigurationKey], metadata)(onChange) AutoCloseable
+    }
+    class BindingsCapability {
+        <<trait>>
+        +bindingName: BindingName
+        +invoke[Req,Resp](operation: BindingOperation, data: Req, metadata) Option[Resp]
+        +invokeOneWay[Req](operation: BindingOperation, data: Req, metadata) Unit
+    }
+    class LockCapability {
+        <<trait>>
+        +storeName: LockStoreName
+        +tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) Boolean
+        +unlock(resourceId: LockResourceId, lockOwner: LockOwner) UnlockStatus
+    }
+    class CryptoCapability {
+        <<trait>>
+        +componentName: CryptoComponentName
+        +encrypt(keyName, plaintext: ArraySeq[Byte], algorithm) ArraySeq[Byte]
+        +decrypt(ciphertext: ArraySeq[Byte]) ArraySeq[Byte]
+        +encryptString(keyName, plaintext: String, algorithm) ArraySeq[Byte]
+        +decryptString(ciphertext: ArraySeq[Byte]) String
+    }
+    class JobCapability {
+        <<trait>>
+        +jobName: JobName
+        +schedule[T](data: T, schedule: JobSchedule, dueTime, repeats, ttl) Unit
+        +scheduleOnce[T](data: T, dueTime: Instant, ttl) Unit
+        +get() Option[JobDetails]
+        +delete() Unit
+    }
+    class ConversationCapability {
+        <<trait>>
+        +componentName: ConversationComponentName
+        +converse(messages: Seq[ConversationMessage], ...) ConversationResponse
+    }
+    class AccessActorCapability {
+        <<trait>>
+        +apply(actorType: ActorType) ActorTypeCapability^this
+    }
+    class ActorTypeCapability {
+        <<trait>>
+        +actorType: ActorType
+        +apply(actorId: ActorId) ActorCapability^this
+    }
+    class ActorCapability {
+        <<trait>>
+        +actorType: ActorType
+        +actorId: ActorId
+        +invoke[Req,Resp](method: ActorMethodName, data: Req) Resp
+        +invoke[Resp](method: ActorMethodName) Resp
+        +invokeVoid(method: ActorMethodName) Unit
+    }
+    class AccessWorkflowCapability {
+        <<trait>>
+        +start(name: WorkflowName) WorkflowInstanceId
+        +start[I](name: WorkflowName, input: I) WorkflowInstanceId
+        +startWithId(name, instanceId) WorkflowInstanceId
+        +startWithId[I](name, instanceId, input: I) WorkflowInstanceId
+        +apply(instanceId: WorkflowInstanceId) WorkflowInstanceCapability^this
+    }
+    class WorkflowInstanceCapability {
+        <<trait>>
+        +instanceId: WorkflowInstanceId
+        +getStatus() Option[WorkflowSnapshot]
+        +suspend() Unit
+        +resume() Unit
+        +terminate() Unit
+        +raiseEvent[E](eventName: EventName, payload: E) Unit
+        +waitForCompletion(timeout: FiniteDuration) Option[WorkflowSnapshot]
+        +purge() Boolean
     }
     class DaprApp {
         <<case class>>
@@ -177,46 +258,28 @@ classDiagram
         +jobs: List[JobRoute]
         +\+\+(other: DaprApp) DaprApp
     }
-    class BindingsCapability {
-        <<trait>>
-        +invoke[Req,Resp](operation: BindingOperation, data: Req) Option[Resp]
-        +invokeOneWay[Req](operation: BindingOperation, data: Req) Unit
-    }
-    class LockCapability {
-        <<trait>>
-        +tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int) Boolean
-        +unlock(resourceId: LockResourceId, lockOwner: LockOwner) UnlockStatus
-    }
-    class CryptoCapability {
-        <<trait>>
-        +encrypt(keyName, plaintext: ArraySeq[Byte], algorithm) ArraySeq[Byte]
-        +decrypt(ciphertext: ArraySeq[Byte]) ArraySeq[Byte]
-        +encryptString(keyName, plaintext: String, algorithm) ArraySeq[Byte]
-        +decryptString(ciphertext: ArraySeq[Byte]) String
-    }
-    class JobsCapability {
-        <<trait>>
-        +schedule[T](name: JobName, data: T, schedule: JobSchedule) Unit
-        +scheduleOnce[T](name: JobName, data: T, dueTime: Instant) Unit
-        +get(name: JobName) Option[JobDetails]
-        +delete(name: JobName) Unit
-    }
-    class ConversationCapability {
-        <<trait>>
-        +converse(messages: Seq[ConversationMessage], ...) ConversationResponse
-    }
 
-    DaprCapability --> StateCapability : .state()
-    DaprCapability --> PublishCapability : .publish()
-    DaprCapability --> InvokeCapability : .invoke
-    DaprCapability --> SecretsCapability : .secrets()
-    DaprCapability --> ConfigurationCapability : .configuration()
-    DaprCapability --> BindingsCapability : .bindings()
-    DaprCapability --> LockCapability : .lock()
-    DaprCapability --> CryptoCapability : .crypto()
-    DaprCapability --> JobsCapability : .jobs
-    DaprCapability --> ConversationCapability : .conversation()
+    DaprCapability --> AccessXCapability : .state / .publish / .invoke / .secrets / .configuration / .bindings / .lock / .crypto / .jobs / .conversation
+    AccessXCapability --> StateCapability : apply(storeName)
+    AccessXCapability --> PublishCapability : apply(pubsubName)
+    AccessXCapability --> InvokeCapability : apply(appId)
+    AccessXCapability --> SecretsCapability : apply(storeName)
+    AccessXCapability --> ConfigurationCapability : apply(storeName)
+    AccessXCapability --> BindingsCapability : apply(bindingName)
+    AccessXCapability --> LockCapability : apply(storeName)
+    AccessXCapability --> CryptoCapability : apply(componentName)
+    AccessXCapability --> JobCapability : apply(jobName)
+    AccessXCapability --> ConversationCapability : apply(componentName)
+    DaprCapability --> AccessActorCapability : .actor
+    AccessActorCapability --> ActorTypeCapability : apply(actorType)
+    ActorTypeCapability --> ActorCapability : apply(actorId)
+    DaprCapability --> AccessWorkflowCapability : .workflow
+    AccessWorkflowCapability --> WorkflowInstanceCapability : apply(instanceId)
 ```
+
+Every capability trait has a companion object of `using`-forwarders (`StateCapability.save(...)`, `JobCapability.get()`, `WorkflowInstanceCapability.suspend()`, `AccessWorkflowCapability.start(...)`, …). Narrowing from an accessor in scope is a plain `apply`: `summon[AccessInvokeCapability](appId).invoke(...)`, `summon[AccessJobsCapability](jobName).delete()`, `summon[AccessWorkflowCapability](instanceId).suspend()`. The companion transformer API mirrors the accessors: `DaprCapability.state/publish/secrets/configuration/bindings/lock/crypto/conversation(name) { ... }` and `DaprCapability.actor(actorType, actorId) { ... }` bring the **rung-3** capability into scope, while `DaprCapability.invoke`, `DaprCapability.workflow` and `DaprCapability.jobs` bring the **rung-2 accessor** into scope (the target app / instance / job is chosen per call).
+
+**Packages.** Each capability family lives in its own package `dapr4s.<family>` (`dapr4s.state`, `dapr4s.publish`, `dapr4s.invoke`, `dapr4s.secrets`, `dapr4s.configuration`, `dapr4s.bindings`, `dapr4s.lock`, `dapr4s.actor`, `dapr4s.workflow`, `dapr4s.crypto`, `dapr4s.jobs`, `dapr4s.conversation`), which holds the capability and accessor traits, the family's opaque names/IDs and models, its inbound route type (`Subscription`, `InvokeRoute`, `BindingRoute`, `JobRoute`, actor route types) and its derivation macros. The root `dapr4s` package keeps the cross-cutting surface: `DaprCapability`, `Dapr`, `DaprConfig`, `DaprApp`, `JsonCodec`, `HttpMethod`, the exceptions and the cross-cutting opaque types (`AppId`, `MetadataKey`/`MetadataValue`, `Route`, `SerializedJson`, …). There is deliberately **no re-export facade** — re-exported opaque types resolve inconsistently in macro quote/construction contexts — so consumers `import dapr4s.state.*` etc. for the families they use.
 
 ---
 
@@ -263,12 +326,12 @@ Pub/sub routes (default `/<topic>`), input binding paths (`/<bindingName>`), ser
 
 ### Job triggers
 
-A scheduled job created via `JobsCapability.schedule`/`scheduleOnce` is delivered by the sidecar as a POST to `/job/<jobName>` on the app server. A `JobRoute[T](JobName(...)) { payload => ... }` registered on the `DaprApp` decodes the payload (the sidecar sends either the raw value or a `{"data": ...}` envelope — both are accepted) and invokes the handler. Unknown job names return 404; a handler exception returns 500.
+A scheduled job created via `JobCapability.schedule`/`scheduleOnce` (`dapr.jobs(JobName(...)).schedule(...)`) is delivered by the sidecar as a POST to `/job/<jobName>` on the app server. A `JobRoute[T](JobName(...)) { payload => ... }` registered on the `DaprApp` decodes the payload (the sidecar sends either the raw value or a `{"data": ...}` envelope — both are accepted) and invokes the handler. Unknown job names return 404; a handler exception returns 500.
 
-> **`ExclusiveCapability` as a cornerstone**: Every capability in this library — `DaprCapability`, all twelve sub-capability traits, `ActorContext`, and `WorkflowContext` — extends `scala.caps.ExclusiveCapability`. This is intentional and load-bearing:
+> **`ExclusiveCapability` as a cornerstone**: Every capability in this library — `DaprCapability`, every rung-2 `Access*Capability` accessor, every rung-3 sub-capability trait (including `ActorTypeCapability` and `WorkflowInstanceCapability`), `ActorContext`, and `WorkflowContext` — extends `scala.caps.ExclusiveCapability`. This is intentional and load-bearing:
 > - `ExclusiveCapability` tells the Scala 3 CC framework that these objects are exclusive (not shared), enabling separation checking that prevents concurrent or escaping use.
 > - `scala.caps.Capability` is **sealed** in nightly Scala 3; only `SharedCapability` and `ExclusiveCapability` can be extended. `SharedCapability` would allow sharing across concurrent fibers, which violates the exclusive-per-invocation semantics we require.
-> - Because each sub-capability extends `ExclusiveCapability`, CC infers `^{fresh}` for new instances returned from methods. The trait declares `^{this}` to bind the sub-capability lifetime to the parent — overrides must explicitly annotate return types as `StateCapability^{this}` etc. to satisfy the override check. See `DaprCapabilityImpl` and `MockDaprCapability` for the pattern.
+> - Because each sub-capability extends `ExclusiveCapability`, CC infers `^{fresh}` for new instances returned from methods. The trait declares `^{this}` to bind the sub-capability lifetime to the parent — overrides must explicitly annotate return types as `AccessStateCapability^{this}` / `StateCapability^{this}` etc. to satisfy the override check. See `DaprCapabilityImpl` and `MockDaprCapability` for the pattern.
 > - `@scala.caps.assumeSafe` on implementation classes suppresses CC checks inside the method body, but override-level compatibility checks still fire — hence the explicit `^{this}` annotations are required in both `DaprCapabilityImpl` and `MockDaprCapability`.
 
 ---
@@ -292,12 +355,14 @@ def placeOrder(req: OrderRequest)(using StateCapability, PublishCapability): Ord
 Each capability trait has a companion object that mirrors every instance method as a static forwarder taking `using cap: CapabilityType`.  This makes the call-site type act as both a static effect declaration (which capabilities are required) and as a namespace for the API:
 
 ```scala
-// src/shared/Capabilities.scala
+// src/shared/state/StateCapability.scala
 object StateCapability:
   def save[T: JsonCodec](key: StateStoreKey, value: T)(using cap: StateCapability): Unit =
     cap.save(key, value)
-  def get[T: JsonCodec](key: StateStoreKey)(using cap: StateCapability): Option[T] =
-    cap.get(key)
+  def get[T: JsonCodec](key: StateStoreKey, consistency: StateConsistency = StateConsistency.Default)(using
+      cap: StateCapability
+  ): Option[T] =
+    cap.get(key, consistency)
   // ... all other methods
 ```
 
@@ -326,8 +391,10 @@ Transformer signature (in `src/shared/DaprCapability.scala`):
 ```scala
 object DaprCapability:
   def state(storeName: StateStoreName)[T](body: StateCapability ?=> T)(using cap: DaprCapability): T =
-    body(using cap.state(storeName))
+    body(using cap.state(storeName).asInstanceOf[StateCapability])
 ```
+
+`cap.state(storeName)` is `cap.state.apply(storeName)` — the argument-less accessor followed by the rung-2 `apply`.
 
 **Capability injection lifetime**: Capabilities are bound once per `apply` call and shared across all handler invokeRoutes for the lifetime of the `DaprCapability` scope.  The CC type system ensures they cannot outlive the scope (`ScopeContainment` invariant).
 
@@ -399,7 +466,7 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `ReminderName` | `String` | yes | Persistent actor reminder name |
 | `TimerName` | `String` | yes | Non-persistent actor timer name |
 | `WorkflowName` | `String` | yes | Dapr workflow class name |
-| `EventName` | `String` | yes | External event name for `WorkflowContext.waitForExternalEvent` and `WorkflowCapability.raiseEvent` |
+| `EventName` | `String` | yes | External event name for `WorkflowContext.waitForExternalEvent` and `WorkflowInstanceCapability.raiseEvent` |
 | `CryptoComponentName` | `String` | yes | DAPR cryptography component name |
 | `CryptoKeyName` | `String` | yes | Key name within a crypto component |
 | `KeyWrapAlgorithm` | `String` | yes | Key-wrap algorithm (e.g. `RSA`, `AES`); has `Rsa`/`Aes` constants |
@@ -416,13 +483,13 @@ All domain identifiers are opaque to prevent accidental misuse (e.g., passing a 
 | `ActorId` | `String` | no | Dapr virtual actor instance ID |
 | `HttpMethod` | enum | — | HTTP verb used by an incoming service invocation |
 
-Each opaque type lives in its own file under `src/shared/optypes/` (one type per file), not in `Models.scala` companions. Smart constructors validate non-empty constraints at construction time (non-empty types). Extension methods provide `.value` unwrapping.
+Each opaque type lives in its own file (one type per file): family-specific ones in their family package directory (`src/shared/state/StateStoreName.scala` → `dapr4s.state.StateStoreName`, `src/shared/jobs/JobName.scala` → `dapr4s.jobs.JobName`, …), cross-cutting ones (`AppId`, `Route`, `MetadataKey`/`MetadataValue`, `SerializedJson`, `ApiToken`, `DaprPort`, `DaprDuration`, `PemPath`, `ContentType`) in `src/shared/optypes/` (package `dapr4s`). Smart constructors validate non-empty constraints at construction time (non-empty types). Extension methods provide `.value` unwrapping.
 
 ---
 
 ## Value Types
 
-Structured data without identity, compared by value. Defined in `src/shared/Models.scala` — except the jobs and conversation models (`JobSchedule`, `JobDetails`, `ConversationMessage` and friends), which are JVM-only surface and live in `src/jvm/JobsModels.scala` / `src/jvm/ConversationModels.scala`. These correspond to the `value` and `entity` declarations in the spec's Value Types and Entities sections.
+Structured data without identity, compared by value. Defined per family in `src/shared/<family>/<Family>Models.scala` (`StateModels`, `PublishModels`, `InvokeModels`, `ConfigurationModels`, `LockModels`, `WorkflowModels`; `HttpMethod` stays in the root `src/shared/Models.scala`) — except the jobs and conversation models (`JobSchedule`, `JobDetails`, `ConversationMessage` and friends), which are JVM-only surface and live in `src/jvm/jobs/JobsModels.scala` / `src/jvm/conversation/ConversationModels.scala`. These correspond to the `value` and `entity` declarations in the spec's Value Types and Entities sections.
 
 | Type | Scala form | Purpose |
 |---|---|---|
@@ -440,7 +507,7 @@ Structured data without identity, compared by value. Defined in `src/shared/Mode
 | `WorkflowSnapshot` | `case class` | Snapshot of a workflow instance's current state |
 | `WorkflowStatus` | `enum` | Workflow instance lifecycle status |
 | `JobSchedule` | `enum` | Job schedule: `Cron(expr)`, `Every(period)`, `Daily`/`Hourly`/`Weekly`/`Monthly`/`Yearly` |
-| `JobDetails` | `case class` | Stored job definition returned by `JobsCapability.get` |
+| `JobDetails` | `case class` | Stored job definition returned by `JobCapability.get` |
 | `ConversationMessage` | `case class` | A conversation message with `role: ConversationMessageRole` + text; smart constructors `user`/`system`/`assistant`/`developer`/`tool` |
 | `ConversationMessageRole` | `enum` | Conversation message role: `System`, `User`, `Assistant`, `Tool`, `Developer` |
 | `ConversationTool` / `ConversationToolCall` | `case class` | Tool (function) definition and an assistant's tool-call request |
@@ -558,7 +625,7 @@ Only two exception types are declared in `Exceptions.scala` — those where the 
 
 All other failures — sidecar unreachable, component not configured, gRPC errors — propagate as unchecked `io.dapr.exceptions.DaprException` (from the Java SDK, a `RuntimeException` subclass). These are unexpected infrastructure failures that callers cannot meaningfully handle at the call site; they bubble up to a top-level error boundary. There is no per-capability exception hierarchy: such a hierarchy would be a lie of precision, implying callers need to handle `DaprStateException` differently from `DaprPubSubException` when they do not.
 
-`SecretsCapability.get` returns `Option[String]` rather than throwing for a missing key — absence is a normal case, not a failure.
+`SecretsCapability.get` returns `Option[SecretValue]` rather than throwing for a missing key — absence is a normal case, not a failure.
 
 Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM errors propagate immediately. `InterruptedException` is never silently swallowed (see `MonoOps.awaitResult`).
 
@@ -566,7 +633,7 @@ Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM err
 
 ## Project Structure (Scala CLI)
 
-Sources are split into `src/{shared,jvm,js}` and `test/{shared,jvm,js}`. The directory layout is for humans — scala-cli has no platform directory convention, so every file under a `jvm/`/`js/` directory also carries its own `//> using target.platform "jvm"`/`"scala-js"` directive (that directive is what actually scopes the file). Everything under `shared/` cross-compiles. Packages are unchanged by the layout (e.g. `src/jvm/internal/` and `src/js/internal/` are both package `dapr4s.internal`).
+Sources are split into `src/{shared,jvm,js}` and `test/{shared,jvm,js}`. The directory layout is for humans — scala-cli has no platform directory convention, so every file under a `jvm/`/`js/` directory also carries its own `//> using target.platform "jvm"`/`"scala-js"` directive (that directive is what actually scopes the file). Everything under `shared/` cross-compiles. Packages are independent of the platform directory (e.g. `src/jvm/internal/` and `src/js/internal/` are both package `dapr4s.internal`; `src/shared/jobs/` and `src/jvm/jobs/` are both `dapr4s.jobs`); below the platform directory, each capability family has its own subdirectory and package `dapr4s.<family>`.
 
 ```
 dapr4s/
@@ -595,37 +662,61 @@ dapr4s/
 │   └── k8s-test.sh
 ├── src/
 │   ├── shared/                       # cross-compiled sources (no platform directive)
-│   │   ├── Models.scala              # Value types: StateEntry, ConfigurationItem, StateOp, SubscriptionResult,
-│   │   │                             # CloudEvent, InvokeRequest, WorkflowSnapshot/Status
+│   │   ├── Models.scala              # HttpMethod (cross-cutting; family models live in their packages)
 │   │   ├── JsonCodec.scala           # JsonCodec typeclass + default instances [@assumeSafe]
-│   │   ├── Capabilities.scala        # Cross-platform capability traits + companions [safe mode]
-│   │   ├── DaprApp.scala             # DaprApp case class + Subscription/InvokeRoute/BindingRoute/JobRoute
-│   │   ├── DaprCapability.scala      # DaprCapability trait (extends DaprCapabilityPlatform) + companion
+│   │   ├── DaprApp.scala             # DaprApp case class (aggregates the per-family route types)
+│   │   ├── DaprCapability.scala      # DaprCapability trait: argument-less accessors (extends
+│   │   │                             # DaprCapabilityPlatform) + companion transformer API
 │   │   │                             # (extends DaprCapabilityCompanionPlatform) [safe mode]
 │   │   ├── DaprConfig.scala          # DaprConfig / SidecarConfig / AppServerConfig / ActorRuntimeConfig
-│   │   ├── Actors.scala              # ActorContext, ActorDefinition, ActorRoutes + route types
-│   │   ├── Workflows.scala           # Workflow, WorkflowActivity, ActivityDef, Task, WorkflowContext
 │   │   ├── Validation.scala          # DaprAppValidationError + structural validation (validateOrThrow)
 │   │   ├── Charsets.scala            # Charset constants/encoding helpers usable from safe-mode code
 │   │   ├── Exceptions.scala          # ETagMismatchException, JsonDecodeException
-│   │   ├── optypes/                  # One opaque domain type per file (StateStoreName, Topic, AppId,
-│   │   │                             # SerializedJson, ApiToken, DaprPort, DaprDuration, PemPath, JobName, ...)
-│   │   └── derivation/               # Macro derivation layer: per-capability derive engines (State, Publish,
-│   │                                 # Invoke, Secrets, Configuration, Bindings, Crypto, Subscriptions,
-│   │                                 # InvokeRoutes/BindingRoutes/JobRoutes, WorkflowActivities/-Calls,
-│   │                                 # WorkflowEvents, Actor/ActorState/ActorDefinitions, MacroSupport,
-│   │                                 # Forwarders — extends ForwardersPlatform)
+│   │   ├── optypes/                  # Cross-cutting opaque types, one per file, package dapr4s (AppId, Route,
+│   │   │                             # MetadataKey/-Value, SerializedJson, ContentType, ApiToken, DaprPort,
+│   │   │                             # DaprDuration, PemPath)
+│   │   ├── state/                    # dapr4s.state: AccessStateCapability/StateCapability, StateStoreName,
+│   │   │                             # StateStoreKey, ETag, StateQuery, StateConsistency/-Concurrency,
+│   │   │                             # StateModels (StateEntry, StateOp), State.derive
+│   │   ├── publish/                  # dapr4s.publish: Access/PublishCapability, PubSubName, Topic, CloudEvent*
+│   │   │                             # ids, BulkEntryId, PublishModels, Subscription, Publish.derive,
+│   │   │                             # Subscriptions.derive
+│   │   ├── invoke/                   # dapr4s.invoke: Access/InvokeCapability (val appId), InvokeMethodName,
+│   │   │                             # InvokeModels (InvokeRequest), InvokeRoute, Invoke.derive,
+│   │   │                             # InvokeRoutes.derive, InvokeDerivationRuntime
+│   │   ├── secrets/                  # dapr4s.secrets: Access/SecretsCapability, names/keys/values, Secrets.derive
+│   │   ├── configuration/            # dapr4s.configuration: Access/ConfigurationCapability, names/keys/values,
+│   │   │                             # ConfigurationModels, Configuration.derive
+│   │   ├── bindings/                 # dapr4s.bindings: Access/BindingsCapability, BindingName,
+│   │   │                             # BindingOperation, BindingRoute, Bindings.derive, BindingRoutes.derive
+│   │   ├── lock/                     # dapr4s.lock: Access/LockCapability, LockStoreName, LockResourceId,
+│   │   │                             # LockOwner, LockModels (UnlockStatus)
+│   │   ├── crypto/                   # dapr4s.crypto: Access/CryptoCapability, names, KeyWrapAlgorithm,
+│   │   │                             # Crypto.derive
+│   │   ├── actor/                    # dapr4s.actor: AccessActorCapability/ActorTypeCapability/ActorCapability,
+│   │   │                             # ActorType/ActorId/ActorMethodName/ActorStateKey/TimerName/ReminderName,
+│   │   │                             # Actors (ActorContext, ActorDefinition, ActorRoutes + route types),
+│   │   │                             # Actor.derive, ActorState.derive, ActorDefinitions.derive
+│   │   ├── workflow/                 # dapr4s.workflow: AccessWorkflowCapability/WorkflowInstanceCapability,
+│   │   │                             # WorkflowName/WorkflowInstanceId/ActivityName/EventName, WorkflowModels,
+│   │   │                             # Workflows (Workflow + Workflow.derive, WorkflowActivity, ActivityDef,
+│   │   │                             # Task, WorkflowContext), WorkflowActivities, WorkflowActivityCalls,
+│   │   │                             # WorkflowEvents
+│   │   ├── jobs/                     # dapr4s.jobs (cross-platform part): JobName, JobRoute, JobRoutes.derive
+│   │   ├── conversation/             # dapr4s.conversation (cross-platform part): component/model/tool names
+│   │   └── derivation/               # dapr4s.derivation — cross-cutting macro infrastructure only:
+│   │                                 # MacroSupport, Forwarders (extends ForwardersPlatform), @name, annotations
 │   ├── jvm/                          # [every file: target.platform jvm]
 │   │   ├── Dapr.scala                # JVM entry point: class Dapr(config) with .run + .serve [@assumeSafe]
-│   │   ├── DaprCapabilityPlatform.scala  # JVM platform surface: jobs + conversation factory methods and
+│   │   ├── DaprCapabilityPlatform.scala  # JVM platform surface: jobs + conversation accessors and
 │   │   │                             # the companion transformer twins (the JS twin is empty)
-│   │   ├── JobsCapability.scala      # JVM-only capability trait + companion forwarders
-│   │   ├── JobsModels.scala          # JobSchedule, JobDetails
-│   │   ├── ConversationCapability.scala  # JVM-only capability trait + companion forwarders
-│   │   ├── ConversationModels.scala  # ConversationMessage/Role/Tool/ToolCall/Response, ...
+│   │   ├── jobs/                     # dapr4s.jobs (JVM-only part): JobsCapability.scala (AccessJobsCapability,
+│   │   │                             # JobCapability), JobsModels.scala (JobSchedule, JobDetails),
+│   │   │                             # Jobs.scala (Jobs.derive engine)
+│   │   ├── conversation/             # dapr4s.conversation (JVM-only part): ConversationCapability.scala
+│   │   │                             # (Access/ConversationCapability), ConversationModels.scala
 │   │   ├── PemPathJvm.scala
 │   │   ├── derivation/
-│   │   │   ├── Jobs.scala            # JVM-only Jobs.derive engine
 │   │   │   └── ForwardersPlatform.scala  # jobs runtime forwarders (the JS twin is empty)
 │   │   └── internal/                 # JVM internal layer — Java SDK confined here
 │   │       ├── DaprCapabilityImpl.scala
@@ -737,7 +828,7 @@ tests on both); that gap is symmetric by design.
 
 | Decision | Choice | Rationale |
 |---|---|---|
-| Capability root | `DaprCapability` provides factory methods | Single entry point; child capabilities capture scope, preventing escape |
+| Capability root | `DaprCapability` provides argument-less accessors (`Access*Capability`), narrowed by `apply(name)` | Single entry point; child capabilities capture scope, preventing escape; an accessor is a passable "any store / app / job" handle |
 | JSON library | upickle | Pure Scala, Scala CLI friendly, automatic derivation |
 | Async model | JVM: blocking (`Mono.toFuture().get()`) on virtual threads; JS: JSPI suspension via orphan `js.await` on the Wasm backend | Direct-style API on both platforms with no effect-library dependency; VT parking and JSPI stack suspension are architectural analogues (see Scala.js platform section) |
 | Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |
@@ -769,11 +860,11 @@ class OrderWorkflow extends Workflow:
 
 `Workflow` is a pure Scala abstract class — no Java type in the public API. Internally, `WorkflowBridge(workflow) extends io.dapr.workflows.Workflow` and is used only during sidecar registration via the named-instance overload `registerWorkflow(name, bridge, "", false)`. The bridge constructs `given WorkflowContext = new WorkflowContextImpl(javaCtx)` and calls `w.run`, so `WorkflowContext` never escapes the bridge's stack frame. The bridge is in `dapr4s.internal` and never visible to users.
 
-**Registration naming**: both workflows and class-based activities register under their **simple** class name (`getSimpleName`) — for workflows this is what users pass to `WorkflowCapability.start(WorkflowName(...))`; for activities it is exposed via `ActivityDef.activityName` and resolved by `callActivity[A]`. Names are first-writer-wins (same as routes), so two classes sharing a simple name collide — override `activityName` to disambiguate. Activities reified by `dapr4s.derivation.WorkflowActivities` are anonymous, so they instead register under a stable `<implClass>#<method>` name computed by the macro. See `DaprAppServer`'s registration loop and `Workflows.scala`.
+**Registration naming**: both workflows and class-based activities register under their **simple** class name (`getSimpleName`) — for workflows this is what users pass to `AccessWorkflowCapability.start(WorkflowName(...))`; for activities it is exposed via `ActivityDef.activityName` and resolved by `callActivity[A]`. Names are first-writer-wins (same as routes), so two classes sharing a simple name collide — override `activityName` to disambiguate. Activities reified by `dapr4s.workflow.WorkflowActivities` are anonymous, so they instead register under a stable `<implClass>#<method>` name computed by the macro. See `DaprAppServer`'s registration loop and `Workflows.scala`.
 
 Workflow operations honour the configured gRPC endpoint: `Dapr` derives a `workflowProperties: Properties` from `config.sidecar` and threads it through to the `DaprWorkflowClient` and `WorkflowRuntimeBuilder`, whose no-arg constructors would otherwise hardcode `localhost:50001`.
 
-`WorkflowCapability.getStatus` (and `waitForCompletion`) return `Option[WorkflowSnapshot]`, yielding `None` for an unknown or purged instance.
+`WorkflowInstanceCapability.getStatus` (and `waitForCompletion`) return `Option[WorkflowSnapshot]`, yielding `None` for an unknown or purged instance.
 
 ### WorkflowActivity[I, O]
 
@@ -783,7 +874,7 @@ Extend `WorkflowActivity[I, O]` (which requires `JsonCodec[I]` and `JsonCodec[O]
 class ProcessPaymentActivity extends WorkflowActivity[OrderRequest, PaymentResult]:
   def execute(input: OrderRequest)(using DaprCapability): PaymentResult =
     DaprCapability.invoke:
-      InvokeCapability.invoke(PaymentService, InvokeMethodName("charge"), input)[PaymentResult]
+      summon[AccessInvokeCapability](PaymentService).invoke(InvokeMethodName("charge"), input)[PaymentResult]
 ```
 
 `WorkflowActivity[I, O]` is a pure Scala abstract class. Internally, `WorkflowActivityBridge[I, O](activity) extends io.dapr.workflows.WorkflowActivity` wraps it for registration via `registerActivity(name, bridge)`. The bridge accesses `activity.inputCodec` / `activity.outputCodec` which are `private[dapr4s]` on the abstract class.
@@ -865,7 +956,7 @@ dapr4s cross-compiles to Scala.js with a **byte-identical public API** — excep
 
 ### Identical public API — why
 
-The capability traits, `DaprApp`, the opaque types, and the entire derivation layer are shared sources. An async-on-JS API fork was rejected for two reasons:
+The capability traits, `DaprApp`, the opaque types, and the derivation layer are shared sources (except the JVM-only jobs/conversation surface — see the platform-trait technique). An async-on-JS API fork was rejected for two reasons:
 
 1. The derivation layer generates **synchronous** calls; forking the API would fork every derive engine.
 2. The project's documented constraint (see Non-Goals): no async/`Future`-based API — the library is direct-style by design.
@@ -918,10 +1009,10 @@ object DaprCapability extends DaprCapabilityCompanionPlatform: ...
 // src/jvm/DaprCapabilityPlatform.scala — contributes the JVM-only surface
 trait DaprCapabilityPlatform:
   this: DaprCapability =>                                   // so ^{this} tracks the same capability
-  def jobs: JobsCapability^{this}
-  def conversation(componentName: ConversationComponentName): ConversationCapability^{this}
+  def jobs: AccessJobsCapability^{this}
+  def conversation: AccessConversationCapability^{this}
 trait DaprCapabilityCompanionPlatform:
-  def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T = ...
+  def jobs[T](body: AccessJobsCapability ?=> T)(using cap: DaprCapability): T = ...
   def conversation(componentName: ConversationComponentName)[T](...): T = ...
 
 // src/js/DaprCapabilityPlatform.scala — both traits deliberately empty
@@ -929,7 +1020,7 @@ trait DaprCapabilityPlatform
 trait DaprCapabilityCompanionPlatform
 ```
 
-**Why inherited traits rather than a platform-split `DaprCapability` file**: a Scala companion object must sit in the **same file** as its trait, and `DaprCapability`'s companion carries the transformer API — so the trait and companion cannot themselves be forked per platform without duplicating the whole shared surface. Parent traits let the shared file own everything cross-platform while each platform contributes (or withholds) its extra members. The same pattern repeats wherever the surface diverges: `JobsCapability`/`ConversationCapability` and their models live under `src/jvm/` outright, the JVM-only `Jobs.derive` engine lives in `src/jvm/derivation/`, and `dapr4s.derivation.Forwarders extends ForwardersPlatform` (the JVM twin carries the jobs runtime forwarders the generated code calls; the JS twin is empty — `Forwarders.jobRoute` stays shared because the inbound job-trigger side is cross-platform).
+**Why inherited traits rather than a platform-split `DaprCapability` file**: a Scala companion object must sit in the **same file** as its trait, and `DaprCapability`'s companion carries the transformer API — so the trait and companion cannot themselves be forked per platform without duplicating the whole shared surface. Parent traits let the shared file own everything cross-platform while each platform contributes (or withholds) its extra members. The same pattern repeats wherever the surface diverges: `AccessJobsCapability`/`JobCapability` and `AccessConversationCapability`/`ConversationCapability` and their models live under `src/jvm/jobs/` and `src/jvm/conversation/` outright (same `dapr4s.jobs`/`dapr4s.conversation` packages as their cross-platform names — and, for jobs, the job routes — in `src/shared/jobs/`/`src/shared/conversation/`), the JVM-only `Jobs.derive` engine lives in `src/jvm/jobs/Jobs.scala`, and `dapr4s.derivation.Forwarders extends ForwardersPlatform` (the JVM twin carries the jobs runtime forwarders the generated code calls; the JS twin is empty — `Forwarders.jobRoute` stays shared because the inbound job-trigger side is cross-platform).
 
 The result: using `DaprCapability.jobs` from Scala.js code is a **compile error** ("value jobs is not a member"), not a runtime surprise, and the published `_sjs1_3` artifact contains no jobs/conversation API at all.
 

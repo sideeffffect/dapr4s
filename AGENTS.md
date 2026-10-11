@@ -37,6 +37,14 @@ Both must stay in sync with the code at all times.
   directory ALSO carries its own per-file `//> using target.platform "jvm"`/`"scala-js"`
   directive (the directive is what scopes it). Packages are unchanged by the layout
   (`src/jvm/internal/` and `src/js/internal/` are both `dapr4s.internal`).
+  Each capability family lives in its own package `dapr4s.<family>` under
+  `src/<platform>/<family>/` (`state`, `publish`, `invoke`, `secrets`, `configuration`,
+  `bindings`, `lock`, `actor`, `workflow`, `crypto`, `jobs`, `conversation`): the capability +
+  `Access*Capability` accessor traits, the family's value types, its inbound route type and its
+  derivation macros. Cross-cutting macro infrastructure (`MacroSupport`, `Forwarders`, `@name`,
+  annotations) stays in `dapr4s.derivation`; cross-cutting types (`DaprCapability`, `Dapr`,
+  `DaprConfig`, `DaprApp`, `JsonCodec`, `HttpMethod`, exceptions, `src/shared/optypes/`) stay in
+  `dapr4s`. There is no re-export facade — consumers import the families they use.
   `//> using jsEsVersionStr "es2017"` is required by `js.async`/`js.await`.
   **JS build prerequisite**: the ScalablyTyped facade jars referenced by `js-deps.scala` live only
   in the local ivy repository — run `scripts/generate-st-facades.sh` once per machine (and again
@@ -222,12 +230,15 @@ THE pattern (jobs/conversation are the worked example):
   trait names but **empty**. WHY traits and not a per-platform `DaprCapability` file: the
   companion must sit in the same file as the trait, so the trait/companion pair cannot be
   forked per platform without duplicating the whole shared surface.
-- Everything reachable only from that surface moves wholly under `src/jvm/`:
-  `JobsCapability`/`ConversationCapability`, their models (`JobsModels.scala`,
-  `ConversationModels.scala`), their impls, the `Jobs.derive` engine
-  (`src/jvm/derivation/Jobs.scala`), and the jobs runtime forwarders
+- Everything reachable only from that surface moves wholly under `src/jvm/` (same family
+  packages `dapr4s.jobs`/`dapr4s.conversation` as their shared parts):
+  `AccessJobsCapability`/`JobCapability` and `AccessConversationCapability`/`ConversationCapability`
+  (`src/jvm/jobs/JobsCapability.scala`, `src/jvm/conversation/ConversationCapability.scala`),
+  their models (`src/jvm/jobs/JobsModels.scala`, `src/jvm/conversation/ConversationModels.scala`),
+  their impls, the `Jobs.derive` engine (`src/jvm/jobs/Jobs.scala`), and the jobs runtime forwarders
   (`Forwarders extends ForwardersPlatform`; `Forwarders.jobRoute` stays shared because the
-  inbound job-trigger side is cross-platform).
+  inbound job-trigger side is cross-platform; likewise the cross-platform `JobName`/`JobRoute`/
+  `JobRoutes` stay in `src/shared/jobs/`).
 - On the JVM platform trait, keep the `^{this}` return types working via a self-type
   (`this: DaprCapability =>`) so CC tracks the same capability instance as the shared trait.
 
@@ -304,7 +315,7 @@ blocks the build (and `publish`) on any unformatted file, so a missed format fai
 Some files are intentionally excluded from formatting via `project.excludeFilters` in
 `.scalafmt.conf`: they use experimental capture-checking `^{...}` return-type annotations in a
 position scalafmt's parser does not yet support. Files that merely *use* `^{...}` but still parse
-(e.g. `src/shared/derivation/WorkflowEvents.scala`, `test/shared/unit/CCTest.scala`) stay
+(e.g. `src/shared/workflow/WorkflowEvents.scala`, `test/shared/unit/CCTest.scala`) stay
 formatted normally.
 
 ⚠️ `scala-cli fmt --check` reports a scalafmt parse error but still **exits 0**, silently masking
