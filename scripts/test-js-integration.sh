@@ -55,8 +55,13 @@ export NODE_OPTIONS="--import $ROOT/scripts/js-it/node-resolve-hook.mjs"
 # link classpath; st-link-jars.sh only needs to cover the compileOnly main roots.)
 mapfile -t st_link < <("$ROOT/scripts/st-link-jars.sh")
 
+# --js-es-version es2022: the Wasm backend requires ES2022+, but js-deps.scala pins
+# `jsEsVersionStr "es2017"` for the plain-JS build. With scala-cli 1.17.1 and 1.18.0 (the version
+# scala-cli-setup@v1 installs since 2026-10) the directive reaches the Wasm link and it fails with
+# "The WebAssembly backend requires ECMAScript 2022 or later" (CI was green with the June 2026
+# scala-cli). The CLI flag overrides the directive for this invocation only.
 "$ROOT/scripts/wasm-test.sh" \
-  --power --js --js-emit-wasm --js-module-kind es "$ROOT" \
+  --power --js --js-emit-wasm --js-module-kind es --js-es-version es2022 "$ROOT" \
   "${st_link[@]}" \
   --test-only 'dapr4s.test.integration.*'
 code=$?
