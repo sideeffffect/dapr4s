@@ -3,6 +3,8 @@ package dapr4s.jobs
 
 import dapr4s.*
 
+import language.experimental.safe
+
 /** Handle-style sugar for [[JobName]]: act on the named job through the jobs capability in scope —
   * `JobName("digest").get`, `name.delete()`.
   *
