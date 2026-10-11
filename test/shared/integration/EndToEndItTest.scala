@@ -32,7 +32,7 @@ class EndToEndItTest extends FunSuite, ServiceHarness:
       assertEquals(resp.status, "accepted")
       assert(resp.orderId.nonEmpty, "orderId must be non-empty")
       val savedOrder =
-        summon[DaprCapability].state(OrderServiceApp.StateName).get[OrderRequest](StateStoreKey(resp.orderId))
+        summon[DaprCapability].state.instance(OrderServiceApp.StateName).get[OrderRequest](StateStoreKey(resp.orderId))
       assertEquals(savedOrder, Some(req))
       deliver(Topic, Pubsub, OrderEvent(resp.orderId, "tablet", 4))
       assertEquals(invoke[String, StockLevel]("get-stock", "tablet").available, 26)

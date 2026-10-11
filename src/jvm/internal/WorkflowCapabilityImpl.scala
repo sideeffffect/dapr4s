@@ -30,24 +30,24 @@ private[internal] final class WorkflowCapabilityUniversalImpl(
     val opts = new NewWorkflowOptions().setInstanceId(instanceId.value).setInput(node.asInstanceOf[Object])
     WorkflowInstanceId(client.scheduleNewWorkflow(name.value, opts).nn)
 
-  def apply(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this} =
+  def instance(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this} =
     new WorkflowCapabilityInstanceImpl(client, instanceId).asInstanceOf[WorkflowCapability.Instance]
 
   // Id-taking operations delegate to a freshly bound instance (cheap: the instance holds only the client and id).
   def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot] =
-    apply(instanceId).getStatus()
+    instance(instanceId).getStatus()
   def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot] =
-    apply(instanceId).waitForCompletion(timeout)
+    instance(instanceId).waitForCompletion(timeout)
   def suspend(instanceId: WorkflowInstanceId): Unit =
-    apply(instanceId).suspend()
+    instance(instanceId).suspend()
   def resume(instanceId: WorkflowInstanceId): Unit =
-    apply(instanceId).resume()
+    instance(instanceId).resume()
   def terminate(instanceId: WorkflowInstanceId): Unit =
-    apply(instanceId).terminate()
+    instance(instanceId).terminate()
   def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit =
-    apply(instanceId).raiseEvent(eventName, payload)
+    instance(instanceId).raiseEvent(eventName, payload)
   def purge(instanceId: WorkflowInstanceId): Boolean =
-    apply(instanceId).purge()
+    instance(instanceId).purge()
 
 @scala.caps.assumeSafe
 private[internal] final class WorkflowCapabilityInstanceImpl(

@@ -16,7 +16,7 @@ import scala.collection.immutable.ArraySeq
 @scala.caps.assumeSafe
 trait CryptoCapability extends scala.caps.ExclusiveCapability:
   /** Narrow to the named crypto component. */
-  def apply(componentName: CryptoComponentName): CryptoCapability.Instance^{this}
+  def instance(componentName: CryptoComponentName): CryptoCapability.Instance^{this}
 
   /** Encrypt `plaintext` with the named component; see [[CryptoCapability.Instance.encrypt]]. */
   def encrypt(
@@ -96,7 +96,7 @@ object CryptoCapability:
 
   /** Narrow the universal capability in scope to one component and return it. */
   def instance(componentName: CryptoComponentName)(using cap: CryptoCapability): Instance^{cap} =
-    cap.apply(componentName)
+    cap.instance(componentName)
   def encrypt(
       componentName: CryptoComponentName,
       keyName: CryptoKeyName,

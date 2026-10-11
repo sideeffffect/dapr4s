@@ -64,7 +64,7 @@ def MixinGreeter(appId: AppId): MixinGreeter = Invoke.derive[MixinGreeter](appId
 @scala.caps.assumeSafe
 final class RecordingInvoker(response: String) extends InvokeCapability:
   val calls: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-  def apply(appId: AppId): InvokeCapability.Instance^{this} =
+  def instance(appId: AppId): InvokeCapability.Instance^{this} =
     new RecordingInvoke(appId, response, calls).asInstanceOf[InvokeCapability.Instance]
   def invoke[Req: JsonCodec](
       appId: AppId,
@@ -73,9 +73,9 @@ final class RecordingInvoker(response: String) extends InvokeCapability:
       httpMethod: HttpMethod,
       metadata: Map[MetadataKey, MetadataValue],
   )[Resp: JsonCodec]: Resp =
-    apply(appId).invoke(method, data, httpMethod, metadata)[Resp]
+    instance(appId).invoke(method, data, httpMethod, metadata)[Resp]
   def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
-    apply(appId).invoke[Resp](method)
+    instance(appId).invoke[Resp](method)
 
 /** Recording fake capability bound to one app: logs each call and returns a fixed response payload. */
 @scala.caps.assumeSafe

@@ -11,7 +11,7 @@ import scala.concurrent.duration.FiniteDuration
 @scala.caps.assumeSafe
 trait LockCapability extends scala.caps.ExclusiveCapability:
   /** Narrow to the named lock store. */
-  def apply(storeName: LockStoreName): LockCapability.Instance^{this}
+  def instance(storeName: LockStoreName): LockCapability.Instance^{this}
 
   /** Try to acquire a lock in the named store; see [[LockCapability.Instance.tryLock]]. */
   def tryLock(
@@ -63,7 +63,7 @@ object LockCapability:
 
   /** Narrow the universal capability in scope to one store and return it. */
   def instance(storeName: LockStoreName)(using cap: LockCapability): Instance^{cap} =
-    cap.apply(storeName)
+    cap.instance(storeName)
   def tryLock(storeName: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration)(using
       cap: LockCapability,
   ): Boolean =

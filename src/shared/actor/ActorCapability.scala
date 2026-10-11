@@ -21,7 +21,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait ActorCapability extends scala.caps.ExclusiveCapability:
   /** Narrow to a single actor type (any instance of it). */
-  def apply(actorType: ActorType): ActorCapability.Type^{this}
+  def forType(actorType: ActorType): ActorCapability.Type^{this}
 
   /** Invoke a method with a request body on the named actor; see [[ActorCapability.Instance.invoke]]. */
   def invoke[Req: JsonCodec](
@@ -58,7 +58,7 @@ object ActorCapability:
     val actorType: ActorType
 
     /** Narrow to a single actor instance of this type. */
-    def apply(actorId: ActorId): Instance^{this}
+    def instance(actorId: ActorId): Instance^{this}
 
     /** Invoke a method with a request body on the identified instance; see [[ActorCapability.Instance.invoke]]. */
     def invoke[Req: JsonCodec](actorId: ActorId, method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp
@@ -74,7 +74,7 @@ object ActorCapability:
   object Type:
     /** Narrow the type-bound capability in scope to one instance and return it. */
     def instance(actorId: ActorId)(using cap: Type): Instance^{cap} =
-      cap.apply(actorId)
+      cap.instance(actorId)
     def invoke[Req: JsonCodec](actorId: ActorId, method: ActorMethodName, data: Req)[Resp: JsonCodec](using
         cap: Type,
     ): Resp =
@@ -121,11 +121,11 @@ object ActorCapability:
     * [[ActorCapability.Type]].
     */
   def forType(actorType: ActorType)(using cap: ActorCapability): Type^{cap} =
-    cap.apply(actorType)
+    cap.forType(actorType)
 
   /** Narrow the universal capability in scope to one actor instance and return it. */
   def instance(actorType: ActorType, actorId: ActorId)(using cap: ActorCapability): Instance^{cap} =
-    cap.apply(actorType).apply(actorId)
+    cap.forType(actorType).instance(actorId)
   def invoke[Req: JsonCodec](actorType: ActorType, actorId: ActorId, method: ActorMethodName, data: Req)[
       Resp: JsonCodec,
   ](using cap: ActorCapability): Resp =

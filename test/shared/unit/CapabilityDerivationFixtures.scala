@@ -142,7 +142,7 @@ final class FakeWorkflow extends WorkflowCapability:
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
     log += s"startWithIdInput|${name.value}|${instanceId.value}|${summon[JsonCodec[I]].encode(input)}"; instanceId
   // The derived facades under test only call the launch ops; the per-instance ops are never reached.
-  def apply(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this}                         = ???
+  def instance(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this}                         = ???
   def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot]                               = ???
   def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot] = ???
   def suspend(instanceId: WorkflowInstanceId): Unit                                                     = ???

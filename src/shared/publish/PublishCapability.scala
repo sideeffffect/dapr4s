@@ -15,7 +15,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait PublishCapability extends scala.caps.ExclusiveCapability:
   /** Narrow to the named pub/sub component. */
-  def apply(pubsubName: PubSubName): PublishCapability.Instance^{this}
+  def instance(pubsubName: PubSubName): PublishCapability.Instance^{this}
 
   /** Publish `data` to `topic` on the named component. */
   def publish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, data: T): Unit
@@ -84,7 +84,7 @@ object PublishCapability:
 
   /** Narrow the universal capability in scope to one component and return it. */
   def instance(pubsubName: PubSubName)(using cap: PublishCapability): Instance^{cap} =
-    cap.apply(pubsubName)
+    cap.instance(pubsubName)
   def publish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, data: T)(using cap: PublishCapability): Unit =
     cap.publish(pubsubName, topic, data)
   def publishWithMetadata[T: JsonCodec](

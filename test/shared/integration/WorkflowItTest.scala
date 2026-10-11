@@ -35,7 +35,8 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
     withDapr:
       DaprCapability.workflow {
         val id = retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow, IncrRequest(5)))
-        val snap = summon[WorkflowCapability](id)
+        val snap = summon[WorkflowCapability]
+          .instance(id)
           .waitForCompletion(60.seconds)
           .getOrElse(fail("workflow did not complete within 60s"))
         assertEquals(snap.status, WorkflowStatus.Completed)
@@ -58,7 +59,7 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
         // touch the runtime first so a None below means "unknown id", not "runtime not ready".
         retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow))
         assertEquals(
-          summon[WorkflowCapability](WorkflowInstanceId(ItNames.fresh("does-not-exist"))).getStatus(),
+          summon[WorkflowCapability].instance(WorkflowInstanceId(ItNames.fresh("does-not-exist"))).getStatus(),
           None,
         )
       }
@@ -67,7 +68,7 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
     withDapr:
       DaprCapability.workflow {
         val id = retrying("workflow runtime registered")(WorkflowCapability.start(addingWorkflow, IncrRequest(3)))
-        val instance = summon[WorkflowCapability](id)
+        val instance = summon[WorkflowCapability].instance(id)
         instance.waitForCompletion(60.seconds).getOrElse(fail("workflow did not complete before purge"))
         assert(instance.purge(), "purge should return true for a completed workflow")
         assertEquals(instance.getStatus(), None)
@@ -79,7 +80,7 @@ class WorkflowItTest extends FunSuite, ServerDaprItSuite:
         val id = WorkflowInstanceId(ItNames.fresh("it-gated"))
         val returned = retrying("workflow runtime registered")(WorkflowCapability.startWithId(gatedWorkflow, id))
         assertEquals(returned, id)
-        val instance = summon[WorkflowCapability](id)
+        val instance = summon[WorkflowCapability].instance(id)
         // Wait until the instance is parked on the external event before raising it (events raised earlier are
         // buffered by the runtime, but asserting Running makes the test deterministic).
         val running = eventually(s"gated workflow $id running") {

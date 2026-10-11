@@ -15,7 +15,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait BindingsCapability extends scala.caps.ExclusiveCapability:
   /** Narrow to the named output binding. */
-  def apply(bindingName: BindingName): BindingsCapability.Instance^{this}
+  def instance(bindingName: BindingName): BindingsCapability.Instance^{this}
 
   /** Invoke a binding operation on the named binding; see [[BindingsCapability.Instance.invoke]]. */
   def invoke[Req: JsonCodec](
@@ -92,7 +92,7 @@ object BindingsCapability:
 
   /** Narrow the universal capability in scope to one binding and return it. */
   def instance(bindingName: BindingName)(using cap: BindingsCapability): Instance^{cap} =
-    cap.apply(bindingName)
+    cap.instance(bindingName)
   def invoke[Req: JsonCodec](
       bindingName: BindingName,
       operation: BindingOperation,

@@ -20,7 +20,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait ConfigurationCapability extends ConfigurationCapability.ReadOnly:
   /** Narrow to the named configuration store, keeping full authority. */
-  override def apply(storeName: ConfigurationStoreName): ConfigurationCapability.Instance^{this}
+  override def instance(storeName: ConfigurationStoreName): ConfigurationCapability.Instance^{this}
 
   /** Subscribe to live configuration changes; see [[ConfigurationCapability.Instance.subscribe]]. */
   def subscribe(
@@ -46,7 +46,7 @@ object ConfigurationCapability:
   @scala.caps.assumeSafe
   trait ReadOnly extends scala.caps.ExclusiveCapability:
     /** Narrow to the named configuration store, keeping read-only authority. */
-    def apply(storeName: ConfigurationStoreName): Instance.ReadOnly^{this}
+    def instance(storeName: ConfigurationStoreName): Instance.ReadOnly^{this}
 
     /** Retrieve one or more configuration items by key; see [[ConfigurationCapability.Instance.ReadOnly.get]]. */
     def get(
@@ -60,7 +60,7 @@ object ConfigurationCapability:
   object ReadOnly:
     /** Narrow the read-only capability in scope to one store and return it. */
     def instance(storeName: ConfigurationStoreName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
-      cap.apply(storeName)
+      cap.instance(storeName)
     def get(
         storeName: ConfigurationStoreName,
         keys: Seq[ConfigurationKey],
@@ -150,7 +150,7 @@ object ConfigurationCapability:
 
   /** Narrow the universal capability in scope to one store and return it. */
   def instance(storeName: ConfigurationStoreName)(using cap: ConfigurationCapability): Instance^{cap} =
-    cap.apply(storeName)
+    cap.instance(storeName)
   def get(
       storeName: ConfigurationStoreName,
       keys: Seq[ConfigurationKey],

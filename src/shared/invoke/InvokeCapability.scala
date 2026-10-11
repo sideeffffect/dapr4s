@@ -16,7 +16,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait InvokeCapability extends scala.caps.ExclusiveCapability:
   /** Narrow to the target app. */
-  def apply(appId: AppId): InvokeCapability.Instance^{this}
+  def instance(appId: AppId): InvokeCapability.Instance^{this}
 
   /** Invoke a remote method on `appId` with a request body; see [[InvokeCapability.Instance.invoke]]. */
   def invoke[Req: JsonCodec](
@@ -84,7 +84,7 @@ object InvokeCapability:
 
   /** Narrow the universal capability in scope to one target app and return it. */
   def instance(appId: AppId)(using cap: InvokeCapability): Instance^{cap} =
-    cap.apply(appId)
+    cap.instance(appId)
   def invoke[Req: JsonCodec](
       appId: AppId,
       method: InvokeMethodName,

@@ -22,9 +22,9 @@ lazy val JobClient: JobClient = Jobs.derive[JobClient]
 @scala.caps.assumeSafe
 final class FakeJobs extends JobsCapability:
   val log: mutable.ListBuffer[String]              = mutable.ListBuffer.empty
-  def apply(name: JobName): JobsCapability.Instance^{this} =
+  def instance(name: JobName): JobsCapability.Instance^{this} =
     new FakeJob(name, log).asInstanceOf[JobsCapability.Instance]
-  def get(jobName: JobName): Option[JobDetails] = apply(jobName).get()
+  def get(jobName: JobName): Option[JobDetails] = instance(jobName).get()
   def schedule[T: JsonCodec](
       jobName: JobName,
       data: T,
@@ -32,14 +32,14 @@ final class FakeJobs extends JobsCapability:
       dueTime: Option[java.time.Instant],
       repeats: Option[Int],
       ttl: Option[java.time.Instant],
-  ): Unit = apply(jobName).schedule(data, schedule, dueTime, repeats, ttl)
+  ): Unit = instance(jobName).schedule(data, schedule, dueTime, repeats, ttl)
   def scheduleOnce[T: JsonCodec](
       jobName: JobName,
       data: T,
       dueTime: java.time.Instant,
       ttl: Option[java.time.Instant],
-  ): Unit = apply(jobName).scheduleOnce(data, dueTime, ttl)
-  def delete(jobName: JobName): Unit = apply(jobName).delete()
+  ): Unit = instance(jobName).scheduleOnce(data, dueTime, ttl)
+  def delete(jobName: JobName): Unit = instance(jobName).delete()
 
 @scala.caps.assumeSafe
 final class FakeJob(name: JobName, log: mutable.ListBuffer[String]) extends JobsCapability.Instance:

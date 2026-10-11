@@ -24,14 +24,14 @@ class InvokeItTest extends FunSuite, ServerDaprItSuite:
 
   def echoRoundtrip(using DaprCapability): Unit =
     DaprCapability.invoke:
-      val api = summon[InvokeCapability](serverAppId)
+      val api = summon[InvokeCapability].instance(serverAppId)
       val resp = retrying("echo")(api.invoke(InvokeMethodName("echo"), "hello")[String])
       assertEquals(resp, "hello")
 
   def falsyZeroBodyRoundtrips(using DaprCapability): Unit =
     // Exercises the raw-fetch fallback in the JS client (the SDK drops JS-falsy request bodies).
     DaprCapability.invoke:
-      val api = summon[InvokeCapability](serverAppId)
+      val api = summon[InvokeCapability].instance(serverAppId)
       val resp = retrying("echo-int")(api.invoke(InvokeMethodName("echo-int"), 0)[Int])
       assertEquals(resp, 0)
 
@@ -43,7 +43,7 @@ class InvokeItTest extends FunSuite, ServerDaprItSuite:
 
   def nonexistentAppThrows(using DaprCapability): Unit =
     DaprCapability.invoke:
-      val api = summon[InvokeCapability](AppId("no-such-app"))
+      val api = summon[InvokeCapability].instance(AppId("no-such-app"))
       val attempt =
         scala.util.Try(api.invoke(InvokeMethodName("method"), "data")[String])
       assert(attempt.isFailure, s"invoking a non-existent app should throw, got: $attempt")

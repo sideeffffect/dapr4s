@@ -116,10 +116,10 @@ trait DaprCapability extends scala.caps.ExclusiveCapability, DaprCapabilityPlatf
 object DaprCapability extends DaprCapabilityCompanionPlatform:
 
   def state(storeName: StateStoreName)[T](body: StateCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.state(storeName).asInstanceOf[StateCapability.Instance])
+    body(using cap.state.instance(storeName).asInstanceOf[StateCapability.Instance])
 
   def publish(pubsubName: PubSubName)[T](body: PublishCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.publish(pubsubName).asInstanceOf[PublishCapability.Instance])
+    body(using cap.publish.instance(pubsubName).asInstanceOf[PublishCapability.Instance])
 
   /** Make the universal [[InvokeCapability]] available to `body` — pass it to [[Invoke.derive]] clients, or narrow
     * to a single target app with `apply(appId)`.
@@ -128,19 +128,19 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
     body(using cap.invoke.asInstanceOf[InvokeCapability])
 
   def secrets(storeName: SecretStoreName)[T](body: SecretsCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.secrets(storeName).asInstanceOf[SecretsCapability.Instance])
+    body(using cap.secrets.instance(storeName).asInstanceOf[SecretsCapability.Instance])
 
   def configuration(storeName: ConfigurationStoreName)[T](body: ConfigurationCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.configuration(storeName).asInstanceOf[ConfigurationCapability.Instance])
+    body(using cap.configuration.instance(storeName).asInstanceOf[ConfigurationCapability.Instance])
 
   def bindings(bindingName: BindingName)[T](body: BindingsCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.bindings(bindingName).asInstanceOf[BindingsCapability.Instance])
+    body(using cap.bindings.instance(bindingName).asInstanceOf[BindingsCapability.Instance])
 
   def lock(storeName: LockStoreName)[T](body: LockCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.lock(storeName).asInstanceOf[LockCapability.Instance])
+    body(using cap.lock.instance(storeName).asInstanceOf[LockCapability.Instance])
 
   def actor(actorType: ActorType, actorId: ActorId)[T](body: ActorCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.actor(actorType)(actorId).asInstanceOf[ActorCapability.Instance])
+    body(using cap.actor.forType(actorType).instance(actorId).asInstanceOf[ActorCapability.Instance])
 
   /** Make the universal [[WorkflowCapability]] available to `body` — the launch operations plus the per-instance
     * operations (by id, or via `apply(id)`).
@@ -149,4 +149,4 @@ object DaprCapability extends DaprCapabilityCompanionPlatform:
     body(using cap.workflow.asInstanceOf[WorkflowCapability])
 
   def crypto(componentName: CryptoComponentName)[T](body: CryptoCapability.Instance ?=> T)(using cap: DaprCapability): T =
-    body(using cap.crypto(componentName).asInstanceOf[CryptoCapability.Instance])
+    body(using cap.crypto.instance(componentName).asInstanceOf[CryptoCapability.Instance])

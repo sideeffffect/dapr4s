@@ -27,7 +27,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait JobsCapability extends JobsCapability.ReadOnly:
   /** Narrow to the named job, keeping full authority. */
-  override def apply(jobName: JobName): JobsCapability.Instance^{this}
+  override def instance(jobName: JobName): JobsCapability.Instance^{this}
 
   /** Schedule a recurring job; see [[JobsCapability.Instance.schedule]]. */
   def schedule[T: JsonCodec](
@@ -66,7 +66,7 @@ object JobsCapability:
   @scala.caps.assumeSafe
   trait ReadOnly extends scala.caps.ExclusiveCapability:
     /** Narrow to the named job, keeping read-only authority. */
-    def apply(jobName: JobName): Instance.ReadOnly^{this}
+    def instance(jobName: JobName): Instance.ReadOnly^{this}
 
     /** Fetch the named job's stored definition. Returns `None` if no job with this name exists. */
     def get(jobName: JobName): Option[JobDetails]
@@ -76,7 +76,7 @@ object JobsCapability:
   object ReadOnly:
     /** Narrow the read-only capability in scope to one job and return it. */
     def instance(jobName: JobName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
-      cap.apply(jobName)
+      cap.instance(jobName)
     def get(jobName: JobName)(using cap: ReadOnly): Option[JobDetails] =
       cap.get(jobName)
 
@@ -150,7 +150,7 @@ object JobsCapability:
 
   /** Narrow the universal capability in scope to one job and return it. */
   def instance(jobName: JobName)(using cap: JobsCapability): Instance^{cap} =
-    cap.apply(jobName)
+    cap.instance(jobName)
   def get(jobName: JobName)(using cap: JobsCapability): Option[JobDetails] =
     cap.get(jobName)
   def schedule[T: JsonCodec](

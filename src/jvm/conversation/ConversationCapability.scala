@@ -17,7 +17,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait ConversationCapability extends scala.caps.ExclusiveCapability:
   /** Narrow to the named conversation (LLM) component. */
-  def apply(componentName: ConversationComponentName): ConversationCapability.Instance^{this}
+  def instance(componentName: ConversationComponentName): ConversationCapability.Instance^{this}
 
   /** Hold a multi-message exchange with the named component; see [[ConversationCapability.Instance.converse]]. */
   def converse(
@@ -73,7 +73,7 @@ object ConversationCapability:
 
   /** Narrow the universal capability in scope to one component and return it. */
   def instance(componentName: ConversationComponentName)(using cap: ConversationCapability): Instance^{cap} =
-    cap.apply(componentName)
+    cap.instance(componentName)
   def converse(
       componentName: ConversationComponentName,
       messages: Seq[ConversationMessage],

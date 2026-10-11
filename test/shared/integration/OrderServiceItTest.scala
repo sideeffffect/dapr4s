@@ -21,7 +21,8 @@ class OrderServiceItTest extends FunSuite, ServiceHarness:
       val resp = invoke[OrderRequest, OrderResponse]("place-order", req)
       assertEquals(resp.status, "accepted")
       assert(resp.orderId.nonEmpty)
-      val saved = summon[DaprCapability].state(OrderServiceApp.StateName).get[OrderRequest](StateStoreKey(resp.orderId))
+      val saved =
+        summon[DaprCapability].state.instance(OrderServiceApp.StateName).get[OrderRequest](StateStoreKey(resp.orderId))
       assertEquals(saved, Some(req))
     }
 
@@ -57,7 +58,7 @@ class OrderServiceItTest extends FunSuite, ServiceHarness:
     withService(OrderServiceApp()) {
       val items = List("pencil", "ruler", "eraser", "notebook", "stapler")
       val ids = items.map(item => invoke[OrderRequest, OrderResponse]("place-order", OrderRequest(item, 1)).orderId)
-      val stateStore = summon[DaprCapability].state(OrderServiceApp.StateName)
+      val stateStore = summon[DaprCapability].state.instance(OrderServiceApp.StateName)
       ids.zip(items).foreach { (id, item) =>
         assertEquals(stateStore.get[OrderRequest](StateStoreKey(id)).map(_.item), Some(item))
       }

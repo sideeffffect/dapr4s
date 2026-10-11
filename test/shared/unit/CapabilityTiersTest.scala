@@ -7,16 +7,16 @@ import munit.FunSuite
 /** Universal fake secrets capability: `apply` binds a [[FakeSecretsInstance]] to the requested store. */
 @scala.caps.assumeSafe
 final class FakeSecretsUniversal extends SecretsCapability:
-  def apply(storeName: SecretStoreName): SecretsCapability.Instance^{this} =
+  def instance(storeName: SecretStoreName): SecretsCapability.Instance^{this} =
     // WHAT: asInstanceOf erases the fresh capture set of the new instance.
     // WHY: CC infers `^{fresh}` for a newly allocated ExclusiveCapability, but the override must return `^{this}`.
     // WHY SAFE: the instance holds only the store name — no capability of its own — so tying it to `this` is exact.
     // WHERE: the same pattern as the production `*CapabilityUniversalImpl` classes in `dapr4s.internal`.
     new FakeSecretsInstance(storeName).asInstanceOf[SecretsCapability.Instance]
   def get(storeName: SecretStoreName, key: SecretKey, metadata: Map[MetadataKey, MetadataValue]): Option[SecretValue] =
-    apply(storeName).get(key, metadata)
+    instance(storeName).get(key, metadata)
   def getBulk(storeName: SecretStoreName, metadata: Map[MetadataKey, MetadataValue]): Map[SecretKey, SecretValue] =
-    apply(storeName).getBulk(metadata)
+    instance(storeName).getBulk(metadata)
 
 /** Store-bound fake secrets capability: answers every key with `"<store>/<key>"`. */
 @scala.caps.assumeSafe
@@ -41,7 +41,7 @@ class CapabilityTiersTest extends FunSuite:
 
   test("universal apply(name) returns an Instance bound to that name"):
     val universal = FakeSecretsUniversal()
-    val instance = universal(store)
+    val instance = universal.instance(store)
     assertEquals(instance.storeName, store)
     assertEquals(instance.get(SecretKey("k")), Some(SecretValue("vault/k")))
     assertEquals(universal.get(store, SecretKey("k")), Some(SecretValue("vault/k")))
@@ -49,7 +49,7 @@ class CapabilityTiersTest extends FunSuite:
 
   test("ReadOnly universal apply(name) returns an Instance.ReadOnly bound to that name"):
     val readOnly: SecretsCapability.ReadOnly = FakeSecretsUniversal()
-    val instance: SecretsCapability.Instance.ReadOnly^{readOnly} = readOnly(store)
+    val instance: SecretsCapability.Instance.ReadOnly^{readOnly} = readOnly.instance(store)
     assertEquals(instance.storeName, store)
     assertEquals(instance.get(SecretKey("k")), Some(SecretValue("vault/k")))
 
@@ -58,18 +58,18 @@ class CapabilityTiersTest extends FunSuite:
 
   test("ReadOnly universal apply(name) statically yields Instance.ReadOnly, not Instance"):
     assertNoDiff(
-      compileErrors("(c: SecretsCapability) => { val i: SecretsCapability.Instance^{c} = c(store) }"),
+      compileErrors("(c: SecretsCapability) => { val i: SecretsCapability.Instance^{c} = c.instance(store) }"),
       "",
     )
     assertNoDiff(
       compileErrors(
-        "(c: SecretsCapability.ReadOnly) => { val i: SecretsCapability.Instance.ReadOnly^{c} = c(store) }",
+        "(c: SecretsCapability.ReadOnly) => { val i: SecretsCapability.Instance.ReadOnly^{c} = c.instance(store) }",
       ),
       "",
     )
     assert(
       compileErrors(
-        "(c: SecretsCapability.ReadOnly) => { val i: SecretsCapability.Instance^{c} = c(store) }",
+        "(c: SecretsCapability.ReadOnly) => { val i: SecretsCapability.Instance^{c} = c.instance(store) }",
       ).nonEmpty,
     )
 
@@ -100,9 +100,9 @@ class CapabilityTiersTest extends FunSuite:
     assertNotMember(compileErrors("(c: WorkflowCapability.Instance.ReadOnly) => c.suspend()"))
 
   test("WorkflowCapability.ReadOnly cannot start or narrow to a controlling instance"):
-    assertNoDiff(compileErrors("(c: WorkflowCapability) => c(WorkflowInstanceId(\"id\")).terminate()"), "")
+    assertNoDiff(compileErrors("(c: WorkflowCapability) => c.instance(WorkflowInstanceId(\"id\")).terminate()"), "")
     assertNotMember(compileErrors("(c: WorkflowCapability.ReadOnly) => c.start(WorkflowName(\"w\"))"))
-    assertNotMember(compileErrors("(c: WorkflowCapability.ReadOnly) => c(WorkflowInstanceId(\"id\")).terminate()"))
+    assertNotMember(compileErrors("(c: WorkflowCapability.ReadOnly) => c.instance(WorkflowInstanceId(\"id\")).terminate()"))
 
   test("companion instance(name) returns the narrowed capability from the one in scope"):
     given universal: SecretsCapability = FakeSecretsUniversal()

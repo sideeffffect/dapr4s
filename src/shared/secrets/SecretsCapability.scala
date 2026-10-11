@@ -19,7 +19,7 @@ import dapr4s.*
 @scala.caps.assumeSafe
 trait SecretsCapability extends SecretsCapability.ReadOnly:
   /** Narrow to the named secrets store, keeping full authority. */
-  override def apply(storeName: SecretStoreName): SecretsCapability.Instance^{this}
+  override def instance(storeName: SecretStoreName): SecretsCapability.Instance^{this}
 
   /** Retrieve all secrets in the store; see [[SecretsCapability.Instance.getBulk]]. */
   def getBulk(
@@ -43,7 +43,7 @@ object SecretsCapability:
   @scala.caps.assumeSafe
   trait ReadOnly extends scala.caps.ExclusiveCapability:
     /** Narrow to the named secrets store, keeping read-only authority. */
-    def apply(storeName: SecretStoreName): Instance.ReadOnly^{this}
+    def instance(storeName: SecretStoreName): Instance.ReadOnly^{this}
 
     /** Retrieve a single named secret value; see [[SecretsCapability.Instance.ReadOnly.get]]. */
     def get(
@@ -57,7 +57,7 @@ object SecretsCapability:
   object ReadOnly:
     /** Narrow the read-only capability in scope to one store and return it. */
     def instance(storeName: SecretStoreName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
-      cap.apply(storeName)
+      cap.instance(storeName)
     def get(
         storeName: SecretStoreName,
         key: SecretKey,
@@ -111,7 +111,7 @@ object SecretsCapability:
 
   /** Narrow the universal capability in scope to one store and return it. */
   def instance(storeName: SecretStoreName)(using cap: SecretsCapability): Instance^{cap} =
-    cap.apply(storeName)
+    cap.instance(storeName)
   def get(
       storeName: SecretStoreName,
       key: SecretKey,

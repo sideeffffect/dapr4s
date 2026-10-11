@@ -124,25 +124,25 @@ private object DaprCapabilityImpl:
 
 @scala.caps.assumeSafe
 private[internal] final class StateCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends StateCapability:
-  def apply(storeName: StateStoreName): StateCapability.Instance^{this} =
+  def instance(storeName: StateStoreName): StateCapability.Instance^{this} =
     new StateCapabilityImpl(scope, storeName).asInstanceOf[StateCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def get[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, consistency: StateConsistency): Option[T] =
-    apply(storeName).get(key, consistency)
+    instance(storeName).get(key, consistency)
   def getWithETag[T: JsonCodec](
       storeName: StateStoreName,
       key: StateStoreKey,
       consistency: StateConsistency,
   ): StateEntry[T] =
-    apply(storeName).getWithETag(key, consistency)
+    instance(storeName).getWithETag(key, consistency)
   def getBulk[T: JsonCodec](storeName: StateStoreName, keys: Seq[StateStoreKey]): Map[StateStoreKey, StateEntry[T]] =
-    apply(storeName).getBulk(keys)
+    instance(storeName).getBulk(keys)
   def queryState[T: JsonCodec](storeName: StateStoreName, query: StateQuery): List[StateEntry[T]] =
-    apply(storeName).queryState(query)
+    instance(storeName).queryState(query)
   def save[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, value: T): Unit =
-    apply(storeName).save(key, value)
+    instance(storeName).save(key, value)
   def saveBulk[T: JsonCodec](storeName: StateStoreName, entries: Seq[(StateStoreKey, T)]): Unit =
-    apply(storeName).saveBulk(entries)
+    instance(storeName).saveBulk(entries)
   def saveWithETag[T: JsonCodec](
       storeName: StateStoreName,
       key: StateStoreKey,
@@ -152,9 +152,9 @@ private[internal] final class StateCapabilityUniversalImpl(scope: DaprCapability
       consistency: StateConsistency,
       concurrency: StateConcurrency,
   ): Option[ETagMismatchException] =
-    apply(storeName).saveWithETag(key, value, etag, metadata, consistency, concurrency)
+    instance(storeName).saveWithETag(key, value, etag, metadata, consistency, concurrency)
   def delete(storeName: StateStoreName, key: StateStoreKey): Unit =
-    apply(storeName).delete(key)
+    instance(storeName).delete(key)
   def deleteWithETag(
       storeName: StateStoreName,
       key: StateStoreKey,
@@ -162,34 +162,34 @@ private[internal] final class StateCapabilityUniversalImpl(scope: DaprCapability
       consistency: StateConsistency,
       concurrency: StateConcurrency,
   ): Option[ETagMismatchException] =
-    apply(storeName).deleteWithETag(key, etag, consistency, concurrency)
+    instance(storeName).deleteWithETag(key, etag, consistency, concurrency)
   def transaction(storeName: StateStoreName, ops: Seq[StateOp]): Unit =
-    apply(storeName).transaction(ops)
+    instance(storeName).transaction(ops)
 
 @scala.caps.assumeSafe
 private[internal] final class PublishCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends PublishCapability:
-  def apply(pubsubName: PubSubName): PublishCapability.Instance^{this} =
+  def instance(pubsubName: PubSubName): PublishCapability.Instance^{this} =
     new PublishCapabilityImpl(scope, pubsubName).asInstanceOf[PublishCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def publish[T: JsonCodec](pubsubName: PubSubName, topic: Topic, data: T): Unit =
-    apply(pubsubName).publish(topic, data)
+    instance(pubsubName).publish(topic, data)
   def publishWithMetadata[T: JsonCodec](
       pubsubName: PubSubName,
       topic: Topic,
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
   ): Unit =
-    apply(pubsubName).publishWithMetadata(topic, data, metadata)
+    instance(pubsubName).publishWithMetadata(topic, data, metadata)
   def bulkPublish[T: JsonCodec](
       pubsubName: PubSubName,
       topic: Topic,
       entries: Seq[BulkPublishEntry[T]],
   ): BulkPublishResult =
-    apply(pubsubName).bulkPublish(topic, entries)
+    instance(pubsubName).bulkPublish(topic, entries)
 
 @scala.caps.assumeSafe
 private[internal] final class InvokeCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends InvokeCapability:
-  def apply(appId: AppId): InvokeCapability.Instance^{this} =
+  def instance(appId: AppId): InvokeCapability.Instance^{this} =
     new InvokeCapabilityImpl(scope, appId).asInstanceOf[InvokeCapability.Instance]
   // App-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and app id).
   def invoke[Req: JsonCodec](
@@ -199,24 +199,24 @@ private[internal] final class InvokeCapabilityUniversalImpl(scope: DaprCapabilit
       httpMethod: HttpMethod,
       metadata: Map[MetadataKey, MetadataValue],
   )[Resp: JsonCodec]: Resp =
-    apply(appId).invoke(method, data, httpMethod, metadata)[Resp]
+    instance(appId).invoke(method, data, httpMethod, metadata)[Resp]
   def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
-    apply(appId).invoke[Resp](method)
+    instance(appId).invoke[Resp](method)
 
 @scala.caps.assumeSafe
 private[internal] final class SecretsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends SecretsCapability:
-  def apply(storeName: SecretStoreName): SecretsCapability.Instance^{this} =
+  def instance(storeName: SecretStoreName): SecretsCapability.Instance^{this} =
     new SecretsCapabilityImpl(scope, storeName).asInstanceOf[SecretsCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def get(storeName: SecretStoreName, key: SecretKey, metadata: Map[MetadataKey, MetadataValue]): Option[SecretValue] =
-    apply(storeName).get(key, metadata)
+    instance(storeName).get(key, metadata)
   def getBulk(storeName: SecretStoreName, metadata: Map[MetadataKey, MetadataValue]): Map[SecretKey, SecretValue] =
-    apply(storeName).getBulk(metadata)
+    instance(storeName).getBulk(metadata)
 
 @scala.caps.assumeSafe
 private[internal] final class ConfigurationCapabilityUniversalImpl(scope: DaprCapabilityImpl)
     extends ConfigurationCapability:
-  def apply(storeName: ConfigurationStoreName): ConfigurationCapability.Instance^{this} =
+  def instance(storeName: ConfigurationStoreName): ConfigurationCapability.Instance^{this} =
     new ConfigurationCapabilityImpl(scope, storeName).asInstanceOf[ConfigurationCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def get(
@@ -224,17 +224,17 @@ private[internal] final class ConfigurationCapabilityUniversalImpl(scope: DaprCa
       keys: Seq[ConfigurationKey],
       metadata: Map[MetadataKey, MetadataValue],
   ): Map[ConfigurationKey, ConfigurationItem] =
-    apply(storeName).get(keys, metadata)
+    instance(storeName).get(keys, metadata)
   def subscribe(
       storeName: ConfigurationStoreName,
       keys: Seq[ConfigurationKey],
       metadata: Map[MetadataKey, MetadataValue],
   )(onChange: ConfigurationUpdate => Unit): AutoCloseable^{this} =
-    apply(storeName).subscribe(keys, metadata)(onChange)
+    instance(storeName).subscribe(keys, metadata)(onChange)
 
 @scala.caps.assumeSafe
 private[internal] final class BindingsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends BindingsCapability:
-  def apply(bindingName: BindingName): BindingsCapability.Instance^{this} =
+  def instance(bindingName: BindingName): BindingsCapability.Instance^{this} =
     new BindingsCapabilityImpl(scope, bindingName).asInstanceOf[BindingsCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def invoke[Req: JsonCodec](
@@ -243,18 +243,18 @@ private[internal] final class BindingsCapabilityUniversalImpl(scope: DaprCapabil
       data: Req,
       metadata: Map[MetadataKey, MetadataValue],
   )[Resp: JsonCodec]: Option[Resp] =
-    apply(bindingName).invoke(operation, data, metadata)[Resp]
+    instance(bindingName).invoke(operation, data, metadata)[Resp]
   def invokeOneWay[Req: JsonCodec](
       bindingName: BindingName,
       operation: BindingOperation,
       data: Req,
       metadata: Map[MetadataKey, MetadataValue],
   ): Unit =
-    apply(bindingName).invokeOneWay(operation, data, metadata)
+    instance(bindingName).invokeOneWay(operation, data, metadata)
 
 @scala.caps.assumeSafe
 private[internal] final class LockCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends LockCapability:
-  def apply(storeName: LockStoreName): LockCapability.Instance^{this} =
+  def instance(storeName: LockStoreName): LockCapability.Instance^{this} =
     new LockCapabilityImpl(scope, storeName).asInstanceOf[LockCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def tryLock(
@@ -263,13 +263,13 @@ private[internal] final class LockCapabilityUniversalImpl(scope: DaprCapabilityI
       lockOwner: LockOwner,
       expiry: scala.concurrent.duration.FiniteDuration,
   ): Boolean =
-    apply(storeName).tryLock(resourceId, lockOwner, expiry)
+    instance(storeName).tryLock(resourceId, lockOwner, expiry)
   def unlock(storeName: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus =
-    apply(storeName).unlock(resourceId, lockOwner)
+    instance(storeName).unlock(resourceId, lockOwner)
 
 @scala.caps.assumeSafe
 private[internal] final class CryptoCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends CryptoCapability:
-  def apply(componentName: CryptoComponentName): CryptoCapability.Instance^{this} =
+  def instance(componentName: CryptoComponentName): CryptoCapability.Instance^{this} =
     new CryptoCapabilityImpl(scope, componentName).asInstanceOf[CryptoCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def encrypt(
@@ -278,17 +278,17 @@ private[internal] final class CryptoCapabilityUniversalImpl(scope: DaprCapabilit
       plaintext: scala.collection.immutable.ArraySeq[Byte],
       algorithm: KeyWrapAlgorithm,
   ): scala.collection.immutable.ArraySeq[Byte] =
-    apply(componentName).encrypt(keyName, plaintext, algorithm)
+    instance(componentName).encrypt(keyName, plaintext, algorithm)
   def decrypt(
       componentName: CryptoComponentName,
       ciphertext: scala.collection.immutable.ArraySeq[Byte],
   ): scala.collection.immutable.ArraySeq[Byte] =
-    apply(componentName).decrypt(ciphertext)
+    instance(componentName).decrypt(ciphertext)
 
 @scala.caps.assumeSafe
 private[internal] final class ConversationCapabilityUniversalImpl(scope: DaprCapabilityImpl)
     extends ConversationCapability:
-  def apply(componentName: ConversationComponentName): ConversationCapability.Instance^{this} =
+  def instance(componentName: ConversationComponentName): ConversationCapability.Instance^{this} =
     new ConversationCapabilityImpl(scope, componentName).asInstanceOf[ConversationCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def converse(
@@ -300,15 +300,15 @@ private[internal] final class ConversationCapabilityUniversalImpl(scope: DaprCap
       contextId: Option[ConversationContextId],
       scrubPii: Boolean,
   ): ConversationResponse =
-    apply(componentName).converse(messages, tools, toolChoice, temperature, contextId, scrubPii)
+    instance(componentName).converse(messages, tools, toolChoice, temperature, contextId, scrubPii)
 
 @scala.caps.assumeSafe
 private[internal] final class JobsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends JobsCapability:
-  def apply(jobName: JobName): JobsCapability.Instance^{this} =
+  def instance(jobName: JobName): JobsCapability.Instance^{this} =
     new JobsCapabilityImpl(scope, jobName).asInstanceOf[JobsCapability.Instance]
   // Name-taking operations delegate to a freshly bound instance (cheap: the instance holds only the scope and name).
   def get(jobName: JobName): Option[JobDetails] =
-    apply(jobName).get()
+    instance(jobName).get()
   def schedule[T: JsonCodec](
       jobName: JobName,
       data: T,
@@ -317,20 +317,20 @@ private[internal] final class JobsCapabilityUniversalImpl(scope: DaprCapabilityI
       repeats: Option[Int],
       ttl: Option[java.time.Instant],
   ): Unit =
-    apply(jobName).schedule(data, schedule, dueTime, repeats, ttl)
+    instance(jobName).schedule(data, schedule, dueTime, repeats, ttl)
   def scheduleOnce[T: JsonCodec](
       jobName: JobName,
       data: T,
       dueTime: java.time.Instant,
       ttl: Option[java.time.Instant],
   ): Unit =
-    apply(jobName).scheduleOnce(data, dueTime, ttl)
+    instance(jobName).scheduleOnce(data, dueTime, ttl)
   def delete(jobName: JobName): Unit =
-    apply(jobName).delete()
+    instance(jobName).delete()
 
 @scala.caps.assumeSafe
 private[internal] final class ActorCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends ActorCapability:
-  def apply(actorType: ActorType): ActorCapability.Type^{this} =
+  def forType(actorType: ActorType): ActorCapability.Type^{this} =
     new ActorCapabilityTypeImpl(scope, actorType).asInstanceOf[ActorCapability.Type]
   // Type/id-taking operations delegate to a freshly bound type capability (cheap: it holds only the scope and type).
   def invoke[Req: JsonCodec](
@@ -339,21 +339,21 @@ private[internal] final class ActorCapabilityUniversalImpl(scope: DaprCapability
       method: ActorMethodName,
       data: Req,
   )[Resp: JsonCodec]: Resp =
-    apply(actorType).invoke(actorId, method, data)[Resp]
+    forType(actorType).invoke(actorId, method, data)[Resp]
   def invoke[Resp: JsonCodec](actorType: ActorType, actorId: ActorId, method: ActorMethodName): Resp =
-    apply(actorType).invoke[Resp](actorId, method)
+    forType(actorType).invoke[Resp](actorId, method)
   def invokeVoid(actorType: ActorType, actorId: ActorId, method: ActorMethodName): Unit =
-    apply(actorType).invokeVoid(actorId, method)
+    forType(actorType).invokeVoid(actorId, method)
 
 @scala.caps.assumeSafe
 private[internal] final class ActorCapabilityTypeImpl(scope: DaprCapabilityImpl, val actorType: ActorType)
     extends ActorCapability.Type:
-  def apply(actorId: ActorId): ActorCapability.Instance^{this} =
+  def instance(actorId: ActorId): ActorCapability.Instance^{this} =
     ActorCapabilityImpl.build(actorType, actorId, scope.actorClient).asInstanceOf[ActorCapability.Instance]
   // Id-taking operations delegate to a freshly bound instance.
   def invoke[Req: JsonCodec](actorId: ActorId, method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp =
-    apply(actorId).invoke(method, data)[Resp]
+    instance(actorId).invoke(method, data)[Resp]
   def invoke[Resp: JsonCodec](actorId: ActorId, method: ActorMethodName): Resp =
-    apply(actorId).invoke[Resp](method)
+    instance(actorId).invoke[Resp](method)
   def invokeVoid(actorId: ActorId, method: ActorMethodName): Unit =
-    apply(actorId).invokeVoid(method)
+    instance(actorId).invokeVoid(method)

@@ -20,7 +20,7 @@ import scala.concurrent.duration.FiniteDuration
 @scala.caps.assumeSafe
 trait StateCapability extends StateCapability.ReadOnly:
   /** Narrow to the named state store, keeping full authority. */
-  override def apply(storeName: StateStoreName): StateCapability.Instance^{this}
+  override def instance(storeName: StateStoreName): StateCapability.Instance^{this}
 
   /** Unconditionally save a value. */
   def save[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, value: T): Unit
@@ -70,7 +70,7 @@ object StateCapability:
   @scala.caps.assumeSafe
   trait ReadOnly extends scala.caps.ExclusiveCapability:
     /** Narrow to the named state store, keeping read-only authority. */
-    def apply(storeName: StateStoreName): Instance.ReadOnly^{this}
+    def instance(storeName: StateStoreName): Instance.ReadOnly^{this}
 
     /** Fetch a value; returns `None` if the key does not exist. */
     def get[T: JsonCodec](
@@ -97,7 +97,7 @@ object StateCapability:
   object ReadOnly:
     /** Narrow the read-only capability in scope to one store and return it. */
     def instance(storeName: StateStoreName)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
-      cap.apply(storeName)
+      cap.instance(storeName)
     def get[T: JsonCodec](
         storeName: StateStoreName,
         key: StateStoreKey,
@@ -263,7 +263,7 @@ object StateCapability:
 
   /** Narrow the universal capability in scope to one store and return it. */
   def instance(storeName: StateStoreName)(using cap: StateCapability): Instance^{cap} =
-    cap.apply(storeName)
+    cap.instance(storeName)
   def get[T: JsonCodec](
       storeName: StateStoreName,
       key: StateStoreKey,

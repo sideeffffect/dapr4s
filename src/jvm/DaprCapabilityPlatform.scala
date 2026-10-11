@@ -54,4 +54,4 @@ trait DaprCapabilityCompanionPlatform:
   def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability.Instance ?=> T)(using
       cap: DaprCapability
   ): T =
-    body(using cap.conversation(componentName).asInstanceOf[ConversationCapability.Instance])
+    body(using cap.conversation.instance(componentName).asInstanceOf[ConversationCapability.Instance])

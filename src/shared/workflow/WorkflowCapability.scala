@@ -22,7 +22,7 @@ import scala.concurrent.duration.FiniteDuration
 @scala.caps.assumeSafe
 trait WorkflowCapability extends WorkflowCapability.ReadOnly:
   /** Narrow to an existing instance id, keeping full authority. */
-  override def apply(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this}
+  override def instance(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this}
 
   /** Start a new workflow instance. Returns the generated instance ID. */
   def start(name: WorkflowName): WorkflowInstanceId
@@ -70,7 +70,7 @@ object WorkflowCapability:
   @scala.caps.assumeSafe
   trait ReadOnly extends scala.caps.ExclusiveCapability:
     /** Narrow to an existing instance id, keeping observe-only authority. */
-    def apply(instanceId: WorkflowInstanceId): Instance.ReadOnly^{this}
+    def instance(instanceId: WorkflowInstanceId): Instance.ReadOnly^{this}
 
     /** Fetch the current status snapshot of the instance. Returns `None` if the instance does not exist. */
     def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot]
@@ -85,7 +85,7 @@ object WorkflowCapability:
   object ReadOnly:
     /** Narrow the observe-only capability in scope to one instance and return it. */
     def instance(instanceId: WorkflowInstanceId)(using cap: ReadOnly): Instance.ReadOnly^{cap} =
-      cap.apply(instanceId)
+      cap.instance(instanceId)
     def getStatus(instanceId: WorkflowInstanceId)(using cap: ReadOnly): Option[WorkflowSnapshot] =
       cap.getStatus(instanceId)
     def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration)(using
@@ -156,7 +156,7 @@ object WorkflowCapability:
 
   /** Narrow the universal capability in scope to one instance and return it. */
   def instance(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Instance^{cap} =
-    cap.apply(instanceId)
+    cap.instance(instanceId)
   def getStatus(instanceId: WorkflowInstanceId)(using cap: WorkflowCapability): Option[WorkflowSnapshot] =
     cap.getStatus(instanceId)
   def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration)(using
