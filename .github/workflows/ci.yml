@@ -119,14 +119,19 @@ jobs:
         # testcontainers-node logs container lifecycle (pull/start/wait) under DEBUG; it is the only
         # visibility into a JS-leg hang, which otherwise prints nothing. Ignored by the JVM leg.
         DEBUG: testcontainers*
-        SCALA_CLI: ${{ github.workspace }}/scripts/scala-cli-jvm.sh
         NODE_EXTRA_OPTIONS: --report-on-signal --report-signal=SIGUSR2 --report-directory=/tmp/node-reports
-      run: ${{ matrix.integration-command }}
+      run: |
+        if [ "${{ matrix.platform }}" = js ]; then sudo tcpdump -i lo -s 0 -U -w /tmp/lo.pcap 'tcp and not port 9229' >/dev/null 2>&1 & sleep 2; fi
+        ${{ matrix.integration-command }}
     - name: Diagnostics after a failed integration run
       if: failure()
       run: |
         docker ps -a || true
         for p in $(pgrep -f 'bin/node$|bin/node '); do echo "=== inspect node $p"; kill -USR1 "$p"; sleep 2; node scripts/js-it/inspect-hung-node.mjs || true; done
+        sudo pkill -INT tcpdump || true; sleep 2
+        echo "=== loopback conversation (first 120 + last 120 payload lines)"
+        sudo tcpdump -r /tmp/lo.pcap -nn -A 2>/dev/null | grep -a -vE '^\s*$' > /tmp/lo.txt || true
+        wc -l /tmp/lo.txt; head -120 /tmp/lo.txt | cut -c1-300; echo ...; tail -120 /tmp/lo.txt | cut -c1-300
         sudo apt-get install -y -qq gdb >/dev/null 2>&1 || true
         for p in $(pgrep -f 'bin/node|scala-js-ld'); do
           echo "=== pid $p: $(tr '\0' ' ' < /proc/$p/cmdline)"
