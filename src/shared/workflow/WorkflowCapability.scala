@@ -72,8 +72,8 @@ trait WorkflowInstanceCapability extends scala.caps.ExclusiveCapability:
   * }}}
   *
   * Operations that target an existing instance (status, suspend, resume, terminate, raiseEvent, waitForCompletion,
-  * purge) live on [[WorkflowInstanceCapability]] and are also available as fluent extension methods on
-  * [[WorkflowInstanceId]] — e.g. `id.suspend()` — which read as a method on the instance.
+  * purge) live on [[WorkflowInstanceCapability]], reached by narrowing the accessor to one instance:
+  * `summon[AccessWorkflowCapability](id).suspend()` — the same `apply` hop as invoke and jobs.
   */
 @scala.caps.assumeSafe
 object AccessWorkflowCapability:
