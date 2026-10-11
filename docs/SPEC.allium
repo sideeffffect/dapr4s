@@ -2,15 +2,30 @@
 -- SPEC.allium — dapr4s behavioural specification
 --
 -- Scope: Safe Scala capability library wrapping DAPR building blocks
--- Includes: DaprRuntime lifecycle (run + serve), StateCapability, PublishCapability,
---           InvokeCapability, SecretsCapability,
---           ConfigurationCapability (get + subscribe), BindingsCapability,
---           LockCapability, DaprApp (inbound pub/sub, bindings,
---           service invocation, actors with reminders/timers),
+-- Includes: DaprRuntime lifecycle (Dapr(config).run + serve),
+--           the three-rung capability ladder (CAPABILITY-SPLITS §8, "Design C"):
+--             rung 1: DaprCapability (root scope)
+--             rung 2: Access*Capability accessors (argument-less members of DaprCapability)
+--             rung 3: per-resource capabilities obtained via accessor.apply(name)
+--           StateCapability, PublishCapability, InvokeCapability (bound to one AppId),
+--           SecretsCapability, ConfigurationCapability (get + subscribe), BindingsCapability,
+--           LockCapability, CryptoCapability,
+--           actor client (AccessActorCapability -> ActorTypeCapability -> ActorCapability),
+--           workflow client (AccessWorkflowCapability -> WorkflowInstanceCapability),
+--           JVM-only: JobCapability (via AccessJobsCapability), ConversationCapability,
+--           DaprApp (inbound pub/sub, bindings, service invocation, jobs,
+--           actors with reminders/timers),
 --           Workflow, WorkflowActivity, WorkflowContext (server-side workflow orchestration)
 --           JsonCodec
+-- Package layout: each building-block family lives in its own package
+--   (dapr4s.state, dapr4s.publish, dapr4s.invoke, dapr4s.secrets, dapr4s.configuration,
+--    dapr4s.bindings, dapr4s.lock, dapr4s.actor, dapr4s.workflow, dapr4s.crypto,
+--    dapr4s.jobs, dapr4s.conversation). Dapr, DaprConfig, DaprCapability, DaprApp,
+--   JsonCodec, HttpMethod and the cross-family operation types (AppId, Route, MetadataKey, ...)
+--   stay in the root package dapr4s.
 -- Excludes (not yet specified — separate specs):
---   - DAPR workflow orchestration detail: WorkflowCapability (client-side) spec deferred.
+--   - Operation-level rules for the actor, workflow, crypto, jobs and conversation clients
+--     (their surfaces are specified below; per-operation behaviour rules are deferred).
 --   - DAPR sidecar itself (external system)
 --   - Authentication and mTLS (managed by DAPR sidecar)
 -- Dependencies: DAPR sidecar must be running and reachable
@@ -31,67 +46,72 @@ external entity JavaDaprClient {
     -- Platform note: on Scala.js the same role is played by the Dapr JS SDK client
     -- (@dapr/dapr DaprClient + DaprWorkflowClient, in src/js/internal/), equally
     -- opaque to user code and equally managed inside @assumeSafe boundaries.
+    -- On the JVM the actor client and the workflow client are created lazily on first use
+    -- and closed together with the main client when the run block exits.
 }
 
 external entity Workflow {
-    -- Pure Scala abstract class. User extends and implements run()(using WorkflowContext): Unit.
+    -- Pure Scala abstract class. User extends and implements run(using WorkflowContext): Unit.
     -- WorkflowContext is injected as a given at call time — user code never names the value.
     -- Companion object WorkflowContext provides forwarder methods so users call
     --   WorkflowContext.getInput / callActivity / complete etc. without explicit ctx binding.
-    -- Internally, WorkflowBridge extends io.dapr.workflows.Workflow and is registered
-    -- via registerWorkflow(name, bridge, "", false); bridge is in dapr4s.internal.
+    -- Internally a bridge in dapr4s.internal adapts it to the platform SDK's workflow runtime.
 }
 
 external entity WorkflowActivity {
     -- Pure Scala abstract class: WorkflowActivity[I: JsonCodec, O: JsonCodec].
-    -- User implements execute(input: I): O — no context needed, no Java types visible.
-    -- Internally, WorkflowActivityBridge extends io.dapr.workflows.WorkflowActivity and is
-    -- registered via registerActivity(name, bridge); bridge is in dapr4s.internal.
-    -- Codec fields are private[safe] so the bridge can access them.
+    -- User implements execute(input: I)(using DaprCapability): O — the activity receives the
+    -- root DaprCapability so it may perform Dapr calls; no SDK types are visible.
+    -- activityName defaults to the simple class name; override to disambiguate.
+    -- Codec fields are private[dapr4s] so the internal bridge can access them.
 }
 
 external entity WorkflowContext {
     -- Capability trait provided as a `given` to Workflow.run.
-    -- Wraps io.dapr.workflows.WorkflowContext; all methods use Scala types.
+    -- Wraps the platform SDK's workflow context; all methods use Scala types.
     -- Companion object WorkflowContext mirrors all methods as forwarders with (using WorkflowContext),
     -- so user code need not bind the context value explicitly.
     instance_id: WorkflowInstanceId
     is_replaying: Boolean
     -- get_input[I: JsonCodec]: Option[I]
-    -- call_activity[I, O](activityClass, input): WorkflowTask[O]
-    -- call_activity[O](activityClass): WorkflowTask[O]                -- Unit-input overload
-    -- create_timer(duration): WorkflowTask[Unit]
-    -- wait_for_external_event[T](name, timeout?): WorkflowTask[T]
+    -- call_activity[A](using ActivityDef[A])(input): Task[Output]
+    -- call_activity[A](using ActivityDef[A]): Task[Output]             -- Unit-input overload
+    -- call_activity_by_name[I, O](name: ActivityName, input): Task[O]
+    -- call_activity_by_name[O](name: ActivityName): Task[O]
+    -- create_timer(duration: FiniteDuration): Task[Unit]
+    -- wait_for_external_event[T](name: EventName, timeout?): Task[T]
     -- complete[O](output): Unit
     -- continue_as_new[I](input): Unit
     -- new_uuid(): UUID
 }
 
-external entity WorkflowTask {
-    -- Handle to a scheduled durable operation. Call await() to get the result.
-    -- Replay-safe inside the workflow runtime.
+external entity Task {
+    -- Handle to a scheduled durable operation (trait Task[+O]). Call await() to get the result;
+    -- isDone / isCancelled / map are also available. Replay-safe inside the workflow runtime.
 }
 
 external entity ActorContext {
     -- Capability provided to every actor invocation. Bundles state, reminders, and timers.
     -- Backed by HttpActorContext which calls the Dapr actor HTTP API.
     -- State:
-    --   get[T: JsonCodec](key): Option[T]
-    --   set[T: JsonCodec](key, value): Unit
-    --   remove(key): Unit
+    --   get[T: JsonCodec](key: ActorStateKey): Option[T]
+    --   set[T: JsonCodec](key: ActorStateKey, value): Unit
+    --   remove(key: ActorStateKey): Unit
     -- Reminders (persistent — survive actor deactivation):
-    --   registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: Duration, period?): Unit
+    --   registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration] = None): Unit
     --   unregisterReminder(name: ReminderName): Unit
     -- Timers (non-persistent — lost on actor deactivation):
-    --   registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: Duration, period?): Unit
+    --   registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration] = None): Unit
     --   unregisterTimer(name: TimerName): Unit
 }
 
 external entity ActorDefinition {
     -- Server-side actor hosting descriptor.
     actor_type:   ActorType
-    -- build: (ActorId, ActorContext) -> ActorRoutes
+    -- build: ActorId => ActorContext ?=> ActorRoutes
     -- Called on every incoming invocation; returns methods + reminders + timers.
+    -- Duplicate method/reminder/timer names in the built ActorRoutes raise
+    -- DaprAppValidationException at build time.
 }
 
 external entity ActorRoutes {
@@ -99,6 +119,15 @@ external entity ActorRoutes {
     methods:   List<ActorMethodRoute>    -- method invocations
     reminders: List<ActorReminderRoute>  -- reminder callbacks
     timers:    List<ActorTimerRoute>     -- timer callbacks
+}
+
+external entity JobSchedule {
+    -- JVM-only enum: Cron(expression), Every(duration) and named presets (e.g. Daily).
+}
+
+external entity ConversationMessage {
+    -- JVM-only conversation request message. ConversationTool, ToolChoice and
+    -- ConversationResponse are its siblings in src/jvm/conversation/ConversationModels.scala.
 }
 
 ------------------------------------------------------------
@@ -114,6 +143,8 @@ value AppId            { value: String }   -- Target application ID for service 
 value SecretStoreName  { value: String }   -- DAPR secrets store component name
 value ConfigurationStoreName  { value: String }   -- DAPR configuration store component name
 value BindingName      { value: String }   -- DAPR output binding component name
+value CryptoComponentName { value: String } -- DAPR cryptography component name
+value ConversationComponentName { value: String } -- DAPR conversation (LLM) component name (JVM-only API)
 value ETag             { value: String }   -- Optimistic-concurrency tag
 
 -- Operation key / identifier opaque types (non-empty where noted)
@@ -123,11 +154,29 @@ value InvokeMethodName { value: String }   -- Service-invocation / inbound handl
 value ActorMethodName  { value: String }   -- Actor method name (non-empty)
 value Route            { value: String }   -- HTTP route for a pub/sub subscription (non-empty)
 value SecretKey        { value: String }   -- Key in a DAPR secrets store
+value SecretValue      { value: String }   -- Secret value returned by a secrets store
 value ConfigurationKey        { value: String }   -- Key in a DAPR configuration store
+value ConfigurationValue      { value: String }   -- Value of a configuration item
+value ConfigurationVersion    { value: String }   -- Version of a configuration item
 value LockResourceId   { value: String }   -- Resource identifier for distributed lock (non-empty)
 value LockOwner        { value: String }   -- Lock owner identifier (non-empty)
 value BindingOperation { value: String }   -- Operation name for an output binding (non-empty)
 value BulkEntryId      { value: String }   -- Caller-assigned ID for correlating bulk publish failures
+value CryptoKeyName    { value: String }   -- Key name inside a crypto component (non-empty)
+value MetadataKey      { value: String }   -- Metadata header key forwarded to the sidecar
+value MetadataValue    { value: String }   -- Metadata header value forwarded to the sidecar
+value SerializedJson   { value: String }   -- Pre-encoded JSON payload
+value ContentType      { value: String }   -- MIME content type
+value KeyWrapAlgorithm { value: String }   -- Crypto key-wrap algorithm name (common constants provided)
+
+-- CloudEvent envelope opaque types
+value CloudEventId          { value: String }
+value CloudEventSource      { value: String }
+value CloudEventSpecVersion { value: String }
+value CloudEventType        { value: String }
+
+-- Conversation opaque types (JVM-only API; the name types are shared)
+value ConversationContextId { value: String }
 
 -- Actor opaque types
 value ActorType        { value: String }   -- Dapr virtual actor type name (non-empty)
@@ -139,6 +188,10 @@ value TimerName        { value: String }   -- Name of a non-persistent actor tim
 value WorkflowName         { value: String }   -- Dapr workflow class / registration name (non-empty)
 value WorkflowInstanceId   { value: String }   -- Dapr workflow instance ID (may be empty)
 value EventName            { value: String }   -- External event name for workflow instances (non-empty)
+value ActivityName         { value: String }   -- Registered workflow activity name
+
+-- Jobs opaque types
+value JobName              { value: String }   -- Dapr scheduled job name (non-empty)
 
 -- Query / filter value
 value StateQuery {
@@ -150,9 +203,9 @@ value StateQuery {
 -- Complex value types
 value ConfigurationItem {
     key: ConfigurationKey
-    value: String
-    version: String
-    metadata: Map<String, String>
+    value: ConfigurationValue
+    version: ConfigurationVersion
+    metadata: Map<MetadataKey, MetadataValue>
 }
 
 value ConfigurationUpdate {
@@ -169,7 +222,7 @@ value StateEntry<T> {
 }
 
 value StateKeyValue {
-    -- Key-value pair used in bulk state save operations.
+    -- Key-value pair used in bulk state save operations (a (StateStoreKey, T) tuple in code).
     key: StateStoreKey
     value: Any
 }
@@ -201,13 +254,13 @@ value SubscriptionResult {
 }
 
 value CloudEvent<T> {
-    id: String
-    source: String
-    spec_version: String
-    type: String
+    id: CloudEventId
+    source: CloudEventSource
+    spec_version: CloudEventSpecVersion
+    event_type: CloudEventType
     topic: Topic
     pub_sub_name: PubSubName
-    data_content_type: String
+    data_content_type: ContentType
     data: T
 }
 
@@ -217,6 +270,16 @@ value InvokeRequest<T> {
     method_name: InvokeMethodName
     http_method: HttpMethod
     data: T
+}
+
+value JobDetails {
+    -- Stored definition of a scheduled job (JVM-only API). Returned by JobCapability.get().
+    name: JobName
+    data: SerializedJson?
+    schedule_expression: String?
+    due_time: Timestamp?
+    repeats: Integer?
+    ttl: Timestamp?
 }
 
 ------------------------------------------------------------
@@ -259,12 +322,32 @@ enum HttpMethod {
     get | post | put | patch | delete | head | options
 }
 
+enum StateConsistency {
+    -- Read/write consistency level for state operations.
+    default | eventual | strong
+}
+
+enum StateConcurrency {
+    -- Concurrency control for ETag-guarded writes; first_write is the default for *WithETag.
+    default | first_write | last_write
+}
+
+enum CapabilityFamily {
+    -- The building-block family of a rung-2 accessor.
+    -- jobs and conversation exist only on the JVM platform (compile-time absent on Scala.js).
+    state | publish | invoke | secrets | configuration | bindings | lock | actor | workflow | crypto | jobs | conversation
+}
+
+enum CapabilityStatus {
+    open | closed
+}
+
 ------------------------------------------------------------
 -- Entities and Variants
 ------------------------------------------------------------
 
 entity DaprRuntime {
-    -- Singleton runtime; at most one active at a time in a given thread scope
+    -- Models one `Dapr(config: DaprConfig)` instance while it runs a run/serve block.
     status: idle | active
     -- idle:   no active run/serve block; client is absent
     -- active: inside a run/serve block; client is present
@@ -272,18 +355,38 @@ entity DaprRuntime {
     -- client is present iff status = active
 }
 
+-- Rung 1 of the capability ladder.
 entity DaprCapability {
     runtime: DaprRuntime
-    status: open | closed
-    -- A DaprCapability is created by DaprRuntime.run (or serve) and closed when the block exits.
-    -- Sub-capabilities derived from a DaprCapability share its lifetime.
-    -- Sub-capabilities are acquired via transformer methods on the DaprCapability companion
-    -- object (e.g. DaprCapability.state(storeName) { body }), which provide the
-    -- sub-capability as an implicit context parameter to body rather than returning it directly.
+    status: CapabilityStatus
+    -- A DaprCapability is created by Dapr(config).run (or serve) and closed when the block exits.
+    -- It exposes argument-less accessors (rung 2): state, publish, invoke, secrets,
+    -- configuration, bindings, lock, actor, workflow, crypto — plus, on the JVM only,
+    -- jobs and conversation (contributed by the platform parent trait DaprCapabilityPlatform;
+    -- the Scala.js twin is empty, so those members do not exist there at compile time).
+    -- Each accessor is declared with a ^{this} return type, binding its lifetime to this
+    -- DaprCapability instance.
     -- Extends scala.caps.ExclusiveCapability: tracked by the Scala 3 CC framework as exclusive
-    -- (non-shareable), preventing escape and concurrent use. All sub-capability traits also
-    -- extend ExclusiveCapability. Factory methods carry ^{this} return types to bind
-    -- sub-capability lifetimes to this DaprCapability instance.
+    -- (non-shareable), preventing escape and concurrent use. All accessor and sub-capability
+    -- traits also extend ExclusiveCapability.
+}
+
+-- Rung 2 of the capability ladder: one accessor per building-block family.
+-- Code types: AccessStateCapability, AccessPublishCapability, AccessInvokeCapability,
+-- AccessSecretsCapability, AccessConfigurationCapability, AccessBindingsCapability,
+-- AccessLockCapability, AccessActorCapability, AccessWorkflowCapability,
+-- AccessCryptoCapability, AccessJobsCapability (JVM), AccessConversationCapability (JVM).
+-- Every accessor except AccessWorkflowCapability is a pure narrowing step: its only member
+-- is apply(name), returning the rung-3 capability with ^{this}.
+-- AccessWorkflowCapability additionally owns the launch operations (start / startWithId)
+-- and narrows with apply(instanceId).
+-- AccessActorCapability narrows in two steps: apply(actorType) -> ActorTypeCapability,
+-- then apply(actorId) -> ActorCapability.
+entity CapabilityAccessor {
+    capability: DaprCapability
+    family: CapabilityFamily
+    status: CapabilityStatus
+    -- status mirrors capability.status
 }
 
 -- DaprApp and its components are immutable value objects (case class / sealed class).
@@ -294,18 +397,23 @@ value DaprApp {
     -- Immutable, declarative description of all inbound handlers an application exposes.
     -- Built by the serve body and handed to the HTTP server.
     subscriptions: List<Subscription>
-    invokeRoutes:   List<InvokeRoute>
+    invokeRoutes:  List<InvokeRoute>
     bindings:      List<BindingRoute>
     workflows:     List<Workflow>
     activities:    List<WorkflowActivity>  -- existential: WorkflowActivity[?, ?]
     actors:        List<ActorDefinition>
+    jobs:          List<JobRoute>
     -- Two DaprApp values may be combined with ++ to compose service modules.
+    -- validationErrors lists structural problems (duplicate names/routes, path collisions,
+    -- reserved-path collisions); validateOrThrow() throws DaprAppValidationException
+    -- (an IllegalStateException) listing all of them.
 }
 
 value Subscription {
-    pubsub_name: PubSubName
-    topic:       Topic
-    route:       Route
+    pubsub_name:       PubSubName
+    topic:             Topic
+    route:             Route
+    dead_letter_topic: Topic?
     -- handler: CloudEvent -> SubscriptionResult (captured, CC-erased internally)
 }
 
@@ -319,46 +427,99 @@ value BindingRoute {
     -- handler: Payload -> Unit (captured, CC-erased internally)
 }
 
+value JobRoute {
+    name: JobName
+    -- handler: Payload -> Unit (captured, CC-erased internally)
+    -- Inbound side is cross-platform; scheduling jobs (JobCapability) is JVM-only.
+}
+
+-- Rung 3 of the capability ladder: per-resource capabilities.
+-- Each carries its bound name as a `val` (storeName, pubsubName, appId, ...), so its
+-- operations never take that name again.
+
 entity StateCapability {
-    capability: DaprCapability
+    accessor: CapabilityAccessor   -- family = state
     store_name: StateStoreName
-    status: open | closed
-    -- status mirrors capability.status
+    status: CapabilityStatus
+    -- status mirrors accessor.status
 }
 
 entity PublishCapability {
-    capability: DaprCapability
+    accessor: CapabilityAccessor   -- family = publish
     pubsub_name: PubSubName
-    status: open | closed
+    status: CapabilityStatus
 }
 
 entity InvokeCapability {
-    capability: DaprCapability
-    status: open | closed
+    accessor: CapabilityAccessor   -- family = invoke
+    app_id: AppId
+    status: CapabilityStatus
+    -- Bound to one target app; invoke methods take no AppId.
 }
 
 entity SecretsCapability {
-    capability: DaprCapability
+    accessor: CapabilityAccessor   -- family = secrets
     store_name: SecretStoreName
-    status: open | closed
+    status: CapabilityStatus
 }
 
 entity ConfigurationCapability {
-    capability: DaprCapability
+    accessor: CapabilityAccessor   -- family = configuration
     store_name: ConfigurationStoreName
-    status: open | closed
+    status: CapabilityStatus
 }
 
 entity BindingsCapability {
-    capability: DaprCapability
+    accessor: CapabilityAccessor   -- family = bindings
     binding_name: BindingName
-    status: open | closed
+    status: CapabilityStatus
 }
 
 entity LockCapability {
-    capability: DaprCapability
+    accessor: CapabilityAccessor   -- family = lock
     store_name: LockStoreName
-    status: open | closed
+    status: CapabilityStatus
+}
+
+entity CryptoCapability {
+    accessor: CapabilityAccessor   -- family = crypto
+    component_name: CryptoComponentName
+    status: CapabilityStatus
+}
+
+entity ActorTypeCapability {
+    -- Intermediate rung: bound to one actor type; apply(actorId) narrows to one instance.
+    accessor: CapabilityAccessor   -- family = actor
+    actor_type: ActorType
+    status: CapabilityStatus
+}
+
+entity ActorCapability {
+    type_capability: ActorTypeCapability
+    actor_type: ActorType
+    actor_id: ActorId
+    status: CapabilityStatus
+}
+
+entity WorkflowInstanceCapability {
+    -- Bound to one workflow instance; its operations take no instance id.
+    accessor: CapabilityAccessor   -- family = workflow
+    instance_id: WorkflowInstanceId
+    status: CapabilityStatus
+}
+
+entity JobCapability {
+    -- JVM-only. Bound to one job name; its operations take no name.
+    accessor: CapabilityAccessor   -- family = jobs
+    job_name: JobName
+    status: CapabilityStatus
+}
+
+entity ConversationCapability {
+    -- JVM-only.
+    accessor: CapabilityAccessor   -- family = conversation
+    component_name: ConversationComponentName
+    status: CapabilityStatus
 }
 
 -- Sealed ADT matching the code's sealed abstract class StateOp.
@@ -370,7 +531,7 @@ entity StateOp {
 }
 
 variant UpsertOp : StateOp {
-    encoded_value: String   -- pre-encoded JSON value; always present
+    encoded_value: SerializedJson   -- pre-encoded JSON value; always present
 }
 
 variant DeleteOp : StateOp {
@@ -393,14 +554,14 @@ value WorkflowStatus {
 
 value WorkflowSnapshot {
     -- A point-in-time snapshot of a workflow instance's state.
-    -- Returned by workflow management operations (start, get, terminate).
+    -- Returned by WorkflowInstanceCapability.getStatus() and waitForCompletion(timeout).
     name: WorkflowName
     instance_id: WorkflowInstanceId
     status: WorkflowStatus
     created_at: Timestamp
     last_updated_at: Timestamp
-    serialized_input: String?
-    serialized_output: String?
+    serialized_input: SerializedJson?
+    serialized_output: SerializedJson?
 }
 
 ------------------------------------------------------------
@@ -411,7 +572,7 @@ value WorkflowSnapshot {
 
 rule DaprRuntimeActivates {
     when: DaprRun()
-    -- DaprRun() is the user calling DaprRuntime.run { body }
+    -- DaprRun() is the user calling Dapr(config).run { body }
 
     requires: DaprRuntime.status = idle
 
@@ -432,12 +593,14 @@ rule DaprRuntimeCompletes {
         DaprRuntime.client = null
         DaprRuntime.status = idle
         JavaDaprClientClosed()
-        -- All sub-capabilities derived from this DaprCapability become closed
+        -- The main client and any lazily created actor / workflow clients are closed.
+        -- If closing throws a non-fatal exception it is rethrown after all closes are attempted.
+        -- All accessors and sub-capabilities derived from this DaprCapability become closed
 }
 
 rule DaprRuntimeFailsSafely {
     when: DaprBodyThrew(exception)
-    -- Body function threw an exception
+    -- Body function threw a non-fatal exception
 
     requires: DaprRuntime.status = active
 
@@ -447,131 +610,226 @@ rule DaprRuntimeFailsSafely {
         DaprRuntime.status = idle
         JavaDaprClientClosed()
         -- Exception propagates to caller after cleanup.
-        -- If scope.close() also throws a non-fatal exception, it is attached as a
+        -- If closing a client also throws a non-fatal exception, it is attached as a
         -- suppressed exception on the body's throwable (not swallowed, not rethrown).
         ExceptionPropagated(exception: exception)
 }
 
--- ---- Capability Acquisition ----
+-- ---- Capability Acquisition (rung 1 -> rung 2) ----
 
-rule StateCapabilityAcquired {
-    when: DaprCapabilityStateRequested(cap, store_name)
-    -- Triggered by DaprCapability.state(store_name) { body }; sub-capability provided
-    -- as implicit context parameter to body, not returned directly.
+rule AccessorObtained {
+    when: DaprCapabilityAccessorRequested(cap, family)
+    -- Triggered by reading an argument-less accessor on DaprCapability
+    -- (cap.state, cap.publish, cap.invoke, cap.secrets, cap.configuration, cap.bindings,
+    --  cap.lock, cap.actor, cap.workflow, cap.crypto; JVM only: cap.jobs, cap.conversation).
+    -- The companion transformers DaprCapability.invoke { body }, DaprCapability.workflow { body }
+    -- and (JVM) DaprCapability.jobs { body } provide the accessor itself as a context
+    -- parameter to body.
 
     requires: cap.status = open
 
     ensures:
-        StateCapability.created(
+        CapabilityAccessor.created(
             capability: cap,
-            store_name: store_name,
+            family: family,
             status: open
         )
 }
 
-rule PubSubCapabilityAcquired {
-    when: DaprCapabilityPubSubRequested(cap, pubsub_name)
-    -- Triggered by DaprCapability.publish(pubsub_name) { body }.
+-- ---- Capability Narrowing (rung 2 -> rung 3) ----
+-- Triggered by accessor.apply(name). The companion transformers
+-- DaprCapability.state(name) { body }, publish(name), secrets(name), configuration(name),
+-- bindings(name), lock(name), crypto(name), actor(actorType, actorId) and (JVM)
+-- conversation(name) read the accessor and apply it in one step, providing the rung-3
+-- capability as a context parameter to body rather than returning it.
 
-    requires: cap.status = open
+rule StateCapabilityAcquired {
+    when: AccessorApplied(acc, store_name)  -- store_name: StateStoreName
+
+    requires: acc.status = open
+    requires: acc.family = state
 
     ensures:
-        PublishCapability.created(
-            capability: cap,
-            pubsub_name: pubsub_name,
-            status: open
-        )
+        StateCapability.created(accessor: acc, store_name: store_name, status: open)
+}
+
+rule PublishCapabilityAcquired {
+    when: AccessorApplied(acc, pubsub_name)  -- pubsub_name: PubSubName
+
+    requires: acc.status = open
+    requires: acc.family = publish
+
+    ensures:
+        PublishCapability.created(accessor: acc, pubsub_name: pubsub_name, status: open)
 }
 
 rule InvokeCapabilityAcquired {
-    when: DaprCapabilityInvokerRequested(cap)
-    -- Triggered by DaprCapability.invoke { body }.
+    when: AccessorApplied(acc, app_id)  -- app_id: AppId
+    -- Triggered by accessInvoke(appId). Derived Invoke clients (Invoke.derive) take the
+    -- AccessInvokeCapability and apply it per target app.
 
-    requires: cap.status = open
+    requires: acc.status = open
+    requires: acc.family = invoke
 
     ensures:
-        InvokeCapability.created(
-            capability: cap,
-            status: open
-        )
+        InvokeCapability.created(accessor: acc, app_id: app_id, status: open)
 }
 
 rule SecretsCapabilityAcquired {
-    when: DaprCapabilitySecretsRequested(cap, store_name)
-    -- Triggered by DaprCapability.secrets(store_name) { body }.
+    when: AccessorApplied(acc, store_name)  -- store_name: SecretStoreName
 
-    requires: cap.status = open
+    requires: acc.status = open
+    requires: acc.family = secrets
 
     ensures:
-        SecretsCapability.created(
-            capability: cap,
-            store_name: store_name,
-            status: open
-        )
+        SecretsCapability.created(accessor: acc, store_name: store_name, status: open)
 }
 
-rule ConfigCapabilityAcquired {
-    when: DaprCapabilityConfigRequested(cap, store_name)
-    -- Triggered by DaprCapability.configuration(store_name) { body }.
+rule ConfigurationCapabilityAcquired {
+    when: AccessorApplied(acc, store_name)  -- store_name: ConfigurationStoreName
 
-    requires: cap.status = open
+    requires: acc.status = open
+    requires: acc.family = configuration
 
     ensures:
-        ConfigurationCapability.created(
-            capability: cap,
-            store_name: store_name,
-            status: open
-        )
+        ConfigurationCapability.created(accessor: acc, store_name: store_name, status: open)
 }
 
-rule BindingCapabilityAcquired {
-    when: DaprCapabilityBindingRequested(cap, binding_name)
-    -- Triggered by DaprCapability.bindings(binding_name) { body }.
+rule BindingsCapabilityAcquired {
+    when: AccessorApplied(acc, binding_name)  -- binding_name: BindingName
 
-    requires: cap.status = open
+    requires: acc.status = open
+    requires: acc.family = bindings
 
     ensures:
-        BindingsCapability.created(
-            capability: cap,
-            binding_name: binding_name,
-            status: open
-        )
+        BindingsCapability.created(accessor: acc, binding_name: binding_name, status: open)
 }
 
 rule LockCapabilityAcquired {
-    when: DaprCapabilityLockRequested(cap, store_name)
-    -- Triggered by DaprCapability.lock(store_name) { body }.
+    when: AccessorApplied(acc, store_name)  -- store_name: LockStoreName
 
-    requires: cap.status = open
+    requires: acc.status = open
+    requires: acc.family = lock
 
     ensures:
-        LockCapability.created(
-            capability: cap,
-            store_name: store_name,
+        LockCapability.created(accessor: acc, store_name: store_name, status: open)
+}
+
+rule CryptoCapabilityAcquired {
+    when: AccessorApplied(acc, component_name)  -- component_name: CryptoComponentName
+
+    requires: acc.status = open
+    requires: acc.family = crypto
+
+    ensures:
+        CryptoCapability.created(accessor: acc, component_name: component_name, status: open)
+}
+
+rule ActorTypeCapabilityAcquired {
+    when: AccessorApplied(acc, actor_type)  -- actor_type: ActorType
+
+    requires: acc.status = open
+    requires: acc.family = actor
+
+    ensures:
+        ActorTypeCapability.created(accessor: acc, actor_type: actor_type, status: open)
+}
+
+rule ActorCapabilityAcquired {
+    when: ActorTypeApplied(type_cap, actor_id)  -- actor_id: ActorId
+    -- Triggered by actorTypeCapability(actorId).
+
+    requires: type_cap.status = open
+
+    ensures:
+        ActorCapability.created(
+            type_capability: type_cap,
+            actor_type: type_cap.actor_type,
+            actor_id: actor_id,
             status: open
         )
+}
+
+rule WorkflowInstanceCapabilityAcquired {
+    when: AccessorApplied(acc, instance_id)  -- instance_id: WorkflowInstanceId
+    -- Triggered by accessWorkflow(instanceId), typically with the id returned by start/startWithId.
+
+    requires: acc.status = open
+    requires: acc.family = workflow
+
+    ensures:
+        WorkflowInstanceCapability.created(accessor: acc, instance_id: instance_id, status: open)
+}
+
+rule JobCapabilityAcquired {
+    when: AccessorApplied(acc, job_name)  -- job_name: JobName
+    -- JVM only. Derived Jobs clients (Jobs.derive) take the AccessJobsCapability and apply
+    -- it per job name.
+
+    requires: acc.status = open
+    requires: acc.family = jobs
+
+    ensures:
+        JobCapability.created(accessor: acc, job_name: job_name, status: open)
+}
+
+rule ConversationCapabilityAcquired {
+    when: AccessorApplied(acc, component_name)  -- component_name: ConversationComponentName
+    -- JVM only.
+
+    requires: acc.status = open
+    requires: acc.family = conversation
+
+    ensures:
+        ConversationCapability.created(accessor: acc, component_name: component_name, status: open)
 }
 
 -- ---- Capability Closure (cascade from scope) ----
 
-rule CapabilitiesClosedWithScope {
+rule AccessorsClosedWithScope {
     when: dc: DaprCapability.status transitions_to closed
 
     ensures:
-        for cap in StateCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in PublishCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in InvokeCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in SecretsCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in ConfigurationCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in BindingsCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in LockCapability where cap.capability = dc:
-            cap.status = closed
+        for acc in CapabilityAccessor where acc.capability = dc:
+            acc.status = closed
+}
+
+rule CapabilitiesClosedWithAccessor {
+    when: acc: CapabilityAccessor.status transitions_to closed
+
+    ensures:
+        for c in StateCapability where c.accessor = acc:
+            c.status = closed
+        for c in PublishCapability where c.accessor = acc:
+            c.status = closed
+        for c in InvokeCapability where c.accessor = acc:
+            c.status = closed
+        for c in SecretsCapability where c.accessor = acc:
+            c.status = closed
+        for c in ConfigurationCapability where c.accessor = acc:
+            c.status = closed
+        for c in BindingsCapability where c.accessor = acc:
+            c.status = closed
+        for c in LockCapability where c.accessor = acc:
+            c.status = closed
+        for c in CryptoCapability where c.accessor = acc:
+            c.status = closed
+        for c in ActorTypeCapability where c.accessor = acc:
+            c.status = closed
+        for c in WorkflowInstanceCapability where c.accessor = acc:
+            c.status = closed
+        for c in JobCapability where c.accessor = acc:
+            c.status = closed
+        for c in ConversationCapability where c.accessor = acc:
+            c.status = closed
+}
+
+rule ActorCapabilitiesClosedWithType {
+    when: tc: ActorTypeCapability.status transitions_to closed
+
+    ensures:
+        for c in ActorCapability where c.type_capability = tc:
+            c.status = closed
 }
 
 -- ---- State Operations ----
@@ -583,6 +841,7 @@ rule StateGet {
 
     ensures:
         -- Returns Option[T]: None when key is absent, Some(decoded) when present.
+        -- An optional StateConsistency (default: StateConsistency.Default) is forwarded.
         -- On infrastructure failure the SDK's io.dapr.exceptions.DaprException
         -- (unchecked RuntimeException) propagates; no library wrapper is added.
         StateGetCompleted(result: StateEntry.created(value: any, etag: any))
@@ -600,6 +859,8 @@ rule StateSave {
 
 rule StateSaveWithETag {
     when: StateSaveWithETagRequested(cap, key, value, etag)
+    -- Optional metadata, StateConsistency (default Default) and StateConcurrency
+    -- (default FirstWrite) are forwarded to the sidecar.
 
     requires: cap.status = open
 
@@ -622,6 +883,7 @@ rule StateDelete {
 
 rule StateDeleteWithETag {
     when: StateDeleteWithETagRequested(cap, key, etag)
+    -- Optional StateConsistency (default Default) and StateConcurrency (default FirstWrite).
 
     requires: cap.status = open
 
@@ -703,26 +965,29 @@ rule PubSubBulkPublish {
 }
 
 -- ---- Service Invocation ----
+-- The target app is cap.app_id, fixed when the InvokeCapability was obtained.
 
 rule ServiceInvoke {
-    when: ServiceInvokeRequested(cap, app_id, method, data)
+    when: ServiceInvokeRequested(cap, method, data, http_method, metadata)
+    -- http_method defaults to HttpMethod.Post; metadata defaults to empty.
 
     requires: cap.status = open
 
     ensures:
-        if DaprServiceResponds(app_id, method):
+        if DaprServiceResponds(cap.app_id, method):
             ServiceInvokeCompleted(response: any)
         else:
             DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
 }
 
 rule ServiceInvokeGet {
-    when: ServiceInvokeGetRequested(cap, app_id, method)
+    when: ServiceInvokeGetRequested(cap, method)
+    -- Body-less overload invoke[Resp](method): HTTP GET, no metadata.
 
     requires: cap.status = open
 
     ensures:
-        if DaprServiceResponds(app_id, method):
+        if DaprServiceResponds(cap.app_id, method):
             ServiceInvokeCompleted(response: any)
         else:
             DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
@@ -731,13 +996,13 @@ rule ServiceInvokeGet {
 -- ---- Secrets ----
 
 rule SecretsGet {
-    when: SecretsGetRequested(cap, key)
+    when: SecretsGetRequested(cap, key, metadata)
 
     requires: cap.status = open
 
     ensures:
         if DaprSecretExists(cap.store_name, key):
-            SecretsGetCompleted(value: Some(String))
+            SecretsGetCompleted(value: Some(SecretValue))
         else:
             -- Key absent or store returns empty: SecretsCapability.get returns None (no exception)
             SecretsGetCompleted(value: None)
@@ -745,28 +1010,28 @@ rule SecretsGet {
 }
 
 rule SecretsGetBulk {
-    when: SecretsGetBulkRequested(cap)
+    when: SecretsGetBulkRequested(cap, metadata)
 
     requires: cap.status = open
 
     ensures:
-        SecretsGetBulkCompleted(values: Map<String, String>)
+        SecretsGetBulkCompleted(values: Map<SecretKey, SecretValue>)
 }
 
 -- ---- Configuration ----
 
 rule ConfigGet {
-    when: ConfigGetRequested(cap, keys)
+    when: ConfigGetRequested(cap, keys, metadata)
 
     requires: cap.status = open
     -- empty keys list is accepted; returns empty map
 
     ensures:
-        ConfigGetCompleted(items: Map<String, ConfigurationItem>)
+        ConfigGetCompleted(items: Map<ConfigurationKey, ConfigurationItem>)
 }
 
 rule ConfigSubscribe {
-    when: ConfigSubscribeRequested(cap, keys, on_change)
+    when: ConfigSubscribeRequested(cap, keys, metadata, on_change)
     -- on_change is a callback invoked on every config update from the sidecar
 
     requires: cap.status = open
@@ -777,9 +1042,10 @@ rule ConfigSubscribe {
             keys: keys,
             subscription: AutoCloseable
         )
+        -- subscription carries ^{cap}: it cannot outlive the ConfigurationCapability
         -- subscription.close() stops the streaming subscription
         -- on_change is called on a background thread for each update
-        -- If the scope is closed, the subscription is implicitly stopped
+        -- If the scope is closed, the client is closed and the stream ends with it
 }
 
 -- ---- Inbound Dispatch (DaprApp) ----
@@ -790,16 +1056,21 @@ rule DaprAppServed {
     when: DaprRuntime.serve returns app: DaprApp
 
     ensures:
+        -- serve first calls app.validateOrThrow(); an invalid app raises
+        -- DaprAppValidationException before the port is bound.
         for s in app.subscriptions:
             PubSubSubscription.registered(
                 pubsub_name: s.pubsub_name,
                 topic: s.topic,
-                route: s.route
+                route: s.route,
+                dead_letter_topic: s.dead_letter_topic
             )
         for inv in app.invokeRoutes:
             InvokeHandler.registered(path: "/" + inv.method_name.value)
         for bin in app.bindings:
             BindingHandler.registered(path: "/" + bin.binding_name.value)
+        for job in app.jobs:
+            JobHandler.registered(path: "/job/" + job.name.value)
         -- GET /dapr/subscribe returns all registered subscriptions before any message is handled
 }
 
@@ -840,6 +1111,18 @@ rule BindingEventDelivered {
             SidecarErrorReturned()
 }
 
+rule JobTriggerDelivered {
+    when: SidecarDeliversJobTrigger(job_name, payload_json)
+    -- Sidecar POSTs to /job/<name>. The matching JobRoute (by name) provides the handler and codec.
+
+    ensures:
+        let handler = job.handler  -- job.Payload -> Unit
+        if payload_json decodes and handler(payload) completes:
+            SidecarAcknowledged()
+        if payload_json decode fails or handler throws:
+            SidecarErrorReturned()
+}
+
 rule InvokeReceived {
     when: SidecarDeliversInvocation(method_name, request_body_json)
     -- The matching InvokeRoute (by method_name) provides the handler and codecs.
@@ -855,7 +1138,8 @@ rule InvokeReceived {
 -- ---- Distributed Lock ----
 
 rule LockTryLock {
-    when: LockTryLockRequested(cap, resourceId, lockOwner, expirySeconds)
+    when: LockTryLockRequested(cap, resourceId, lockOwner, expiry)
+    -- expiry is a FiniteDuration
 
     requires: cap.status = open
 
@@ -887,7 +1171,7 @@ rule LockUnlock {
 -- ---- Output Bindings ----
 
 rule BindingInvoke {
-    when: BindingInvokeRequested(cap, operation, data)
+    when: BindingInvokeRequested(cap, operation, data, metadata)
 
     requires: cap.status = open
 
@@ -985,28 +1269,42 @@ rule ActorDeactivated {
 ------------------------------------------------------------
 
 invariant ScopeContainment {
-    -- A sub-capability with status = open cannot outlive its DaprCapability.
-    -- If DaprCapability.status = closed then all sub-capabilities derived from it
-    -- are also closed. Enforced by the Scala capture checker:
-    -- sub-capability types carry ^{capability}, preventing escape.
-    -- Mechanically: all capability traits extend scala.caps.ExclusiveCapability
-    -- (the exclusive — non-shareable — subtype of the sealed scala.caps.Capability).
-    -- DaprCapability factory methods declare return types as StateCapability^{this} etc.,
-    -- binding each sub-capability's lifetime to the parent via the CC ownership model.
-    for cap in StateCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in PublishCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in InvokeCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in SecretsCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in ConfigurationCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in BindingsCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in LockCapability where cap.status = open:
-        cap.capability.status = open
+    -- No accessor or sub-capability with status = open can outlive its parent rung.
+    -- If DaprCapability.status = closed then every accessor derived from it is closed,
+    -- and every rung-3 capability derived from a closed accessor is closed.
+    -- Enforced statically by the Scala capture checker, not by a runtime check:
+    -- all capability traits extend scala.caps.ExclusiveCapability, DaprCapability's
+    -- accessors return Access*Capability^{this}, and every accessor's apply returns
+    -- its rung-3 capability ^{this} (ActorTypeCapability.apply likewise returns
+    -- ActorCapability^{this}), so each capability's lifetime is bound to its parent.
+    for acc in CapabilityAccessor where acc.status = open:
+        acc.capability.status = open
+    for c in StateCapability where c.status = open:
+        c.accessor.status = open
+    for c in PublishCapability where c.status = open:
+        c.accessor.status = open
+    for c in InvokeCapability where c.status = open:
+        c.accessor.status = open
+    for c in SecretsCapability where c.status = open:
+        c.accessor.status = open
+    for c in ConfigurationCapability where c.status = open:
+        c.accessor.status = open
+    for c in BindingsCapability where c.status = open:
+        c.accessor.status = open
+    for c in LockCapability where c.status = open:
+        c.accessor.status = open
+    for c in CryptoCapability where c.status = open:
+        c.accessor.status = open
+    for c in ActorTypeCapability where c.status = open:
+        c.accessor.status = open
+    for c in ActorCapability where c.status = open:
+        c.type_capability.status = open
+    for c in WorkflowInstanceCapability where c.status = open:
+        c.accessor.status = open
+    for c in JobCapability where c.status = open:
+        c.accessor.status = open
+    for c in ConversationCapability where c.status = open:
+        c.accessor.status = open
 }
 
 invariant ClientLifetime {
@@ -1026,10 +1324,11 @@ invariant ScopeLifetime {
 -- Non-empty identifier constraints (not machine-expressible as a state invariant;
 -- enforced by constructors at runtime):
 --   Non-empty: StateStoreName, LockStoreName, PubSubName, Topic, AppId, InvokeMethodName, ActorMethodName, BindingName, SecretStoreName,
---              ConfigurationStoreName, LockResourceId, LockOwner, BindingOperation, Route,
---              WorkflowName, ActorType, ReminderName, TimerName, EventName — all reject the
+--              ConfigurationStoreName, CryptoComponentName, CryptoKeyName, ConversationComponentName,
+--              LockResourceId, LockOwner, BindingOperation, Route,
+--              WorkflowName, ActorType, ReminderName, TimerName, EventName, JobName — all reject the
 --              empty string at construction time via require().
---   Accept any string (including empty): StateStoreKey, ActorStateKey, ETag, SecretKey, ConfigurationKey,
+--   Accept any string (including empty): StateStoreKey, ActorStateKey, ETag, SecretKey, SecretValue, ConfigurationKey,
 --              BulkEntryId, WorkflowInstanceId, ActorId.
 
 ------------------------------------------------------------
@@ -1043,7 +1342,7 @@ actor UserCode {
 }
 
 actor LibraryAuthor {
-    -- Non-safe-mode Scala code in internal/ package and DaprRuntime/JsonCodec.
+    -- Non-safe-mode Scala code in internal/ package and Dapr/JsonCodec.
     -- Responsible for @scala.caps.assumeSafe correctness.
     -- Annotates classes and objects with @scala.caps.assumeSafe (from scala.caps package)
     -- to permit safe-mode user code to call them through the public trait interfaces.
@@ -1056,86 +1355,104 @@ actor LibraryAuthor {
 ------------------------------------------------------------
 
 surface DaprRuntimeSurface {
+    -- The entry point is class Dapr(config: DaprConfig = DaprConfig()).
     facing user: UserCode
 
     contracts:
         demands JsonCodec
 
     exposes:
-        run: (body: DaprCapability ?=> Any) -> Any
+        run: (body: DaprCapability ?=> T) -> T
         -- Acquires a DaprClient, provides DaprCapability to body, releases on exit.
         -- Propagates exceptions after releasing resources.
-        -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
-        -- user code can call it without violating safe-mode constraints.
 
-        serve: (app_port: Int, body: DaprCapability ?=> DaprApp) -> Unit
-        -- Starts an HTTP server on app_port; body returns a DaprApp describing
-        -- all inbound handlers.  The server is started from the returned DaprApp,
-        -- then blocks until the JVM shuts down or the calling thread is interrupted.
+        serve: (body: DaprCapability ?=> DaprApp) -> Nothing
+        -- Runs inside run: validates the returned DaprApp (validateOrThrow), starts an HTTP
+        -- server on config.appServer.port, then blocks until the JVM shuts down or the
+        -- calling thread is interrupted. Never returns normally.
         -- DaprClient lifecycle matches the server's lifetime.
+        --
+        -- Scala.js only: runAsync(body) -> js.Promise[T] and serveAsync(body) -> js.Promise[Nothing]
+        -- are program-edge conveniences.
 
     @guarantee ResourceCleanup
-        -- DaprRuntime.run and serve always close the DaprClient
-        -- on exit, whether the body completes normally or throws.
+        -- Dapr.run and serve always close the DaprClient (and any lazily created actor /
+        -- workflow clients) on exit, whether the body completes normally or throws.
 }
 
 surface DaprCapabilitySurface {
-    -- Transformer methods on the DaprCapability companion object.
-    -- DaprCapability is provided as a context parameter inside DaprRuntime.run / serve bodies.
-    -- Each method acquires the requested sub-capability and provides it as an implicit
-    -- context parameter to body (transformer / context-function pattern), rather than
-    -- returning the sub-capability directly.
+    -- Rung 1. DaprCapability is provided as a context parameter inside Dapr(config).run / serve bodies.
     facing user: UserCode
 
     exposes:
-        state:   (store_name: StateStoreName,       body: StateCapability ?=> T)              -> T (using DaprCapability)
-        pubsub:  (pubsub_name: PubSubName,     body: PublishCapability ?=> T)             -> T (using DaprCapability)
-        invoke: (                             body: InvokeCapability ?=> T)  -> T (using DaprCapability)
-        secrets: (store_name: SecretStoreName, body: SecretsCapability ?=> T)            -> T (using DaprCapability)
-        config:  (store_name: ConfigurationStoreName, body: ConfigurationCapability ?=> T)      -> T (using DaprCapability)
-        binding: (binding_name: BindingName,   body: BindingsCapability ?=> T)           -> T (using DaprCapability)
-        lock:    (store_name: LockStoreName,       body: LockCapability ?=> T)    -> T (using DaprCapability)
-        -- Sub-capabilities carry the DaprCapability lifetime (CC: ^{capability}).
-        -- body is a context function; the sub-capability is passed as an implicit and
-        -- is not accessible outside body's lexical scope.
-        -- Calling these methods when DaprCapability is closed results in sub-capabilities
-        -- that reject all operations (ClosedCapabilityRejection invariant).
+        -- Argument-less accessors (rung 2); each return type carries ^{this}.
+        state:         () -> AccessStateCapability
+        publish:       () -> AccessPublishCapability
+        invoke:        () -> AccessInvokeCapability
+        secrets:       () -> AccessSecretsCapability
+        configuration: () -> AccessConfigurationCapability
+        bindings:      () -> AccessBindingsCapability
+        lock:          () -> AccessLockCapability
+        actor:         () -> AccessActorCapability
+        workflow:      () -> AccessWorkflowCapability
+        crypto:        () -> AccessCryptoCapability
+        jobs:          () -> AccessJobsCapability          -- JVM only
+        conversation:  () -> AccessConversationCapability  -- JVM only
         --
-        -- Intentionally omitted from this surface (pending separate specs):
-        --   actor(actorType, actorId) { body: ActorCapability ?=> T }  — Dapr actor framework
-        --   workflow { body: WorkflowCapability ?=> T }                 — Dapr workflow orchestration
+        -- Companion-object transformers: acquire from the ambient DaprCapability and pass the
+        -- result to body as a context parameter (body: X ?=> T, result T).
+        DaprCapability.state:         (store_name: StateStoreName,                body: StateCapability ?=> T)         -> T
+        DaprCapability.publish:       (pubsub_name: PubSubName,                   body: PublishCapability ?=> T)       -> T
+        DaprCapability.invoke:        (                                           body: AccessInvokeCapability ?=> T)  -> T
+        DaprCapability.secrets:       (store_name: SecretStoreName,               body: SecretsCapability ?=> T)       -> T
+        DaprCapability.configuration: (store_name: ConfigurationStoreName,        body: ConfigurationCapability ?=> T) -> T
+        DaprCapability.bindings:      (binding_name: BindingName,                 body: BindingsCapability ?=> T)      -> T
+        DaprCapability.lock:          (store_name: LockStoreName,                 body: LockCapability ?=> T)          -> T
+        DaprCapability.actor:         (actor_type: ActorType, actor_id: ActorId,  body: ActorCapability ?=> T)         -> T
+        DaprCapability.workflow:      (                                           body: AccessWorkflowCapability ?=> T) -> T
+        DaprCapability.crypto:        (component_name: CryptoComponentName,       body: CryptoCapability ?=> T)        -> T
+        DaprCapability.jobs:          (                                           body: AccessJobsCapability ?=> T)    -> T   -- JVM only
+        DaprCapability.conversation:  (component_name: ConversationComponentName, body: ConversationCapability ?=> T) -> T   -- JVM only
+        -- invoke, workflow and jobs hand over the rung-2 accessor (one handle covers many
+        -- app ids / instances / job names); the others hand over the rung-3 capability.
 
     @guarantee CapabilityLifetime
-        -- Every sub-capability provided to a body is open iff the DaprCapability is open
+        -- Every accessor and sub-capability is open iff its parent rung is open
         -- (ScopeContainment invariant).
 
-    @guarantee ClosedCapabilityRejection
-        -- Operations on closed sub-capabilities are rejected.
-        -- Any operation requested on a sub-capability with status = closed results in
-        -- IllegalStateException, not a DAPR call.
-        -- Enforced at runtime by impl classes annotated @scala.caps.assumeSafe
-        -- (from the scala.caps package), which permits safe-mode user code to call them.
+    @guarantee StaticEscapePrevention
+        -- Closed capabilities are unreachable from well-typed safe-mode code: the ^{this}
+        -- capture sets stop any accessor or sub-capability from escaping its scope.
+        -- There is no runtime closed-state check; a use after close (only possible by
+        -- bypassing the capture checker) reaches a closed SDK client and fails with the
+        -- SDK's own exception.
+
+    @guarantee PlatformSurface
+        -- jobs and conversation (accessors and transformers) exist only on the JVM.
+        -- On Scala.js they are absent at compile time; there is no runtime stub.
 }
 
 surface StateCapabilitySurface {
+    -- dapr4s.state. AccessStateCapability.apply(store_name: StateStoreName) -> StateCapability.
     facing user: UserCode
 
     contracts:
         demands JsonCodec
 
     exposes:
-        get: (key: StateStoreKey) -> Any
-        -- Returns Option[T]; None if key not found
-        get_with_etag: (key: StateStoreKey) -> StateEntry
+        store_name: StateStoreName
+        get: (key: StateStoreKey, consistency: StateConsistency) -> Any
+        -- Returns Option[T]; None if key not found. consistency defaults to Default.
+        get_with_etag: (key: StateStoreKey, consistency: StateConsistency) -> StateEntry
         -- Returns StateEntry with value and current ETag
         get_bulk: (keys: List<StateStoreKey>) -> Map<StateStoreKey, StateEntry>
         -- Batch fetch; missing keys return StateEntry with value = absent
         save: (key: StateStoreKey, value: Any) -> Unit
-        save_with_etag: (key: StateStoreKey, value: Any, etag: ETag) -> Option<ETagMismatchException>
+        save_with_etag: (key: StateStoreKey, value: Any, etag: ETag, metadata: Map<MetadataKey, MetadataValue>, consistency: StateConsistency, concurrency: StateConcurrency) -> Option<ETagMismatchException>
         -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
         save_bulk: (entries: List<StateKeyValue>) -> Unit
         delete: (key: StateStoreKey) -> Unit
-        delete_with_etag: (key: StateStoreKey, etag: ETag) -> Option<ETagMismatchException>
+        delete_with_etag: (key: StateStoreKey, etag: ETag, consistency: StateConsistency, concurrency: StateConcurrency) -> Option<ETagMismatchException>
         -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
         transaction: (ops: List<StateOp>) -> Unit
         query_state: (query: StateQuery) -> List<StateEntry>
@@ -1151,14 +1468,16 @@ surface StateCapabilitySurface {
 }
 
 surface PubSubCapabilitySurface {
+    -- dapr4s.publish. AccessPublishCapability.apply(pubsub_name: PubSubName) -> PublishCapability.
     facing user: UserCode
 
     contracts:
         demands JsonCodec
 
     exposes:
+        pubsub_name: PubSubName
         publish: (topic: Topic, data: Any) -> Unit
-        publish_with_metadata: (topic: Topic, data: Any, metadata: Map<String, String>) -> Unit
+        publish_with_metadata: (topic: Topic, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
         bulk_publish: (topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
         -- Publishes multiple entries in a single call; returns list of failed entry IDs
 
@@ -1168,31 +1487,42 @@ surface PubSubCapabilitySurface {
 }
 
 surface InvokeSurface {
+    -- dapr4s.invoke. AccessInvokeCapability.apply(app_id: AppId) -> InvokeCapability.
+    -- The InvokeCapability is bound to app_id; its methods take no AppId.
     facing user: UserCode
 
     contracts:
         demands JsonCodec
 
     exposes:
-        invoke: (app_id: AppId, method: InvokeMethodName, data: Any) -> Any
-        invoke_get: (app_id: AppId, method: InvokeMethodName) -> Any
+        app_id: AppId
+        invoke: (method: InvokeMethodName, data: Any, http_method: HttpMethod, metadata: Map<MetadataKey, MetadataValue>) -> Any
+        -- Req inferred from data; Resp given at the call site (clause interleaving).
+        -- http_method defaults to Post; metadata defaults to empty.
+        invoke_get: (method: InvokeMethodName) -> Any
+        -- Code overload invoke[Resp](method): no body, HTTP GET, no metadata.
 }
 
 surface SecretsSurface {
+    -- dapr4s.secrets. AccessSecretsCapability.apply(store_name: SecretStoreName) -> SecretsCapability.
     facing user: UserCode
 
     exposes:
-        get: (key: SecretKey) -> String?   -- None when key absent; Some(value) when found
-        get_bulk: () -> Map<SecretKey, String>
+        store_name: SecretStoreName
+        get: (key: SecretKey, metadata: Map<MetadataKey, MetadataValue>) -> SecretValue?   -- None when key absent
+        get_bulk: (metadata: Map<MetadataKey, MetadataValue>) -> Map<SecretKey, SecretValue>
 }
 
 surface ConfigurationSurface {
+    -- dapr4s.configuration. AccessConfigurationCapability.apply(store_name) -> ConfigurationCapability.
     facing user: UserCode
 
     exposes:
-        get: (keys: List<ConfigurationKey>) -> Map<ConfigurationKey, ConfigurationItem>
-        subscribe: (keys: List<ConfigurationKey>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
-        -- Streams config changes from sidecar; close the AutoCloseable to stop
+        store_name: ConfigurationStoreName
+        get: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>) -> Map<ConfigurationKey, ConfigurationItem>
+        subscribe: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
+        -- Streams config changes from sidecar; close the AutoCloseable to stop.
+        -- The AutoCloseable carries ^{this}.
 }
 
 surface DaprAppSurface {
@@ -1202,21 +1532,24 @@ surface DaprAppSurface {
         demands JsonCodec
 
     exposes:
-        -- Two overloads: default route is "/" + topic.value
-        Subscription: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Subscription
-        Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
+        -- Two overloads: default route is "/" + topic.value; dead_letter_topic defaults to None
+        Subscription: (pubsub_name: PubSubName, topic: Topic, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
+        Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
         -- Simple overload: handler receives only the decoded request body.
         InvokeRoute: (method_name: InvokeMethodName, handler: Req -> Resp) -> InvokeRoute
         -- Rich overload: handler receives the full InvokeRequest envelope (method name, HTTP verb, body).
         InvokeRoute.withRequest: (method_name: InvokeMethodName, handler: InvokeRequest<Req> -> Resp) -> InvokeRoute
         BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
-        DaprApp: (subscriptions: List<Subscription>, invokeRoutes: List<InvokeRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>) -> DaprApp
+        JobRoute: (name: JobName, handler: Payload -> Unit) -> JobRoute
+        DaprApp: (subscriptions: List<Subscription>, invokeRoutes: List<InvokeRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>, jobs: List<JobRoute>) -> DaprApp
         ++: (DaprApp, DaprApp) -> DaprApp
-        ActorMethodRoute: (method_name: InvokeMethodName, handler: Req -> Resp) -> ActorMethodRoute
+        validationErrors: (DaprApp) -> List<DaprAppValidationError>
+        validateOrThrow: (DaprApp) -> DaprApp
+        ActorMethodRoute: (method_name: ActorMethodName, handler: Req -> Resp) -> ActorMethodRoute
         ActorReminderRoute: (reminder_name: ReminderName, handler: Payload -> Unit) -> ActorReminderRoute
         ActorTimerRoute: (timer_name: TimerName, handler: Payload -> Unit) -> ActorTimerRoute
         ActorRoutes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes
-        ActorDefinition: (actor_type: ActorType, build: (ActorId, ActorContext) -> ActorRoutes) -> ActorDefinition
+        ActorDefinition: (actor_type: ActorType, build: ActorId => ActorContext ?=> ActorRoutes) -> ActorDefinition
         -- Handler lambdas may capture sub-capabilities from the enclosing DaprCapability
         -- transformer bodies.
         -- The recommended pattern is: business logic in explicit methods with
@@ -1225,43 +1558,139 @@ surface DaprAppSurface {
         -- dispatch to the implicit instance, so callers never name the capability
         -- value.  Methods are passed as direct handler references (no wrapping lambda)
         -- because no library method carries a throws annotation.
-        -- Sub-capabilities are acquired via DaprCapability.state/pubsub/etc. transformers.
+        -- Sub-capabilities are acquired via the DaprCapability accessors or the
+        -- DaprCapability.state/publish/etc. companion transformers.
 
     @guarantee SubscriptionDiscovery
         -- GET /dapr/subscribe returns all registered pub/sub subscriptions
         -- before any request is handled
 
     @guarantee CapabilityLifetime
-        -- Sub-capabilities captured by handler lambdas share the DaprCapability lifetime.
-        -- Invocations after DaprCapability closure result in IllegalStateException
-        -- (ClosedCapabilityRejection invariant).
+        -- Sub-capabilities captured by handler lambdas share the DaprCapability lifetime
+        -- (ScopeContainment invariant).
 
     @guarantee Composability
         -- DaprApp ++ merges all lists from both apps; no handler is lost or duplicated.
+
+    @guarantee StartupValidation
+        -- serve rejects an app with duplicate names/routes or path collisions with
+        -- DaprAppValidationException before binding the port.
 }
 
 surface BindingsSurface {
+    -- dapr4s.bindings. AccessBindingsCapability.apply(binding_name: BindingName) -> BindingsCapability.
     facing user: UserCode
 
     contracts:
         demands JsonCodec
 
     exposes:
-        invoke: (operation: BindingOperation, data: T) -> T?
+        binding_name: BindingName
+        invoke: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Any?
         -- Returns Option[Resp]; None if binding has no response.
-        -- T requires JsonCodec; actual request and response types are caller-determined.
-        invoke_one_way: (operation: BindingOperation, data: Any) -> Unit
+        -- Req inferred from data; Resp given at the call site.
+        invoke_one_way: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
         -- Fire-and-forget binding invocation; no response expected
 }
 
 surface LockSurface {
+    -- dapr4s.lock. AccessLockCapability.apply(store_name: LockStoreName) -> LockCapability.
     facing user: UserCode
 
     exposes:
-        try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int) -> Boolean
+        store_name: LockStoreName
+        try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) -> Boolean
         -- Attempts to acquire lock; returns true if acquired, false if already held
         unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
         -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
+}
+
+surface CryptoSurface {
+    -- dapr4s.crypto. AccessCryptoCapability.apply(component_name) -> CryptoCapability.
+    facing user: UserCode
+
+    exposes:
+        component_name: CryptoComponentName
+        encrypt: (key_name: CryptoKeyName, plaintext: ByteArray, algorithm: KeyWrapAlgorithm) -> ByteArray
+        decrypt: (ciphertext: ByteArray) -> ByteArray
+        encrypt_string: (key_name: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm) -> ByteArray
+        decrypt_string: (ciphertext: ByteArray) -> String
+        -- Byte payloads are immutable ArraySeq[Byte].
+}
+
+surface ActorClientSurface {
+    -- dapr4s.actor. AccessActorCapability.apply(actor_type) -> ActorTypeCapability;
+    -- ActorTypeCapability.apply(actor_id) -> ActorCapability (each with ^{this}).
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        actor_type: ActorType
+        actor_id: ActorId
+        invoke: (method: ActorMethodName, data: Any) -> Any
+        -- Req inferred from data; Resp given at the call site.
+        invoke_no_body: (method: ActorMethodName) -> Any
+        -- Code overload invoke[Resp](method).
+        invoke_void: (method: ActorMethodName) -> Unit
+}
+
+surface WorkflowClientSurface {
+    -- dapr4s.workflow. AccessWorkflowCapability owns the launch operations and narrows to one
+    -- instance via apply(instance_id) -> WorkflowInstanceCapability^{this}.
+    -- Companion forwarders: AccessWorkflowCapability.start/startWithId and
+    -- WorkflowInstanceCapability.getStatus/suspend/... (using the ambient capability).
+    -- No fluent extension methods on WorkflowInstanceId exist.
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        -- AccessWorkflowCapability
+        start: (name: WorkflowName) -> WorkflowInstanceId
+        start_with_input: (name: WorkflowName, input: Any) -> WorkflowInstanceId
+        start_with_id: (name: WorkflowName, instance_id: WorkflowInstanceId) -> WorkflowInstanceId
+        start_with_id_and_input: (name: WorkflowName, instance_id: WorkflowInstanceId, input: Any) -> WorkflowInstanceId
+        -- (code: start / startWithId overloads with and without input)
+        -- WorkflowInstanceCapability (bound to instance_id; operations take no id)
+        instance_id: WorkflowInstanceId
+        get_status: () -> WorkflowSnapshot?
+        suspend: () -> Unit
+        resume: () -> Unit
+        terminate: () -> Unit
+        raise_event: (event_name: EventName, payload: Any) -> Unit
+        wait_for_completion: (timeout: FiniteDuration) -> WorkflowSnapshot?
+        purge: () -> Boolean
+}
+
+surface JobsSurface {
+    -- JVM only. dapr4s.jobs. AccessJobsCapability.apply(name: JobName) -> JobCapability^{this}.
+    -- JobCapability is bound to job_name; its operations take no name.
+    facing user: UserCode
+
+    contracts:
+        demands JsonCodec
+
+    exposes:
+        job_name: JobName
+        schedule: (data: Any, schedule: JobSchedule, due_time: Timestamp?, repeats: Integer?, ttl: Timestamp?) -> Unit
+        -- Recurring job; data is delivered to the matching JobRoute each time it fires.
+        schedule_once: (data: Any, due_time: Timestamp, ttl: Timestamp?) -> Unit
+        get: () -> JobDetails?
+        -- None if no job with this name exists.
+        delete: () -> Unit
+        -- No-op if the job does not exist.
+}
+
+surface ConversationSurface {
+    -- JVM only. dapr4s.conversation. AccessConversationCapability.apply(component_name) -> ConversationCapability.
+    facing user: UserCode
+
+    exposes:
+        component_name: ConversationComponentName
+        converse: (messages: List<ConversationMessage>, tools: List<ConversationTool>, tool_choice: ToolChoice?, temperature: Decimal?, context_id: ConversationContextId?, scrub_pii: Boolean) -> ConversationResponse
 }
 
 surface ActorContextSurface {
@@ -1281,14 +1710,14 @@ surface ActorContextSurface {
         remove: (key: ActorStateKey) -> Unit
 
         -- Reminders (persistent — survive actor deactivation/restart)
-        register_reminder: (name: ReminderName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit
+        register_reminder: (name: ReminderName, data: T, dueTime: FiniteDuration, period: Option<FiniteDuration>) -> Unit
         -- Registers a persistent callback; sidecar reactivates the actor to deliver it.
-        -- period = None means fire once; period = Some(d) means fire repeatedly every d.
+        -- period = None (default) means fire once; period = Some(d) means fire repeatedly every d.
         unregister_reminder: (name: ReminderName) -> Unit
         -- No-op if no reminder with name exists.
 
         -- Timers (non-persistent — lost on actor deactivation)
-        register_timer: (name: TimerName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit
+        register_timer: (name: TimerName, data: T, dueTime: FiniteDuration, period: Option<FiniteDuration>) -> Unit
         -- Registers a non-persistent callback; silently dropped if actor deactivates before it fires.
         unregister_timer: (name: TimerName) -> Unit
 
@@ -1312,8 +1741,8 @@ surface ActorContextSurface {
 -- Open Questions
 ------------------------------------------------------------
 
-open question "Should DaprRuntime support a custom DaprClient (e.g. for testing without sidecar)?"
--- Current design always creates a fresh client via DaprClientBuilder.
+open question "Should Dapr support a custom DaprClient (e.g. for testing without sidecar)?"
+-- Current design always creates a fresh client via DaprClientBuilder (JVM) from DaprConfig.
 -- An override for tests would allow passing a mock client.
 
 -- RESOLVED: StateCapability exposes queryState via DAPR state query API.
