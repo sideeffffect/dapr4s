@@ -2,7 +2,9 @@
 
 > Sources: Empirical probes (scala-cli 1.12.2 / 1.14.0, Node 22), scala-cli.virtuslab.org docs, VirtusLab/scala-cli releases & issues, Maven Central artifact probes, 2026-06-11; dep-scoping correction + deps-file pattern verified in the dapr4s cross-build restructure, 2026-06-12
 > Raw: [scala-cli cross-platform probe report](../../raw/scala-js/2026-06-11-scala-cli-crossplatform.md)
-> Updated: 2026-06-12
+> Updated: 2026-10-12
+
+> **Note (2026-10-12): dapr4s moved from scala-cli to sbt** ([PR #42](https://github.com/sideeffffect/dapr4s/pull/42)). This article stays as the record of the scala-cli build and remains valid for scala-cli users; for the sbt equivalents see dapr4s's `build.sbt` (sbt-scalajs-crossproject `CrossType.Pure` projects whose source directories point into the unchanged `src/{shared,jvm,js}` layout) and [ScalablyTyped Facades](scalablytyped-with-scala-cli.md) / [js.async, JSPI, Wasm](scala-js-async-jspi-wasm.md).
 
 ## Overview
 

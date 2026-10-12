@@ -2,7 +2,9 @@
 
 > Sources: scala-js.org release notes (1.17.0–1.21.0) and WebAssembly backend docs, scala-js/scala-js JSPI.scala, chromestatus.com, nodejs/node#60014, un-ts/synckit, typelevel/cats-effect#529, 2026-06-11; munit-on-Wasm+JSPI harness findings from the dapr4s JS integration suite (scala-cli 1.14.0, Node 25.5), 2026-06-12
 > Raw: [sync-looking APIs on Scala.js research report](../../raw/scala-js/2026-06-11-scalajs-async-jspi.md)
-> Updated: 2026-06-12
+> Updated: 2026-10-12
+
+> **Note (2026-10-12): dapr4s moved from scala-cli to sbt** ([PR #42](https://github.com/sideeffffect/dapr4s/pull/42)). This article stays as the record of the scala-cli build and remains valid for scala-cli users; for the sbt equivalents see "Wasm + JSPI under sbt" below.
 
 ## Overview
 
@@ -107,6 +109,23 @@ Wasm+JSPI integration tests under scala-cli genuinely work (dapr4s runs 8 suites
 - **`--test-only` is ineffective on the JS test runner**: the filter does not actually restrict which suites execute — everything linked runs (the JVM runner honours it). Harmless when the extra suites are fast and environment-free; rely on `--exclude` (source-level) for hard exclusion.
 - **npm deps in test runs need an ESM resolution hook**: scala-cli links the test module into a temp dir (`/tmp/...`) and runs Node there; ESM resolution of bare specifiers walks up from the *importing module's own path* — `NODE_PATH` and the CWD are ignored for ES modules — so `import '@dapr/dapr'` cannot reach the project's `node_modules`. Fix: `NODE_OPTIONS="--import /abs/path/hook.mjs"` where the hook calls `node:module`'s `register()` on a *separate* delegate file (hooks run on a dedicated loader thread; self-registration recurses) that retries failed bare-specifier resolutions with the repo root as parent (dapr4s: `scripts/js-it/node-resolve-hook.mjs` + `node-resolve-delegate.mjs`).
 - **`java.util.UUID.randomUUID()` does not link on Scala.js** — it reaches for `java.security.SecureRandom`, which the javalib does not provide; the failure is at link time, on both backends. Use a time+`js.Math.random()` scheme for test ids (or `crypto.randomUUID` via a facade if real UUIDs are needed).
+
+## Wasm + JSPI under sbt (dapr4s since 2026-10)
+
+- **Scala.js 1.22.0** made the Wasm backend stable and made JSPI an explicit linker feature:
+  `scalaJSLinkerConfig ~= (_.withModuleKind(ModuleKind.ESModule).withESFeatures(_.withESVersion(ESVersion.ES2022).withUseWebAssembly(true)).withWasmFeatures(_.withUseJSPI(true)))`.
+  Without `withUseJSPI(true)` linking fails with "Uses an async block without JSPI support in WebAssembly" —
+  the switch scala-cli never exposed (hence the old 1.14.0 pin). Engines: Node 25+ (Wasm 3.0 + JSPI by default).
+- With sbt the scala-cli harness workarounds disappear: no tmpfs wrapper (sbt links into the project's `target/`,
+  and runs `main.js`), no exit-code wrapper, no `--jar` link-classpath dance. `testOnly` filtering works too
+  (sbt filters on the sbt side), unlike scala-cli's `--test-only` on JS.
+- Node argv flags can be passed: `Test / jsEnv := new NodeJSEnv(NodeJSEnv.Config().withArgs(List("--import", hook)).withEnv(Map(...)))`.
+- **Footgun: `Test / parallelExecution` defaults to true, and sbt's Scala.js test adapter then runs one Node worker
+  per suite.** Suites that share one in-process server on fixed ports fail with `EADDRINUSE` in all but one worker
+  (seen as invoke 404s and actor "did not find address" placement timeouts). Set
+  `Test / parallelExecution := false` for such suites.
+- Keep orphan-await test sources in their own sbt project with the Wasm linker config, so the plain-JS unit-test
+  project never links them (the plain-JS linker wedge noted above).
 
 ## See Also
 

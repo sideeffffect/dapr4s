@@ -8,8 +8,8 @@
 // try the ".js" form, which Node's ESM resolver requires for a file import. The main facades
 // (@dapr/dapr, express, node) import package ROOTS, which resolve via the first candidate;
 // the testcontainers facades the JS integration suites use import deep submodules, which need
-// the ".js" retry. DAPR4S_REPO_ROOT is exported by scripts/test-js-integration.sh; the cwd
-// fallback covers manual invocations from the repo root.
+// the ".js" retry. DAPR4S_REPO_ROOT is set by the integrationJS test environment (build.sbt);
+// the cwd fallback covers manual invocations from the repo root.
 import { pathToFileURL } from "node:url";
 
 const repoRoot = process.env.DAPR4S_REPO_ROOT ?? process.cwd();

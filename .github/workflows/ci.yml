@@ -13,79 +13,55 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: coursier/cache-action@v8
-    # scala-cli pinned to 1.14.0. Newer versions (1.17+/1.18, Scala.js 1.22 linker) no longer
-    # raise the ES version for --js-emit-wasm and require an explicit JSPI linker switch that
-    # scala-cli does not expose, so the Wasm integration leg cannot link js.async/js.await
-    # ("Uses an async block without JSPI support in WebAssembly"). Unpin once scala-cli has a
-    # JSPI option. Pinned on every job so all jobs build with the same toolchain.
-    - uses: VirtusLab/scala-cli-setup@v1
+    - uses: actions/setup-java@v5
       with:
-        power: true
-        scala-cli-version: 1.14.0
+        distribution: zulu
+        java-version: 25
+    - uses: sbt/setup-sbt@v1
+    - uses: coursier/cache-action@v8
     - name: Check formatting (scalafmt)
       run: |
-        # `scala-cli fmt --check` reports a scalafmt parse error but still exits 0,
-        # which would silently mask unformatted files (a parse error aborts the scan
-        # early). Files using experimental capture-checking `^{...}` syntax that
-        # scalafmt can't parse are listed in .scalafmt.conf project.excludeFilters;
-        # if a new such file is added without excluding it, fail loudly here rather
-        # than let the whole check pass blind.
-        scala-cli fmt --check . 2>&1 | tee fmt.log
-        if grep -qiE 'ParseError|illegal start of' fmt.log; then
+        # Files using experimental capture-checking `^{...}` syntax that scalafmt can't parse are
+        # listed in .scalafmt.conf project.excludeFilters. If a new such file is added without
+        # excluding it, fail loudly here with a pointer to the fix. (Unlike `scala-cli fmt --check`,
+        # which exited 0 on a parse error, sbt-scalafmt fails the task; the grep turns that into an
+        # actionable message and still guards against a tool version that only logs it.)
+        set +e -o pipefail
+        sbt -Dsbt.color=false scalafmtCheckAll scalafmtSbtCheck 2>&1 | tee fmt.log
+        status=$?
+        if grep -qiE 'ParseError|illegal start of|error: \[dialect' fmt.log; then
           echo "::error::scalafmt hit a parse error — add the offending file to .scalafmt.conf project.excludeFilters"
           exit 1
         fi
+        exit $status
 
-  # One matrix leg per platform. Adding Scala Native one day should be a new include
-  # entry (platform: native, platform-flags: '--native', ...), not a new job.
+  # One matrix leg per platform. Adding Scala Native one day should be a new include entry
+  # (platform: native, ...), not a new job. Each leg: compile, unit tests, integration tests.
   #
-  # Platform-specific dependencies need no flags here: jvm-deps.scala /
-  # jvm-test-deps.test.scala / js-deps.scala scope their `using dep` directives via
-  # `//> using target.platform`, so `scala-cli ... --js .` simply never resolves the
-  # Dapr Java SDK or testcontainers, and JVM invocations never resolve the
-  # ScalablyTyped facades.
+  #   core<P>         the library + its unit tests (test/{shared,<p>} minus integration/)
+  #   integration<P>  the Docker-based integration suites (test/{shared,<p>}/integration)
   test:
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: jvm
-            platform-flags: ''
-            # Integration suite: a real daprd sidecar (and Redis) per test via
-            # testcontainers-dapr; Docker is preinstalled on ubuntu-latest.
-            unit-test-args: ''
-            integration-command: scala-cli test . --test-only 'dapr4s.test.integration.*'
+            project: JVM
           - platform: js
-            platform-flags: '--js'
-            # The Wasm-only integration suites use orphan js.await, which the plain-JS
-            # linker cannot handle (it wedges instead of erroring) — exclude them from
-            # the plain-backend unit-test leg; the integration command runs them on the
-            # Wasm backend instead. The shared concrete suite classes in
-            # test/shared/integration extend the JS bring-up that lives in
-            # test/js/integration, so they must be excluded here too (else they fail to
-            # resolve it); they are integration suites and run on the Wasm leg below.
-            unit-test-args: --exclude test/js/integration --exclude test/shared/integration
-            # Runs the munit suites on Wasm+JSPI (Node 25). The Dapr sidecar + Redis +
-            # placement + scheduler are started from INSIDE the test runtime via
-            # @dapr/testcontainer-node (Docker is preinstalled on ubuntu-latest) — the
-            # twin of the JVM testcontainers-dapr leg; no separate env bring-up.
-            integration-command: scripts/test-js-integration.sh
+            project: JS
     name: test (${{ matrix.platform }})
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: coursier/cache-action@v8
-    - uses: coursier/setup-action@v1
-      if: matrix.platform == 'js'
-    - uses: VirtusLab/scala-cli-setup@v1
+    - uses: actions/setup-java@v5
       with:
-        power: true
-        scala-cli-version: 1.14.0  # see the pin note on the format job
-    # JSPI is on by default from Node 25; the runner's default Node has no JSPI and
-    # scala-cli's runner passes no V8 flags, so the Wasm integration tests need this.
+        distribution: zulu
+        java-version: 25
+    - uses: sbt/setup-sbt@v1
+    - uses: coursier/cache-action@v8
+    # Wasm 3.0 + JSPI are on by default from Node 25; the runner's default Node has neither.
     - name: Set up Node 25
       if: matrix.platform == 'js'
       uses: actions/setup-node@v4
@@ -94,28 +70,28 @@ jobs:
     - name: Install npm dependencies (@dapr/dapr, testcontainers)
       if: matrix.platform == 'js'
       run: npm ci
-    # The ScalablyTyped-generated facades (js-deps.scala) live in ~/.ivy2/local; the
-    # generation script no-ops when the pinned digests are already there. Keep the
-    # cache key in sync with the converter version + flags in the script.
+    # The ScalablyTyped facades are generated from node_modules and compiled by the build
+    # (stFacades, ~3 min cold). Cache the converter's parse cache and the compiled facades;
+    # zinc recompiles anything the restored state does not cover, so a stale hit is only slower.
     - name: Cache ScalablyTyped facades
       if: matrix.platform == 'js'
       uses: actions/cache@v4
       with:
         path: |
-          ~/.ivy2/local/org.scalablytyped
           ~/.cache/scalablytyped
-        key: scalablytyped-${{ hashFiles('package-lock.json', 'scripts/generate-st-facades.sh') }}
-    - name: Generate ScalablyTyped facades
-      if: matrix.platform == 'js'
-      run: scripts/generate-st-facades.sh
+          .st-facades/target
+        key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
     - name: Compile
-      run: scala-cli compile ${{ matrix.platform-flags }} .
+      run: sbt core${{ matrix.project }}/compile integration${{ matrix.project }}/Test/compile
     - name: Unit tests
-      run: scala-cli test ${{ matrix.platform-flags }} . ${{ matrix.unit-test-args }} --test-only 'dapr4s.test.unit.*'
+      run: sbt core${{ matrix.project }}/test
     - name: Integration tests
+      # A real daprd sidecar (+ Redis, placement, scheduler) via testcontainers; Docker is
+      # preinstalled on ubuntu-latest. JVM: testcontainers-dapr. JS: @dapr/testcontainer-node,
+      # started from inside the Wasm+JSPI test runtime.
       # Both legs normally finish in a few minutes; the timeout turns a hang into a failure instead of a 6h wait.
       timeout-minutes: 20
-      run: ${{ matrix.integration-command }}
+      run: sbt integration${{ matrix.project }}/test
 
   publish:
     needs: [format, test]
@@ -138,46 +114,39 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: coursier/cache-action@v8
-    - uses: coursier/setup-action@v1
-    - uses: VirtusLab/scala-cli-setup@v1
+    - uses: actions/setup-java@v5
       with:
-        power: true
-        scala-cli-version: 1.14.0  # see the pin note on the format job
-    # The Scala.js publish compiles against the ScalablyTyped facade deps
-    # (compileOnly in js-deps.scala), so the artifacts must exist in ~/.ivy2/local
-    # here too — generation is a BUILD-time requirement only; consumers of the
-    # published artifact never need it (see the embed step below).
-    - name: Install npm dependencies (@dapr/dapr, testcontainers)
+        distribution: zulu
+        java-version: 25
+    - uses: sbt/setup-sbt@v1
+    - uses: coursier/cache-action@v8
+    # The Scala.js artifact embeds the ScalablyTyped facade .sjsir (see build.sbt), which the
+    # build generates from node_modules.
+    - name: Install npm dependencies
       run: npm ci
     - name: Cache ScalablyTyped facades
       uses: actions/cache@v4
       with:
         path: |
-          ~/.ivy2/local/org.scalablytyped
           ~/.cache/scalablytyped
-        key: scalablytyped-${{ hashFiles('package-lock.json', 'scripts/generate-st-facades.sh') }}
-    - name: Generate ScalablyTyped facades
-      run: scripts/generate-st-facades.sh
-    - name: Publish (JVM)
-      run: scala-cli publish .
+          .st-facades/target
+        key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
+    # Publishes dapr4s_3 and dapr4s_sjs1_3 (sbt-ci-release: a release tag publishes the clean
+    # version, anything else a dynver -SNAPSHOT). The secrets keep their scala-cli era names;
+    # sbt-ci-release wants PGP_SECRET as a base64-encoded ASCII-armored key, so accept either an
+    # armored key or an already base64-encoded one.
+    - name: Publish (JVM + Scala.js)
+      run: |
+        key="${PUBLISH_SECRET_KEY#base64:}"
+        if printf '%s' "$key" | grep -q -- '-----BEGIN PGP'; then
+          PGP_SECRET="$(printf '%s\n' "$key" | base64 -w0)"
+        else
+          PGP_SECRET="$key"
+        fi
+        export PGP_SECRET
+        sbt ci-release
       env:
-        PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
-        PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
+        SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
+        SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
         PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
-        PUBLISH_SECRET_KEY_PASSWORD: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
-    # Publishes a SELF-CONTAINED dapr4s_sjs1_3: the ScalablyTyped facade classes
-    # (renamed to the dapr4styped.* package) are embedded into the jar via
-    # --resource-dirs, and the facade deps are compileOnly so the POM references
-    # Maven-Central artifacts only — downstream Scala.js users resolve dapr4s like
-    # any ordinary dependency, no generation step; see js-deps.scala and
-    # scripts/embed-st-facades.sh.
-    - name: Stage ScalablyTyped facade classes for embedding
-      run: scripts/embed-st-facades.sh
-    - name: Publish (Scala.js)
-      run: scala-cli publish --js . --resource-dirs .scala-build/st-embed
-      env:
-        PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
-        PUBLISH_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
-        PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
-        PUBLISH_SECRET_KEY_PASSWORD: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+        PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}

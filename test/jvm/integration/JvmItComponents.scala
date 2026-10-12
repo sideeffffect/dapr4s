@@ -68,11 +68,11 @@ object JvmItComponents:
     require(Files.isDirectory(d), s"shared component dir not found: $d (cwd=${Paths.get("").toAbsolutePath})")
     d
 
-  /** Locate the repo root (the dir holding `project.scala`) by walking up from the working dir — robust to scala-cli
-    * running tests from a nested working directory.
+  /** Locate the repo root (the dir holding `build.sbt`) by walking up from the working dir — robust to the build tool
+    * running tests from a nested working directory (sbt forks the test JVM in .integration/.jvm).
     */
   private def repoRoot(): Path =
     var p: Path | Null = Paths.get("").toAbsolutePath
-    while p != null && !Files.exists(p.resolve("project.scala")) do p = p.getParent
-    require(p != null, "could not locate repo root (no project.scala found walking up from cwd)")
+    while p != null && !Files.exists(p.resolve("build.sbt")) do p = p.getParent
+    require(p != null, "could not locate repo root (no build.sbt found walking up from cwd)")
     p.nn

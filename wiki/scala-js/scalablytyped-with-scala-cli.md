@@ -2,7 +2,9 @@
 
 > Sources: empirical dapr4s ScalablyTyped migration — converter CLI 1.0.0-beta45 runs over @dapr/dapr 3.18.0 / @types/express 4.17.21 / @types/node 22.13.0, runtime-verified against a live daprd sidecar; scripts/generate-st-facades.sh, js-deps.scala, package.json, src/js/internal/ in the dapr4s repo, 2026-06-12
 > Raw: none — the verified findings live in the dapr4s repo itself (the script headers, js-deps.scala comments, and ExpressModule.scala scaladoc are the canonical record)
-> Updated: 2026-06-12
+> Updated: 2026-10-12
+
+> **Note (2026-10-12): dapr4s moved from scala-cli to sbt** ([PR #42](https://github.com/sideeffffect/dapr4s/pull/42)). This article stays as the record of the scala-cli build and remains valid for scala-cli users; for the sbt equivalents see "ScalablyTyped with sbt (dapr4s since 2026-10)" below.
 
 ## Overview
 
@@ -64,6 +66,35 @@ Alternatives considered:
 - **Ship the generation recipe** (dapr4s's previous choice): commit `package.json` + `package-lock.json` + the pinned generation script; consumers run the script once and — thanks to digest determinism — materialise *exactly* the coordinates the POM references in their own ivy2Local. Works, but every consumer pays the converter toll and CI complexity.
 - Republish the facades under your own organisation to a real repository (heavier: you own ~a dozen artifacts and their upgrade cadence; the sbt-plugin world solves this with a private Maven repo).
 - Vendor the generated sources into your repo (rejected for dapr4s: hundreds of thousands of generated lines, unreviewable diffs).
+
+## ScalablyTyped with sbt (dapr4s since 2026-10)
+
+dapr4s now generates the facades IN the build with the sbt plugin
+(`org.scalablytyped.converter:sbt-converter:1.0.0-beta45`, `ScalablyTypedConverterGenSourcePlugin`).
+Findings from the migration (read from the plugin's source at tag `v1.0.0-beta45` and verified in the build):
+
+- **beta45's GenSource plugin requires scalajs-bundler** (`requires = ScalablyTypedPluginBase && ScalaJSBundlerPlugin`);
+  only master (unreleased) has a bundler-free `stNpmDependencies`/`NpmInstall`. The plugin reads the libraries to
+  convert from `Compile / npmDependencies` (bundler key) and the modules from
+  `(Compile / npmUpdate / crossTarget).value / "node_modules"`.
+- **Keep the lockfile in charge**: bundler's `npmUpdate` writes its own `package.json` and runs an unlocked
+  `npm install` in `target/`. dapr4s overrides `Compile / npmUpdate` to run `npm ci` at the repo root and symlink
+  `<crossTarget>/node_modules` to the repo's `node_modules`. Do NOT instead set `npmUpdate / crossTarget` to the
+  repo root: bundler's package.json task writes into that directory and would overwrite the repo's `package.json`.
+- **Settings matching the old CLI flags**: `stOutputPackage := "dapr4styped"` (GenSource refuses the default
+  `typings`), `stStdlib := List("es2022")`, `scalaVersion := "3.3.6"` for the facade project. The plugin defaults
+  already match the CLI defaults for Scala 3 (`stUseScalaJsDom := true`, `stEnableScalaJsDefined` all,
+  `stIgnore := List("typescript")`).
+- **A separate project is mandatory** when the consuming code uses capture checking / explicit nulls / fatal
+  warnings: the generated sources are compiled by the project they are generated into, with its flags.
+- **Output and cost**: all five dapr4s roots (`@dapr/dapr`, `@types/express`, `@types/node`, `testcontainers`,
+  `@dapr/testcontainer-node`) produce 3559 sources in 29 packages (`dapr4styped.<lib>`, exactly the library set
+  of the old ivy jars); generation + compile takes ~2.5 min cold, 166 MB of classes. No minimization was needed.
+- **Publishing a library that embeds them**: depend on the facade project, drop it from `projectDependencies`
+  (keeps it out of the POM, the classes stay on the classpath), and add the `.sjsir` of the main-closure
+  packages to `Compile / packageBin / mappings`. The published `dapr4s_sjs1_3` jar is ~10 MB, javadoc ~4 MB.
+- One meta-build conflict: sbt-converter pulls `scala-parser-combinators` 2.x, sbt-pgp/ssl-config want 1.x;
+  `libraryDependencySchemes += ... % VersionScheme.Always` in `project/plugins.sbt` resolves the eviction error.
 
 ## See Also
 
