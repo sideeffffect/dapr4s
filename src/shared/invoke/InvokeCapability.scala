@@ -93,8 +93,9 @@ object InvokeCapability:
       * an exception; only a failure to get an answer from the target app throws ([[AppUnreachableException]],
       * [[PermissionDeniedException]], [[DaprApiException]]).
       *
-      * No body encoding takes place: `body` goes on the wire as is, and no `Content-Type` is added — pass one in
-      * `headers` when the target needs it. Redirects are not followed. The method name may contain `/` (multi-segment
+      * No body encoding takes place: `body` goes on the wire as is (it is not sent with GET/HEAD), and no
+      * `Content-Type` is added — pass one in `headers` when the target needs it. The headers `Connection`,
+      * `Content-Length`, `Expect`, `Host` and `Upgrade` are computed by the HTTP client and dropped if given. Redirects are not followed. The method name may contain `/` (multi-segment
       * routes); every segment and every query parameter is percent-encoded.
       */
     def invokeHttp(
