@@ -27,6 +27,7 @@ class GatedWorkflow extends Workflow:
   *   - `echo` / `double` invoke routes — the method names the derived [[dapr4s.test.integration.apps.EchoService]]
   *     caller facade expects, so `InvokeItTest` covers both the plain and the derived invoke path;
   *   - `echo-int` — Int→Int identity, so a falsy `0` request body round-trips end to end;
+  *   - `fail` — always throws, so the server answers 500 (`InvokeItTest` checks `InvokeHttpException` / `invokeHttp`);
   *   - `it-orders` subscription — writes each event's quantity to state under `it-order-{orderId}`, letting
   *     `PubSubItTest` poll state for delivery;
   *   - `it-zeros` subscription — writes the (falsy) Int payload to the fixed `it-zero-marker` key.
@@ -39,6 +40,7 @@ object ItServerApp:
           InvokeRoute[String, String](InvokeMethodName("echo"))(s => s),
           InvokeRoute[IncrRequest, CounterState](InvokeMethodName("double"))(req => CounterState(req.amount * 2)),
           InvokeRoute[Int, Int](InvokeMethodName("echo-int"))(i => i),
+          InvokeRoute[String, String](InvokeMethodName("fail"))(s => throw IllegalStateException(s"refusing $s")),
         ),
         subscriptions = List(
           Subscription[OrderEvent](ItNames.PubSub, Topic("it-orders")) { ev =>

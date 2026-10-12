@@ -441,7 +441,9 @@ Companions: `CryptoCapability` (`instance(componentName)`, `encrypt`, `decrypt`,
 
 ## Invoke
 
-`invoke` uses clause interleaving: `invoke[Req](...)[Resp]`. The second overload sends no request body.
+`invoke` uses clause interleaving: `invoke[Req](...)[Resp]`. The second overload sends no request body. The typed
+`invoke` throws `InvokeHttpException` on a non-2xx answer; `invokeHttp` is the HTTP-level call that returns every
+answer (status, headers, raw body) as an `InvokeResponse` value.
 
 ```mermaid
 classDiagram
@@ -454,6 +456,7 @@ classDiagram
         +instance(appId) Instance^this
         +invoke~Req~(appId, method, data, httpMethod, metadata)~Resp~ Resp
         +invoke~Resp~(appId, method) Resp
+        +invokeHttp(appId, method, body, httpMethod, headers, query) InvokeResponse
     }
 
     class InvokeCapability_Instance["InvokeCapability.Instance"]
@@ -461,14 +464,15 @@ classDiagram
     InvokeCapability_Instance : +appId AppId
     InvokeCapability_Instance : +invoke~Req~(method, data, httpMethod, metadata)~Resp~ Resp
     InvokeCapability_Instance : +invoke~Resp~(method) Resp
+    InvokeCapability_Instance : +invokeHttp(method, body, httpMethod, headers, query) InvokeResponse
 
     ExclusiveCapability <|-- InvokeCapability
     ExclusiveCapability <|-- InvokeCapability_Instance
     InvokeCapability ..> InvokeCapability_Instance : instance(appId)
 ```
 
-Companions: `InvokeCapability` (`instance(appId)`, both `invoke` overloads), `InvokeCapability.Instance` (both
-`invoke` overloads).
+Companions: `InvokeCapability` (`instance(appId)`, both `invoke` overloads, `invokeHttp`), `InvokeCapability.Instance`
+(both `invoke` overloads, `invokeHttp`).
 
 ## Conversation
 

@@ -96,6 +96,25 @@ Every capability interface's companion object forwards its methods from a `using
 `instance(name)` accessors that narrow the capability in scope and return it
 (`StateCapability.ReadOnly.instance(name)` returns a `StateCapability.Instance.ReadOnly`).
 
+## Errors
+
+Expected outcomes are values (`None` for a missing key, `Option[ETagMismatchException]`, `UnlockStatus`,
+`BulkPublishResult`). Sidecar errors are thrown as one sealed `dapr4s.DaprException` hierarchy, the same on
+the JVM and on Scala.js — no Dapr SDK exception type reaches your code:
+
+```scala
+try dapr.state.get[String](StateStoreName("orders"), StateStoreKey("k"))
+catch
+  case e: ComponentNotFoundException => ???   // e.componentKind == DaprComponentKind.State, e.name == "orders"
+  case e: PermissionDeniedException  => ???   // access policy / scope
+  case e: AppUnreachableException    => ???   // invoke: unknown or unhealthy app (e.appId)
+  case e: InvokeHttpException        => ???   // invoke: the app answered non-2xx (e.status, e.body)
+  case e: DaprApiException           => ???   // anything else (e.errorCode)
+```
+
+For HTTP-level service invocation that returns every answer as a value, use
+`invokeHttp(appId, method, body, httpMethod, headers, query): InvokeResponse(status, headers, body)`.
+
 ## Platforms
 
 The public API is identical on the JVM and on Scala.js — synchronous, direct style

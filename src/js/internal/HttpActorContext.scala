@@ -62,16 +62,15 @@ private[internal] final class HttpActorContext(
   def get[T: JsonCodec](key: ActorStateKey): Option[T] =
     val url = stateUrl(key)
     val init = RequestInit().setMethod("GET").setHeaders(ActorCapabilityImpl.baseHeaders(sidecar))
-    val response = JsAwait.await(NodeGlobals.fetch(url, init))
+    val response = JsAwait.await(NodeGlobals.fetch(url, init), ErrorContext.Runtime)
     // Consume the body BEFORE branching on the status: the always-consume invariant (see postJson)
     // also covers the 204/404 early return, or the unread (empty) body would pin the connection in
     // Node fetch's keep-alive pool.
-    val text = JsAwait.await(response.text())
+    val text = JsAwait.await(response.text(), ErrorContext.Runtime)
     val code = response.status
     if code == 204 || code == 404 then None
-    // The JVM twin reads conn.getInputStream here, which throws IOException for any other
-    // error status; mirror that by failing loudly instead of silently decoding an error body.
-    else if code >= 400 then throw new RuntimeException(s"Dapr API error $code at $url: $text")
+    // Any other error status fails loudly (translated, like the JVM twin) instead of silently decoding an error body.
+    else if code >= 400 then throw JsErrors.fromHttp(ErrorContext.Runtime, code.toInt, text)
     else summon[JsonCodec[T]].decode(text).toOption
 
   def set[T: JsonCodec](key: ActorStateKey, value: T): Unit =
@@ -133,20 +132,19 @@ private object HttpActorContext:
 
   // ---- HTTP helpers ----------------------------------------------------------
 
-  /** POST `body` as JSON; throw on HTTP >= 400 with the same message shape as the JVM twin's `postJson` (`"Dapr API
-    * error $code at $url: $errBody"`). The response body is always consumed (Node's fetch keeps the connection alive
-    * until the body is read).
+  /** POST `body` as JSON; throw on HTTP >= 400, translated ([[JsErrors.fromHttp]]) like the JVM twin's `postJson`. The
+    * response body is always consumed (Node's fetch keeps the connection alive until the body is read).
     */
   private def postJson(sidecar: SidecarConfig, url: String, body: String): Unit =
     val init = RequestInit().setMethod("POST").setHeaders(ActorCapabilityImpl.baseHeaders(sidecar)).setBody(body)
-    val response = JsAwait.await(NodeGlobals.fetch(url, init))
-    val text = JsAwait.await(response.text())
-    if response.status >= 400 then throw new RuntimeException(s"Dapr API error ${response.status} at $url: $text")
+    val response = JsAwait.await(NodeGlobals.fetch(url, init), ErrorContext.Runtime)
+    val text = JsAwait.await(response.text(), ErrorContext.Runtime)
+    if response.status >= 400 then throw JsErrors.fromHttp(ErrorContext.Runtime, response.status.toInt, text)
 
   /** DELETE with the status deliberately ignored, mirroring the JVM twin (`val _ = conn.getResponseCode`):
     * unregistering a missing reminder/timer is a documented no-op.
     */
   private def deleteRequest(sidecar: SidecarConfig, url: String): Unit =
     val init = RequestInit().setMethod("DELETE").setHeaders(ActorCapabilityImpl.baseHeaders(sidecar))
-    val response = JsAwait.await(NodeGlobals.fetch(url, init))
-    val _ = JsAwait.await(response.text())
+    val response = JsAwait.await(NodeGlobals.fetch(url, init), ErrorContext.Runtime)
+    val _ = JsAwait.await(response.text(), ErrorContext.Runtime)

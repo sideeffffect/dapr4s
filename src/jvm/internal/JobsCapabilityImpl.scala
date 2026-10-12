@@ -28,7 +28,7 @@ private[internal] final class JobsCapabilityImpl(
     dueTime.foreach(t => req.setDueTime(t))
     repeats.foreach(r => req.setRepeat(r))
     ttl.foreach(t => req.setTtl(t))
-    scope.client.scheduleJob(req).awaitResult(): Unit
+    scope.client.scheduleJob(req).awaitResult(ErrorContext.Runtime): Unit
 
   def scheduleOnce[T: JsonCodec](
       data: T,
@@ -37,12 +37,12 @@ private[internal] final class JobsCapabilityImpl(
   ): Unit =
     val req = new ScheduleJobRequest(jobName.value, dueTime).setData(encodeData(data))
     ttl.foreach(t => req.setTtl(t))
-    scope.client.scheduleJob(req).awaitResult(): Unit
+    scope.client.scheduleJob(req).awaitResult(ErrorContext.Runtime): Unit
 
   def get(): Option[JobDetails] =
     scope.client
       .getJob(new GetJobRequest(jobName.value))
-      .awaitResult()
+      .awaitResult(ErrorContext.Runtime)
       .toOption
       .map { resp =>
         JobDetails(
@@ -56,7 +56,7 @@ private[internal] final class JobsCapabilityImpl(
       }
 
   def delete(): Unit =
-    scope.client.deleteJob(new DeleteJobRequest(jobName.value)).awaitResult(): Unit
+    scope.client.deleteJob(new DeleteJobRequest(jobName.value)).awaitResult(ErrorContext.Runtime): Unit
 
 @scala.caps.assumeSafe
 private object JobsCapabilityImpl:

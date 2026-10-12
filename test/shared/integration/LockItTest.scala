@@ -21,6 +21,13 @@ class LockItTest extends FunSuite, SharedDaprItSuite:
     withDapr(unlockByOwnerThenLockNotFound),
   )
   test("lock: unlock by a different owner returns LockBelongsToOthers")(withDapr(unlockByOtherOwner))
+  test("lock: an unknown store throws ComponentNotFoundException(Lock)")(withDapr(unknownStoreNotFound))
+
+  def unknownStoreNotFound(using DaprCapability): Unit =
+    DaprCapability.lock(LockStoreName("no-such-lockstore")):
+      ItErrors.assertComponentNotFound(DaprComponentKind.Lock, "no-such-lockstore")(
+        LockCapability.Instance.tryLock(res(), owner(), 30.seconds),
+      )
 
   private def res() = LockResourceId(ItNames.fresh("res"))
   private def owner() = LockOwner(ItNames.fresh("owner"))

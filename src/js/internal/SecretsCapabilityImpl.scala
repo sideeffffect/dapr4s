@@ -12,15 +12,17 @@ private[internal] final class SecretsCapabilityImpl(
     val storeName: SecretStoreName,
 ) extends SecretsCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Secrets, storeName.value)
+
   import SecretsCapabilityImpl.*
 
   def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue] = Map.empty): Option[SecretValue] =
     val promise = metadataQuery(metadata) match
       case None     => scope.client.secret.get(storeName.value, key.value)
       case Some(qs) => scope.client.secret.get(storeName.value, key.value, qs)
-    val response = JsAwait.await(promise)
+    val response = JsAwait.await(promise, ctx)
     // None-vs-throw semantics mirror the JVM impl exactly: a sidecar error (e.g. secret not found → 500/404)
-    // REJECTS the promise and propagates (the JVM's DaprException does too); None is returned only when the call
+    // REJECTS the promise and propagates translated (as on the JVM); None is returned only when the call
     // succeeds but the {key: value} response object is empty or lacks the key. The single-entry fallback covers
     // stores that answer under a different key name, same as the JVM's sizeIs == 1 branch.
     val entries = toStringMap(response)
@@ -35,7 +37,7 @@ private[internal] final class SecretsCapabilityImpl(
     // The SDK's getBulk takes no metadata parameter (implementation/Client/HTTPClient/secret.js); the dapr4s
     // metadata argument cannot be forwarded and is ignored, like the other knobs without a JS equivalent. The
     // response is {secretName: {key: value}} — flattened to "secretName/key" compound keys exactly like the JVM.
-    val response = JsAwait.await(scope.client.secret.getBulk(storeName.value))
+    val response = JsAwait.await(scope.client.secret.getBulk(storeName.value), ctx)
     if isAbsent(response) then Map.empty
     else
       val outer = response.asInstanceOf[js.Dictionary[js.Any]]

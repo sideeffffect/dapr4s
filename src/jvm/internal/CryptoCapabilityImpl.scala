@@ -14,6 +14,8 @@ private[internal] final class CryptoCapabilityImpl(
     val componentName: CryptoComponentName,
 ) extends CryptoCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Crypto, componentName.value)
+
   def encrypt(keyName: CryptoKeyName, plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
     val req = new EncryptRequestAlpha1(
       componentName.value,
@@ -21,9 +23,9 @@ private[internal] final class CryptoCapabilityImpl(
       keyName.value,
       algorithm.value,
     )
-    scope.clientPreview.encrypt(req).collectBytes()
+    scope.clientPreview.encrypt(req).collectBytes(ctx)
 
   // The ciphertext embeds a reference to the wrapping key, so decryption needs only the component.
   def decrypt(ciphertext: ArraySeq[Byte]): ArraySeq[Byte] =
     val req = new DecryptRequestAlpha1(componentName.value, Flux.just(ciphertext.toArray))
-    scope.clientPreview.decrypt(req).collectBytes()
+    scope.clientPreview.decrypt(req).collectBytes(ctx)

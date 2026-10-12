@@ -44,16 +44,19 @@ private[internal] final class HttpActorContext(
   // ---- State -----------------------------------------------------------------
 
   def get[T: JsonCodec](key: ActorStateKey): Option[T] =
-    val conn = openConn(stateUrl(key))
-    try
-      conn.setRequestMethod("GET")
-      conn.connect()
-      val code = conn.getResponseCode
-      if code == 204 || code == 404 then None
-      else
-        val json = readStream(conn.getInputStream.nn)
-        summon[JsonCodec[T]].decode(json).toOption
-    finally conn.disconnect()
+    // guard: a connection failure (IOException) becomes DaprApiException("UNAVAILABLE"), like every other sidecar call.
+    val json = JvmErrors.guard(ErrorContext.Runtime) {
+      val conn = openConn(stateUrl(key))
+      try
+        conn.setRequestMethod("GET")
+        conn.connect()
+        val code = conn.getResponseCode
+        if code == 204 || code == 404 then None
+        else if code >= 400 then throw JvmErrors.fromHttp(ErrorContext.Runtime, code, readError(conn))
+        else Some(readStream(conn.getInputStream.nn))
+      finally conn.disconnect()
+    }
+    json.flatMap(summon[JsonCodec[T]].decode(_).toOption)
 
   def set[T: JsonCodec](key: ActorStateKey, value: T): Unit =
     val requestInner = Json.mapper.createObjectNode()
@@ -129,7 +132,11 @@ private object HttpActorContext:
   private def readStream(in: java.io.InputStream): String =
     new String(in.readAllBytes().nn, "UTF-8")
 
-  private def postJson(url: String, body: String): Unit =
+  private def readError(conn: java.net.HttpURLConnection): String =
+    val errStream = conn.getErrorStream
+    if errStream != null then new String(errStream.nn.readAllBytes().nn, "UTF-8") else ""
+
+  private def postJson(url: String, body: String): Unit = JvmErrors.guard(ErrorContext.Runtime) {
     val conn = openConn(url)
     try
       conn.setRequestMethod("POST")
@@ -139,18 +146,17 @@ private object HttpActorContext:
       conn.getOutputStream.nn.write(bytes)
       conn.getOutputStream.nn.close()
       val code = conn.getResponseCode
-      if code >= 400 then
-        val errStream = conn.getErrorStream
-        val errBody = if errStream != null then new String(errStream.nn.readAllBytes().nn, "UTF-8") else ""
-        throw RuntimeException(s"Dapr API error $code at $url: $errBody")
+      if code >= 400 then throw JvmErrors.fromHttp(ErrorContext.Runtime, code, readError(conn))
     finally conn.disconnect()
+  }
 
   private def toIso(d: FiniteDuration): String =
     java.time.Duration.ofNanos(d.toNanos).toString
 
-  private def deleteRequest(url: String): Unit =
+  private def deleteRequest(url: String): Unit = JvmErrors.guard(ErrorContext.Runtime) {
     val conn = openConn(url)
     try
       conn.setRequestMethod("DELETE")
       val _ = conn.getResponseCode
     finally conn.disconnect()
+  }

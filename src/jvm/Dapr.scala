@@ -45,6 +45,8 @@ class Dapr(config: DaprConfig = DaprConfig()):
     overrides.put(Properties.HTTP_ENDPOINT.getName, sc.httpEndpoint.toString)
     overrides.put(Properties.GRPC_ENDPOINT.getName, sc.grpcEndpoint.toString)
     overrides.put(Properties.GRPC_TLS_INSECURE.getName, sc.grpcTlsInsecure.toString)
+    // Read by the raw-HTTP service-invocation client (InvokeCapabilityImpl) as its request timeout.
+    overrides.put(Properties.HTTP_CLIENT_READ_TIMEOUT_SECONDS.getName, sc.httpClientReadTimeout.toSeconds.toString)
     sc.apiToken.foreach(t => overrides.put(Properties.API_TOKEN.getName, t.value))
     sc.grpcTlsCertPath.foreach(p => overrides.put(Properties.GRPC_TLS_CERT_PATH.getName, p.value))
     sc.grpcTlsKeyPath.foreach(p => overrides.put(Properties.GRPC_TLS_KEY_PATH.getName, p.value))

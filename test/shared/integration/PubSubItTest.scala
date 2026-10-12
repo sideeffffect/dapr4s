@@ -65,6 +65,20 @@ class PubSubItTest extends FunSuite, ServerDaprItSuite:
         }
       }
 
+  // ---- errors -------------------------------------------------------------------
+
+  test("pubsub: publishing to an unknown pubsub throws ComponentNotFoundException(PubSub)"):
+    withDapr:
+      DaprCapability.publish(PubSubName("no-such-pubsub")) {
+        ItErrors.assertComponentNotFound(DaprComponentKind.PubSub, "no-such-pubsub")(
+          PublishCapability.Instance.publish(Topic("t"), "x"),
+        )
+        // The falsy payload takes the JS raw-fetch bypass: same translation.
+        ItErrors.assertComponentNotFound(DaprComponentKind.PubSub, "no-such-pubsub")(
+          PublishCapability.Instance.publish(Topic("t"), 0),
+        )
+      }
+
   // ---- publish smoke (no subscriber on `it-smoke`) ----------------------------
 
   test("pubsub: publish string/int payloads and publishWithMetadata do not throw"):

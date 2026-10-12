@@ -280,6 +280,24 @@ value InvokeRequest {
     data: Any
 }
 
+value QueryParamName { value: String }    -- URL query parameter name for invokeHttp (non-empty)
+value QueryParamValue { value: String }   -- URL query parameter value for invokeHttp (may be empty)
+
+value InvokeResponse {
+    -- The target app's HTTP answer to invokeHttp, whatever its status.
+    -- Matches final case class InvokeResponse(status: Int, headers: Map[MetadataKey, MetadataValue], body: ArraySeq[Byte]).
+    status: Integer
+    headers: Map<MetadataKey, MetadataValue>   -- names lower-cased; repeated headers joined with ", "
+    body: List<Integer>                        -- raw bytes, exactly as the app sent them
+    -- is_success: 200 <= status < 300 (the statuses for which the typed invoke decodes instead of throwing)
+}
+
+value DaprComponentKind {
+    -- The building block a ComponentNotFoundException refers to. Scala 3 enum DaprComponentKind.
+    -- Workflow / jobs / actors are absent: dapr4s never names a component for them.
+    kind: state | pub_sub | secrets | configuration | lock | binding | crypto | conversation
+}
+
 value JobDetails {
     -- Stored definition of a scheduled job (JVM-only API). Returned by JobsCapability.Instance.get().
     name: JobName
@@ -486,6 +504,7 @@ contract InvokeOperations {
     instance: (app_id: AppId) -> InvokeCapabilityInstance
     invoke: (app_id: AppId, method: InvokeMethodName, data: Any, http_method: HttpMethod, metadata: Map<MetadataKey, MetadataValue>) -> Any
     invoke_get: (app_id: AppId, method: InvokeMethodName) -> Any
+    invoke_http: (app_id: AppId, method: InvokeMethodName, body: List<Integer>, http_method: HttpMethod, headers: Map<MetadataKey, MetadataValue>, query: Map<QueryParamName, QueryParamValue>) -> InvokeResponse
 }
 
 contract InvokeInstanceOperations {
@@ -495,6 +514,9 @@ contract InvokeInstanceOperations {
     -- http_method defaults to Post; metadata defaults to empty.
     invoke_get: (method: InvokeMethodName) -> Any
     -- Code overload invoke[Resp](method): no body, HTTP GET, no metadata.
+    invoke_http: (method: InvokeMethodName, body: List<Integer>, http_method: HttpMethod, headers: Map<MetadataKey, MetadataValue>, query: Map<QueryParamName, QueryParamValue>) -> InvokeResponse
+    -- HTTP-level call: returns every answer of the target app (status, headers, raw body) as a value.
+    -- Defaults: empty body, Post, no headers, no query. No content type is added.
 }
 
 -- ---- Secrets ----
@@ -1084,6 +1106,47 @@ variant DeleteOp : StateOp {
     -- No additional fields beyond those inherited from StateOp
 }
 
+-- Sealed ADT matching the code's sealed abstract class DaprException extends Exception
+-- (src/shared/Exceptions.scala). Every error the sidecar (or the path to it) reports to dapr4s
+-- code is one of these on every platform; no SDK exception type (io.dapr DaprException,
+-- io.grpc StatusRuntimeException, js.JavaScriptException) reaches user code. Expected outcomes
+-- (missing key, ETag conflict, lock statuses, bulk-publish partial failure, a non-2xx answer
+-- to invokeHttp) are values, never a DaprException.
+entity DaprException {
+    kind: ComponentNotFound | PermissionDenied | AppUnreachable | InvokeHttp | DaprApi
+    message: String
+}
+
+variant ComponentNotFound : DaprException {
+    -- ComponentNotFoundException: the addressed component (or every component of its kind) is missing.
+    component_kind: DaprComponentKind
+    name: String   -- taken from the request (ErrorContext), never parsed from the sidecar message
+}
+
+variant PermissionDenied : DaprException {
+    -- PermissionDeniedException: an access-control policy, secret scope or topic scope denied the call.
+}
+
+variant AppUnreachable : DaprException {
+    -- AppUnreachableException: service invocation could not reach app_id (unknown id, not healthy).
+    app_id: AppId
+}
+
+variant InvokeHttp : DaprException {
+    -- InvokeHttpException: the target app answered a TYPED invoke with a non-2xx status (3xx included).
+    app_id: AppId
+    method: InvokeMethodName
+    status: Integer
+    body: List<Integer>   -- raw response bytes
+}
+
+variant DaprApi : DaprException {
+    -- DaprApiException: any other sidecar or transport error.
+    -- error_code: ERR code (HTTP body) > ErrorInfo reason > gRPC status name > UNKNOWN;
+    -- UNAVAILABLE when the sidecar cannot be reached. Transport-specific (gRPC on the JVM, HTTP on JS).
+    error_code: String
+}
+
 value JsonDecodeException {
     -- final class JsonDecodeException(message, cause) extends Exception: malformed JSON or a
     -- type mismatch between the payload and the target Scala type.
@@ -1165,6 +1228,36 @@ rule DaprRuntimeFailsSafely {
         -- If closing a client also throws a non-fatal exception, it is attached as a
         -- suppressed exception on the body's throwable (not swallowed, not rethrown).
         ExceptionPropagated(exception: exception)
+}
+
+-- ---- Sidecar error translation ----
+-- One platform-independent table (internal.DaprErrors.translate) decides the DaprException
+-- variant; each SDK wall only normalises its failure (JVM: MonoOps.awaitResult / JvmErrors;
+-- JS: JsAwait.await(p, ctx) / JsErrors). Every call site states what it addressed
+-- (ErrorContext: Component(kind, name) | App(app_id) | Runtime). Mapping table:
+-- wiki/dapr/dapr-error-codes.md.
+
+rule SidecarErrorTranslated {
+    when: SidecarCallFailed(context, error_code, reason, grpc_status, message)
+    -- error_code: Dapr ERR code (HTTP body); reason: google.rpc.ErrorInfo reason;
+    -- grpc_status: gRPC status name. Legacy errors over gRPC carry neither code nor reason.
+
+    ensures:
+        if SidecarErrorIsPermissionDenied(error_code, reason, grpc_status, message):
+            -- ERR_PERMISSION_DENIED, ERR_PUBSUB_FORBIDDEN / DAPR_PUBSUB_FORBIDDEN,
+            -- gRPC PERMISSION_DENIED, HTTP 403, invoke ACL denial
+            DaprExceptionThrown()   -- PermissionDenied
+        else if SidecarErrorIsComponentNotFound(context, error_code, reason, message):
+            -- per-kind *_NOT_FOUND / *_NOT_CONFIGURED codes and reasons, else daprd's exact
+            -- not-found message for that kind and the requested name
+            DaprExceptionThrown()   -- ComponentNotFound(kind, name) from the context
+        else if SidecarErrorIsAppUnreachable(context, error_code, message):
+            -- invoke context and ERR_DIRECT_INVOKE / "failed to invoke, id: ..."
+            DaprExceptionThrown()   -- AppUnreachable(app_id) from the context
+        else:
+            DaprExceptionThrown()   -- DaprApi(best code)
+        -- InterruptedException is never translated: the interrupt flag is restored and the
+        -- original exception rethrown. Fatal errors are never caught (NonFatal only).
 }
 
 -- ---- Capability Acquisition (DaprCapability -> universal capability) ----
@@ -1573,8 +1666,8 @@ rule StateGet {
     ensures:
         -- Returns Option[T]: None when key is absent, Some(decoded) when present.
         -- An optional StateConsistency (default: StateConsistency.Default) is forwarded.
-        -- On infrastructure failure the SDK's io.dapr.exceptions.DaprException
-        -- (unchecked RuntimeException) propagates; no library wrapper is added.
+        -- On a sidecar error a dapr4s DaprException is thrown (rule SidecarErrorTranslated):
+        -- ComponentNotFound(State, store_name) when the store does not exist.
         StateGetCompleted(result: StateEntry.created(value: any, etag: any))
 }
 
@@ -1666,7 +1759,7 @@ rule StateTransaction {
         if DaprTransactionSucceeds(cap.store_name, ops):
             StateTransactionCompleted()
         else:
-            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
+            DaprExceptionThrown()   -- dapr4s DaprException, see rule SidecarErrorTranslated
 }
 
 -- ---- Publish Operations ----
@@ -1706,17 +1799,42 @@ rule PubSubBulkPublish {
 -- ---- Service Invocation ----
 -- The target app is cap.app_id, fixed when the InvokeCapability.Instance was obtained.
 
-rule ServiceInvoke {
-    when: ServiceInvokeRequested(cap, method, data, http_method, metadata)
-    -- http_method defaults to HttpMethod.Post; metadata defaults to empty.
+-- Both the typed invoke and invokeHttp use the sidecar's raw /v1.0/invoke HTTP API on every
+-- platform; the typed invoke is the shared InvokeSupport on top of invokeHttp.
+
+rule ServiceInvokeHttp {
+    when: ServiceInvokeHttpRequested(cap, method, body, http_method, headers, query)
 
     requires: cap.status = open
 
     ensures:
         if DaprServiceResponds(cap.app_id, method):
-            ServiceInvokeCompleted(response: any)
+            -- Any status, 2xx or not (redirects are not followed): returned as a value.
+            ServiceInvokeHttpCompleted(response: InvokeResponse)
         else:
-            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
+            -- No answer from the app: unknown app id / not healthy -> AppUnreachable(app_id);
+            -- access-control denial -> PermissionDenied; anything else -> DaprApi.
+            -- A non-2xx answer is the sidecar's own error only if its body is a Dapr error
+            -- with code ERR_DIRECT_INVOKE or a permission code.
+            DaprExceptionThrown()
+}
+
+rule ServiceInvoke {
+    when: ServiceInvokeRequested(cap, method, data, http_method, metadata)
+    -- http_method defaults to HttpMethod.Post; metadata defaults to empty (metadata = extra headers;
+    -- Content-Type: application/json unless metadata overrides it).
+
+    requires: cap.status = open
+
+    ensures:
+        if DaprServiceResponds(cap.app_id, method):
+            if DaprServiceAnswered2xx(cap.app_id, method):
+                ServiceInvokeCompleted(response: any)
+            else:
+                -- Identical on JVM and JS: InvokeHttp(app_id, method, status, body)
+                InvokeHttpExceptionThrown(app_id: cap.app_id, method: method)
+        else:
+            DaprExceptionThrown()   -- as in ServiceInvokeHttp (AppUnreachable / PermissionDenied / DaprApi)
 }
 
 rule ServiceInvokeGet {
@@ -1727,9 +1845,12 @@ rule ServiceInvokeGet {
 
     ensures:
         if DaprServiceResponds(cap.app_id, method):
-            ServiceInvokeCompleted(response: any)
+            if DaprServiceAnswered2xx(cap.app_id, method):
+                ServiceInvokeCompleted(response: any)
+            else:
+                InvokeHttpExceptionThrown(app_id: cap.app_id, method: method)
         else:
-            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
+            DaprExceptionThrown()   -- as in ServiceInvokeHttp
 }
 
 -- ---- Secrets ----
@@ -1745,7 +1866,9 @@ rule SecretsGet {
         else:
             -- Key absent or store returns empty: SecretsCapability.get returns None (no exception)
             SecretsGetCompleted(value: None)
-        -- On infrastructure failure the SDK's io.dapr.exceptions.DaprException propagates unchecked
+        -- On a sidecar error a dapr4s DaprException is thrown (rule SidecarErrorTranslated), e.g.
+        -- ComponentNotFound(Secrets, store_name); a store that reports a missing key as an error
+        -- (secretstores.local.file answers 500 ERR_SECRET_GET) surfaces as DaprApi, not None.
 }
 
 rule SecretsGetBulk {
@@ -1942,7 +2065,7 @@ rule BindingInvoke {
         if DaprBindingResponds(cap.binding_name, operation):
             BindingInvokeCompleted(response: any)
         else:
-            DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
+            DaprExceptionThrown()   -- dapr4s DaprException, see rule SidecarErrorTranslated
 }
 
 -- ---- JsonCodec ----
@@ -2408,6 +2531,7 @@ surface InvokeInstanceSurface {
     provides:
         ServiceInvokeRequested(cap, method, data, http_method, metadata)
         ServiceInvokeGetRequested(cap, method)
+        ServiceInvokeHttpRequested(cap, method, body, http_method, headers, query)
 
     contracts:
         demands JsonCodec

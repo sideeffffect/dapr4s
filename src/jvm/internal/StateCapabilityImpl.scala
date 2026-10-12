@@ -41,14 +41,23 @@ private object StateCapabilityImpl:
           case None    => new DaprState[String](key.value, null, null, null)
         new TransactionalStateOperation[String](OperationType.DELETE, daprState)
 
-  private def isETagConflict(e: io.dapr.exceptions.DaprException): Boolean =
-    e.getHttpStatusCode == 409 || e.getMessage.toOption.exists(_.contains("ABORTED"))
+  /** ETag conflict = the SDK failure behind the translated [[DaprApiException]] is an HTTP 409 or a gRPC `ABORTED`
+    * (daprd's `ErrStateSave` for an etag mismatch). Inspected on the `cause` — the translation keeps the SDK exception
+    * there — because the conflict is an expected outcome returned as a value, not a dapr4s error type.
+    */
+  private def isETagConflict(e: DaprApiException): Boolean =
+    e.getCause match
+      case d: io.dapr.exceptions.DaprException =>
+        d.getHttpStatusCode == 409 || d.getMessage.toOption.exists(_.contains("ABORTED"))
+      case _ => false
 
 @scala.caps.assumeSafe
 private[internal] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StateStoreName,
 ) extends StateCapability.Instance:
+
+  private val ctx = ErrorContext.Component(DaprComponentKind.State, storeName.value)
 
   import StateCapabilityImpl.*
 
@@ -62,7 +71,7 @@ private[internal] final class StateCapabilityImpl(
           new StateOptions(toJavaConsistency(consistency), null),
           classOf[String],
         )
-    mono.awaitResult().toOption.flatMap(s => s.getValue.toOption.filterNot(_.isEmpty)).map(decode[T])
+    mono.awaitResult(ctx).toOption.flatMap(s => s.getValue.toOption.filterNot(_.isEmpty)).map(decode[T])
 
   def getWithETag[T: JsonCodec](
       key: StateStoreKey,
@@ -78,7 +87,7 @@ private[internal] final class StateCapabilityImpl(
           classOf[String],
         )
     mono
-      .awaitResult()
+      .awaitResult(ctx)
       .toOption
       .fold(StateEntry[T](None, None)) { state =>
         val raw = state.getValue.toOption.filterNot(_.isEmpty)
@@ -92,7 +101,7 @@ private[internal] final class StateCapabilityImpl(
       val javaKeys: java.util.List[String] = keys.map(_.value).asJava
       scope.client
         .getBulkState(storeName.value, javaKeys, classOf[String])
-        .awaitResult()
+        .awaitResult(ctx)
         .toOption
         .fold(keys.map(k => k -> StateEntry[T](None, None)).toMap) { results =>
           results.asScala.map { state =>
@@ -105,7 +114,7 @@ private[internal] final class StateCapabilityImpl(
 
   def save[T: JsonCodec](key: StateStoreKey, value: T): Unit =
     val json = summon[JsonCodec[T]].encode(value)
-    scope.client.saveState(storeName.value, key.value, json).awaitResult(): Unit
+    scope.client.saveState(storeName.value, key.value, json).awaitResult(ctx): Unit
 
   def saveBulk[T: JsonCodec](entries: Seq[(StateStoreKey, T)]): Unit =
     if entries.nonEmpty then
@@ -113,7 +122,7 @@ private[internal] final class StateCapabilityImpl(
         val json = summon[JsonCodec[T]].encode(value)
         new DaprState[String](key.value, json, null, null)
       }.asJava
-      scope.client.saveBulkState(storeName.value, states).awaitResult(): Unit
+      scope.client.saveBulkState(storeName.value, states).awaitResult(ctx): Unit
 
   def saveWithETag[T: JsonCodec](
       key: StateStoreKey,
@@ -127,12 +136,12 @@ private[internal] final class StateCapabilityImpl(
     val opts = new StateOptions(toJavaConsistency(consistency), toJavaConcurrency(concurrency))
     val javaMeta: java.util.Map[String, String] = metadata.map { case (k, v) => k.value -> v.value }.asJava
     try
-      scope.client.saveState(storeName.value, key.value, etag.value, json, javaMeta, opts).awaitResult(): Unit
+      scope.client.saveState(storeName.value, key.value, etag.value, json, javaMeta, opts).awaitResult(ctx): Unit
       None
-    catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
+    catch case e: DaprApiException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
 
   def delete(key: StateStoreKey): Unit =
-    scope.client.deleteState(storeName.value, key.value).awaitResult(): Unit
+    scope.client.deleteState(storeName.value, key.value).awaitResult(ctx): Unit
 
   def deleteWithETag(
       key: StateStoreKey,
@@ -142,21 +151,21 @@ private[internal] final class StateCapabilityImpl(
   ): Option[ETagMismatchException] =
     val opts = new StateOptions(toJavaConsistency(consistency), toJavaConcurrency(concurrency))
     try
-      scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(): Unit
+      scope.client.deleteState(storeName.value, key.value, etag.value, opts).awaitResult(ctx): Unit
       None
-    catch case e: io.dapr.exceptions.DaprException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
+    catch case e: DaprApiException if isETagConflict(e) => Some(ETagMismatchException(key, etag))
 
   def transaction(ops: Seq[StateOp]): Unit =
     val javaOps: java.util.List[TransactionalStateOperation[?]] =
       ops.map(toJavaOp).asJava
     scope.client
       .executeStateTransaction(storeName.value, javaOps)
-      .awaitResult(): Unit
+      .awaitResult(ctx): Unit
 
   def queryState[T: JsonCodec](query: StateQuery): List[StateEntry[T]] =
     scope.clientPreview
       .queryState(storeName.value, query.value, classOf[String])
-      .awaitResult()
+      .awaitResult(ctx)
       .toOption
       .flatMap(r => r.getResults.toOption)
       .fold(List.empty[StateEntry[T]]) { items =>
