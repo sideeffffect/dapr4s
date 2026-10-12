@@ -32,6 +32,16 @@ class StateItTest extends FunSuite, SharedDaprItSuite:
   )
   test("state: saveBulk persists all entries and getBulk reads them (None for absent)")(withDapr(saveBulkAndGetBulk))
   test("state: transaction upserts and deletes atomically")(withDapr(transactionUpsertsAndDeletes))
+  test("state: an unknown store throws ComponentNotFoundException(State)")(withDapr(unknownStoreNotFound))
+
+  def unknownStoreNotFound(using DaprCapability): Unit =
+    DaprCapability.state(StateStoreName("no-such-store")):
+      ItErrors.assertComponentNotFound(DaprComponentKind.State, "no-such-store")(
+        StateCapability.Instance.get[String](StateStoreKey("k")),
+      )
+      ItErrors.assertComponentNotFound(DaprComponentKind.State, "no-such-store")(
+        StateCapability.Instance.save(StateStoreKey("k"), "v"),
+      )
 
   def saveThenGet(using DaprCapability): Unit =
     DaprCapability.state(ItNames.StateStore):

@@ -17,6 +17,15 @@ class ConfigurationItTest extends FunSuite, SharedDaprItSuite:
 
   test("configuration: get returns the seeded items with values and versions")(withDapr(getReturnsSeededItems))
   test("configuration: get for an unknown key returns no item for it")(withDapr(getUnknownKeyReturnsNoItem))
+  test("configuration: an unknown store throws ComponentNotFoundException(Configuration)")(
+    withDapr(unknownStoreNotFound),
+  )
+
+  def unknownStoreNotFound(using DaprCapability): Unit =
+    DaprCapability.configuration(ConfigurationStoreName("no-such-configstore")):
+      ItErrors.assertComponentNotFound(DaprComponentKind.Configuration, "no-such-configstore")(
+        ConfigurationCapability.Instance.get(Seq(ItNames.ConfigKeyA)),
+      )
 
   def getReturnsSeededItems(using DaprCapability): Unit =
     DaprCapability.configuration(ItNames.ConfigStore):

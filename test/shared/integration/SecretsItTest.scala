@@ -12,8 +12,9 @@ import unsafeExceptions.canThrowAny
   * scripts/it/secrets.json.
   *
   * A missing key THROWS rather than returning `None`: the local-file store answers 500, which the impl surfaces as a
-  * thrown error on both platforms (None is returned only when the call succeeds but the response lacks the key). The
-  * exception type differs per platform, so it is checked structurally via `Try(...).isFailure`.
+  * thrown [[DaprApiException]] on both platforms (None is returned only when the call succeeds but the response lacks
+  * the key). The `errorCode` differs per transport (the JVM talks gRPC, which carries no Dapr error code for this
+  * legacy error; Scala.js talks HTTP and gets `ERR_SECRET_GET`), so only the type is asserted.
   */
 @scala.caps.assumeSafe
 class SecretsItTest extends FunSuite, SharedDaprItSuite:
@@ -21,7 +22,9 @@ class SecretsItTest extends FunSuite, SharedDaprItSuite:
   test("secrets: get for seeded keys returns Some")(withDapr(getSeededReturnsSome))
   test("secrets: getBulk contains the seeded keys")(withDapr(getBulkContainsSeeded))
   test("secrets: get for a missing key throws (local-file store answers 500)")(withDapr(getMissingKeyThrows))
-  test("secrets: get from an unknown store throws")(withDapr(getFromUnknownStoreThrows))
+  test("secrets: get from an unknown store throws ComponentNotFoundException(Secrets)")(
+    withDapr(getFromUnknownStoreThrows),
+  )
 
   def getSeededReturnsSome(using DaprCapability): Unit =
     DaprCapability.secrets(ItNames.SecretStore):
@@ -43,10 +46,10 @@ class SecretsItTest extends FunSuite, SharedDaprItSuite:
 
   def getMissingKeyThrows(using DaprCapability): Unit =
     DaprCapability.secrets(ItNames.SecretStore):
-      val attempt = scala.util.Try(SecretsCapability.Instance.get(SecretKey(ItNames.fresh("absent"))))
-      assert(attempt.isFailure, s"expected a missing secret to throw, got: $attempt")
+      intercept[DaprApiException](SecretsCapability.Instance.get(SecretKey(ItNames.fresh("absent")))): Unit
 
   def getFromUnknownStoreThrows(using DaprCapability): Unit =
     DaprCapability.secrets(SecretStoreName("nonexistent-store")):
-      val attempt = scala.util.Try(SecretsCapability.Instance.get(SecretKey("any-key")))
-      assert(attempt.isFailure, s"expected an unknown store to throw, got: $attempt")
+      ItErrors.assertComponentNotFound(DaprComponentKind.Secrets, "nonexistent-store")(
+        SecretsCapability.Instance.get(SecretKey("any-key")),
+      )

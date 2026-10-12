@@ -19,6 +19,13 @@ class CryptoItTest extends FunSuite, SharedDaprItSuite:
     withDapr(encryptDecryptStringRoundTrip),
   )
   test("crypto: encrypt then decrypt round-trips raw bytes")(withDapr(encryptDecryptBytesRoundTrip))
+  test("crypto: an unknown component throws ComponentNotFoundException(Crypto)")(withDapr(unknownComponentNotFound))
+
+  def unknownComponentNotFound(using DaprCapability): Unit =
+    DaprCapability.crypto(CryptoComponentName("no-such-crypto")):
+      ItErrors.assertComponentNotFound(DaprComponentKind.Crypto, "no-such-crypto")(
+        CryptoCapability.Instance.encryptString(ItNames.CryptoKey, "x", KeyWrapAlgorithm.Rsa),
+      )
 
   def encryptDecryptStringRoundTrip(using DaprCapability): Unit =
     DaprCapability.crypto(ItNames.CryptoStore):
