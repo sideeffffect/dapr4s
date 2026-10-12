@@ -1,6 +1,6 @@
 # Proposal: dapr4s on WebAssembly components (dapr-wasm-components)
 
-Status: **proposal** (2026-10-12). Implemented so far: D1, D2, D3 (see the table in 2a).
+Status: **proposal** (2026-10-12). Implemented so far: D1, D2, D3 (see the table in 2a); W1–W4 in WIT `dapr-wasm-components:interfaces@0.7.0` ([dapr-wasm-components PR #11](https://github.com/sideeffffect/dapr-wasm-components/pull/11), see section 1).
 
 Decisions (2026-10-12):
 - **W1 accepted, along the `ReadOnly` line only.** WIT gets `x-read` + `x` interfaces where dapr4s has
@@ -30,6 +30,19 @@ takes the shape the component model expresses best (resources, interface granula
 | W4 | **Drop `workflow-component`** param (or make it `option<string>`, default `"dapr"`). | Dapr has one workflow engine (`dapr`). dapr4s does not expose it. |
 | W5 | **`workflow-callback` (authoring)**, the durabletask work-item level: `list-workflows`, `list-activities`, `on-orchestrator(request{instance-id, past-events, new-events}) -> result<orchestrator-response{actions, custom-status}, app-error>`, `on-activity(request{name, instance-id, task-id, input}) -> result<list<u8>, app-error>`. The `GetWorkItems` gRPC stream lives in a **workflow provider**, not in the app. | Workflows are the only `DaprApp` field with no WIT counterpart. Dapr drives them over the durabletask gRPC stream, not the app channel. A reactor cannot hold a long-lived stream under WASI 0.2, so the provider is either a small native host (Rust + wasmtime, holds the stream, calls the export per work item) or a WASI 0.3 async component. **Highest-risk item. Phase 6.** |
 | W6 | Leave as is: universal name-first functions, `list<u8>` payloads, trap-for-infra-failure, mandatory callback exports, `topic-event-response`. | Already matches dapr4s. |
+
+**W1–W4 landed (2026-10-12)** in [dapr-wasm-components PR #11](https://github.com/sideeffffect/dapr-wasm-components/pull/11). Facts the
+dapr4s `wasm` wall must respect:
+- Import pruning holds **per function**: a component that only calls `state-read.get` imports `state-read` with just
+  `get` (guarded by `e2e/tests/authority.rs`). Every app also imports `state-read` and `configuration-read` with
+  **zero functions**, because the mandatory callback exports use their types (`state-item`, `configuration-item`).
+  These carry no authority.
+- `runtime-status` has daprd's 8 values (incl. `canceled`) plus `unknown` (any other string; raw string kept in
+  `properties["dapr.workflow.runtime_status"]`). dapr4s `WorkflowStatus` already has the 8; the `wasm` wall must
+  decide how `unknown` surfaces (it has no case today).
+- Dropping a `subscription` whose unsubscribe fails is logged, not trapped. The gRPC provider does not support
+  `subscribe` at all (traps).
+- `workflow-error.component-not-found` now means "workflow engine not available".
 
 ## 2. Changes to dapr4s
 
