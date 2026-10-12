@@ -1,6 +1,14 @@
 # Proposal: dapr4s on WebAssembly components (dapr-wasm-components)
 
-Status: **proposal** (2026-10-12). Nothing here is implemented. Overlap analysis:
+Status: **proposal** (2026-10-12). Nothing here is implemented yet.
+
+Decisions (2026-10-12):
+- **W1 accepted, along the `ReadOnly` line only.** WIT gets `x-read` + `x` interfaces where dapr4s has
+  `X.ReadOnly`. The `Instance` (name-bound) tiers stay dapr4s-only sugar: they never become WIT interfaces.
+- **W5: wait for WASI 0.3.** No native workflow host. Workflow authoring stays compile-time absent on the `wasm`
+  target until the durabletask stream can run inside a WASI 0.3 async component.
+- **sbt migration now** (Phase 1 starts immediately, before the Phase 0 spike).
+- **D1, D2, D3 now.** Overlap analysis:
 [`wiki/dapr/dapr-wasm-components-vs-dapr4s.md`](../wiki/dapr/dapr-wasm-components-vs-dapr4s.md).
 
 Goal: write a dapr4s app in Scala, link it with Scala.js as a **WASI component** that targets the
@@ -85,7 +93,7 @@ existing JVM example (state + pub/sub + invoke + an actor) so the three platform
 | 3 | WIT 0.7.0: W1–W4 + provider updates + Rust SDK | 2–4 days | — |
 | 4 | dapr4s `wasm` platform, outbound + inbound, no workflows | 1–2 weeks | 0, 1, 3 |
 | 5 | dapr4s-examples `wasm-component` + e2e | 1–2 days | 4 |
-| 6 | W5 workflow authoring + Scala durabletask replay engine | weeks, uncertain | 4 |
+| 6 | W5 workflow authoring (WASI 0.3 async provider) + Scala durabletask replay engine | weeks, uncertain | 4, WASI 0.3 in hosts |
 
 ## 5. Risks
 
