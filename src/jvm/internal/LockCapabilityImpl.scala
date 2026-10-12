@@ -23,6 +23,6 @@ private[internal] final class LockCapabilityImpl(
     scope.clientPreview.unlock(request).awaitResult().toOption.fold(UnlockStatus.InternalError) {
       case UnlockResponseStatus.SUCCESS               => UnlockStatus.Success
       case UnlockResponseStatus.LOCK_UNEXIST          => UnlockStatus.LockNotFound
-      case UnlockResponseStatus.LOCK_BELONG_TO_OTHERS => UnlockStatus.InternalError
+      case UnlockResponseStatus.LOCK_BELONG_TO_OTHERS => UnlockStatus.LockBelongsToOthers
       case UnlockResponseStatus.INTERNAL_ERROR        => UnlockStatus.InternalError
     }

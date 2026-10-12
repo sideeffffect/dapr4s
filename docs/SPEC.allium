@@ -244,10 +244,11 @@ value BulkPublishResult {
 
 value UnlockStatus {
     -- Result of a distributed lock unlock operation.
-    status: success | lock_not_found | internal_error
-    -- success:        lock was held by lockOwner and has been released
-    -- lock_not_found: no lock exists for the given resourceId
-    -- internal_error: lock exists but is held by a different owner
+    status: success | lock_not_found | lock_belongs_to_others | internal_error
+    -- success:                lock was held by lockOwner and has been released
+    -- lock_not_found:         no lock exists for the given resourceId
+    -- lock_belongs_to_others: lock exists but is held by a different owner (it stays held)
+    -- internal_error:         the lock store failed or the sidecar returned an unknown status
 }
 
 value SubscriptionResult {
@@ -616,7 +617,7 @@ contract LockInstanceOperations {
     try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) -> Boolean
     -- Attempts to acquire lock; returns true if acquired, false if already held
     unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
-    -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
+    -- Releases lock; returns Success, LockNotFound, LockBelongsToOthers (wrong owner) or InternalError
 }
 
 -- ---- Crypto ----
@@ -1923,8 +1924,8 @@ rule LockUnlock {
                 -- Returns UnlockStatus.Success
                 UnlockCompleted(status: success)
             else:
-                -- Returns UnlockStatus.InternalError (wrong owner)
-                UnlockCompleted(status: internal_error)
+                -- Returns UnlockStatus.LockBelongsToOthers (wrong owner)
+                UnlockCompleted(status: lock_belongs_to_others)
         else:
             -- Returns UnlockStatus.LockNotFound
             UnlockCompleted(status: lock_not_found)

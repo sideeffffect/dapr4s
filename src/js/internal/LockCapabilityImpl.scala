@@ -25,9 +25,8 @@ private[internal] final class LockCapabilityImpl(
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus =
     val response = JsAwait.await(scope.client.lock.unlock(storeName.value, resourceId.value, lockOwner.value))
     // Numeric LockStatus → UnlockStatus, copied from the JVM impl's UnlockResponseStatus mapping:
-    // Success (0) → Success, LockDoesNotExist (1) → LockNotFound, and LockBelongsToOthers (2) maps
-    // to InternalError exactly like the JVM maps LOCK_BELONG_TO_OTHERS (dapr4s's UnlockStatus has
-    // no owner-mismatch case); InternalError (3), unknown values, and an absent status (JVM: null
+    // Success (0) → Success, LockDoesNotExist (1) → LockNotFound, LockBelongsToOthers (2) →
+    // LockBelongsToOthers; InternalError (3), unknown values, and an absent status (JVM: null
     // response) all collapse to InternalError.
     //
     // The numeric values are PINNED here (`_statusToLockStatus`, implementation/Client/HTTPClient/
@@ -41,4 +40,5 @@ private[internal] final class LockCapabilityImpl(
     (response.status: Any) match
       case d: Double if d == 0 => UnlockStatus.Success
       case d: Double if d == 1 => UnlockStatus.LockNotFound
+      case d: Double if d == 2 => UnlockStatus.LockBelongsToOthers
       case _                   => UnlockStatus.InternalError

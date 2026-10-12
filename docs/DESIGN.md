@@ -479,7 +479,7 @@ Structured data without identity, compared by value. Defined per family in `src/
 | `ConfigurationUpdate` | `case class` | Config update notification from sidecar: `storeName: ConfigurationStoreName`, `items: Map[ConfigurationKey, ConfigurationItem]` |
 | `BulkPublishEntry[T]` | `case class` | Entry in a bulk publish request: `entryId: BulkEntryId`, `event: T` |
 | `BulkPublishResult` | `case class` | Result of a bulk publish: `failedEntries: List[BulkEntryId]` |
-| `UnlockStatus` | `enum` | Result of a distributed lock unlock: `Success`, `LockNotFound`, `InternalError` |
+| `UnlockStatus` | `enum` | Result of a distributed lock unlock: `Success`, `LockNotFound`, `LockBelongsToOthers`, `InternalError` |
 | `SubscriptionResult` | `enum` | What a pub/sub handler returns to sidecar: `Success`, `Retry`, `Drop` |
 | `CloudEvent[T]` | `case class` | Incoming CloudEvent from sidecar: envelope fields + `data: T` |
 | `InvokeRequest[T]` | `case class` | Incoming service invocation: `methodName`, `httpMethod: HttpMethod`, `data: T` |
