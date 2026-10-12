@@ -76,6 +76,15 @@ final class RecordingInvoker(response: String) extends InvokeCapability:
     instance(appId).invoke(method, data, httpMethod, metadata)[Resp]
   def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
     instance(appId).invoke[Resp](method)
+  def invokeHttp(
+      appId: AppId,
+      method: InvokeMethodName,
+      body: scala.collection.immutable.ArraySeq[Byte],
+      httpMethod: HttpMethod,
+      headers: Map[MetadataKey, MetadataValue],
+      query: Map[QueryParamName, QueryParamValue],
+  ): InvokeResponse =
+    instance(appId).invokeHttp(method, body, httpMethod, headers, query)
 
 /** Recording fake capability bound to one app: logs each call and returns a fixed response payload. */
 @scala.caps.assumeSafe
@@ -94,3 +103,13 @@ final class RecordingInvoke(val appId: AppId, response: String, calls: mutable.L
   def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp =
     calls += s"nobody|${appId.value}|${method.value}"
     JsonCodec.decodeOrThrow[Resp](response)
+
+  def invokeHttp(
+      method: InvokeMethodName,
+      body: scala.collection.immutable.ArraySeq[Byte],
+      httpMethod: HttpMethod,
+      headers: Map[MetadataKey, MetadataValue],
+      query: Map[QueryParamName, QueryParamValue],
+  ): InvokeResponse =
+    calls += s"http|${appId.value}|${method.value}|${body.size}|$httpMethod|${headers.size}|${query.size}"
+    InvokeResponse(200, Map.empty, Charsets.encodeString(response))

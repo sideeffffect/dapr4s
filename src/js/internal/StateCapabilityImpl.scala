@@ -97,10 +97,11 @@ private object StateCapabilityImpl:
     *
     * The SDK does not reject these calls — it catches the error and returns `{error}`
     * (`implementation/Client/HTTPClient/state.js`, typed `StateSaveResponseType` with an optional `error`); the JVM
-    * impl's `try/catch DaprException` becomes an inspection of that field here. Non-conflict errors are rethrown as
-    * `js.JavaScriptException` to mirror the JVM, where a non-conflict `DaprException` propagates.
+    * impl's `try/catch DaprApiException` becomes an inspection of that field here. Non-conflict errors are thrown
+    * translated ([[JsErrors.fromJsError]]) to mirror the JVM, where a non-conflict error propagates translated.
     */
   private def conflictOrThrow(
+      ctx: ErrorContext,
       response: StateSaveResponseType,
       key: StateStoreKey,
       etag: ETag,
@@ -109,13 +110,15 @@ private object StateCapabilityImpl:
       case None        => None
       case Some(error) =>
         if sdkFailureOf(error).exists(isETagConflict) then Some(ETagMismatchException(key, etag))
-        else throw js.JavaScriptException(error)
+        else throw JsErrors.fromJsError(ctx, error, js.JavaScriptException(error))
 
 @scala.caps.assumeSafe
 private[internal] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StateStoreName,
 ) extends StateCapability.Instance:
+
+  private val ctx = ErrorContext.Component(DaprComponentKind.State, storeName.value)
 
   import StateCapabilityImpl.*
 
@@ -130,7 +133,7 @@ private[internal] final class StateCapabilityImpl(
         )
     // The result is typed `KeyValueType | String` by ScalablyTyped (the TS interface), but at runtime it is the
     // parsed JSON body whatever its shape — asJsAny views the union as the js.Any it is.
-    val raw = JsAwait.await(promise)
+    val raw = JsAwait.await(promise, ctx)
     // A missing key answers 204 with an empty body, which HTTPClient.execute's tryParseJson surfaces as the empty
     // string — isAbsent maps that (and undefined/null) to None, mirroring the JVM's null/empty-value filter.
     if isAbsent(raw) then None else Some(decode[T](js.JSON.stringify(asJsAny(raw))))
@@ -150,10 +153,11 @@ private[internal] final class StateCapabilityImpl(
     val url = s"$base/v1.0/state/${urlSegment(storeName.value)}/${urlSegment(key.value)}$query"
     val response = JsAwait.await(
       NodeGlobals.fetch(url, RequestInit().setMethod("GET").setHeaders(ActorCapabilityImpl.baseHeaders(scope.sidecar))),
+      ctx,
     )
-    val body = JsAwait.await(response.text())
+    val body = JsAwait.await(response.text(), ctx)
     if response.status == 204 then StateEntry[T](None, None)
-    else if response.status >= 400 then throw new RuntimeException(s"Dapr API error ${response.status} at $url: $body")
+    else if response.status >= 400 then throw JsErrors.fromHttp(ctx, response.status.toInt, body)
     else
       val etag = response.headers.get("etag") match
         case null => None
@@ -169,7 +173,7 @@ private[internal] final class StateCapabilityImpl(
       // `POST /v1.0/state/{store}/bulk`, passed through verbatim: `[{key, data, etag}]`, with `data` absent for
       // missing keys. The fields are read through the dictionary view with type-tested values, so a shape change
       // upstream degrades to absent entries instead of a ClassCastException.
-      val items = JsAwait.await(scope.client.state.getBulk(storeName.value, keys.map(_.value).toJSArray))
+      val items = JsAwait.await(scope.client.state.getBulk(storeName.value, keys.map(_.value).toJSArray), ctx)
       items.map { item =>
         val key = item.get("key") match
           case Some(s: String) => s
@@ -184,17 +188,17 @@ private[internal] final class StateCapabilityImpl(
   def save[T: JsonCodec](key: StateStoreKey, value: T): Unit =
     val json = summon[JsonCodec[T]].encode(value)
     val entry = KeyValuePairType(key = key.value, value = parseJson(json))
-    val response = JsAwait.await(scope.client.state.save(storeName.value, js.Array(entry)))
+    val response = JsAwait.await(scope.client.state.save(storeName.value, js.Array(entry)), ctx)
     // `state.save` soft-fails ({error} instead of rejecting); rethrow to mirror the JVM, where saveState throws.
-    response.error.toOption.foreach(e => throw js.JavaScriptException(e))
+    response.error.toOption.foreach(e => throw JsErrors.fromJsError(ctx, e, js.JavaScriptException(e)))
 
   def saveBulk[T: JsonCodec](entries: Seq[(StateStoreKey, T)]): Unit =
     if entries.nonEmpty then
       val jsEntries = entries.map { case (key, value) =>
         KeyValuePairType(key = key.value, value = parseJson(summon[JsonCodec[T]].encode(value)))
       }.toJSArray
-      val response = JsAwait.await(scope.client.state.save(storeName.value, jsEntries))
-      response.error.toOption.foreach(e => throw js.JavaScriptException(e))
+      val response = JsAwait.await(scope.client.state.save(storeName.value, jsEntries), ctx)
+      response.error.toOption.foreach(e => throw JsErrors.fromJsError(ctx, e, js.JavaScriptException(e)))
 
   def saveWithETag[T: JsonCodec](
       key: StateStoreKey,
@@ -214,12 +218,12 @@ private[internal] final class StateCapabilityImpl(
         ),
       )
     val options = StateSaveOptions().setMetadata(toDict(metadata))
-    val response = JsAwait.await(scope.client.state.save(storeName.value, js.Array(entry), options))
-    conflictOrThrow(response, key, etag)
+    val response = JsAwait.await(scope.client.state.save(storeName.value, js.Array(entry), options), ctx)
+    conflictOrThrow(ctx, response, key, etag)
 
   def delete(key: StateStoreKey): Unit =
-    val response = JsAwait.await(scope.client.state.delete(storeName.value, key.value))
-    response.error.toOption.foreach(e => throw js.JavaScriptException(e))
+    val response = JsAwait.await(scope.client.state.delete(storeName.value, key.value), ctx)
+    response.error.toOption.foreach(e => throw JsErrors.fromJsError(ctx, e, js.JavaScriptException(e)))
 
   def deleteWithETag(
       key: StateStoreKey,
@@ -231,11 +235,11 @@ private[internal] final class StateCapabilityImpl(
       .setEtag(etag.value)
       .setConsistency(toJsConsistency(consistency))
       .setConcurrency(toJsConcurrency(concurrency))
-    val response = JsAwait.await(scope.client.state.delete(storeName.value, key.value, options))
-    conflictOrThrow(response, key, etag)
+    val response = JsAwait.await(scope.client.state.delete(storeName.value, key.value, options), ctx)
+    conflictOrThrow(ctx, response, key, etag)
 
   def transaction(ops: Seq[StateOp]): Unit =
-    JsAwait.await(scope.client.state.transaction(storeName.value, ops.map(toJsOp).toJSArray)): Unit
+    JsAwait.await(scope.client.state.transaction(storeName.value, ops.map(toJsOp).toJSArray), ctx): Unit
 
   def queryState[T: JsonCodec](query: StateQuery): List[StateEntry[T]] =
     // WHAT: asInstanceOf[StateQueryType] on the parsed query document.
@@ -246,7 +250,7 @@ private[internal] final class StateCapabilityImpl(
     // (implementation/Client/HTTPClient/state.js `query`), so any well-formed query document behaves identically
     // to one built field-by-field; a malformed document is rejected by the sidecar exactly as on the JVM.
     val jsQuery = parseJson(query.value).asInstanceOf[StateQueryType]
-    val response = JsAwait.await(scope.client.state.query(storeName.value, jsQuery))
+    val response = JsAwait.await(scope.client.state.query(storeName.value, jsQuery), ctx)
     // `results` is required in the ST type but only conditionally present at runtime: the SDK substitutes
     // `{results: []}` solely for an EMPTY response body (implementation/Client/HTTPClient/state.js `query`);
     // a JSON body without a `results` field (e.g. `{"token": ...}` when the repeated field is empty) passes

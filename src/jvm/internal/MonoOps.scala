@@ -47,19 +47,22 @@ private[internal] object MonoOps:
       *
       * ==Exception handling==
       *
-      * [[java.util.concurrent.ExecutionException]] is unwrapped so callers see the original cause (typically
-      * [[io.dapr.exceptions.DaprException]]).
+      * [[java.util.concurrent.ExecutionException]] is unwrapped, and its cause — typically an
+      * [[io.dapr.exceptions.DaprException]] or a gRPC `StatusRuntimeException` — is translated by
+      * [[JvmErrors.translate]] into a [[dapr4s.DaprException]] for the call described by `ctx` (which component or app
+      * it addressed). This is the JVM wall's main translation point: no Java SDK exception carrying a sidecar error
+      * leaves it. Failures that are not sidecar errors (codec, argument validation) pass through unchanged.
       *
       * [[java.lang.InterruptedException]] is caught explicitly — see the inline comment in the implementation for the
       * full argument.
       */
-    def awaitResult(): T | Null =
+    def awaitResult(ctx: ErrorContext): T | Null =
       given CanThrow[Exception] = unsafeExceptions.canThrowAny
       try mono.toFuture().nn.get()
       catch
         case e: java.util.concurrent.ExecutionException =>
           val cause = e.getCause
-          throw (if cause != null then cause else e)
+          throw JvmErrors.translate(ctx, if cause != null then cause else e)
 
         // WHY WE CATCH InterruptedException HERE
         //
@@ -84,7 +87,9 @@ private[internal] object MonoOps:
         // receives the InterruptedException with the flag correctly set and can
         // propagate or handle the cancellation as appropriate.
         //
-        // We do NOT wrap it in a DaprException: doing so would strip the
+        // We do NOT wrap it in a DaprException (neither the SDK's nor dapr4s'
+        // dapr4s.DaprException — JvmErrors.translate is deliberately not called
+        // on this branch): doing so would strip the
         // interrupt semantics and make cooperative cancellation impossible to
         // detect higher up the call stack.
         case e: java.lang.InterruptedException =>

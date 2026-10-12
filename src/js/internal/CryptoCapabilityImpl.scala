@@ -16,6 +16,8 @@ private[internal] final class CryptoCapabilityImpl(
     val componentName: CryptoComponentName,
 ) extends CryptoCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Crypto, componentName.value)
+
   import CryptoCapabilityImpl.*
 
   // Both operations go through scope.grpcClient (the lazily-created gRPC-protocol DaprClient):
@@ -30,13 +32,13 @@ private[internal] final class CryptoCapabilityImpl(
       keyName = keyName.value,
       keyWrapAlgorithm = toJsKeyWrapAlgorithm(algorithm),
     )
-    val result = JsAwait.await(scope.grpcClient.crypto.encrypt(toInt8Array(plaintext), request))
+    val result = JsAwait.await(scope.grpcClient.crypto.encrypt(toInt8Array(plaintext), request), ctx)
     fromBuffer(result)
 
   // The ciphertext embeds a reference to the wrapping key, so decryption needs only the component.
   def decrypt(ciphertext: ArraySeq[Byte]): ArraySeq[Byte] =
     val request = DecryptRequest(componentName = componentName.value)
-    val result = JsAwait.await(scope.grpcClient.crypto.decrypt(toInt8Array(ciphertext), request))
+    val result = JsAwait.await(scope.grpcClient.crypto.decrypt(toInt8Array(ciphertext), request), ctx)
     fromBuffer(result)
 
 @scala.caps.assumeSafe

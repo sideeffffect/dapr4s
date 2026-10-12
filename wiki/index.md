@@ -106,6 +106,7 @@ Dapr (Distributed Application Runtime) — portable, event-driven runtime for bu
 | [Dapr Actors Deep Dive](dapr/dapr-actors-deep-dive.md) | Virtual actor lifecycle, turn-based concurrency, reentrancy, reminders vs timers, placement service, state persistence, AI agent use cases | 2026-05-01 |
 | [Dapr Pluggable Components](dapr/dapr-pluggable-components.md) | Custom state stores, pub/sub, and bindings via gRPC/UDS; multi-interface components; independent release cycle | 2026-05-01 |
 | [Dapr Java SDK — Virtual Threads](dapr/dapr-java-sdk-virtual-threads.md) | SDK internals (gRPC/Netty transport, newGrpcStub() bypass, ThreadlessExecutor, Mono.block() vs toFuture().get() VT safety) | 2026-05-02 |
+| [Dapr error codes and the dapr4s exception mapping](dapr/dapr-error-codes.md) | daprd 1.17 error families (legacy APIError vs kit ErrorInfo), per-building-block not-found/not-configured/permission/invoke codes with HTTP + gRPC statuses (probed live), why gRPC loses ERR_ codes, invoke daprd-vs-app error ambiguity, Java/JS SDK error shapes, and the DaprException subtype each maps to | 2026-10-12 |
 | [dapr-wasm-components WIT vs dapr4s](dapr/dapr-wasm-components-vs-dapr4s.md) | Overlap of the dapr-wasm-components WIT 0.6.0 package with dapr4s capabilities per building block (outbound + inbound callbacks), gaps (workflow authoring has no WIT callback; LockBelongsToOthers; invoke status/headers; CEL routes/bulk subscribe), and the scala-wasm WasmComponent toolchain state | 2026-10-12 |
 
 ## kubernetes

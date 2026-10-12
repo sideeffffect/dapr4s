@@ -128,7 +128,7 @@ Actor has two levels of names: `ActorCapability` (any actor) → `forType(actorT
 | `jobs` (JVM only) | `JobsCapability` | `JobName` | `get` | `schedule`, `scheduleOnce`, `delete` |
 | `workflow` | `WorkflowCapability` | `WorkflowInstanceId` | `getStatus`, `waitForCompletion` | `suspend`, `resume`, `terminate`, `raiseEvent`, `purge`; universal only: `start`, `startWithId` |
 | `publish` | `PublishCapability` | `PubSubName` | — | `publish`, `publishWithMetadata`, `bulkPublish` |
-| `invoke` | `InvokeCapability` | `AppId` | — | `invoke` (with or without a body) |
+| `invoke` | `InvokeCapability` | `AppId` | — | `invoke` (with or without a body), `invokeHttp` |
 | `bindings` | `BindingsCapability` | `BindingName` | — | `invoke`, `invokeOneWay` |
 | `lock` | `LockCapability` | `LockStoreName` | — | `tryLock`, `unlock` |
 | `crypto` | `CryptoCapability` | `CryptoComponentName` | — | `encrypt`, `decrypt`, `encryptString`, `decryptString` |
@@ -483,6 +483,7 @@ Structured data without identity, compared by value. Defined per family in `src/
 | `SubscriptionResult` | `enum` | What a pub/sub handler returns to sidecar: `Success`, `Retry`, `Drop` |
 | `CloudEvent[T]` | `case class` | Incoming CloudEvent from sidecar: envelope fields + `data: T` |
 | `InvokeRequest[T]` | `case class` | Incoming service invocation: `methodName`, `httpMethod: HttpMethod`, `data: T` |
+| `InvokeResponse` | `case class` | `invokeHttp` result: `status: Int`, `headers: Map[MetadataKey, MetadataValue]` (lower-case names), `body: ArraySeq[Byte]` |
 | `HttpMethod` | `enum` | HTTP verb: `Get`, `Post`, `Put`, `Patch`, `Delete`, `Head`, `Options` |
 | `StateOp` | `sealed abstract class` | Base of the state transaction ADT (see below) |
 | `WorkflowSnapshot` | `case class` | Snapshot of a workflow instance's current state |
@@ -529,7 +530,7 @@ object JsonCodec:
   given [T: upickle.default.ReadWriter]: JsonCodec[T] = ...
 ```
 
-**Raw-bytes outbound payloads**: pub/sub publish and service invocation encode the value with the `JsonCodec[T]` and hand the result to the Java SDK as **raw bytes** (`byte[]`), not as a `String`. The SDK's serializer passes `byte[]` through untouched but would re-serialize a `String`, double-encoding the JSON into a JSON-string. Exchanging bytes in both directions keeps dapr4s the sole owner of the JSON encoding. See `PublishCapabilityImpl` and `InvokeCapabilityImpl`.
+**Raw-bytes outbound payloads**: pub/sub publish and output bindings encode the value with the `JsonCodec[T]` and hand the result to the Java SDK as **raw bytes** (`byte[]`), not as a `String`. The SDK's serializer passes `byte[]` through untouched but would re-serialize a `String`, double-encoding the JSON into a JSON-string. Exchanging bytes in both directions keeps dapr4s the sole owner of the JSON encoding. See `PublishCapabilityImpl` and `BindingsCapabilityImpl`. Service invocation bypasses the SDK entirely (raw `/v1.0/invoke` HTTP, see Error Handling): the typed `invoke` sends the UTF-8 bytes of the encoded JSON with `Content-Type: application/json`.
 
 ---
 
@@ -597,18 +598,63 @@ stateDiagram-v2
 
 ## Error Handling
 
-Only two exception types are declared in `Exceptions.scala` — those where the caller has a genuine, distinct action to take:
+Expected outcomes are **values**, not exceptions: a missing state key is `None`, an ETag conflict is `Some(ETagMismatchException)` (returned by `saveWithETag`/`deleteWithETag`, never thrown), lock outcomes are `Boolean`/`UnlockStatus`, a bulk-publish partial failure is a `BulkPublishResult`, a missing workflow instance is `None`, and `invokeHttp` returns a non-2xx answer as an `InvokeResponse`.
 
-| Exception | How surfaced | Why it is meaningful |
+Everything the sidecar (or the path to it) reports as an **error** is a `dapr4s.DaprException` — a sealed hierarchy in `Exceptions.scala`, identical on the JVM and on Scala.js. No SDK exception type (`io.dapr.exceptions.DaprException`, `io.grpc.StatusRuntimeException`, a `js.JavaScriptException` wrapping an SDK error) reaches user code; the SDK exception is kept as `getCause` for logging only.
+
+```mermaid
+classDiagram
+    class DaprException {
+        <<sealed abstract>>
+    }
+    class ComponentNotFoundException {
+        +componentKind: DaprComponentKind
+        +name: String
+    }
+    class PermissionDeniedException
+    class AppUnreachableException {
+        +appId: AppId
+    }
+    class InvokeHttpException {
+        +appId: AppId
+        +method: InvokeMethodName
+        +status: Int
+        +body: ArraySeq[Byte]
+    }
+    class DaprApiException {
+        +errorCode: String
+    }
+    DaprException <|-- ComponentNotFoundException
+    DaprException <|-- PermissionDeniedException
+    DaprException <|-- AppUnreachableException
+    DaprException <|-- InvokeHttpException
+    DaprException <|-- DaprApiException
+```
+
+| Exception | When | What the caller can do |
 |---|---|---|
-| `ETagMismatchException` | **Returned** as `Option[ETagMismatchException]` by `saveWithETag` and `deleteWithETag` (on `StateCapability` and `StateCapability.Instance`) | Caller must fetch the new ETag and retry; using a return value (not a thrown exception) makes handling explicit without try/catch |
-| `JsonDecodeException` | **Thrown** by `JsonCodec.decodeOrThrow` | Data in the store/response does not match the expected type; a data-contract violation the caller may want to log or handle separately |
+| `ComponentNotFoundException(kind, name)` | the named state store / pub/sub / secret store / configuration store / lock store / output binding / crypto / conversation component does not exist (or no component of that kind does). `DaprComponentKind` = `State`, `PubSub`, `Secrets`, `Configuration`, `Lock`, `Binding`, `Crypto`, `Conversation` | a deployment error: report it, fall back to another component |
+| `PermissionDeniedException` | an access-control policy, a secret scope or a pub/sub topic scope denied the call | report, do not retry |
+| `AppUnreachableException(appId)` | service invocation could not reach the target (unknown app id, target not healthy) | retry later, fail over |
+| `InvokeHttpException(appId, method, status, body)` | the target app answered a **typed** `invoke` with non-2xx (3xx included) | branch on `status`, read `body` |
+| `DaprApiException(errorCode, message)` | anything else, incl. `UNAVAILABLE` when the sidecar cannot be reached | log, propagate |
 
-All other failures — sidecar unreachable, component not configured, gRPC errors — propagate as unchecked `io.dapr.exceptions.DaprException` (from the Java SDK, a `RuntimeException` subclass). These are unexpected infrastructure failures that callers cannot meaningfully handle at the call site; they bubble up to a top-level error boundary. There is no per-capability exception hierarchy: such a hierarchy would be a lie of precision, implying callers need to handle `DaprStateException` differently from `DaprPubSubException` when they do not.
+Plus two non-Dapr exceptions: `JsonDecodeException` (thrown by `JsonCodec.decodeOrThrow` when a payload does not match the expected type) and `ETagMismatchException` (returned, see above).
 
-`SecretsCapability.get` returns `Option[SecretValue]` rather than throwing for a missing key — absence is a normal case, not a failure.
+**One translation table, one translation point per wall.** The decision "which subtype" is the shared, platform-independent `internal.DaprErrors.translate(ctx, SidecarError, cause)`. Each wall only normalises its transport failure into a `SidecarError` (HTTP error code, `google.rpc.ErrorInfo` reason, HTTP status, gRPC status name, message):
 
-Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM errors propagate immediately. `InterruptedException` is never silently swallowed (see `MonoOps.awaitResult`).
+- JVM: `JvmErrors.translate`, reached from `MonoOps.awaitResult(ctx)` (and `FluxOps.collectBytes(ctx)`) for every `Mono` SDK call, from `JvmErrors.guard(ctx)` for the synchronous `DaprWorkflowClient`, and from `JvmErrors.fromHttp` for the raw-HTTP paths (service invocation, `HttpActorContext`).
+- Scala.js: `JsErrors.translate`, reached from `JsAwait.await(promise, ctx)` for every Dapr promise, from the SDK soft failures (`{error}` results of `state.save`/`state.delete`/`pubsub.publish`/`publishBulk`) and from `JsErrors.fromHttp` for the raw-`fetch` paths.
+
+Every call site passes an `ErrorContext` — `Component(kind, name)`, `App(appId)` or `Runtime` (actors, workflows, jobs) — so the component name / app id in the exception comes from the **request**, never from parsing the sidecar's message. Matching is by Dapr error code or `ErrorInfo` reason first; legacy errors over gRPC carry neither (daprd sends only the status code and message), so the fallback compares the message with daprd's exact format string for that kind and name. HTTP statuses are deliberately not used for component errors (secret-store-not-found is 401, pubsub-not-found 404). The table, and the daprd v1.17 sources and live probe it comes from, are in `wiki/dapr/dapr-error-codes.md`.
+
+`DaprApiException.errorCode` is the most specific code the transport carried (ERR code > ErrorInfo reason > gRPC status name > `UNKNOWN`), so it can differ between the JVM (gRPC) and Scala.js (HTTP) for the same failure; the typed subclasses are the cross-platform contract.
+
+**Service invocation.** `invokeHttp` and the typed `invoke` both go to the sidecar's raw `/v1.0/invoke` HTTP API (`java.net.http` on the JVM, `fetch` on JS) — the Java SDK's `invokeMethod` throws on every non-2xx (3xx too) and drops the response headers, and the JS SDK cannot send falsy bodies and also drops headers. daprd passes the target app's status, headers and body through unchanged and reports its own failures as `{"errorCode":"ERR_DIRECT_INVOKE",...}`; a non-2xx answer is daprd's (→ `AppUnreachableException` / `PermissionDeniedException`) only when its body parses with `ERR_DIRECT_INVOKE` or a permission code, otherwise it is the app's answer. The typed `invoke` is the shared `InvokeSupport.invokeTyped` on top of `invokeHttp`: 2xx → decode, otherwise `InvokeHttpException` — the same code on both platforms. On the JVM the request timeout is `SidecarConfig.httpClientReadTimeout` (→ `DaprApiException("DEADLINE_EXCEEDED")`); GET/HEAD never carry a body.
+
+`SecretsCapability.get` returns `None` when the store answers without the key (e.g. `secretstores.local.env` answers `{"k": ""}`); a store that reports a missing key as an error (`secretstores.local.file` answers 500 `ERR_SECRET_GET`) surfaces as `DaprApiException`.
+
+Internal catch clauses use `scala.util.control.NonFatal` to ensure fatal JVM errors propagate immediately. `InterruptedException` is never translated or swallowed: `MonoOps.awaitResult` and the invoke HTTP client restore the interrupt flag and rethrow it unchanged.
 
 ---
 
@@ -647,7 +693,12 @@ dapr4s/
 │   │   ├── DaprConfig.scala          # DaprConfig / SidecarConfig / AppServerConfig / ActorRuntimeConfig
 │   │   ├── Validation.scala          # DaprAppValidationError + structural validation (validateOrThrow)
 │   │   ├── Charsets.scala            # Charset constants/encoding helpers usable from safe-mode code
-│   │   ├── Exceptions.scala          # ETagMismatchException, JsonDecodeException
+│   │   ├── Exceptions.scala          # ETagMismatchException, JsonDecodeException, DaprComponentKind,
+│   │   │                             # sealed DaprException + ComponentNotFound/PermissionDenied/
+│   │   │                             # AppUnreachable/InvokeHttp/DaprApi exceptions
+│   │   ├── internal/                 # shared internal layer (package dapr4s.internal, no SDK types):
+│   │   │                             # DaprErrors (ErrorContext, SidecarError, the error-translation table),
+│   │   │                             # InvokeSupport (typed invoke on top of invokeHttp, URL encoding)
 │   │   ├── optypes/                  # Cross-cutting opaque types, one per file, package dapr4s (AppId, Route,
 │   │   │                             # MetadataKey/-Value, SerializedJson, ContentType, ApiToken, DaprPort,
 │   │   │                             # DaprDuration, PemPath)
@@ -658,7 +709,8 @@ dapr4s/
 │   │   │                             # ids, BulkEntryId, PublishModels, Subscription, Publish.derive,
 │   │   │                             # Subscriptions.derive
 │   │   ├── invoke/                   # dapr4s.invoke: InvokeCapability (+ Instance, val appId), InvokeMethodName,
-│   │   │                             # InvokeModels (InvokeRequest), InvokeRoute, Invoke.derive,
+│   │   │                             # InvokeModels (InvokeRequest, InvokeResponse, QueryParamName/-Value),
+│   │   │                             # InvokeRoute, Invoke.derive,
 │   │   │                             # InvokeRoutes.derive, InvokeDerivationRuntime
 │   │   ├── secrets/                  # dapr4s.secrets: SecretsCapability (+ ReadOnly/Instance tiers), names/keys/values, Secrets.derive
 │   │   ├── configuration/            # dapr4s.configuration: ConfigurationCapability (+ ReadOnly/Instance tiers), names/keys/values,
@@ -696,7 +748,8 @@ dapr4s/
 │   │   │   └── ForwardersPlatform.scala  # jobs runtime forwarders (the JS twin is empty)
 │   │   └── internal/                 # JVM internal layer — Java SDK confined here
 │   │       ├── DaprCapabilityImpl.scala
-│   │       ├── MonoOps.scala         # Reactor Mono → blocking bridge (.toFuture().get())
+│   │       ├── MonoOps.scala         # Reactor Mono → blocking bridge (.toFuture().get()) + error translation
+│   │       ├── JvmErrors.scala       # JVM wall's translation point: SDK/gRPC/HTTP failure → DaprException
 │   │       ├── FluxOps.scala         # Reactor Flux subscription bridge (configuration subscribe)
 │   │       ├── NullOps.scala / Json.scala
 │   │       ├── DaprAppServer.scala   # HTTP server (OpenJDK jdk.httpserver); workflow/actor registration
@@ -714,6 +767,7 @@ dapr4s/
 │           │                         # ScalablyTyped-generated dapr4styped.* facades (see Scala.js platform section)
 │           ├── facade/ExpressModule.scala  # THE one hand-written facade: express CJS default-export shim
 │           ├── JsAwait.scala         # THE orphan-js.await bridge (only home of allowOrphanJSAwait)
+│           ├── JsErrors.scala        # JS wall's translation point: SDK/gRPC/fetch failure → DaprException
 │           ├── JsInterop.scala       # JSON/string/error bridging (JS analogue of Json.scala + NullOps)
 │           ├── DaprCapabilityImpl.scala  # + LazyClientRef, SidecarConfig → SDK options mapping
 │           ├── State/Publish/Invoke/Secrets/Configuration/Bindings/Lock/Crypto
@@ -807,7 +861,7 @@ tests on both); that gap is symmetric by design.
 | Capability root | `DaprCapability` returns one universal capability per family (`StateCapability`, …), narrowed by name with `instance(name)` → `X.Instance` and by authority by upcasting to `X.ReadOnly` / `X.Instance.ReadOnly` | Single entry point; child capabilities capture scope, preventing escape; the universal capability is a passable "any store / app / job" handle; read-only narrowing cannot be re-widened by `instance` |
 | JSON library | upickle | Pure Scala, Scala CLI friendly, automatic derivation |
 | Async model | JVM: blocking (`Mono.toFuture().get()`) on virtual threads; JS: JSPI suspension via orphan `js.await` on the Wasm backend | Direct-style API on both platforms with no effect-library dependency; VT parking and JSPI stack suspension are architectural analogues (see Scala.js platform section) |
-| Error model | Exceptions (Java SDK `DaprException`) | Consistent with safe mode's exception-permitting stance; composable with `Try` |
+| Error model | Expected outcomes as values; errors as the sealed `dapr4s.DaprException` hierarchy, translated at each SDK wall by one shared table | Consistent with safe mode's exception-permitting stance; composable with `Try`; the same failure is the same type on every platform, and no SDK type leaks |
 | SDK visibility | Zero — Java SDK confined to `src/jvm/internal/`, JS SDK (`@dapr/dapr`) confined to `src/js/internal/` | Users see only Scala types; easier to swap SDKs in future |
 | Scope safety | Capture checking: capabilities `^{scope}` | Compiler enforces no DAPR resource outlives its `Dapr(config).run` block (via `import language.experimental.captureChecking`, no `-Ycc` needed) |
 | Configuration | Typed `DaprConfig` (`SidecarConfig` / `AppServerConfig` / `ActorRuntimeConfig`) | All endpoints/timeouts/TLS explicit and typed — no env-var reads or system-property manipulation in production code; `grpcTlsInsecure` defaults to `false` |
@@ -962,7 +1016,8 @@ The JS SDK cannot serve all building blocks over one protocol (`configuration`/`
 
 | Capability | JS backing |
 |---|---|
-| state, publish, invoke, bindings (outbound), secrets, lock | HTTP-protocol `DaprClient` sub-clients |
+| state, publish, bindings (outbound), secrets, lock | HTTP-protocol `DaprClient` sub-clients |
+| invoke (`invoke` + `invokeHttp`) | **raw sidecar HTTP via Node-global `fetch`** (`/v1.0/invoke`, the same API the JVM calls through `java.net.http`) |
 | configuration (get + subscribe), crypto | lazy **gRPC** `DaprClient` (gRPC-only in the JS SDK) |
 | actor (client) + `ActorContext` | **raw sidecar HTTP via Node-global `fetch`** (see below) |
 | workflow (client) | lazy `DaprWorkflowClient` (gRPC, vendored durabletask) |

@@ -202,6 +202,15 @@ private[internal] final class InvokeCapabilityUniversalImpl(scope: DaprCapabilit
     instance(appId).invoke(method, data, httpMethod, metadata)[Resp]
   def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
     instance(appId).invoke[Resp](method)
+  def invokeHttp(
+      appId: AppId,
+      method: InvokeMethodName,
+      body: scala.collection.immutable.ArraySeq[Byte],
+      httpMethod: HttpMethod,
+      headers: Map[MetadataKey, MetadataValue],
+      query: Map[QueryParamName, QueryParamValue],
+  ): InvokeResponse =
+    instance(appId).invokeHttp(method, body, httpMethod, headers, query)
 
 @scala.caps.assumeSafe
 private[internal] final class SecretsCapabilityUniversalImpl(scope: DaprCapabilityImpl) extends SecretsCapability:

@@ -17,6 +17,8 @@ private[internal] final class ConfigurationCapabilityImpl(
     val storeName: ConfigurationStoreName,
 ) extends ConfigurationCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Configuration, storeName.value)
+
   import ConfigurationCapabilityImpl.*
 
   // Both operations go through scope.grpcClient (the lazily-created gRPC-protocol DaprClient):
@@ -26,6 +28,7 @@ private[internal] final class ConfigurationCapabilityImpl(
   def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigurationKey, ConfigurationItem] =
     val response = JsAwait.await(
       scope.grpcClient.configuration.get(storeName.value, keys.map(_.value).toJSArray, toDict(metadata)),
+      ctx,
     )
     response.items.iterator.map { case (k, item) => ConfigurationKey(k) -> toConfigItem(k, item) }.toMap
 
@@ -69,6 +72,7 @@ private[internal] final class ConfigurationCapabilityImpl(
         toDict(metadata),
         callback.asInstanceOf[SubscribeConfigurationCallback],
       ),
+      ctx,
     )
     // stop() is async at runtime (an async arrow that aborts the stream and sends the explicit
     // unsubscribe RPC) even though the SDK's TypeScript interface — and therefore the ScalablyTyped
@@ -83,7 +87,7 @@ private[internal] final class ConfigurationCapabilityImpl(
     // WHY SAFE: the runtime return value IS a Promise (verified in the SDK sources above); the
     // dynamic call invokes the same member the typed call would, and the cast is the standard
     // erased view of a known JS value.
-    () => JsAwait.await(stream.asInstanceOf[js.Dynamic].applyDynamic("stop")().asInstanceOf[js.Promise[Unit]])
+    () => JsAwait.await(stream.asInstanceOf[js.Dynamic].applyDynamic("stop")().asInstanceOf[js.Promise[Unit]], ctx)
 
 @scala.caps.assumeSafe
 private object ConfigurationCapabilityImpl:

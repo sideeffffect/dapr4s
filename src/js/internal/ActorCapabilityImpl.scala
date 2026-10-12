@@ -95,15 +95,15 @@ private[internal] object ActorCapabilityImpl:
     sidecar.apiToken.foreach(t => headers.push(js.Array("dapr-api-token", t.value)): Unit)
     headers
 
-  /** POST `body` (if any) and return the response text; throw on HTTP >= 400 with the same message shape as the JVM
-    * `HttpActorContext.postJson` (`"Dapr API error $code at $url: $errBody"`).
+  /** POST `body` (if any) and return the response text; throw on HTTP >= 400, translated like every sidecar failure
+    * ([[JsErrors.fromHttp]] — the JVM twin's actor-client errors go through `JvmErrors`).
     */
   private def post(url: String, body: Option[String], sidecar: SidecarConfig): String =
     val init = RequestInit().setMethod("POST").setHeaders(baseHeaders(sidecar))
     body.foreach(b => init.setBody(b): Unit)
-    val response = JsAwait.await(NodeGlobals.fetch(url, init))
-    val text = JsAwait.await(response.text())
-    if response.status >= 400 then throw new RuntimeException(s"Dapr API error ${response.status} at $url: $text")
+    val response = JsAwait.await(NodeGlobals.fetch(url, init), ErrorContext.Runtime)
+    val text = JsAwait.await(response.text(), ErrorContext.Runtime)
+    if response.status >= 400 then throw JsErrors.fromHttp(ErrorContext.Runtime, response.status.toInt, text)
     text
 
   /** Decode an actor response, mirroring the JVM twin: a `null`/empty body reaches the codec as the empty string, and a

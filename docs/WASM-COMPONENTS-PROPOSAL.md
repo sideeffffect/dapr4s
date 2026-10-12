@@ -1,6 +1,6 @@
 # Proposal: dapr4s on WebAssembly components (dapr-wasm-components)
 
-Status: **proposal** (2026-10-12). Nothing here is implemented yet.
+Status: **proposal** (2026-10-12). Implemented so far: D1, D2, D3 (see the table in 2a).
 
 Decisions (2026-10-12):
 - **W1 accepted, along the `ReadOnly` line only.** WIT gets `x-read` + `x` interfaces where dapr4s has
@@ -38,8 +38,8 @@ takes the shape the component model expresses best (resources, interface granula
 | # | Change | Why |
 |---|---|---|
 | D1 | **`UnlockStatus.LockBelongsToOthers`**. Today both walls collapse it into `InternalError` (`src/jvm/internal/LockCapabilityImpl.scala:26`, `src/js/internal/LockCapabilityImpl.scala:44`). | Bug: Dapr, the Java SDK and WIT all distinguish it. |
-| D2 | **Typed Dapr exceptions**: `sealed abstract class DaprException` with `final` `ComponentNotFoundException(name)`, `PermissionDeniedException(msg)`, `AppUnreachableException(appId)`. Map them from gRPC `NOT_FOUND`/`PERMISSION_DENIED` (JVM), HTTP status (JS) and the WIT `*-error` variants. | WIT has these recoverable cases in every interface. dapr4s has no type for them. They then mean the same thing on all three platforms. |
-| D3 | **HTTP-level invoke**: `InvokeCapability.invokeHttp(appId, method, body, httpMethod, headers, query): InvokeResponse(status, headers, body)`. The typed `invoke` stays. | WIT and Dapr expose status and headers. dapr4s drops them. |
+| D2 | **Typed Dapr exceptions** — **implemented** (2026-10-12): `sealed abstract class DaprException` with `final` `ComponentNotFoundException(componentKind, name)`, `PermissionDeniedException`, `AppUnreachableException(appId)`, `InvokeHttpException(appId, method, status, body)`, `DaprApiException(errorCode)`. One shared table (`internal.DaprErrors`) maps Dapr error codes / ErrorInfo reasons / daprd's exact messages, not raw gRPC/HTTP statuses (those are unreliable: secret-store-not-found is 401); see [`wiki/dapr/dapr-error-codes.md`](../wiki/dapr/dapr-error-codes.md). The `wasm` wall maps the WIT `*-error` variants onto the same types. | WIT has these recoverable cases in every interface. dapr4s has no type for them. They then mean the same thing on all three platforms. |
+| D3 | **HTTP-level invoke** — **implemented** (2026-10-12): `InvokeCapability.invokeHttp(appId, method, body, httpMethod, headers, query): InvokeResponse(status, headers, body)`, never throwing on non-2xx. The typed `invoke` stays, built on top of it, and throws `InvokeHttpException` on non-2xx identically on JVM and JS. | WIT and Dapr expose status and headers. dapr4s drops them. |
 | D4 | **`RuntimeCapability`** (`DaprCapability.runtime`): `ReadOnly` = `metadata`, `healthy`, `outboundHealthy`; full = `setMetadataLabel`. | WIT `runtime`, already in the family shape. |
 | D5 | **Subscription routing + bulk**: `Subscription` gains optional CEL `rules` and `bulk: Option[BulkSubscribe]`. Derivation adds `@route("<cel>")`. | Dapr features WIT already models. |
 | D6 | **Secrets multi-value**: `getAll(storeName, key): Option[Map[SecretKey, SecretValue]]`. `get` stays the single-value convenience. | A Dapr secret is a map. WIT models that correctly. |

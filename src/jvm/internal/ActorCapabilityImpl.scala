@@ -30,15 +30,16 @@ private[internal] final class ActorCapabilityImpl(
 
   def invoke[Req: JsonCodec](method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp =
     val requestBytes = summon[JsonCodec[Req]].encode(data).getBytes(java.nio.charset.StandardCharsets.UTF_8).nn
-    val rawResult = proxy.invokeMethod(method.value, requestBytes, classOf[Array[Byte]]).awaitResult()
+    val rawResult =
+      proxy.invokeMethod(method.value, requestBytes, classOf[Array[Byte]]).awaitResult(ErrorContext.Runtime)
     ActorCapabilityImpl.decodeResponse[Resp](actorType, method, rawResult)
 
   def invoke[Resp: JsonCodec](method: ActorMethodName): Resp =
-    val rawResult = proxy.invokeMethod(method.value, classOf[Array[Byte]]).awaitResult()
+    val rawResult = proxy.invokeMethod(method.value, classOf[Array[Byte]]).awaitResult(ErrorContext.Runtime)
     ActorCapabilityImpl.decodeResponse[Resp](actorType, method, rawResult)
 
   def invokeVoid(method: ActorMethodName): Unit =
-    proxy.invokeMethod(method.value).awaitResult()
+    proxy.invokeMethod(method.value).awaitResult(ErrorContext.Runtime)
 
 @scala.caps.assumeSafe
 private[internal] object ActorCapabilityImpl:

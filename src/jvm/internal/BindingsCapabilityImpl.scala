@@ -14,6 +14,8 @@ private[internal] final class BindingsCapabilityImpl(
     val bindingName: BindingName,
 ) extends BindingsCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Binding, bindingName.value)
+
   import BindingsCapabilityImpl.*
 
   def invoke[Req: JsonCodec](
@@ -46,7 +48,7 @@ private[internal] final class BindingsCapabilityImpl(
     val javaMeta = toJavaMeta(metadata)
     scope.client
       .invokeBinding(bindingName.value, operation.value, reqBytes, javaMeta, TypeRef.BYTE_ARRAY)
-      .awaitResult()
+      .awaitResult(ctx)
 
 @scala.caps.assumeSafe
 private object BindingsCapabilityImpl:
