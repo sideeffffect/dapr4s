@@ -149,3 +149,5 @@
 - Fixed: orphan dapr-e2e-selfhosted.md — added back-reference from dapr-testcontainers.md See Also
 - Fixed: orphan scala-best-practices-nrinaudo.md — added back-references from adts-illegal-states.md, parse-dont-validate.md, primitive-obsession-opaque-types.md
 - Reported (not fixed): broken link java-interop-safe-scala.md:187 → scala-cli-build-tool.md (article missing; raw scala-cli sources exist but no compiled article)
+
+## [2026-10-12] ingest | dapr-wasm-components WIT vs dapr4s
