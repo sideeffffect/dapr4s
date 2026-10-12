@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.actor.*
 import io.dapr.actors.ActorId as JavaActorId
 import io.dapr.actors.client.{
   ActorClient as JavaActorClient,
@@ -25,7 +26,7 @@ private[internal] final class ActorCapabilityImpl(
     val actorType: ActorType,
     val actorId: ActorId,
     private val proxy: JavaActorProxy,
-) extends ActorCapability:
+) extends ActorCapability.Instance:
 
   def invoke[Req: JsonCodec](method: ActorMethodName, data: Req)[Resp: JsonCodec]: Resp =
     val requestBytes = summon[JsonCodec[Req]].encode(data).getBytes(java.nio.charset.StandardCharsets.UTF_8).nn

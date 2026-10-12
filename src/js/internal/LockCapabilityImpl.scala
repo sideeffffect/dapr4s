@@ -2,13 +2,14 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.lock.*
 import scala.concurrent.duration.FiniteDuration
 
 @scala.caps.assumeSafe
 private[internal] final class LockCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: LockStoreName,
-) extends LockCapability:
+) extends LockCapability.Instance:
 
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean =
     // expiry.toSeconds truncates to whole seconds — the same rounding the JVM impl applies

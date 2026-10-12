@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.conversation.*
 import io.dapr.client.domain.{
   ConversationInputAlpha2,
   ConversationMessage as JConversationMessage,
@@ -21,7 +22,7 @@ import NullOps.*
 private[internal] final class ConversationCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: ConversationComponentName,
-) extends ConversationCapability:
+) extends ConversationCapability.Instance:
 
   import ConversationCapabilityImpl.*
 

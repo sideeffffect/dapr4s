@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.publish.*
 
 import scala.jdk.CollectionConverters.*
 import MonoOps.*
@@ -11,7 +12,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 private[internal] final class PublishCapabilityImpl(
     scope: DaprCapabilityImpl,
     val pubsubName: PubSubName,
-) extends PublishCapability:
+) extends PublishCapability.Instance:
 
   // Publish the already-encoded JSON as raw bytes: the Dapr SDK's serializer passes byte[] through
   // untouched but would re-serialize a String, double-encoding the event data into a JSON string

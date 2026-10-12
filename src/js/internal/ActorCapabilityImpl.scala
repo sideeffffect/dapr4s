@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.actor.*
 import scala.scalajs.js
 import dapr4styped.node.globalsMod.global as NodeGlobals
 import dapr4styped.undiciTypes.fetchMod.RequestInit
@@ -32,7 +33,7 @@ private[internal] final class ActorCapabilityImpl(
     val actorType: ActorType,
     val actorId: ActorId,
     private val sidecar: SidecarConfig,
-) extends ActorCapability:
+) extends ActorCapability.Instance:
 
   import ActorCapabilityImpl.*
 

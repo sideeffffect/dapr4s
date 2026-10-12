@@ -1,13 +1,16 @@
 package dapr4s
 
-/** A single structural problem found in a [[DaprApp]] (or in the [[ActorRoutes]] an actor builds).
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
+
+/** A single structural problem found in a [[DaprApp]] (or in the [[dapr4s.actor.ActorRoutes]] an actor builds).
   *
   * Every case represents a *silent* misconfiguration: a collision the dispatch layer
   * ([[dapr4s.internal.DaprAppServer]]) would resolve last-write-wins or first-match-wins, sending traffic to the wrong
   * handler with no error. See `docs/validation.md` for the rationale behind each check.
   */
 enum DaprAppValidationError:
-  /** Two or more activities register under the same wire name ([[WorkflowActivity.activityName]]). */
+  /** Two or more activities register under the same wire name ([[dapr4s.workflow.WorkflowActivity.activityName]]). */
   case DuplicateActivityName(name: String, count: Int)
 
   /** Two or more workflows register under the same simple class name (the runtime registration key — workflows in
@@ -84,7 +87,7 @@ final class DaprAppValidationException(val errors: List[DaprAppValidationError])
       s"DaprApp validation failed with ${errors.size} error(s):\n" + errors.map("  - " + _.message).mkString("\n"),
     )
 
-/** Pure structural validation of a [[DaprApp]] and of the [[ActorRoutes]] an actor builds. */
+/** Pure structural validation of a [[DaprApp]] and of the [[dapr4s.actor.ActorRoutes]] an actor builds. */
 @scala.caps.assumeSafe
 private[dapr4s] object DaprAppValidation:
 
@@ -156,7 +159,8 @@ private[dapr4s] object DaprAppValidation:
     activityErrors ::: workflowErrors ::: subscriptionErrors ::: invocationErrors :::
       bindingErrors ::: jobErrors ::: actorErrors ::: routeCollisionErrors ::: reservedErrors
 
-  /** Validate the [[ActorRoutes]] produced by an actor build; throw on any duplicate method/reminder/timer name.
+  /** Validate the [[dapr4s.actor.ActorRoutes]] produced by an actor build; throw on any duplicate method/reminder/timer
+    * name.
     *
     * Runs on every `ActorDefinition.build`, so it is correct even when the build lambda returns different routes per
     * `ActorId`; the cost is a cheap list scan per invocation.

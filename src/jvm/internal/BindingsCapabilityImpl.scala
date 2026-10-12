@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.bindings.*
 import io.dapr.utils.TypeRef
 import MonoOps.*
 import scala.jdk.CollectionConverters.*
@@ -11,7 +12,7 @@ import java.nio.charset.StandardCharsets.UTF_8
 private[internal] final class BindingsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val bindingName: BindingName,
-) extends BindingsCapability:
+) extends BindingsCapability.Instance:
 
   import BindingsCapabilityImpl.*
 

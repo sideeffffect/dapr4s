@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.crypto.*
 import io.dapr.client.domain.{DecryptRequestAlpha1, EncryptRequestAlpha1}
 import reactor.core.publisher.Flux
 import scala.collection.immutable.ArraySeq
@@ -11,7 +12,7 @@ import FluxOps.*
 private[internal] final class CryptoCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: CryptoComponentName,
-) extends CryptoCapability:
+) extends CryptoCapability.Instance:
 
   def encrypt(keyName: CryptoKeyName, plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
     val req = new EncryptRequestAlpha1(

@@ -1,6 +1,7 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*, dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.derivation.*
 import scala.collection.immutable.ArraySeq
 import scala.collection.mutable
@@ -12,12 +13,12 @@ import scala.concurrent.duration.FiniteDuration
 // ---- Bindings ---------------------------------------------------------------
 
 trait BindingClient:
-  def create(req: Req)(using BindingsCapability, JsonCodec[Req]): Unit
-  def query(req: Req)(using BindingsCapability, JsonCodec[Req], JsonCodec[Resp]): Option[Resp]
+  def create(req: Req)(using BindingsCapability.Instance, JsonCodec[Req]): Unit
+  def query(req: Req)(using BindingsCapability.Instance, JsonCodec[Req], JsonCodec[Resp]): Option[Resp]
 lazy val BindingClient: BindingClient = Bindings.derive[BindingClient]
 
 @scala.caps.assumeSafe
-final class FakeBindings(resp: String) extends BindingsCapability:
+final class FakeBindings(resp: String) extends BindingsCapability.Instance:
   val log: mutable.ListBuffer[String]      = mutable.ListBuffer.empty
   val bindingName: BindingName             = BindingName("b")
   def invoke[Req: JsonCodec](operation: BindingOperation, data: Req, metadata: Map[MetadataKey, MetadataValue])[
@@ -31,13 +32,13 @@ final class FakeBindings(resp: String) extends BindingsCapability:
 // ---- Actor ------------------------------------------------------------------
 
 trait ActorClient:
-  def increment(req: Req)(using ActorCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
-  def get()(using ActorCapability, JsonCodec[Resp]): Resp
-  def reset()(using ActorCapability): Unit
+  def increment(req: Req)(using ActorCapability.Instance, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def get()(using ActorCapability.Instance, JsonCodec[Resp]): Resp
+  def reset()(using ActorCapability.Instance): Unit
 lazy val ActorClient: ActorClient = Actor.derive[ActorClient]
 
 @scala.caps.assumeSafe
-final class FakeActor(resp: String) extends ActorCapability:
+final class FakeActor(resp: String) extends ActorCapability.Instance:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   val actorType: ActorType            = ActorType("A")
   val actorId: ActorId                = ActorId("1")
@@ -53,12 +54,12 @@ final class FakeActor(resp: String) extends ActorCapability:
 // ---- Publish -----------------------------------------------------------------
 
 trait Publisher:
-  def orders(event: Req)(using PublishCapability, JsonCodec[Req]): Unit
-  def audit(event: Req, metadata: Map[MetadataKey, MetadataValue])(using PublishCapability, JsonCodec[Req]): Unit
+  def orders(event: Req)(using PublishCapability.Instance, JsonCodec[Req]): Unit
+  def audit(event: Req, metadata: Map[MetadataKey, MetadataValue])(using PublishCapability.Instance, JsonCodec[Req]): Unit
 lazy val Publisher: Publisher = Publish.derive[Publisher]
 
 @scala.caps.assumeSafe
-final class FakePubSub extends PublishCapability:
+final class FakePubSub extends PublishCapability.Instance:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   val pubsubName: PubSubName           = PubSubName("ps")
   def publish[T: JsonCodec](topic: Topic, data: T): Unit =
@@ -70,11 +71,11 @@ final class FakePubSub extends PublishCapability:
 // ---- Secrets ----------------------------------------------------------------
 
 trait SecretClient:
-  @name("db-password") def dbPassword()(using SecretsCapability): Option[SecretValue]
+  @name("db-password") def dbPassword()(using SecretsCapability.Instance.ReadOnly): Option[SecretValue]
 lazy val SecretClient: SecretClient = Secrets.derive[SecretClient]
 
 @scala.caps.assumeSafe
-final class FakeSecrets extends SecretsCapability:
+final class FakeSecrets extends SecretsCapability.Instance:
   val log: mutable.ListBuffer[String]  = mutable.ListBuffer.empty
   val storeName: SecretStoreName       = SecretStoreName("s")
   def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue]): Option[SecretValue] =
@@ -85,11 +86,11 @@ final class FakeSecrets extends SecretsCapability:
 // ---- Configuration ----------------------------------------------------------
 
 trait ConfigurationClient:
-  @name("feature-x") def featureX()(using ConfigurationCapability): Option[ConfigurationItem]
+  @name("feature-x") def featureX()(using ConfigurationCapability.Instance.ReadOnly): Option[ConfigurationItem]
 lazy val ConfigurationClient: ConfigurationClient = Configuration.derive[ConfigurationClient]
 
 @scala.caps.assumeSafe
-final class FakeConfig extends ConfigurationCapability:
+final class FakeConfig extends ConfigurationCapability.Instance:
   val log: mutable.ListBuffer[String]  = mutable.ListBuffer.empty
   val storeName: ConfigurationStoreName       = ConfigurationStoreName("c")
   def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue]): Map[ConfigurationKey, ConfigurationItem] =
@@ -102,12 +103,12 @@ final class FakeConfig extends ConfigurationCapability:
 // ---- Crypto -----------------------------------------------------------------
 
 trait CryptoClient:
-  def rawKey(plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
-  @name("text-key") def textKey(plaintext: String, algorithm: KeyWrapAlgorithm)(using CryptoCapability): ArraySeq[Byte]
+  def rawKey(plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm)(using CryptoCapability.Instance): ArraySeq[Byte]
+  @name("text-key") def textKey(plaintext: String, algorithm: KeyWrapAlgorithm)(using CryptoCapability.Instance): ArraySeq[Byte]
 lazy val CryptoClient: CryptoClient = Crypto.derive[CryptoClient]
 
 @scala.caps.assumeSafe
-final class FakeCrypto extends CryptoCapability:
+final class FakeCrypto extends CryptoCapability.Instance:
   val log: mutable.ListBuffer[String]      = mutable.ListBuffer.empty
   val componentName: CryptoComponentName   = CryptoComponentName("crypto")
   def encrypt(keyName: CryptoKeyName, plaintext: ArraySeq[Byte], algorithm: KeyWrapAlgorithm): ArraySeq[Byte] =
@@ -123,7 +124,10 @@ trait WorkflowClient:
   def order()(using WorkflowCapability): WorkflowInstanceId
   def orderInput(input: Req)(using WorkflowCapability, JsonCodec[Req]): WorkflowInstanceId
   def orderWithId(instanceId: WorkflowInstanceId)(using WorkflowCapability): WorkflowInstanceId
-  def orderFull(instanceId: WorkflowInstanceId, input: Req)(using WorkflowCapability, JsonCodec[Req]): WorkflowInstanceId
+  def orderFull(instanceId: WorkflowInstanceId, input: Req)(using
+      WorkflowCapability,
+      JsonCodec[Req],
+  ): WorkflowInstanceId
 lazy val WorkflowClient: WorkflowClient = Workflow.derive[WorkflowClient]
 
 @scala.caps.assumeSafe
@@ -137,23 +141,25 @@ final class FakeWorkflow extends WorkflowCapability:
     log += s"startWithId|${name.value}|${instanceId.value}"; instanceId
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
     log += s"startWithIdInput|${name.value}|${instanceId.value}|${summon[JsonCodec[I]].encode(input)}"; instanceId
-  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot]                       = ???
-  def suspend(instanceId: WorkflowInstanceId): Unit                                             = ???
-  def resume(instanceId: WorkflowInstanceId): Unit                                              = ???
-  def terminate(instanceId: WorkflowInstanceId): Unit                                           = ???
-  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit = ???
+  // The derived facades under test only call the launch ops; the per-instance ops are never reached.
+  def instance(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this}                         = ???
+  def getStatus(instanceId: WorkflowInstanceId): Option[WorkflowSnapshot]                               = ???
   def waitForCompletion(instanceId: WorkflowInstanceId, timeout: FiniteDuration): Option[WorkflowSnapshot] = ???
-  def purge(instanceId: WorkflowInstanceId): Boolean                                            = ???
+  def suspend(instanceId: WorkflowInstanceId): Unit                                                     = ???
+  def resume(instanceId: WorkflowInstanceId): Unit                                                      = ???
+  def terminate(instanceId: WorkflowInstanceId): Unit                                                   = ???
+  def raiseEvent[E: JsonCodec](instanceId: WorkflowInstanceId, eventName: EventName, payload: E): Unit  = ???
+  def purge(instanceId: WorkflowInstanceId): Boolean                                                    = ???
 
 // ---- State (app-level) ------------------------------------------------------
 
 trait StateClient:
-  def counter(using StateCapability, JsonCodec[Int]): Option[Int]
-  def counter_=(value: Int)(using StateCapability, JsonCodec[Int]): Unit
+  def counter(using StateCapability.Instance, JsonCodec[Int]): Option[Int]
+  def counter_=(value: Int)(using StateCapability.Instance, JsonCodec[Int]): Unit
 lazy val StateClient: StateClient = State.derive[StateClient]
 
 @scala.caps.assumeSafe
-final class FakeState extends StateCapability:
+final class FakeState extends StateCapability.Instance:
   val log: mutable.ListBuffer[String] = mutable.ListBuffer.empty
   val storeName: StateStoreName       = StateStoreName("st")
   def get[T: JsonCodec](key: StateStoreKey, consistency: StateConsistency): Option[T] =

@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.state.*
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import JsInterop.*
@@ -114,7 +115,7 @@ private object StateCapabilityImpl:
 private[internal] final class StateCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: StateStoreName,
-) extends StateCapability:
+) extends StateCapability.Instance:
 
   import StateCapabilityImpl.*
 

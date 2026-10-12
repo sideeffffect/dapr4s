@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.crypto.*
 import scala.collection.immutable.ArraySeq
 import scala.scalajs.js
 import scala.scalajs.js.typedarray.{Int8Array, Uint8Array}
@@ -13,7 +14,7 @@ import dapr4styped.std.ArrayBufferLike
 private[internal] final class CryptoCapabilityImpl(
     scope: DaprCapabilityImpl,
     val componentName: CryptoComponentName,
-) extends CryptoCapability:
+) extends CryptoCapability.Instance:
 
   import CryptoCapabilityImpl.*
 

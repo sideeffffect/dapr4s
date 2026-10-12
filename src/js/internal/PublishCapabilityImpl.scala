@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.publish.*
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import JsInterop.*
@@ -18,7 +19,7 @@ import dapr4styped.undiciTypes.fetchMod.RequestInit
 private[internal] final class PublishCapabilityImpl(
     scope: DaprCapabilityImpl,
     val pubsubName: PubSubName,
-) extends PublishCapability:
+) extends PublishCapability.Instance:
 
   import PublishCapabilityImpl.*
 

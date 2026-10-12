@@ -13,8 +13,9 @@ The central design idea: each DAPR effect is a `scala.caps.Capability` subtype, 
 compiler statically verifies which effects a computation may perform and that resources cannot
 escape their managed scope.
 
-Refer to `docs/DESIGN.md` for the full architecture and to `docs/SPEC.allium` for the formal specification.
-Both must stay in sync with the code at all times.
+Refer to `docs/DESIGN.md` for the full architecture, to `docs/SPEC.allium` for the formal specification, and
+to `docs/CAPABILITY-HIERARCHY.md` for the class hierarchy of every capability interface.
+All three must stay in sync with the code at all times.
 
 ---
 
@@ -37,6 +38,15 @@ Both must stay in sync with the code at all times.
   directory ALSO carries its own per-file `//> using target.platform "jvm"`/`"scala-js"`
   directive (the directive is what scopes it). Packages are unchanged by the layout
   (`src/jvm/internal/` and `src/js/internal/` are both `dapr4s.internal`).
+  Each capability family lives in its own package `dapr4s.<family>` under
+  `src/<platform>/<family>/` (`state`, `publish`, `invoke`, `secrets`, `configuration`,
+  `bindings`, `lock`, `actor`, `workflow`, `crypto`, `jobs`, `conversation`): the universal
+  capability trait (with its `Instance`/`ReadOnly` tiers in its companion — see "Capability
+  family shape" below), the family's value types, its inbound route type and its
+  derivation macros. Cross-cutting macro infrastructure (`MacroSupport`, `Forwarders`, `@name`,
+  annotations) stays in `dapr4s.derivation`; cross-cutting types (`DaprCapability`, `Dapr`,
+  `DaprConfig`, `DaprApp`, `JsonCodec`, `HttpMethod`, exceptions, `src/shared/optypes/`) stay in
+  `dapr4s`. There is no re-export facade — consumers import the families they use.
   `//> using jsEsVersionStr "es2017"` is required by `js.async`/`js.await`.
   **JS build prerequisite**: the ScalablyTyped facade jars referenced by `js-deps.scala` live only
   in the local ivy repository — run `scripts/generate-st-facades.sh` once per machine (and again
@@ -45,7 +55,12 @@ Both must stay in sync with the code at all times.
   classes (`scripts/embed-st-facades.sh`), so consumers resolve everything from Maven Central.
 - **Build tool**: Scala CLI (`project.scala` using directives). **scala-cli >= 1.13.0 is required
   for the Scala.js build** (munit 1.3.0 JS needs Scala.js IR 1.21; the JS integration harness
-  wants >= 1.14). Run unit tests with `scala-cli test . --test-only 'dapr4s.test.unit.*'`.
+  wants >= 1.14). **CI pins scala-cli to exactly 1.14.0** (`.github/workflows/ci.yml`): newer
+  scala-cli (1.17+/1.18, Scala.js 1.22 linker) cannot link `js.async`/`js.await` on Wasm without a
+  JSPI switch that scala-cli does not expose ("Uses an async block without JSPI support in
+  WebAssembly"), so the Wasm integration leg fails. Use 1.14.0 locally for the JS legs too; unpin
+  only when scala-cli exposes that switch. Run unit tests with
+  `scala-cli test . --test-only 'dapr4s.test.unit.*'`.
 - **JVM**: Zulu 25 (`//> using jvm "zulu:25.0.3"` or later). JDK 25 is required for stable
   virtual thread support (no carrier pinning on `synchronized`).
 - **Compiler flags** (all active):
@@ -186,6 +201,38 @@ Specific rules currently active in this codebase:
   - **Store names**: `StateStoreName` (`DaprCapability.state`) vs. `LockStoreName` (`DaprCapability.lock`) — distinct Dapr components with distinct YAML. (Mirrors the existing `ConfigurationStoreName`/`SecretStoreName` split.)
   - **State keys**: `StateStoreKey` (app-level `StateCapability`) vs. `ActorStateKey` (per-instance `ActorContext`/`ActorState`).
 
+### Capability family shape (universal + Instance + ReadOnly)
+
+Every building block follows the same shape (design rationale: `docs/CAPABILITY-SPLITS.md` §11;
+overview: `docs/DESIGN.md` "Capability Hierarchy"). Keep new members and new families on it:
+
+- The principal capability `X` is **universal** — not bound to any name; each method takes the
+  name (`StateCapability.save(storeName, key, value)`, `InvokeCapability.invoke(appId, ...)`).
+  `DaprCapability.x` returns it (`def state: StateCapability^{this}`).
+- `X.Instance` (in `X`'s companion) is bound to one name via `X.instance(name)`, carries it as a
+  `val` (`storeName`, `appId`, ...) and its methods do not take it.
+- Only families with a read-only subset — State, Secrets, Configuration, Jobs, Workflow — also
+  have `X.ReadOnly` (super-trait of `X`) and `X.Instance.ReadOnly` (super-trait of `X.Instance`).
+  `X.ReadOnly.instance(name)` returns `X.Instance.ReadOnly`; `X` overrides it **covariantly** to
+  return `X.Instance`. Never add an `instance` that returns a wider tier than its receiver — narrowing
+  by name must never re-widen authority. Do not add `ReadOnly` tiers to Publish, Invoke, Bindings,
+  Lock, Crypto, Actor or Conversation (no read-only subset).
+- Actor is two-level: `ActorCapability` → `forType(actorType)` → `ActorCapability.Type` →
+  `instance(actorId)` → `ActorCapability.Instance`.
+- Every interface's companion object forwards **all** of its methods (inherited ones included)
+  from a `using` capability, plus `instance(name)` accessors that narrow the capability in scope and
+  return it as `X.Instance^{cap}` (`X.instance`, `X.ReadOnly.instance`; actor: `ActorCapability.forType(t)`,
+  `ActorCapability.instance(t, id)`, `ActorCapability.Type.instance(id)`).
+- Derivation macros require the **narrowest** tier the generated member uses: read-only getters
+  need only `X.Instance.ReadOnly` (State/Secrets/Configuration) or `JobsCapability.ReadOnly` (jobs);
+  Invoke/Workflow/Jobs derivation call the universal capability directly.
+- There are no `Access*Capability` traits and no `WorkflowInstanceCapability`/`ActorTypeCapability`/
+  `JobCapability` any more — do not reintroduce them.
+- Handle-style sugar exists only for ids you hold and act on: `WorkflowInstanceId` (companion extensions:
+  `id.getStatus`, `id.waitForCompletion(t)`, `id.suspend()`, …) and `JobName` (`src/jvm/jobs/JobNameOps.scala`:
+  `name.get`, `name.schedule(...)`, `name.delete()`, …). Each extension must require the **narrowest** tier that
+  carries the operation (reads: `X.ReadOnly`; mutations: the full `X`) — never the full capability for a read.
+
 ### SDK interop boundary (Java on JVM, @dapr/dapr on JS)
 Everything in the two `internal/` trees is marked `@scala.caps.assumeSafe`. There are two
 platform walls behind the same boundary:
@@ -222,12 +269,15 @@ THE pattern (jobs/conversation are the worked example):
   trait names but **empty**. WHY traits and not a per-platform `DaprCapability` file: the
   companion must sit in the same file as the trait, so the trait/companion pair cannot be
   forked per platform without duplicating the whole shared surface.
-- Everything reachable only from that surface moves wholly under `src/jvm/`:
-  `JobsCapability`/`ConversationCapability`, their models (`JobsModels.scala`,
-  `ConversationModels.scala`), their impls, the `Jobs.derive` engine
-  (`src/jvm/derivation/Jobs.scala`), and the jobs runtime forwarders
+- Everything reachable only from that surface moves wholly under `src/jvm/` (same family
+  packages `dapr4s.jobs`/`dapr4s.conversation` as their shared parts):
+  `JobsCapability` (+ its `ReadOnly`/`Instance` tiers) and `ConversationCapability` (+ `Instance`)
+  (`src/jvm/jobs/JobsCapability.scala`, `src/jvm/conversation/ConversationCapability.scala`),
+  their models (`src/jvm/jobs/JobsModels.scala`, `src/jvm/conversation/ConversationModels.scala`),
+  their impls, the `Jobs.derive` engine (`src/jvm/jobs/Jobs.scala`), and the jobs runtime forwarders
   (`Forwarders extends ForwardersPlatform`; `Forwarders.jobRoute` stays shared because the
-  inbound job-trigger side is cross-platform).
+  inbound job-trigger side is cross-platform; likewise the cross-platform `JobName`/`JobRoute`/
+  `JobRoutes` stay in `src/shared/jobs/`).
 - On the JVM platform trait, keep the `^{this}` return types working via a self-type
   (`this: DaprCapability =>`) so CC tracks the same capability instance as the shared trait.
 
@@ -304,7 +354,7 @@ blocks the build (and `publish`) on any unformatted file, so a missed format fai
 Some files are intentionally excluded from formatting via `project.excludeFilters` in
 `.scalafmt.conf`: they use experimental capture-checking `^{...}` return-type annotations in a
 position scalafmt's parser does not yet support. Files that merely *use* `^{...}` but still parse
-(e.g. `src/shared/derivation/WorkflowEvents.scala`, `test/shared/unit/CCTest.scala`) stay
+(e.g. `src/shared/workflow/WorkflowEvents.scala`, `test/shared/unit/CCTest.scala`) stay
 formatted normally.
 
 ⚠️ `scala-cli fmt --check` reports a scalafmt parse error but still **exits 0**, silently masking
@@ -318,7 +368,8 @@ output for parse errors and fails loudly to catch this.
 
 Four legs, exactly as CI runs them (`.github/workflows/ci.yml`, one `test` matrix job with a
 `jvm` and a `js` include entry — a future Scala Native port is a new include entry, not a new
-job; each leg runs compile + unit tests + integration tests):
+job; each leg runs compile + unit tests + integration tests; both legs use scala-cli pinned to
+1.14.0):
 
 - **JVM unit tests** (no Docker): `scala-cli test . --test-only 'dapr4s.test.unit.*'`. Shared
   suites live in `test/shared/unit/` (`JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`,
@@ -343,7 +394,8 @@ job; each leg runs compile + unit tests + integration tests):
   mandatory and load-bearing: the integration suites contain orphan `js.await`, and the plain-JS
   linker **wedges on orphan-await test sources** (hangs, no error) — they must not even be
   linked on this leg.
-- **Scala.js integration tests** (Docker + Node >= 25 first on PATH + the ST facades +
+- **Scala.js integration tests** (scala-cli **1.14.0** — the CI pin, newer versions cannot link
+  `js.async` on Wasm, see Scala stack — + Docker + Node >= 25 first on PATH + the ST facades +
   `npm ci`): `scripts/test-js-integration.sh` runs `--test-only 'dapr4s.test.integration.*'` on the
   **Wasm+JSPI backend**. The suites themselves are cross-platform and live in `test/shared/integration`;
   `test/js/integration/` holds only the JS bring-up (the per-platform `SharedDaprItSuite` /
@@ -355,7 +407,9 @@ job; each leg runs compile + unit tests + integration tests):
   JS); the four server-delivery suites (actor/pub-sub/invoke/workflow) share ONE sidecar + ONE in-process
   union server (`ServerDaprItSuite` + `itUnionApp`), reached via `host.testcontainers.internal` with
   daprd app health checks, because `serve` suspends forever with no clean stop on JS. Harness
-  facts: `scripts/wasm-test.sh` tolerates the known scala-cli bug of exiting 1 after a green Wasm
+  facts: `scripts/test-js-integration.sh` runs scala-cli through `scripts/scala-cli-tmpfs.sh` (JVM launcher, temp dir on
+  tmpfs) because scala-cli picks the Wasm test entry module by directory-listing order — on an ext4 `/tmp` (GitHub
+  runners) it can import `__loader.js` instead of `main.js` and the run hangs silently; `scripts/wasm-test.sh` tolerates the known scala-cli bug of exiting 1 after a green Wasm
   run (`DirectoryNotEmptyException` on the linked-output dir); an ESM resolution hook
   (`scripts/js-it/node-resolve-hook.mjs`) lets the `/tmp`-linked test module import bare specifiers
   from the repo's node_modules (ESM ignores NODE_PATH/CWD) and appends `.js` for the deep
@@ -378,6 +432,14 @@ Both must stay in sync with the code. If you change the code, update the spec an
 If you change the spec or design doc, update the code to match. Verify Mermaid diagrams are
 valid and renderable. The Allium spec is maintained using the `allium:distill` and `allium:elicit`
 skills.
+
+`docs/CAPABILITY-HIERARCHY.md` holds one Mermaid `classDiagram` per capability family (plus the root
+`DaprCapability` and the server-side actor/workflow contexts), showing every interface — universal
+`XCapability`, `X.ReadOnly`, `X.Instance`, `X.Instance.ReadOnly`, actor `Type`/`Instance` — with its
+members, inheritance and `instance`/`forType` narrowing. It shows the JVM build only (Scala.js is left out for
+simplicity). **Keep it in sync with the code**: any change that adds,
+removes, renames or re-parents a capability trait, or changes a capability member's signature, must
+update the matching diagram in the same commit, and the diagrams must still render (`mmdc`).
 
 ---
 

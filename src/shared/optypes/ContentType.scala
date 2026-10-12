@@ -5,7 +5,8 @@ import language.experimental.safe
 /** MIME type of a data payload.
   *
   * Must not be empty. Common values include `"application/json"` and `"text/plain"`. Appears in the `datacontenttype`
-  * field of a [[CloudEvent]] and may be used by bindings or service invocation to set the HTTP `Content-Type` header.
+  * field of a [[dapr4s.publish.CloudEvent]] and may be used by bindings or service invocation to set the HTTP
+  * `Content-Type` header.
   */
 opaque type ContentType = String
 object ContentType:

@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.workflow.*
 import unsafeExceptions.canThrowAny
 
 /** Internal bridge: wraps a [[Workflow]] instance for registration with the Dapr Java SDK.

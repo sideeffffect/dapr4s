@@ -1,11 +1,12 @@
 package dapr4s.derivation
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*, dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import scala.collection.immutable.ArraySeq
 import scala.concurrent.duration.FiniteDuration
 
 /** Runtime forwarders for the capability `*.derive` macros (other than Invoke,
-  * which has its own [[InvokeDerivationRuntime]]).
+  * which has its own [[dapr4s.invoke.InvokeDerivationRuntime]]).
   *
   * Each derived method expands to a single flat call into one of these methods, passing the
   * capability and any `JsonCodec`s as plain explicit arguments. Performing the capability call
@@ -25,7 +26,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Bindings -------------------------------------------------------------
 
   def bindingInvoke[Req, Resp](
-      cap: BindingsCapability,
+      cap: BindingsCapability.Instance,
       operation: BindingOperation,
       data: Req,
       metadata: Map[MetadataKey, MetadataValue],
@@ -37,7 +38,7 @@ object Forwarders extends ForwardersPlatform:
     cap.invoke[Req](operation, data, metadata)[Resp]
 
   def bindingInvokeOneWay[Req](
-      cap: BindingsCapability,
+      cap: BindingsCapability.Instance,
       operation: BindingOperation,
       data: Req,
       metadata: Map[MetadataKey, MetadataValue],
@@ -49,7 +50,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Actor ----------------------------------------------------------------
 
   def actorInvokeBody[Req, Resp](
-      cap: ActorCapability,
+      cap: ActorCapability.Instance,
       method: ActorMethodName,
       data: Req,
       reqCodec: JsonCodec[Req],
@@ -59,11 +60,11 @@ object Forwarders extends ForwardersPlatform:
     given JsonCodec[Resp] = respCodec
     cap.invoke[Req](method, data)[Resp]
 
-  def actorInvokeNoBody[Resp](cap: ActorCapability, method: ActorMethodName, respCodec: JsonCodec[Resp]): Resp =
+  def actorInvokeNoBody[Resp](cap: ActorCapability.Instance, method: ActorMethodName, respCodec: JsonCodec[Resp]): Resp =
     given JsonCodec[Resp] = respCodec
     cap.invoke[Resp](method)
 
-  def actorInvokeVoid(cap: ActorCapability, method: ActorMethodName): Unit =
+  def actorInvokeVoid(cap: ActorCapability.Instance, method: ActorMethodName): Unit =
     cap.invokeVoid(method)
 
   def actorRegisterReminder[T](
@@ -90,12 +91,12 @@ object Forwarders extends ForwardersPlatform:
 
   // ---- Publish ---------------------------------------------------------------
 
-  def publish[T](cap: PublishCapability, topic: Topic, data: T, codec: JsonCodec[T]): Unit =
+  def publish[T](cap: PublishCapability.Instance, topic: Topic, data: T, codec: JsonCodec[T]): Unit =
     given JsonCodec[T] = codec
     cap.publish[T](topic, data)
 
   def publishMeta[T](
-      cap: PublishCapability,
+      cap: PublishCapability.Instance,
       topic: Topic,
       data: T,
       metadata: Map[MetadataKey, MetadataValue],
@@ -107,7 +108,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Secrets --------------------------------------------------------------
 
   def secretsGet(
-      cap: SecretsCapability,
+      cap: SecretsCapability.Instance.ReadOnly,
       key: SecretKey,
       metadata: Map[MetadataKey, MetadataValue],
   ): Option[SecretValue] =
@@ -116,7 +117,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Configuration --------------------------------------------------------
 
   def configGet(
-      cap: ConfigurationCapability,
+      cap: ConfigurationCapability.Instance.ReadOnly,
       key: ConfigurationKey,
       metadata: Map[MetadataKey, MetadataValue],
   ): Option[ConfigurationItem] =
@@ -125,7 +126,7 @@ object Forwarders extends ForwardersPlatform:
   // ---- Crypto ---------------------------------------------------------------
 
   def cryptoEncrypt(
-      cap: CryptoCapability,
+      cap: CryptoCapability.Instance,
       keyName: CryptoKeyName,
       plaintext: ArraySeq[Byte],
       algorithm: KeyWrapAlgorithm,
@@ -133,7 +134,7 @@ object Forwarders extends ForwardersPlatform:
     cap.encrypt(keyName, plaintext, algorithm)
 
   def cryptoEncryptString(
-      cap: CryptoCapability,
+      cap: CryptoCapability.Instance,
       keyName: CryptoKeyName,
       plaintext: String,
       algorithm: KeyWrapAlgorithm,
@@ -145,11 +146,20 @@ object Forwarders extends ForwardersPlatform:
   def wfStart(cap: WorkflowCapability, name: WorkflowName): WorkflowInstanceId =
     cap.start(name)
 
-  def wfStartInput[I](cap: WorkflowCapability, name: WorkflowName, input: I, codec: JsonCodec[I]): WorkflowInstanceId =
+  def wfStartInput[I](
+      cap: WorkflowCapability,
+      name: WorkflowName,
+      input: I,
+      codec: JsonCodec[I],
+  ): WorkflowInstanceId =
     given JsonCodec[I] = codec
     cap.start[I](name, input)
 
-  def wfStartWithId(cap: WorkflowCapability, name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId =
+  def wfStartWithId(
+      cap: WorkflowCapability,
+      name: WorkflowName,
+      instanceId: WorkflowInstanceId,
+  ): WorkflowInstanceId =
     cap.startWithId(name, instanceId)
 
   def wfStartWithIdInput[I](
@@ -164,11 +174,11 @@ object Forwarders extends ForwardersPlatform:
 
   // ---- State (app-level) ----------------------------------------------------
 
-  def stateGet[T](cap: StateCapability, key: StateStoreKey, codec: JsonCodec[T]): Option[T] =
+  def stateGet[T](cap: StateCapability.Instance.ReadOnly, key: StateStoreKey, codec: JsonCodec[T]): Option[T] =
     given JsonCodec[T] = codec
     cap.get[T](key)
 
-  def stateSave[T](cap: StateCapability, key: StateStoreKey, value: T, codec: JsonCodec[T]): Unit =
+  def stateSave[T](cap: StateCapability.Instance, key: StateStoreKey, value: T, codec: JsonCodec[T]): Unit =
     given JsonCodec[T] = codec
     cap.save[T](key, value)
 
@@ -220,7 +230,7 @@ object Forwarders extends ForwardersPlatform:
 
   // ---- WorkflowActivity construction (server-side reification) ---------------
 
-  /** Build a [[WorkflowActivity]] from a plain handler, fixing its registered name.
+  /** Build a [[dapr4s.workflow.WorkflowActivity]] from a plain handler, fixing its registered name.
     *
     * The handler receives the decoded input and the runtime-supplied [[DaprCapability]] and returns the output; it is
     * a flat function so the generated derivation tree stays trivial (no synthesised `given`s, no rebinding of the

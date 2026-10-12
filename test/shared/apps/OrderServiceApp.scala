@@ -1,6 +1,8 @@
 package dapr4s.test.integration.apps
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 // NOT language.experimental.safe (unlike InventoryServiceApp): minting unique order ids needs an effectful
 // counter, and safe mode forbids untracked mutable state — the same reason the shared `ItNames` counter is
@@ -10,13 +12,13 @@ import dapr4s.given
   *
   * Each public handler method declares its capability requirements via anonymous `using` parameters — the capability
   * type itself is the requirement, and the compiler enforces it statically. Business logic calls companion-object
-  * methods (e.g. [[StateCapability.save]], [[PublishCapability.publish]]) rather than naming a capability value, so the
-  * handler code reads like regular function calls:
+  * methods (e.g. [[StateCapability.Instance.save]], [[PublishCapability.Instance.publish]]) rather than naming a
+  * capability value, so the handler code reads like regular function calls:
   *
   * {{{
-  *   def placeOrder(req: OrderRequest)(using StateCapability, PublishCapability): OrderResponse =
-  *     StateCapability.save(StateStoreKey(orderId), req)
-  *     PublishCapability.publish(OrdersTopic, event)
+  *   def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability.Instance): OrderResponse =
+  *     StateCapability.Instance.save(StateStoreKey(orderId), req)
+  *     PublishCapability.Instance.publish(OrdersTopic, event)
   * }}}
   *
   * The `apply` method injects capabilities as `given`s and builds a [[DaprApp]] describing all inbound routes. The
@@ -48,21 +50,21 @@ object OrderServiceApp:
   /** Place a new order: persist to state store and publish an [[OrderEvent]]. Returns the assigned order ID and
     * acceptance status.
     */
-  def placeOrder(req: OrderRequest)(using StateCapability, PublishCapability): OrderResponse =
+  def placeOrder(req: OrderRequest)(using StateCapability.Instance, PublishCapability.Instance): OrderResponse =
     orderSeq += 1
     val orderId = s"order-$orderSeq"
-    StateCapability.save(StateStoreKey(orderId), req)
-    PublishCapability.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
+    StateCapability.Instance.save(StateStoreKey(orderId), req)
+    PublishCapability.Instance.publish(OrdersTopic, OrderEvent(orderId, req.item, req.quantity))
     OrderResponse(orderId, "accepted")
 
   /** Retrieve a previously placed order by ID.  Returns `None` if not found. */
-  def getOrder(orderId: String)(using StateCapability): Option[OrderRequest] =
-    StateCapability.get[OrderRequest](StateStoreKey(orderId))
+  def getOrder(orderId: String)(using StateCapability.Instance): Option[OrderRequest] =
+    StateCapability.Instance.get[OrderRequest](StateStoreKey(orderId))
 
   /** Query orders using a raw JSON filter expression. Returns a JSON array of `{"value": ..., "etag": ...}` objects.
     */
-  def queryOrders(queryJson: String)(using StateCapability): String =
-    val results = StateCapability.queryState[OrderRequest](StateQuery(queryJson))
+  def queryOrders(queryJson: String)(using StateCapability.Instance): String =
+    val results = StateCapability.Instance.queryState[OrderRequest](StateQuery(queryJson))
     val entries = results.map { e =>
       val v = e.value.map(r => s"""{"item":"${r.item}","quantity":${r.quantity}}""").getOrElse("null")
       val etag = e.etag.map(t => s""""${t.value}"""").getOrElse("null")
@@ -76,8 +78,8 @@ object OrderServiceApp:
 
   /** Build a [[DaprApp]] with all inbound routes for the Order service.
     *
-    * Uses the [[DaprCapability]] transformer API to introduce `StateCapability` and `PublishCapability` into the body
-    * scope, so the handler lambdas capture them without requiring explicit `given` declarations.
+    * Uses the [[DaprCapability]] transformer API to introduce `StateCapability` and `PublishCapability.Instance` into
+    * the body scope, so the handler lambdas capture them without requiring explicit `given` declarations.
     */
   def apply()(using DaprCapability): DaprApp =
     DaprCapability.state(StateName) {

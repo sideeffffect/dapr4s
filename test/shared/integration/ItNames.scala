@@ -1,6 +1,8 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 
 /** Canonical Dapr component names, manifest references and seeded fixtures shared by every integration suite on BOTH
   * platforms. These match scripts/it/components/<name>.yaml (the single source of truth for the component definitions)

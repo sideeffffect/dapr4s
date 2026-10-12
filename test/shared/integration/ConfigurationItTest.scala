@@ -1,6 +1,8 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
@@ -18,7 +20,7 @@ class ConfigurationItTest extends FunSuite, SharedDaprItSuite:
 
   def getReturnsSeededItems(using DaprCapability): Unit =
     DaprCapability.configuration(ItNames.ConfigStore):
-      val items = ConfigurationCapability.get(Seq(ItNames.ConfigKeyA, ItNames.ConfigKeyB))
+      val items = ConfigurationCapability.Instance.get(Seq(ItNames.ConfigKeyA, ItNames.ConfigKeyB))
       val a = items.getOrElse(ItNames.ConfigKeyA, fail(s"missing ${ItNames.ConfigKeyA} in $items"))
       val b = items.getOrElse(ItNames.ConfigKeyB, fail(s"missing ${ItNames.ConfigKeyB} in $items"))
       assertEquals(a.value, ConfigurationValue("alpha"))
@@ -29,4 +31,4 @@ class ConfigurationItTest extends FunSuite, SharedDaprItSuite:
   def getUnknownKeyReturnsNoItem(using DaprCapability): Unit =
     DaprCapability.configuration(ItNames.ConfigStore):
       val absent = ConfigurationKey(ItNames.fresh("dapr4s-it-absent"))
-      assertEquals(ConfigurationCapability.get(Seq(absent)).get(absent), None)
+      assertEquals(ConfigurationCapability.Instance.get(Seq(absent)).get(absent), None)

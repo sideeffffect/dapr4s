@@ -1,14 +1,16 @@
 package dapr4s.test.integration.apps
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 import language.experimental.safe
 
 /** Business logic for the Inventory microservice.
   *
   * Each handler method declares its capability requirements via anonymous `using` parameters, calling companion-object
-  * methods ([[StateCapability.get]], [[LockCapability.tryLock]], etc.) rather than naming a capability. See
-  * [[OrderServiceApp]] for a full explanation of the capability-as-effect-system pattern.
+  * methods ([[StateCapability.Instance.get]], [[LockCapability.Instance.tryLock]], etc.) rather than naming a
+  * capability. See [[OrderServiceApp]] for a full explanation of the capability-as-effect-system pattern.
   *
   * Subscribes to [[OrderEvent]] messages on the `orders` pub/sub topic and decrements the corresponding item's stock
   * count in the state store. The decrement is protected by a distributed lock to prevent concurrent over-decrements
@@ -44,31 +46,31 @@ object InventoryServiceApp:
     * handlers from racing on the same key. If the lock cannot be acquired the event is retried.
     */
   def handleOrderEvent(event: CloudEvent[OrderEvent])(using
-      StateCapability,
-      LockCapability,
+      StateCapability.Instance,
+      LockCapability.Instance,
   ): SubscriptionResult =
     val item = event.data.item
     val qty = event.data.quantity
     val key = StateStoreKey(s"stock-$item")
     val owner = LockOwner(s"inv-${event.id.value}")
 
-    if LockCapability.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
+    if LockCapability.Instance.tryLock(LockResourceId(item), owner, Dur.TenSeconds) then
       try
-        val current = StateCapability.get[Int](key).getOrElse(DefaultStock)
+        val current = StateCapability.Instance.get[Int](key).getOrElse(DefaultStock)
         val updated = math.max(0, current - qty)
-        StateCapability.save(key, updated)
-      finally LockCapability.unlock(LockResourceId(item), owner)
+        StateCapability.Instance.save(key, updated)
+      finally LockCapability.Instance.unlock(LockResourceId(item), owner)
       SubscriptionResult.Success
     else SubscriptionResult.Retry
 
   /** Return current stock level for the given item name. */
-  def getStock(item: String)(using StateCapability): StockLevel =
-    val available = StateCapability.get[Int](StateStoreKey(s"stock-$item")).getOrElse(DefaultStock)
+  def getStock(item: String)(using StateCapability.Instance): StockLevel =
+    val available = StateCapability.Instance.get[Int](StateStoreKey(s"stock-$item")).getOrElse(DefaultStock)
     StockLevel(item, available)
 
   /** Seed the stock level for an item (test helper and k8s init). */
-  def seedStock(stock: StockLevel)(using StateCapability): StockLevel =
-    StateCapability.save(StateStoreKey(s"stock-${stock.item}"), stock.available)
+  def seedStock(stock: StockLevel)(using StateCapability.Instance): StockLevel =
+    StateCapability.Instance.save(StateStoreKey(s"stock-${stock.item}"), stock.available)
     stock
 
   // ---------------------------------------------------------------------------

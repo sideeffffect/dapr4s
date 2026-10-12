@@ -1,6 +1,7 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*, dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.derivation.*
 import scala.collection.mutable
 
@@ -57,13 +58,31 @@ trait MixinGreeter:
 
 def MixinGreeter(appId: AppId): MixinGreeter = Invoke.derive[MixinGreeter](appId)
 
-/** Recording fake capability: logs each call and returns a fixed response payload. */
+/** Recording fake universal invoke capability: narrows to a [[RecordingInvoke]] bound to the requested app, which logs each call into the
+  * shared buffer (the app id is recorded so the existing assertions still see it).
+  */
 @scala.caps.assumeSafe
 final class RecordingInvoker(response: String) extends InvokeCapability:
   val calls: mutable.ListBuffer[String] = mutable.ListBuffer.empty
-
+  def instance(appId: AppId): InvokeCapability.Instance^{this} =
+    new RecordingInvoke(appId, response, calls).asInstanceOf[InvokeCapability.Instance]
   def invoke[Req: JsonCodec](
       appId: AppId,
+      method: InvokeMethodName,
+      data: Req,
+      httpMethod: HttpMethod,
+      metadata: Map[MetadataKey, MetadataValue],
+  )[Resp: JsonCodec]: Resp =
+    instance(appId).invoke(method, data, httpMethod, metadata)[Resp]
+  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
+    instance(appId).invoke[Resp](method)
+
+/** Recording fake capability bound to one app: logs each call and returns a fixed response payload. */
+@scala.caps.assumeSafe
+final class RecordingInvoke(val appId: AppId, response: String, calls: mutable.ListBuffer[String])
+    extends InvokeCapability.Instance:
+
+  def invoke[Req: JsonCodec](
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod,
@@ -72,6 +91,6 @@ final class RecordingInvoker(response: String) extends InvokeCapability:
     calls += s"body|${appId.value}|${method.value}|${summon[JsonCodec[Req]].encode(data)}|$httpMethod|${metadata.size}"
     JsonCodec.decodeOrThrow[Resp](response)
 
-  def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp =
+  def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp =
     calls += s"nobody|${appId.value}|${method.value}"
     JsonCodec.decodeOrThrow[Resp](response)

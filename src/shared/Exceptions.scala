@@ -1,7 +1,9 @@
 package dapr4s
 
-/** Thrown by [[StateCapability.saveWithETag]] and [[StateCapability.deleteWithETag]] when the provided ETag does not
-  * match the current server-side value, indicating a concurrent modification.
+import dapr4s.state.*
+
+/** Thrown by [[dapr4s.state.StateCapability.saveWithETag]] and [[dapr4s.state.StateCapability.deleteWithETag]] when the
+  * provided ETag does not match the current server-side value, indicating a concurrent modification.
   *
   * Callers should re-read the key to get the current value and ETag, then retry the operation.
   */

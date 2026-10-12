@@ -1,6 +1,8 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 import dapr4s.derivation.*
 import munit.FunSuite
@@ -21,8 +23,8 @@ class Counter(actorId: ActorId):
   * `Actor.derive[CounterActorClient]` ↔ `ActorDefinitions.deriveChecked[CounterActorClient, Counter]`.
   */
 trait CounterActorClient:
-  def increment(req: Req)(using ActorCapability, JsonCodec[Req], JsonCodec[Resp]): Resp
-  def get()(using ActorCapability, JsonCodec[Resp]): Resp
+  def increment(req: Req)(using ActorCapability.Instance, JsonCodec[Req], JsonCodec[Resp]): Resp
+  def get()(using ActorCapability.Instance, JsonCodec[Resp]): Resp
   @reminder def onReset(msg: String, dueTime: FiniteDuration, period: Option[FiniteDuration] = None)(using
       ActorContext,
       JsonCodec[String],

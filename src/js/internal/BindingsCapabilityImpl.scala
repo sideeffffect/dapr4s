@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.bindings.*
 import scala.scalajs.js
 import JsInterop.*
 
@@ -9,7 +10,7 @@ import JsInterop.*
 private[internal] final class BindingsCapabilityImpl(
     scope: DaprCapabilityImpl,
     val bindingName: BindingName,
-) extends BindingsCapability:
+) extends BindingsCapability.Instance:
 
   def invoke[Req: JsonCodec](
       operation: BindingOperation,

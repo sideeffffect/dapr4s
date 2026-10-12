@@ -1,6 +1,8 @@
 package dapr4s.test.unit
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 import munit.FunSuite
 import scala.collection.immutable.ArraySeq
@@ -10,7 +12,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Bindings: invokeOneWay (Unit) and invoke (Option[Resp])"):
     val fake = FakeBindings("done")
-    given BindingsCapability = fake
+    given BindingsCapability.Instance = fake
     val client = BindingClient
     client.create(Req(1))
     assertEquals(client.query(Req(2)), Some(Resp("done")))
@@ -18,7 +20,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Actor: invoke body, invoke no-body, invokeVoid"):
     val fake = FakeActor("res")
-    given ActorCapability = fake
+    given ActorCapability.Instance = fake
     val client = ActorClient
     assertEquals(client.increment(Req(5)), Resp("res"))
     assertEquals(client.get(), Resp("res"))
@@ -27,7 +29,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Publish: publish and publishWithMetadata"):
     val fake = FakePubSub()
-    given PublishCapability = fake
+    given PublishCapability.Instance = fake
     val client = Publisher
     client.orders(Req(1))
     client.audit(Req(2), Map(MetadataKey("k") -> MetadataValue("v")))
@@ -35,21 +37,21 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("Secrets: get with @name key"):
     val fake = FakeSecrets()
-    given SecretsCapability = fake
+    given SecretsCapability.Instance = fake
     val client = SecretClient
     assertEquals(client.dbPassword(), Some(SecretValue("sealed")))
     assertEquals(fake.log.toList, List("get|db-password|0"))
 
   test("Configuration: single-key get returns Option[ConfigurationItem]"):
     val fake = FakeConfig()
-    given ConfigurationCapability = fake
+    given ConfigurationCapability.Instance = fake
     val client = ConfigurationClient
     assertEquals(client.featureX().map(_.value), Some(ConfigurationValue("v")))
     assertEquals(fake.log.toList, List("get|feature-x|0"))
 
   test("Crypto: encrypt (bytes) and encryptString (String)"):
     val fake = FakeCrypto()
-    given CryptoCapability = fake
+    given CryptoCapability.Instance = fake
     val client = CryptoClient
     client.rawKey(ArraySeq.from("hi".getBytes), KeyWrapAlgorithm("RSA"))
     client.textKey("hello", KeyWrapAlgorithm("AES"))
@@ -72,7 +74,7 @@ class CapabilityDerivationTest extends FunSuite:
 
   test("State: getter/setter map to get/save on StateStoreKey"):
     val fake = FakeState()
-    given StateCapability = fake
+    given StateCapability.Instance = fake
     val client = StateClient
     client.counter = 9
     assertEquals(client.counter, Some(41))

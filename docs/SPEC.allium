@@ -2,15 +2,32 @@
 -- SPEC.allium — dapr4s behavioural specification
 --
 -- Scope: Safe Scala capability library wrapping DAPR building blocks
--- Includes: DaprRuntime lifecycle (run + serve), StateCapability, PublishCapability,
---           InvokeCapability, SecretsCapability,
---           ConfigurationCapability (get + subscribe), BindingsCapability,
---           LockCapability, DaprApp (inbound pub/sub, bindings,
---           service invocation, actors with reminders/timers),
+-- Includes: DaprRuntime lifecycle (Dapr(config).run + serve),
+--           the capability tiers (CAPABILITY-SPLITS §11: universal + Instance + ReadOnly):
+--             DaprCapability (root scope) exposes one universal capability per family
+--               (DaprCapability.state, .publish, ...); a universal capability is bound to no
+--               name, so its operations take the store / pubsub / app id / ... per call;
+--             X.Instance, obtained by universal.instance(name), is bound to that one name;
+--             X.ReadOnly / X.Instance.ReadOnly are read-only super-traits, for the State,
+--               Secrets, Configuration, Workflow and Jobs families only;
+--             actor narrows in two steps: ActorCapability -> forType(type) ->
+--               ActorCapability.Type -> instance(id) -> ActorCapability.Instance;
+--           families: State, Publish, Invoke, Secrets, Configuration (get + subscribe),
+--           Bindings, Lock, Crypto, Actor client, Workflow client,
+--           JVM-only: Jobs and Conversation,
+--           DaprApp (inbound pub/sub, bindings, service invocation, jobs,
+--           actors with reminders/timers),
 --           Workflow, WorkflowActivity, WorkflowContext (server-side workflow orchestration)
 --           JsonCodec
+-- Package layout: each building-block family lives in its own package
+--   (dapr4s.state, dapr4s.publish, dapr4s.invoke, dapr4s.secrets, dapr4s.configuration,
+--    dapr4s.bindings, dapr4s.lock, dapr4s.actor, dapr4s.workflow, dapr4s.crypto,
+--    dapr4s.jobs, dapr4s.conversation). Dapr, DaprConfig, DaprCapability, DaprApp,
+--   JsonCodec, HttpMethod and the cross-family operation types (AppId, Route, MetadataKey, ...)
+--   stay in the root package dapr4s.
 -- Excludes (not yet specified — separate specs):
---   - DAPR workflow orchestration detail: WorkflowCapability (client-side) spec deferred.
+--   - Operation-level rules for the actor, workflow, crypto, jobs and conversation clients
+--     (their surfaces are specified below; per-operation behaviour rules are deferred).
 --   - DAPR sidecar itself (external system)
 --   - Authentication and mTLS (managed by DAPR sidecar)
 -- Dependencies: DAPR sidecar must be running and reachable
@@ -31,67 +48,72 @@ external entity JavaDaprClient {
     -- Platform note: on Scala.js the same role is played by the Dapr JS SDK client
     -- (@dapr/dapr DaprClient + DaprWorkflowClient, in src/js/internal/), equally
     -- opaque to user code and equally managed inside @assumeSafe boundaries.
+    -- On the JVM the actor client and the workflow client are created lazily on first use
+    -- and closed together with the main client when the run block exits.
 }
 
 external entity Workflow {
-    -- Pure Scala abstract class. User extends and implements run()(using WorkflowContext): Unit.
+    -- Pure Scala abstract class. User extends and implements run(using WorkflowContext): Unit.
     -- WorkflowContext is injected as a given at call time — user code never names the value.
     -- Companion object WorkflowContext provides forwarder methods so users call
     --   WorkflowContext.getInput / callActivity / complete etc. without explicit ctx binding.
-    -- Internally, WorkflowBridge extends io.dapr.workflows.Workflow and is registered
-    -- via registerWorkflow(name, bridge, "", false); bridge is in dapr4s.internal.
+    -- Internally a bridge in dapr4s.internal adapts it to the platform SDK's workflow runtime.
 }
 
 external entity WorkflowActivity {
     -- Pure Scala abstract class: WorkflowActivity[I: JsonCodec, O: JsonCodec].
-    -- User implements execute(input: I): O — no context needed, no Java types visible.
-    -- Internally, WorkflowActivityBridge extends io.dapr.workflows.WorkflowActivity and is
-    -- registered via registerActivity(name, bridge); bridge is in dapr4s.internal.
-    -- Codec fields are private[safe] so the bridge can access them.
+    -- User implements execute(input: I)(using DaprCapability): O — the activity receives the
+    -- root DaprCapability so it may perform Dapr calls; no SDK types are visible.
+    -- activityName defaults to the simple class name; override to disambiguate.
+    -- Codec fields are private[dapr4s] so the internal bridge can access them.
 }
 
 external entity WorkflowContext {
     -- Capability trait provided as a `given` to Workflow.run.
-    -- Wraps io.dapr.workflows.WorkflowContext; all methods use Scala types.
+    -- Wraps the platform SDK's workflow context; all methods use Scala types.
     -- Companion object WorkflowContext mirrors all methods as forwarders with (using WorkflowContext),
     -- so user code need not bind the context value explicitly.
     instance_id: WorkflowInstanceId
     is_replaying: Boolean
     -- get_input[I: JsonCodec]: Option[I]
-    -- call_activity[I, O](activityClass, input): WorkflowTask[O]
-    -- call_activity[O](activityClass): WorkflowTask[O]                -- Unit-input overload
-    -- create_timer(duration): WorkflowTask[Unit]
-    -- wait_for_external_event[T](name, timeout?): WorkflowTask[T]
+    -- call_activity[A](using ActivityDef[A])(input): Task[Output]
+    -- call_activity[A](using ActivityDef[A]): Task[Output]             -- Unit-input overload
+    -- call_activity_by_name[I, O](name: ActivityName, input): Task[O]
+    -- call_activity_by_name[O](name: ActivityName): Task[O]
+    -- create_timer(duration: FiniteDuration): Task[Unit]
+    -- wait_for_external_event[T](name: EventName, timeout?): Task[T]
     -- complete[O](output): Unit
     -- continue_as_new[I](input): Unit
     -- new_uuid(): UUID
 }
 
-external entity WorkflowTask {
-    -- Handle to a scheduled durable operation. Call await() to get the result.
-    -- Replay-safe inside the workflow runtime.
+external entity Task {
+    -- Handle to a scheduled durable operation (trait Task[+O]). Call await() to get the result;
+    -- isDone / isCancelled / map are also available. Replay-safe inside the workflow runtime.
 }
 
 external entity ActorContext {
     -- Capability provided to every actor invocation. Bundles state, reminders, and timers.
     -- Backed by HttpActorContext which calls the Dapr actor HTTP API.
     -- State:
-    --   get[T: JsonCodec](key): Option[T]
-    --   set[T: JsonCodec](key, value): Unit
-    --   remove(key): Unit
+    --   get[T: JsonCodec](key: ActorStateKey): Option[T]
+    --   set[T: JsonCodec](key: ActorStateKey, value): Unit
+    --   remove(key: ActorStateKey): Unit
     -- Reminders (persistent — survive actor deactivation):
-    --   registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: Duration, period?): Unit
+    --   registerReminder[T: JsonCodec](name: ReminderName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration] = None): Unit
     --   unregisterReminder(name: ReminderName): Unit
     -- Timers (non-persistent — lost on actor deactivation):
-    --   registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: Duration, period?): Unit
+    --   registerTimer[T: JsonCodec](name: TimerName, data: T, dueTime: FiniteDuration, period: Option[FiniteDuration] = None): Unit
     --   unregisterTimer(name: TimerName): Unit
 }
 
 external entity ActorDefinition {
     -- Server-side actor hosting descriptor.
     actor_type:   ActorType
-    -- build: (ActorId, ActorContext) -> ActorRoutes
+    -- build: ActorId => ActorContext ?=> ActorRoutes
     -- Called on every incoming invocation; returns methods + reminders + timers.
+    -- Duplicate method/reminder/timer names in the built ActorRoutes raise
+    -- DaprAppValidationException at build time.
 }
 
 external entity ActorRoutes {
@@ -99,6 +121,15 @@ external entity ActorRoutes {
     methods:   List<ActorMethodRoute>    -- method invocations
     reminders: List<ActorReminderRoute>  -- reminder callbacks
     timers:    List<ActorTimerRoute>     -- timer callbacks
+}
+
+external entity JobSchedule {
+    -- JVM-only enum: Cron(expression), Every(duration) and named presets (e.g. Daily).
+}
+
+external entity ConversationMessage {
+    -- JVM-only conversation request message. ConversationTool, ToolChoice and
+    -- ConversationResponse are its siblings in src/jvm/conversation/ConversationModels.scala.
 }
 
 ------------------------------------------------------------
@@ -114,6 +145,8 @@ value AppId            { value: String }   -- Target application ID for service 
 value SecretStoreName  { value: String }   -- DAPR secrets store component name
 value ConfigurationStoreName  { value: String }   -- DAPR configuration store component name
 value BindingName      { value: String }   -- DAPR output binding component name
+value CryptoComponentName { value: String } -- DAPR cryptography component name
+value ConversationComponentName { value: String } -- DAPR conversation (LLM) component name (JVM-only API)
 value ETag             { value: String }   -- Optimistic-concurrency tag
 
 -- Operation key / identifier opaque types (non-empty where noted)
@@ -123,11 +156,29 @@ value InvokeMethodName { value: String }   -- Service-invocation / inbound handl
 value ActorMethodName  { value: String }   -- Actor method name (non-empty)
 value Route            { value: String }   -- HTTP route for a pub/sub subscription (non-empty)
 value SecretKey        { value: String }   -- Key in a DAPR secrets store
+value SecretValue      { value: String }   -- Secret value returned by a secrets store
 value ConfigurationKey        { value: String }   -- Key in a DAPR configuration store
+value ConfigurationValue      { value: String }   -- Value of a configuration item
+value ConfigurationVersion    { value: String }   -- Version of a configuration item
 value LockResourceId   { value: String }   -- Resource identifier for distributed lock (non-empty)
 value LockOwner        { value: String }   -- Lock owner identifier (non-empty)
 value BindingOperation { value: String }   -- Operation name for an output binding (non-empty)
 value BulkEntryId      { value: String }   -- Caller-assigned ID for correlating bulk publish failures
+value CryptoKeyName    { value: String }   -- Key name inside a crypto component (non-empty)
+value MetadataKey      { value: String }   -- Metadata header key forwarded to the sidecar
+value MetadataValue    { value: String }   -- Metadata header value forwarded to the sidecar
+value SerializedJson   { value: String }   -- Pre-encoded JSON payload
+value ContentType      { value: String }   -- MIME content type
+value KeyWrapAlgorithm { value: String }   -- Crypto key-wrap algorithm name (common constants provided)
+
+-- CloudEvent envelope opaque types
+value CloudEventId          { value: String }
+value CloudEventSource      { value: String }
+value CloudEventSpecVersion { value: String }
+value CloudEventType        { value: String }
+
+-- Conversation opaque types (JVM-only API; the name types are shared)
+value ConversationContextId { value: String }
 
 -- Actor opaque types
 value ActorType        { value: String }   -- Dapr virtual actor type name (non-empty)
@@ -139,6 +190,10 @@ value TimerName        { value: String }   -- Name of a non-persistent actor tim
 value WorkflowName         { value: String }   -- Dapr workflow class / registration name (non-empty)
 value WorkflowInstanceId   { value: String }   -- Dapr workflow instance ID (may be empty)
 value EventName            { value: String }   -- External event name for workflow instances (non-empty)
+value ActivityName         { value: String }   -- Registered workflow activity name
+
+-- Jobs opaque types
+value JobName              { value: String }   -- Dapr scheduled job name (non-empty)
 
 -- Query / filter value
 value StateQuery {
@@ -150,9 +205,9 @@ value StateQuery {
 -- Complex value types
 value ConfigurationItem {
     key: ConfigurationKey
-    value: String
-    version: String
-    metadata: Map<String, String>
+    value: ConfigurationValue
+    version: ConfigurationVersion
+    metadata: Map<MetadataKey, MetadataValue>
 }
 
 value ConfigurationUpdate {
@@ -162,21 +217,24 @@ value ConfigurationUpdate {
     items: Map<ConfigurationKey, ConfigurationItem>
 }
 
-value StateEntry<T> {
-    value: T?
+value StateEntry {
+    -- Generic in code: StateEntry[T]. Allium value types take no type parameters,
+    -- so the payload is typed Any here (T is the JsonCodec-backed user type).
+    value: Any?
     etag: ETag?
     -- etag is present iff value is present
 }
 
 value StateKeyValue {
-    -- Key-value pair used in bulk state save operations.
+    -- Key-value pair used in bulk state save operations (a (StateStoreKey, T) tuple in code).
     key: StateStoreKey
     value: Any
 }
 
-value BulkPublishEntry<T> {
+value BulkPublishEntry {
+    -- Generic in code: BulkPublishEntry[T]; the event payload is typed Any here.
     entry_id: BulkEntryId   -- caller-assigned ID for correlating failures
-    event: T
+    event: Any
 }
 
 value BulkPublishResult {
@@ -200,23 +258,35 @@ value SubscriptionResult {
     -- drop:    silently discard — do not redeliver, no error
 }
 
-value CloudEvent<T> {
-    id: String
-    source: String
-    spec_version: String
-    type: String
+value CloudEvent {
+    -- Generic in code: CloudEvent[T]; the data payload is typed Any here.
+    id: CloudEventId
+    source: CloudEventSource
+    spec_version: CloudEventSpecVersion
+    event_type: CloudEventType
     topic: Topic
     pub_sub_name: PubSubName
-    data_content_type: String
-    data: T
+    data_content_type: ContentType
+    data: Any
 }
 
-value InvokeRequest<T> {
+value InvokeRequest {
+    -- Generic in code: InvokeRequest[T]; the data payload is typed Any here.
     -- Incoming service invocation request delivered by the sidecar to an InvokeRoute.withRequest handler.
     -- Matches final case class InvokeRequest[T](methodName: InvokeMethodName, httpMethod: HttpMethod, data: T).
     method_name: InvokeMethodName
     http_method: HttpMethod
-    data: T
+    data: Any
+}
+
+value JobDetails {
+    -- Stored definition of a scheduled job (JVM-only API). Returned by JobsCapability.Instance.get().
+    name: JobName
+    data: SerializedJson?
+    schedule_expression: String?
+    due_time: Timestamp?
+    repeats: Integer?
+    ttl: Timestamp?
 }
 
 ------------------------------------------------------------
@@ -229,7 +299,7 @@ contract JsonCodec {
     encode: (value: Any) -> String
     decode: (json: String?) -> DecodeResult
     -- decode accepts null input; returns Left(JsonDecodeException("null input")) for null
-    decode_or_throw: (json: String?) -> Any throws JsonDecodeException
+    decode_or_throw: (json: String?) -> Any   -- throws JsonDecodeException
     -- Convenience: unwraps Right or throws the JsonDecodeException from Left
 
     @invariant Roundtrip
@@ -249,6 +319,458 @@ contract JsonCodec {
         -- decode(null) returns Left(JsonDecodeException("null input")).
 }
 
+-- ---- Public API operation contracts ----
+-- Allium contracts take no type parameters, so the Scala type parameters (T, Req, Resp,
+-- Payload, I, O) are written as Any; the JsonCodec contract supplies the codec for each.
+-- Context functions (X ?=> T) are written as plain function types (X -> Any); the
+-- comments give the exact Scala shape. Overloads get distinct signature names.
+
+contract DaprRuntimeOperations {
+    -- class Dapr(config: DaprConfig = DaprConfig())
+    run: (body: DaprCapability -> Any) -> Any
+    -- Code: run[T](body: DaprCapability ?=> T): T
+    -- Acquires a DaprClient, provides DaprCapability to body, releases on exit.
+    -- Propagates exceptions after releasing resources.
+    serve: (body: DaprCapability -> DaprApp) -> Nothing
+    -- Code: serve(body: DaprCapability ?=> DaprApp): Nothing
+    -- Runs inside run: validates the returned DaprApp (validateOrThrow), starts an HTTP
+    -- server on config.appServer.port, then blocks until the JVM shuts down or the
+    -- calling thread is interrupted. Never returns normally.
+    -- DaprClient lifecycle matches the server's lifetime.
+    --
+    -- Scala.js only: runAsync(body) -> js.Promise[T] and serveAsync(body) -> js.Promise[Nothing]
+    -- are program-edge conveniences.
+}
+
+contract DaprCapabilityAccessors {
+    -- Argument-less members of DaprCapability. Each returns the family's universal
+    -- capability at full authority, with a ^{this} return type.
+    state:         () -> StateCapability
+    publish:       () -> PublishCapability
+    invoke:        () -> InvokeCapability
+    secrets:       () -> SecretsCapability
+    configuration: () -> ConfigurationCapability
+    bindings:      () -> BindingsCapability
+    lock:          () -> LockCapability
+    actor:         () -> ActorCapability
+    workflow:      () -> WorkflowCapability
+    crypto:        () -> CryptoCapability
+    jobs:          () -> JobsCapability            -- JVM only
+    conversation:  () -> ConversationCapability    -- JVM only
+}
+
+contract DaprCapabilityTransformers {
+    -- Companion-object transformers DaprCapability.<name>: acquire from the ambient
+    -- DaprCapability and pass the result to body as a context parameter
+    -- (code: body: X ?=> T, result T).
+    state:         (store_name: StateStoreName, body: StateCapabilityInstance -> Any) -> Any
+    publish:       (pubsub_name: PubSubName, body: PublishCapabilityInstance -> Any) -> Any
+    invoke:        (body: InvokeCapability -> Any) -> Any
+    secrets:       (store_name: SecretStoreName, body: SecretsCapabilityInstance -> Any) -> Any
+    configuration: (store_name: ConfigurationStoreName, body: ConfigurationCapabilityInstance -> Any) -> Any
+    bindings:      (binding_name: BindingName, body: BindingsCapabilityInstance -> Any) -> Any
+    lock:          (store_name: LockStoreName, body: LockCapabilityInstance -> Any) -> Any
+    actor:         (actor_type: ActorType, actor_id: ActorId, body: ActorCapabilityInstance -> Any) -> Any
+    workflow:      (body: WorkflowCapability -> Any) -> Any
+    crypto:        (component_name: CryptoComponentName, body: CryptoCapabilityInstance -> Any) -> Any
+    jobs:          (body: JobsCapability -> Any) -> Any   -- JVM only
+    conversation:  (component_name: ConversationComponentName, body: ConversationCapabilityInstance -> Any) -> Any   -- JVM only
+    -- invoke, workflow and jobs hand over the universal capability (one handle covers many
+    -- app ids / instances / job names); the others hand over the full-authority X.Instance.
+}
+
+contract FamilyCompanionTransformers {
+    -- Transformers on each family's companion objects. Each narrows the ambient capability
+    -- (code: using X) and passes the result to body as a context parameter (body: Y ?=> T).
+    state_instance:                 (store_name: StateStoreName) -> StateCapabilityInstance
+    state_read_only_instance:       (store_name: StateStoreName) -> StateCapabilityInstance
+    publish_instance:               (pubsub_name: PubSubName) -> PublishCapabilityInstance
+    invoke_instance:                (app_id: AppId) -> InvokeCapabilityInstance
+    secrets_instance:               (store_name: SecretStoreName) -> SecretsCapabilityInstance
+    secrets_read_only_instance:     (store_name: SecretStoreName) -> SecretsCapabilityInstance
+    configuration_instance:         (store_name: ConfigurationStoreName) -> ConfigurationCapabilityInstance
+    configuration_read_only_instance: (store_name: ConfigurationStoreName) -> ConfigurationCapabilityInstance
+    bindings_instance:              (binding_name: BindingName) -> BindingsCapabilityInstance
+    lock_instance:                  (store_name: LockStoreName) -> LockCapabilityInstance
+    crypto_instance:                (component_name: CryptoComponentName) -> CryptoCapabilityInstance
+    workflow_instance:              (instance_id: WorkflowInstanceId) -> WorkflowCapabilityInstance
+    workflow_read_only_instance:    (instance_id: WorkflowInstanceId) -> WorkflowCapabilityInstance
+    jobs_instance:                  (job_name: JobName) -> JobsCapabilityInstance   -- JVM only
+    jobs_read_only_instance:        (job_name: JobName) -> JobsCapabilityInstance   -- JVM only
+    conversation_instance:          (component_name: ConversationComponentName) -> ConversationCapabilityInstance   -- JVM only
+    actor_for_type:                 (actor_type: ActorType) -> ActorCapabilityType
+    actor_instance:                 (actor_type: ActorType, actor_id: ActorId) -> ActorCapabilityInstance
+    actor_type_instance:            (actor_id: ActorId) -> ActorCapabilityInstance
+    -- Code: X.instance(name) (using X) returns X.Instance^{cap};
+    -- X.ReadOnly.instance(name) (using X.ReadOnly) yields X.Instance.ReadOnly
+    -- (the *_read_only_instance entries); ActorCapability.forType(t) yields
+    -- ActorCapability.Type, ActorCapability.instance(t, id) and
+    -- ActorCapability.Type.instance(id) yield ActorCapability.Instance.
+
+    @invariant CompanionForwarders
+        -- Every capability trait (X, X.ReadOnly, X.Instance, X.Instance.ReadOnly,
+        -- ActorCapability.Type) has a companion object that forwards each of its methods with
+        -- the trait as a using parameter, so callers never name the capability value.
+}
+
+-- ---- State ----
+
+contract StateReadOnlyOperations {
+    -- StateCapability.ReadOnly (universal, read-only tier). Every operation takes the store.
+    instance: (store_name: StateStoreName) -> StateCapabilityInstance
+    -- Returns StateCapability.Instance.ReadOnly^{this}; StateCapability overrides it to
+    -- return StateCapability.Instance^{this} (AuthorityPreservedByNarrowing).
+    get: (store_name: StateStoreName, key: StateStoreKey, consistency: StateConsistency) -> Any?
+    get_with_etag: (store_name: StateStoreName, key: StateStoreKey, consistency: StateConsistency) -> StateEntry
+    get_bulk: (store_name: StateStoreName, keys: List<StateStoreKey>) -> Map<StateStoreKey, StateEntry>
+    query_state: (store_name: StateStoreName, query: StateQuery) -> List<StateEntry>
+}
+
+contract StateOperations {
+    -- StateCapability (universal, full tier) adds these to StateReadOnlyOperations.
+    save: (store_name: StateStoreName, key: StateStoreKey, value: Any) -> Unit
+    save_with_etag: (store_name: StateStoreName, key: StateStoreKey, value: Any, etag: ETag, metadata: Map<MetadataKey, MetadataValue>, consistency: StateConsistency, concurrency: StateConcurrency) -> ETagMismatchException?
+    save_bulk: (store_name: StateStoreName, entries: List<StateKeyValue>) -> Unit
+    delete: (store_name: StateStoreName, key: StateStoreKey) -> Unit
+    delete_with_etag: (store_name: StateStoreName, key: StateStoreKey, etag: ETag, consistency: StateConsistency, concurrency: StateConcurrency) -> ETagMismatchException?
+    transaction: (store_name: StateStoreName, ops: List<StateOp>) -> Unit
+}
+
+contract StateInstanceReadOnlyOperations {
+    -- StateCapability.Instance.ReadOnly (bound to store_name, read-only tier).
+    get: (key: StateStoreKey, consistency: StateConsistency) -> Any?
+    -- Returns Option[T]; None if key not found. consistency defaults to Default.
+    get_with_etag: (key: StateStoreKey, consistency: StateConsistency) -> StateEntry
+    -- Returns StateEntry with value and current ETag
+    get_bulk: (keys: List<StateStoreKey>) -> Map<StateStoreKey, StateEntry>
+    -- Batch fetch; missing keys return StateEntry with value = absent
+    query_state: (query: StateQuery) -> List<StateEntry>
+    -- Query using DAPR state store query API (store must support queries)
+}
+
+contract StateInstanceOperations {
+    -- StateCapability.Instance (full tier) adds these to StateInstanceReadOnlyOperations.
+    save: (key: StateStoreKey, value: Any) -> Unit
+    save_with_etag: (key: StateStoreKey, value: Any, etag: ETag, metadata: Map<MetadataKey, MetadataValue>, consistency: StateConsistency, concurrency: StateConcurrency) -> ETagMismatchException?
+    -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
+    save_bulk: (entries: List<StateKeyValue>) -> Unit
+    delete: (key: StateStoreKey) -> Unit
+    delete_with_etag: (key: StateStoreKey, etag: ETag, consistency: StateConsistency, concurrency: StateConcurrency) -> ETagMismatchException?
+    -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
+    transaction: (ops: List<StateOp>) -> Unit
+}
+
+-- ---- Publish ----
+
+contract PublishOperations {
+    -- PublishCapability (universal). Every operation takes the pub/sub component.
+    instance: (pubsub_name: PubSubName) -> PublishCapabilityInstance
+    publish: (pubsub_name: PubSubName, topic: Topic, data: Any) -> Unit
+    publish_with_metadata: (pubsub_name: PubSubName, topic: Topic, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
+    bulk_publish: (pubsub_name: PubSubName, topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
+}
+
+contract PublishInstanceOperations {
+    -- PublishCapability.Instance (bound to pubsub_name).
+    publish: (topic: Topic, data: Any) -> Unit
+    publish_with_metadata: (topic: Topic, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
+    bulk_publish: (topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
+    -- Publishes multiple entries in a single call; returns list of failed entry IDs
+}
+
+-- ---- Invoke ----
+
+contract InvokeOperations {
+    -- InvokeCapability (universal). Every operation takes the target app id.
+    instance: (app_id: AppId) -> InvokeCapabilityInstance
+    invoke: (app_id: AppId, method: InvokeMethodName, data: Any, http_method: HttpMethod, metadata: Map<MetadataKey, MetadataValue>) -> Any
+    invoke_get: (app_id: AppId, method: InvokeMethodName) -> Any
+}
+
+contract InvokeInstanceOperations {
+    -- InvokeCapability.Instance (bound to app_id).
+    invoke: (method: InvokeMethodName, data: Any, http_method: HttpMethod, metadata: Map<MetadataKey, MetadataValue>) -> Any
+    -- Req inferred from data; Resp given at the call site (clause interleaving).
+    -- http_method defaults to Post; metadata defaults to empty.
+    invoke_get: (method: InvokeMethodName) -> Any
+    -- Code overload invoke[Resp](method): no body, HTTP GET, no metadata.
+}
+
+-- ---- Secrets ----
+
+contract SecretsReadOnlyOperations {
+    -- SecretsCapability.ReadOnly (universal, read-only tier).
+    instance: (store_name: SecretStoreName) -> SecretsCapabilityInstance
+    -- Returns SecretsCapability.Instance.ReadOnly^{this}; SecretsCapability overrides it to
+    -- return SecretsCapability.Instance^{this}.
+    get: (store_name: SecretStoreName, key: SecretKey, metadata: Map<MetadataKey, MetadataValue>) -> SecretValue?
+}
+
+contract SecretsOperations {
+    -- SecretsCapability (universal, full tier) adds get_bulk.
+    get_bulk: (store_name: SecretStoreName, metadata: Map<MetadataKey, MetadataValue>) -> Map<SecretKey, SecretValue>
+}
+
+contract SecretsInstanceReadOnlyOperations {
+    -- SecretsCapability.Instance.ReadOnly (bound to store_name, read-only tier).
+    get: (key: SecretKey, metadata: Map<MetadataKey, MetadataValue>) -> SecretValue?   -- None when key absent
+}
+
+contract SecretsInstanceOperations {
+    -- SecretsCapability.Instance (full tier) adds get_bulk.
+    get_bulk: (metadata: Map<MetadataKey, MetadataValue>) -> Map<SecretKey, SecretValue>
+}
+
+-- ---- Configuration ----
+
+contract ConfigurationReadOnlyOperations {
+    -- ConfigurationCapability.ReadOnly (universal, read-only tier).
+    instance: (store_name: ConfigurationStoreName) -> ConfigurationCapabilityInstance
+    -- Returns ConfigurationCapability.Instance.ReadOnly^{this}; ConfigurationCapability
+    -- overrides it to return ConfigurationCapability.Instance^{this}.
+    get: (store_name: ConfigurationStoreName, keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>) -> Map<ConfigurationKey, ConfigurationItem>
+}
+
+contract ConfigurationOperations {
+    -- ConfigurationCapability (universal, full tier) adds subscribe.
+    subscribe: (store_name: ConfigurationStoreName, keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
+}
+
+contract ConfigurationInstanceReadOnlyOperations {
+    -- ConfigurationCapability.Instance.ReadOnly (bound to store_name, read-only tier).
+    get: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>) -> Map<ConfigurationKey, ConfigurationItem>
+}
+
+contract ConfigurationInstanceOperations {
+    -- ConfigurationCapability.Instance (full tier) adds subscribe.
+    subscribe: (keys: List<ConfigurationKey>, metadata: Map<MetadataKey, MetadataValue>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
+    -- Streams config changes from sidecar; close the AutoCloseable to stop.
+    -- The AutoCloseable carries ^{this}.
+}
+
+contract DaprAppBuilders {
+    -- Two Subscription overloads: default route is "/" + topic.value; dead_letter_topic defaults to None
+    subscription: (pubsub_name: PubSubName, topic: Topic, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
+    subscription_with_route: (pubsub_name: PubSubName, topic: Topic, route: Route, dead_letter_topic: Topic?, handler: CloudEvent -> SubscriptionResult) -> Subscription
+    -- InvokeRoute(name, handler) — simple overload: handler receives only the decoded request body.
+    invoke_route: (method_name: InvokeMethodName, handler: Any -> Any) -> InvokeRoute
+    -- InvokeRoute.withRequest — rich overload: handler receives the full InvokeRequest envelope
+    -- (method name, HTTP verb, body); code: handler: InvokeRequest[Req] => Resp.
+    invoke_route_with_request: (method_name: InvokeMethodName, handler: InvokeRequest -> Any) -> InvokeRoute
+    binding_route: (binding_name: BindingName, handler: Any -> Unit) -> BindingRoute
+    job_route: (name: JobName, handler: Any -> Unit) -> JobRoute
+    dapr_app: (subscriptions: List<Subscription>, invokeRoutes: List<InvokeRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>, jobs: List<JobRoute>) -> DaprApp
+    combine: (left: DaprApp, right: DaprApp) -> DaprApp
+    -- Code: left ++ right
+    validation_errors: (app: DaprApp) -> List<DaprAppValidationError>
+    -- Code: app.validationErrors
+    validate_or_throw: (app: DaprApp) -> DaprApp
+    -- Code: app.validateOrThrow()
+    actor_method_route: (method_name: ActorMethodName, handler: Any -> Any) -> ActorMethodRoute
+    actor_reminder_route: (reminder_name: ReminderName, handler: Any -> Unit) -> ActorReminderRoute
+    actor_timer_route: (timer_name: TimerName, handler: Any -> Unit) -> ActorTimerRoute
+    actor_routes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes
+    actor_definition: (actor_type: ActorType, build: ActorId -> ActorRoutes) -> ActorDefinition
+    -- Code: build: ActorId => ActorContext ?=> ActorRoutes
+    -- Handler lambdas may capture sub-capabilities from the enclosing DaprCapability
+    -- transformer bodies.
+    -- The recommended pattern is: business logic in explicit methods with
+    -- anonymous (using Capability) context parameters; companion-object
+    -- forwarders (e.g. StateCapability.save(...), PublishCapability.publish(...))
+    -- dispatch to the implicit instance, so callers never name the capability
+    -- value.  Methods are passed as direct handler references (no wrapping lambda)
+    -- because no library method carries a throws annotation.
+    -- Sub-capabilities are acquired via the DaprCapability members or the
+    -- DaprCapability.state/publish/etc. companion transformers.
+}
+
+-- ---- Bindings ----
+
+contract BindingsOperations {
+    -- BindingsCapability (universal). Every operation takes the binding name.
+    instance: (binding_name: BindingName) -> BindingsCapabilityInstance
+    invoke: (binding_name: BindingName, operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Any?
+    invoke_one_way: (binding_name: BindingName, operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
+}
+
+contract BindingsInstanceOperations {
+    -- BindingsCapability.Instance (bound to binding_name).
+    invoke: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Any?
+    -- Returns Option[Resp]; None if binding has no response.
+    -- Req inferred from data; Resp given at the call site.
+    invoke_one_way: (operation: BindingOperation, data: Any, metadata: Map<MetadataKey, MetadataValue>) -> Unit
+    -- Fire-and-forget binding invocation; no response expected
+}
+
+-- ---- Lock ----
+
+contract LockOperations {
+    -- LockCapability (universal). Every operation takes the lock store.
+    instance: (store_name: LockStoreName) -> LockCapabilityInstance
+    try_lock: (store_name: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) -> Boolean
+    unlock: (store_name: LockStoreName, resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
+}
+
+contract LockInstanceOperations {
+    -- LockCapability.Instance (bound to store_name).
+    try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration) -> Boolean
+    -- Attempts to acquire lock; returns true if acquired, false if already held
+    unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
+    -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
+}
+
+-- ---- Crypto ----
+
+contract CryptoOperations {
+    -- CryptoCapability (universal). Every operation takes the crypto component.
+    instance: (component_name: CryptoComponentName) -> CryptoCapabilityInstance
+    encrypt: (component_name: CryptoComponentName, key_name: CryptoKeyName, plaintext: ByteArray, algorithm: KeyWrapAlgorithm) -> ByteArray
+    decrypt: (component_name: CryptoComponentName, ciphertext: ByteArray) -> ByteArray
+    encrypt_string: (component_name: CryptoComponentName, key_name: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm) -> ByteArray
+    decrypt_string: (component_name: CryptoComponentName, ciphertext: ByteArray) -> String
+}
+
+contract CryptoInstanceOperations {
+    -- CryptoCapability.Instance (bound to component_name).
+    encrypt: (key_name: CryptoKeyName, plaintext: ByteArray, algorithm: KeyWrapAlgorithm) -> ByteArray
+    decrypt: (ciphertext: ByteArray) -> ByteArray
+    encrypt_string: (key_name: CryptoKeyName, plaintext: String, algorithm: KeyWrapAlgorithm) -> ByteArray
+    decrypt_string: (ciphertext: ByteArray) -> String
+    -- Byte payloads are immutable ArraySeq[Byte].
+}
+
+-- ---- Actor client ----
+
+contract ActorOperations {
+    -- ActorCapability (universal). Every operation takes the actor type and id.
+    for_type: (actor_type: ActorType) -> ActorCapabilityType
+    invoke: (actor_type: ActorType, actor_id: ActorId, method: ActorMethodName, data: Any) -> Any
+    invoke_no_body: (actor_type: ActorType, actor_id: ActorId, method: ActorMethodName) -> Any
+    invoke_void: (actor_type: ActorType, actor_id: ActorId, method: ActorMethodName) -> Unit
+}
+
+contract ActorTypeOperations {
+    -- ActorCapability.Type (bound to actor_type). Every operation takes the actor id.
+    instance: (actor_id: ActorId) -> ActorCapabilityInstance
+    invoke: (actor_id: ActorId, method: ActorMethodName, data: Any) -> Any
+    invoke_no_body: (actor_id: ActorId, method: ActorMethodName) -> Any
+    invoke_void: (actor_id: ActorId, method: ActorMethodName) -> Unit
+}
+
+contract ActorInstanceOperations {
+    -- ActorCapability.Instance (bound to actor_type and actor_id).
+    invoke: (method: ActorMethodName, data: Any) -> Any
+    -- Req inferred from data; Resp given at the call site.
+    invoke_no_body: (method: ActorMethodName) -> Any
+    -- Code overload invoke[Resp](method).
+    invoke_void: (method: ActorMethodName) -> Unit
+}
+
+-- ---- Workflow client ----
+
+contract WorkflowReadOnlyOperations {
+    -- WorkflowCapability.ReadOnly (universal, read-only tier). Every operation takes the instance id.
+    instance: (instance_id: WorkflowInstanceId) -> WorkflowCapabilityInstance
+    -- Returns WorkflowCapability.Instance.ReadOnly^{this}; WorkflowCapability overrides it to
+    -- return WorkflowCapability.Instance^{this}.
+    get_status: (instance_id: WorkflowInstanceId) -> WorkflowSnapshot?
+    wait_for_completion: (instance_id: WorkflowInstanceId, timeout: FiniteDuration) -> WorkflowSnapshot?
+}
+
+contract WorkflowOperations {
+    -- WorkflowCapability (universal, full tier) adds launch and control operations
+    -- (code: start / startWithId overloads with and without input).
+    start: (name: WorkflowName) -> WorkflowInstanceId
+    start_with_input: (name: WorkflowName, input: Any) -> WorkflowInstanceId
+    start_with_id: (name: WorkflowName, instance_id: WorkflowInstanceId) -> WorkflowInstanceId
+    start_with_id_and_input: (name: WorkflowName, instance_id: WorkflowInstanceId, input: Any) -> WorkflowInstanceId
+    suspend: (instance_id: WorkflowInstanceId) -> Unit
+    resume: (instance_id: WorkflowInstanceId) -> Unit
+    terminate: (instance_id: WorkflowInstanceId) -> Unit
+    raise_event: (instance_id: WorkflowInstanceId, event_name: EventName, payload: Any) -> Unit
+    purge: (instance_id: WorkflowInstanceId) -> Boolean
+}
+
+contract WorkflowInstanceReadOnlyOperations {
+    -- WorkflowCapability.Instance.ReadOnly (bound to instance_id, read-only tier).
+    get_status: () -> WorkflowSnapshot?
+    wait_for_completion: (timeout: FiniteDuration) -> WorkflowSnapshot?
+}
+
+contract WorkflowInstanceOperations {
+    -- WorkflowCapability.Instance (full tier) adds the control operations.
+    suspend: () -> Unit
+    resume: () -> Unit
+    terminate: () -> Unit
+    raise_event: (event_name: EventName, payload: Any) -> Unit
+    purge: () -> Boolean
+}
+
+-- ---- Jobs (JVM only) ----
+
+contract JobsReadOnlyOperations {
+    -- JobsCapability.ReadOnly (universal, read-only tier). Every operation takes the job name.
+    instance: (job_name: JobName) -> JobsCapabilityInstance
+    -- Returns JobsCapability.Instance.ReadOnly^{this}; JobsCapability overrides it to
+    -- return JobsCapability.Instance^{this}.
+    get: (job_name: JobName) -> JobDetails?
+}
+
+contract JobsOperations {
+    -- JobsCapability (universal, full tier) adds scheduling and deletion.
+    schedule: (job_name: JobName, data: Any, schedule: JobSchedule, due_time: Timestamp?, repeats: Integer?, ttl: Timestamp?) -> Unit
+    schedule_once: (job_name: JobName, data: Any, due_time: Timestamp, ttl: Timestamp?) -> Unit
+    delete: (job_name: JobName) -> Unit
+}
+
+contract JobsInstanceReadOnlyOperations {
+    -- JobsCapability.Instance.ReadOnly (bound to job_name, read-only tier).
+    get: () -> JobDetails?
+    -- None if no job with this name exists.
+}
+
+contract JobsInstanceOperations {
+    -- JobsCapability.Instance (full tier) adds scheduling and deletion.
+    schedule: (data: Any, schedule: JobSchedule, due_time: Timestamp?, repeats: Integer?, ttl: Timestamp?) -> Unit
+    -- Recurring job; data is delivered to the matching JobRoute each time it fires.
+    schedule_once: (data: Any, due_time: Timestamp, ttl: Timestamp?) -> Unit
+    delete: () -> Unit
+    -- No-op if the job does not exist.
+}
+
+-- ---- Conversation (JVM only) ----
+
+contract ConversationOperations {
+    -- ConversationCapability (universal). converse takes the conversation component.
+    instance: (component_name: ConversationComponentName) -> ConversationCapabilityInstance
+    converse: (component_name: ConversationComponentName, messages: List<ConversationMessage>, tools: List<ConversationTool>, tool_choice: ToolChoice?, temperature: Decimal?, context_id: ConversationContextId?, scrub_pii: Boolean) -> ConversationResponse
+}
+
+contract ConversationInstanceOperations {
+    -- ConversationCapability.Instance (bound to component_name).
+    converse: (messages: List<ConversationMessage>, tools: List<ConversationTool>, tool_choice: ToolChoice?, temperature: Decimal?, context_id: ConversationContextId?, scrub_pii: Boolean) -> ConversationResponse
+}
+
+contract ActorContextOperations {
+    -- State
+    get:    (key: ActorStateKey) -> Any?
+    -- Code: get[T](key): Option[T]; None when key absent, Some(T) when present
+    set:    (key: ActorStateKey, value: Any) -> Unit
+    remove: (key: ActorStateKey) -> Unit
+
+    -- Reminders (persistent — survive actor deactivation/restart)
+    register_reminder: (name: ReminderName, data: Any, dueTime: FiniteDuration, period: FiniteDuration?) -> Unit
+    -- Registers a persistent callback; sidecar reactivates the actor to deliver it.
+    -- period = None (default) means fire once; period = Some(d) means fire repeatedly every d.
+    unregister_reminder: (name: ReminderName) -> Unit
+    -- No-op if no reminder with name exists.
+
+    -- Timers (non-persistent — lost on actor deactivation)
+    register_timer: (name: TimerName, data: Any, dueTime: FiniteDuration, period: FiniteDuration?) -> Unit
+    -- Registers a non-persistent callback; silently dropped if actor deactivates before it fires.
+    unregister_timer: (name: TimerName) -> Unit
+}
+
 ------------------------------------------------------------
 -- Enumerations
 ------------------------------------------------------------
@@ -259,12 +781,34 @@ enum HttpMethod {
     get | post | put | patch | delete | head | options
 }
 
+enum StateConsistency {
+    -- Read/write consistency level for state operations.
+    default | eventual | strong
+}
+
+enum StateConcurrency {
+    -- Concurrency control for ETag-guarded writes; first_write is the default for *WithETag.
+    default | first_write | last_write
+}
+
+enum CapabilityAuthority {
+    -- The tier at which user code holds a capability of a split family
+    -- (State, Secrets, Configuration, Workflow, Jobs):
+    --   full:      X / X.Instance
+    --   read_only: X.ReadOnly / X.Instance.ReadOnly (read operations only)
+    read_only | full
+}
+
+enum CapabilityStatus {
+    open | closed
+}
+
 ------------------------------------------------------------
 -- Entities and Variants
 ------------------------------------------------------------
 
 entity DaprRuntime {
-    -- Singleton runtime; at most one active at a time in a given thread scope
+    -- Models one `Dapr(config: DaprConfig)` instance while it runs a run/serve block.
     status: idle | active
     -- idle:   no active run/serve block; client is absent
     -- active: inside a run/serve block; client is present
@@ -272,18 +816,98 @@ entity DaprRuntime {
     -- client is present iff status = active
 }
 
+-- Root of the capability tiers.
 entity DaprCapability {
     runtime: DaprRuntime
-    status: open | closed
-    -- A DaprCapability is created by DaprRuntime.run (or serve) and closed when the block exits.
-    -- Sub-capabilities derived from a DaprCapability share its lifetime.
-    -- Sub-capabilities are acquired via transformer methods on the DaprCapability companion
-    -- object (e.g. DaprCapability.state(storeName) { body }), which provide the
-    -- sub-capability as an implicit context parameter to body rather than returning it directly.
+    status: CapabilityStatus
+    -- A DaprCapability is created by Dapr(config).run (or serve) and closed when the block exits.
+    -- It exposes one argument-less member per building-block family: state, publish, invoke,
+    -- secrets, configuration, bindings, lock, actor, workflow, crypto — plus, on the JVM only,
+    -- jobs and conversation (contributed by the platform parent trait DaprCapabilityPlatform;
+    -- the Scala.js twin is empty, so those members do not exist there at compile time).
+    -- Each member returns the family's universal capability with a ^{this} return type,
+    -- binding its lifetime to this DaprCapability instance.
     -- Extends scala.caps.ExclusiveCapability: tracked by the Scala 3 CC framework as exclusive
-    -- (non-shareable), preventing escape and concurrent use. All sub-capability traits also
-    -- extend ExclusiveCapability. Factory methods carry ^{this} return types to bind
-    -- sub-capability lifetimes to this DaprCapability instance.
+    -- (non-shareable), preventing escape and concurrent use. Every family trait (universal,
+    -- ReadOnly, Instance, Instance.ReadOnly, ActorCapability.Type) also extends ExclusiveCapability.
+}
+
+-- Universal capabilities: one per building-block family, bound to no name. Every operation
+-- takes the store / pubsub / app id / binding / ... name as a parameter, and instance(name)
+-- narrows to the family's Instance, bound to that name (return type ^{this}).
+-- Five families split the read operations from the rest: State, Secrets, Configuration,
+-- Workflow and Jobs. For these, X.ReadOnly is a super-trait of X with only the read
+-- operations, and `authority` records the tier at which user code holds the capability:
+-- full (X) or read_only (X.ReadOnly: the same runtime object, held at the super-trait type
+-- by ascription or by widening into a `using X.ReadOnly` parameter).
+
+entity StateCapability {
+    capability: DaprCapability
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+    -- status mirrors capability.status
+}
+
+entity PublishCapability {
+    capability: DaprCapability
+    status: CapabilityStatus
+}
+
+entity InvokeCapability {
+    capability: DaprCapability
+    status: CapabilityStatus
+}
+
+entity SecretsCapability {
+    capability: DaprCapability
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+}
+
+entity ConfigurationCapability {
+    capability: DaprCapability
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+}
+
+entity BindingsCapability {
+    capability: DaprCapability
+    status: CapabilityStatus
+}
+
+entity LockCapability {
+    capability: DaprCapability
+    status: CapabilityStatus
+}
+
+entity CryptoCapability {
+    capability: DaprCapability
+    status: CapabilityStatus
+}
+
+entity ActorCapability {
+    -- forType(actorType) narrows to ActorCapability.Type (two-level narrowing).
+    capability: DaprCapability
+    status: CapabilityStatus
+}
+
+entity WorkflowCapability {
+    capability: DaprCapability
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+}
+
+entity JobsCapability {
+    -- JVM only.
+    capability: DaprCapability
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+}
+
+entity ConversationCapability {
+    -- JVM only.
+    capability: DaprCapability
+    status: CapabilityStatus
 }
 
 -- DaprApp and its components are immutable value objects (case class / sealed class).
@@ -294,18 +918,23 @@ value DaprApp {
     -- Immutable, declarative description of all inbound handlers an application exposes.
     -- Built by the serve body and handed to the HTTP server.
     subscriptions: List<Subscription>
-    invokeRoutes:   List<InvokeRoute>
+    invokeRoutes:  List<InvokeRoute>
     bindings:      List<BindingRoute>
     workflows:     List<Workflow>
     activities:    List<WorkflowActivity>  -- existential: WorkflowActivity[?, ?]
     actors:        List<ActorDefinition>
+    jobs:          List<JobRoute>
     -- Two DaprApp values may be combined with ++ to compose service modules.
+    -- validationErrors lists structural problems (duplicate names/routes, path collisions,
+    -- reserved-path collisions); validateOrThrow() throws DaprAppValidationException
+    -- (an IllegalStateException) listing all of them.
 }
 
 value Subscription {
-    pubsub_name: PubSubName
-    topic:       Topic
-    route:       Route
+    pubsub_name:       PubSubName
+    topic:             Topic
+    route:             Route
+    dead_letter_topic: Topic?
     -- handler: CloudEvent -> SubscriptionResult (captured, CC-erased internally)
 }
 
@@ -319,46 +948,123 @@ value BindingRoute {
     -- handler: Payload -> Unit (captured, CC-erased internally)
 }
 
-entity StateCapability {
-    capability: DaprCapability
+value JobRoute {
+    name: JobName
+    -- handler: Payload -> Unit (captured, CC-erased internally)
+    -- Inbound side is cross-platform; scheduling jobs (JobsCapability) is JVM-only.
+}
+
+-- Actor routes returned (inside ActorRoutes) by ActorDefinition.build on every invocation.
+value ActorMethodRoute {
+    method_name: ActorMethodName
+    -- handler: Req -> Resp (captured, CC-erased internally); reqCodec / respCodec carried
+}
+
+value ActorReminderRoute {
+    reminder_name: ReminderName
+    -- handler: Payload -> Unit (captured, CC-erased internally); codec carried
+}
+
+value ActorTimerRoute {
+    timer_name: TimerName
+    -- handler: Payload -> Unit (captured, CC-erased internally); codec carried
+}
+
+-- Instances: X.Instance, obtained by universal.instance(name). Each carries its bound name as a
+-- `val` (storeName, pubsubName, appId, ...), so its operations never take that name again.
+-- For the five split families X.Instance.ReadOnly is a super-trait of X.Instance; `authority`
+-- records which of the two the narrowing produced (AuthorityPreservedByNarrowing).
+
+entity StateCapabilityInstance {
+    universal: StateCapability
     store_name: StateStoreName
-    status: open | closed
-    -- status mirrors capability.status
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+    -- status mirrors universal.status
 }
 
-entity PublishCapability {
-    capability: DaprCapability
+entity PublishCapabilityInstance {
+    universal: PublishCapability
     pubsub_name: PubSubName
-    status: open | closed
+    status: CapabilityStatus
 }
 
-entity InvokeCapability {
-    capability: DaprCapability
-    status: open | closed
+entity InvokeCapabilityInstance {
+    -- Bound to one target app; its invoke methods take no AppId.
+    universal: InvokeCapability
+    app_id: AppId
+    status: CapabilityStatus
 }
 
-entity SecretsCapability {
-    capability: DaprCapability
+entity SecretsCapabilityInstance {
+    universal: SecretsCapability
     store_name: SecretStoreName
-    status: open | closed
+    authority: CapabilityAuthority
+    status: CapabilityStatus
 }
 
-entity ConfigurationCapability {
-    capability: DaprCapability
+entity ConfigurationCapabilityInstance {
+    universal: ConfigurationCapability
     store_name: ConfigurationStoreName
-    status: open | closed
+    authority: CapabilityAuthority
+    status: CapabilityStatus
 }
 
-entity BindingsCapability {
-    capability: DaprCapability
+entity BindingsCapabilityInstance {
+    universal: BindingsCapability
     binding_name: BindingName
-    status: open | closed
+    status: CapabilityStatus
 }
 
-entity LockCapability {
-    capability: DaprCapability
+entity LockCapabilityInstance {
+    universal: LockCapability
     store_name: LockStoreName
-    status: open | closed
+    status: CapabilityStatus
+}
+
+entity CryptoCapabilityInstance {
+    universal: CryptoCapability
+    component_name: CryptoComponentName
+    status: CapabilityStatus
+}
+
+entity ActorCapabilityType {
+    -- ActorCapability.Type: bound to one actor type; instance(actorId) narrows to one instance.
+    universal: ActorCapability
+    actor_type: ActorType
+    status: CapabilityStatus
+}
+
+entity ActorCapabilityInstance {
+    -- ActorCapability.Instance: bound to one (actor type, actor id) pair.
+    type_capability: ActorCapabilityType
+    actor_type: ActorType
+    actor_id: ActorId
+    status: CapabilityStatus
+}
+
+entity WorkflowCapabilityInstance {
+    -- Bound to one workflow instance; its operations take no instance id.
+    universal: WorkflowCapability
+    instance_id: WorkflowInstanceId
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+}
+
+entity JobsCapabilityInstance {
+    -- JVM only.
+    -- Bound to one job name; its operations take no name.
+    universal: JobsCapability
+    job_name: JobName
+    authority: CapabilityAuthority
+    status: CapabilityStatus
+}
+
+entity ConversationCapabilityInstance {
+    -- JVM only.
+    universal: ConversationCapability
+    component_name: ConversationComponentName
+    status: CapabilityStatus
 }
 
 -- Sealed ADT matching the code's sealed abstract class StateOp.
@@ -370,11 +1076,17 @@ entity StateOp {
 }
 
 variant UpsertOp : StateOp {
-    encoded_value: String   -- pre-encoded JSON value; always present
+    encoded_value: SerializedJson   -- pre-encoded JSON value; always present
 }
 
 variant DeleteOp : StateOp {
     -- No additional fields beyond those inherited from StateOp
+}
+
+value JsonDecodeException {
+    -- final class JsonDecodeException(message, cause) extends Exception: malformed JSON or a
+    -- type mismatch between the payload and the target Scala type.
+    message: String
 }
 
 value DecodeResult {
@@ -393,14 +1105,14 @@ value WorkflowStatus {
 
 value WorkflowSnapshot {
     -- A point-in-time snapshot of a workflow instance's state.
-    -- Returned by workflow management operations (start, get, terminate).
+    -- Returned by WorkflowCapability.Instance.getStatus() and waitForCompletion(timeout).
     name: WorkflowName
     instance_id: WorkflowInstanceId
     status: WorkflowStatus
     created_at: Timestamp
     last_updated_at: Timestamp
-    serialized_input: String?
-    serialized_output: String?
+    serialized_input: SerializedJson?
+    serialized_output: SerializedJson?
 }
 
 ------------------------------------------------------------
@@ -411,7 +1123,7 @@ value WorkflowSnapshot {
 
 rule DaprRuntimeActivates {
     when: DaprRun()
-    -- DaprRun() is the user calling DaprRuntime.run { body }
+    -- DaprRun() is the user calling Dapr(config).run { body }
 
     requires: DaprRuntime.status = idle
 
@@ -432,12 +1144,14 @@ rule DaprRuntimeCompletes {
         DaprRuntime.client = null
         DaprRuntime.status = idle
         JavaDaprClientClosed()
-        -- All sub-capabilities derived from this DaprCapability become closed
+        -- The main client and any lazily created actor / workflow clients are closed.
+        -- If closing throws a non-fatal exception it is rethrown after all closes are attempted.
+        -- All universal capabilities and Instances derived from this DaprCapability become closed
 }
 
 rule DaprRuntimeFailsSafely {
     when: DaprBodyThrew(exception)
-    -- Body function threw an exception
+    -- Body function threw a non-fatal exception
 
     requires: DaprRuntime.status = active
 
@@ -447,134 +1161,408 @@ rule DaprRuntimeFailsSafely {
         DaprRuntime.status = idle
         JavaDaprClientClosed()
         -- Exception propagates to caller after cleanup.
-        -- If scope.close() also throws a non-fatal exception, it is attached as a
+        -- If closing a client also throws a non-fatal exception, it is attached as a
         -- suppressed exception on the body's throwable (not swallowed, not rethrown).
         ExceptionPropagated(exception: exception)
 }
 
--- ---- Capability Acquisition ----
+-- ---- Capability Acquisition (DaprCapability -> universal capability) ----
+-- Triggered by reading the argument-less member on DaprCapability (cap.state, cap.publish, ...;
+-- JVM only: cap.jobs, cap.conversation). The companion transformers DaprCapability.invoke { body },
+-- DaprCapability.workflow { body } and (JVM) DaprCapability.jobs { body } hand the universal
+-- capability itself to body as a context parameter.
+-- For the split families the trigger carries the authority at which user code holds the result:
+-- full as returned, or read_only when held at the X.ReadOnly super-trait.
 
-rule StateCapabilityAcquired {
-    when: DaprCapabilityStateRequested(cap, store_name)
-    -- Triggered by DaprCapability.state(store_name) { body }; sub-capability provided
-    -- as implicit context parameter to body, not returned directly.
+rule StateCapabilityObtained {
+    when: StateCapabilityRequested(dc, authority)
 
-    requires: cap.status = open
+    requires: dc.status = open
 
     ensures:
-        StateCapability.created(
-            capability: cap,
-            store_name: store_name,
+        StateCapability.created(capability: dc, authority: authority, status: open)
+}
+
+rule PublishCapabilityObtained {
+    when: PublishCapabilityRequested(dc)
+
+    requires: dc.status = open
+
+    ensures:
+        PublishCapability.created(capability: dc, status: open)
+}
+
+rule InvokeCapabilityObtained {
+    when: InvokeCapabilityRequested(dc)
+
+    requires: dc.status = open
+
+    ensures:
+        InvokeCapability.created(capability: dc, status: open)
+}
+
+rule SecretsCapabilityObtained {
+    when: SecretsCapabilityRequested(dc, authority)
+
+    requires: dc.status = open
+
+    ensures:
+        SecretsCapability.created(capability: dc, authority: authority, status: open)
+}
+
+rule ConfigurationCapabilityObtained {
+    when: ConfigurationCapabilityRequested(dc, authority)
+
+    requires: dc.status = open
+
+    ensures:
+        ConfigurationCapability.created(capability: dc, authority: authority, status: open)
+}
+
+rule BindingsCapabilityObtained {
+    when: BindingsCapabilityRequested(dc)
+
+    requires: dc.status = open
+
+    ensures:
+        BindingsCapability.created(capability: dc, status: open)
+}
+
+rule LockCapabilityObtained {
+    when: LockCapabilityRequested(dc)
+
+    requires: dc.status = open
+
+    ensures:
+        LockCapability.created(capability: dc, status: open)
+}
+
+rule CryptoCapabilityObtained {
+    when: CryptoCapabilityRequested(dc)
+
+    requires: dc.status = open
+
+    ensures:
+        CryptoCapability.created(capability: dc, status: open)
+}
+
+rule ActorCapabilityObtained {
+    when: ActorCapabilityRequested(dc)
+
+    requires: dc.status = open
+
+    ensures:
+        ActorCapability.created(capability: dc, status: open)
+}
+
+rule WorkflowCapabilityObtained {
+    when: WorkflowCapabilityRequested(dc, authority)
+
+    requires: dc.status = open
+
+    ensures:
+        WorkflowCapability.created(capability: dc, authority: authority, status: open)
+}
+
+rule JobsCapabilityObtained {
+    when: JobsCapabilityRequested(dc, authority)
+    -- JVM only.
+
+    requires: dc.status = open
+
+    ensures:
+        JobsCapability.created(capability: dc, authority: authority, status: open)
+}
+
+rule ConversationCapabilityObtained {
+    when: ConversationCapabilityRequested(dc)
+    -- JVM only.
+
+    requires: dc.status = open
+
+    ensures:
+        ConversationCapability.created(capability: dc, status: open)
+}
+
+-- ---- Capability Narrowing (universal -> Instance) ----
+-- Triggered by universal.instance(name). The companion accessors X.instance(name)
+-- (and X.ReadOnly.instance(name) for the split families) narrow the ambient capability and return the result;
+-- DaprCapability.state(name) { body }, publish(name), secrets(name), configuration(name),
+-- bindings(name), lock(name), crypto(name), actor(actorType, actorId) and (JVM)
+-- conversation(name) read the universal capability and narrow it in one step.
+-- For the split families X.ReadOnly.instance yields X.Instance.ReadOnly and X overrides it to
+-- yield X.Instance, so the instance inherits the universal capability's authority.
+
+rule StateInstanceAcquired {
+    when: StateCapabilityNarrowed(u, store_name)  -- store_name: StateStoreName
+
+    requires: u.status = open
+
+    ensures:
+        StateCapabilityInstance.created(universal: u, store_name: store_name, authority: u.authority, status: open)
+}
+
+rule PublishInstanceAcquired {
+    when: PublishCapabilityNarrowed(u, pubsub_name)  -- pubsub_name: PubSubName
+
+    requires: u.status = open
+
+    ensures:
+        PublishCapabilityInstance.created(universal: u, pubsub_name: pubsub_name, status: open)
+}
+
+rule InvokeInstanceAcquired {
+    when: InvokeCapabilityNarrowed(u, app_id)  -- app_id: AppId
+    -- Derived Invoke clients (Invoke.derive) run against the universal InvokeCapability.
+
+    requires: u.status = open
+
+    ensures:
+        InvokeCapabilityInstance.created(universal: u, app_id: app_id, status: open)
+}
+
+rule SecretsInstanceAcquired {
+    when: SecretsCapabilityNarrowed(u, store_name)  -- store_name: SecretStoreName
+
+    requires: u.status = open
+
+    ensures:
+        SecretsCapabilityInstance.created(universal: u, store_name: store_name, authority: u.authority, status: open)
+}
+
+rule ConfigurationInstanceAcquired {
+    when: ConfigurationCapabilityNarrowed(u, store_name)  -- store_name: ConfigurationStoreName
+
+    requires: u.status = open
+
+    ensures:
+        ConfigurationCapabilityInstance.created(universal: u, store_name: store_name, authority: u.authority, status: open)
+}
+
+rule BindingsInstanceAcquired {
+    when: BindingsCapabilityNarrowed(u, binding_name)  -- binding_name: BindingName
+
+    requires: u.status = open
+
+    ensures:
+        BindingsCapabilityInstance.created(universal: u, binding_name: binding_name, status: open)
+}
+
+rule LockInstanceAcquired {
+    when: LockCapabilityNarrowed(u, store_name)  -- store_name: LockStoreName
+
+    requires: u.status = open
+
+    ensures:
+        LockCapabilityInstance.created(universal: u, store_name: store_name, status: open)
+}
+
+rule CryptoInstanceAcquired {
+    when: CryptoCapabilityNarrowed(u, component_name)  -- component_name: CryptoComponentName
+
+    requires: u.status = open
+
+    ensures:
+        CryptoCapabilityInstance.created(universal: u, component_name: component_name, status: open)
+}
+
+rule ActorTypeAcquired {
+    when: ActorCapabilityNarrowed(u, actor_type)  -- actor_type: ActorType
+    -- ActorCapability.forType(actorType) applies the ambient capability and returns the result.
+
+    requires: u.status = open
+
+    ensures:
+        ActorCapabilityType.created(universal: u, actor_type: actor_type, status: open)
+}
+
+rule ActorInstanceAcquired {
+    when: ActorTypeNarrowed(type_cap, actor_id)  -- actor_id: ActorId
+    -- Triggered by typeCapability(actorId). ActorCapability.instance(actorType, actorId) and
+    -- ActorCapability.Type.instance(actorId) return the ActorCapability.Instance;
+    -- DaprCapability.actor(actorType, actorId) { body } performs both steps and provides it to body.
+
+    requires: type_cap.status = open
+
+    ensures:
+        ActorCapabilityInstance.created(
+            type_capability: type_cap,
+            actor_type: type_cap.actor_type,
+            actor_id: actor_id,
             status: open
         )
 }
 
-rule PubSubCapabilityAcquired {
-    when: DaprCapabilityPubSubRequested(cap, pubsub_name)
-    -- Triggered by DaprCapability.publish(pubsub_name) { body }.
+rule WorkflowInstanceAcquired {
+    when: WorkflowCapabilityNarrowed(u, instance_id)  -- instance_id: WorkflowInstanceId
+    -- Typically with the id returned by start / startWithId.
 
-    requires: cap.status = open
+    requires: u.status = open
 
     ensures:
-        PublishCapability.created(
-            capability: cap,
-            pubsub_name: pubsub_name,
-            status: open
-        )
+        WorkflowCapabilityInstance.created(universal: u, instance_id: instance_id, authority: u.authority, status: open)
 }
 
-rule InvokeCapabilityAcquired {
-    when: DaprCapabilityInvokerRequested(cap)
-    -- Triggered by DaprCapability.invoke { body }.
+rule JobsInstanceAcquired {
+    when: JobsCapabilityNarrowed(u, job_name)  -- job_name: JobName
+    -- JVM only. Derived Jobs clients (Jobs.derive) run against the universal JobsCapability.
 
-    requires: cap.status = open
+    requires: u.status = open
 
     ensures:
-        InvokeCapability.created(
-            capability: cap,
-            status: open
-        )
+        JobsCapabilityInstance.created(universal: u, job_name: job_name, authority: u.authority, status: open)
 }
 
-rule SecretsCapabilityAcquired {
-    when: DaprCapabilitySecretsRequested(cap, store_name)
-    -- Triggered by DaprCapability.secrets(store_name) { body }.
+rule ConversationInstanceAcquired {
+    when: ConversationCapabilityNarrowed(u, component_name)  -- component_name: ConversationComponentName
+    -- JVM only.
 
-    requires: cap.status = open
-
-    ensures:
-        SecretsCapability.created(
-            capability: cap,
-            store_name: store_name,
-            status: open
-        )
-}
-
-rule ConfigCapabilityAcquired {
-    when: DaprCapabilityConfigRequested(cap, store_name)
-    -- Triggered by DaprCapability.configuration(store_name) { body }.
-
-    requires: cap.status = open
+    requires: u.status = open
 
     ensures:
-        ConfigurationCapability.created(
-            capability: cap,
-            store_name: store_name,
-            status: open
-        )
-}
-
-rule BindingCapabilityAcquired {
-    when: DaprCapabilityBindingRequested(cap, binding_name)
-    -- Triggered by DaprCapability.bindings(binding_name) { body }.
-
-    requires: cap.status = open
-
-    ensures:
-        BindingsCapability.created(
-            capability: cap,
-            binding_name: binding_name,
-            status: open
-        )
-}
-
-rule LockCapabilityAcquired {
-    when: DaprCapabilityLockRequested(cap, store_name)
-    -- Triggered by DaprCapability.lock(store_name) { body }.
-
-    requires: cap.status = open
-
-    ensures:
-        LockCapability.created(
-            capability: cap,
-            store_name: store_name,
-            status: open
-        )
+        ConversationCapabilityInstance.created(universal: u, component_name: component_name, status: open)
 }
 
 -- ---- Capability Closure (cascade from scope) ----
 
-rule CapabilitiesClosedWithScope {
+rule UniversalCapabilitiesClosedWithScope {
     when: dc: DaprCapability.status transitions_to closed
 
     ensures:
-        for cap in StateCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in PublishCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in InvokeCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in SecretsCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in ConfigurationCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in BindingsCapability where cap.capability = dc:
-            cap.status = closed
-        for cap in LockCapability where cap.capability = dc:
-            cap.status = closed
+        for c in StateCapability where c.capability = dc:
+            c.status = closed
+        for c in PublishCapability where c.capability = dc:
+            c.status = closed
+        for c in InvokeCapability where c.capability = dc:
+            c.status = closed
+        for c in SecretsCapability where c.capability = dc:
+            c.status = closed
+        for c in ConfigurationCapability where c.capability = dc:
+            c.status = closed
+        for c in BindingsCapability where c.capability = dc:
+            c.status = closed
+        for c in LockCapability where c.capability = dc:
+            c.status = closed
+        for c in CryptoCapability where c.capability = dc:
+            c.status = closed
+        for c in ActorCapability where c.capability = dc:
+            c.status = closed
+        for c in WorkflowCapability where c.capability = dc:
+            c.status = closed
+        for c in JobsCapability where c.capability = dc:
+            c.status = closed
+        for c in ConversationCapability where c.capability = dc:
+            c.status = closed
+}
+
+rule StateInstancesClosedWithUniversal {
+    when: u: StateCapability.status transitions_to closed
+
+    ensures:
+        for c in StateCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule PublishInstancesClosedWithUniversal {
+    when: u: PublishCapability.status transitions_to closed
+
+    ensures:
+        for c in PublishCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule InvokeInstancesClosedWithUniversal {
+    when: u: InvokeCapability.status transitions_to closed
+
+    ensures:
+        for c in InvokeCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule SecretsInstancesClosedWithUniversal {
+    when: u: SecretsCapability.status transitions_to closed
+
+    ensures:
+        for c in SecretsCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule ConfigurationInstancesClosedWithUniversal {
+    when: u: ConfigurationCapability.status transitions_to closed
+
+    ensures:
+        for c in ConfigurationCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule BindingsInstancesClosedWithUniversal {
+    when: u: BindingsCapability.status transitions_to closed
+
+    ensures:
+        for c in BindingsCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule LockInstancesClosedWithUniversal {
+    when: u: LockCapability.status transitions_to closed
+
+    ensures:
+        for c in LockCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule CryptoInstancesClosedWithUniversal {
+    when: u: CryptoCapability.status transitions_to closed
+
+    ensures:
+        for c in CryptoCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule ActorTypesClosedWithUniversal {
+    when: u: ActorCapability.status transitions_to closed
+
+    ensures:
+        for c in ActorCapabilityType where c.universal = u:
+            c.status = closed
+}
+
+rule WorkflowInstancesClosedWithUniversal {
+    when: u: WorkflowCapability.status transitions_to closed
+
+    ensures:
+        for c in WorkflowCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule JobsInstancesClosedWithUniversal {
+    when: u: JobsCapability.status transitions_to closed
+
+    ensures:
+        for c in JobsCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule ConversationInstancesClosedWithUniversal {
+    when: u: ConversationCapability.status transitions_to closed
+
+    ensures:
+        for c in ConversationCapabilityInstance where c.universal = u:
+            c.status = closed
+}
+
+rule ActorInstancesClosedWithType {
+    when: tc: ActorCapabilityType.status transitions_to closed
+
+    ensures:
+        for c in ActorCapabilityInstance where c.type_capability = tc:
+            c.status = closed
 }
 
 -- ---- State Operations ----
+-- Operation rules are stated on the Instance (`cap`). A universal operation op(name, args)
+-- behaves as instance(name).op(args) (UniversalDelegatesToInstance). For the split families the
+-- write operations additionally require full authority: the read-only tiers do not offer them.
 
 rule StateGet {
     when: StateGetRequested(cap, key)
@@ -583,6 +1571,7 @@ rule StateGet {
 
     ensures:
         -- Returns Option[T]: None when key is absent, Some(decoded) when present.
+        -- An optional StateConsistency (default: StateConsistency.Default) is forwarded.
         -- On infrastructure failure the SDK's io.dapr.exceptions.DaprException
         -- (unchecked RuntimeException) propagates; no library wrapper is added.
         StateGetCompleted(result: StateEntry.created(value: any, etag: any))
@@ -592,6 +1581,7 @@ rule StateSave {
     when: StateSaveRequested(cap, key, value)
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
 
     ensures:
         StateSaveCompleted()
@@ -600,8 +1590,11 @@ rule StateSave {
 
 rule StateSaveWithETag {
     when: StateSaveWithETagRequested(cap, key, value, etag)
+    -- Optional metadata, StateConsistency (default Default) and StateConcurrency
+    -- (default FirstWrite) are forwarded to the sidecar.
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
 
     ensures:
         if DaprETagMatches(cap.store_name, key, etag):
@@ -609,12 +1602,14 @@ rule StateSaveWithETag {
             -- Returns None
         else:
             -- Returns Some(ETagMismatchException(key, etag)); no exception thrown, no mutation
+            ETagMismatchReturned(key: key, etag: etag)
 }
 
 rule StateDelete {
     when: StateDeleteRequested(cap, key)
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
 
     ensures:
         StateDeleteCompleted()
@@ -622,8 +1617,10 @@ rule StateDelete {
 
 rule StateDeleteWithETag {
     when: StateDeleteWithETagRequested(cap, key, etag)
+    -- Optional StateConsistency (default Default) and StateConcurrency (default FirstWrite).
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
 
     ensures:
         if DaprETagMatches(cap.store_name, key, etag):
@@ -631,6 +1628,7 @@ rule StateDeleteWithETag {
             -- Returns None
         else:
             -- Returns Some(ETagMismatchException(key, etag)); no exception thrown, no mutation
+            ETagMismatchReturned(key: key, etag: etag)
 }
 
 rule StateGetBulk {
@@ -647,6 +1645,7 @@ rule StateSaveBulk {
     when: StateSaveBulkRequested(cap, entries)
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
 
     ensures:
         StateSaveBulkCompleted()
@@ -657,6 +1656,7 @@ rule StateTransaction {
     when: StateTransactionRequested(cap, ops)
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
     requires: ops.count > 0
     -- UpsertOp.encoded_value is structurally always present (non-nullable by construction)
 
@@ -703,26 +1703,29 @@ rule PubSubBulkPublish {
 }
 
 -- ---- Service Invocation ----
+-- The target app is cap.app_id, fixed when the InvokeCapability.Instance was obtained.
 
 rule ServiceInvoke {
-    when: ServiceInvokeRequested(cap, app_id, method, data)
+    when: ServiceInvokeRequested(cap, method, data, http_method, metadata)
+    -- http_method defaults to HttpMethod.Post; metadata defaults to empty.
 
     requires: cap.status = open
 
     ensures:
-        if DaprServiceResponds(app_id, method):
+        if DaprServiceResponds(cap.app_id, method):
             ServiceInvokeCompleted(response: any)
         else:
             DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
 }
 
 rule ServiceInvokeGet {
-    when: ServiceInvokeGetRequested(cap, app_id, method)
+    when: ServiceInvokeGetRequested(cap, method)
+    -- Body-less overload invoke[Resp](method): HTTP GET, no metadata.
 
     requires: cap.status = open
 
     ensures:
-        if DaprServiceResponds(app_id, method):
+        if DaprServiceResponds(cap.app_id, method):
             ServiceInvokeCompleted(response: any)
         else:
             DaprExceptionThrown()   -- io.dapr.exceptions.DaprException (SDK RuntimeException, unchecked)
@@ -731,13 +1734,13 @@ rule ServiceInvokeGet {
 -- ---- Secrets ----
 
 rule SecretsGet {
-    when: SecretsGetRequested(cap, key)
+    when: SecretsGetRequested(cap, key, metadata)
 
     requires: cap.status = open
 
     ensures:
         if DaprSecretExists(cap.store_name, key):
-            SecretsGetCompleted(value: Some(String))
+            SecretsGetCompleted(value: Some(SecretValue))
         else:
             -- Key absent or store returns empty: SecretsCapability.get returns None (no exception)
             SecretsGetCompleted(value: None)
@@ -745,31 +1748,33 @@ rule SecretsGet {
 }
 
 rule SecretsGetBulk {
-    when: SecretsGetBulkRequested(cap)
+    when: SecretsGetBulkRequested(cap, metadata)
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
 
     ensures:
-        SecretsGetBulkCompleted(values: Map<String, String>)
+        SecretsGetBulkCompleted(values: Map<SecretKey, SecretValue>)
 }
 
 -- ---- Configuration ----
 
 rule ConfigGet {
-    when: ConfigGetRequested(cap, keys)
+    when: ConfigGetRequested(cap, keys, metadata)
 
     requires: cap.status = open
     -- empty keys list is accepted; returns empty map
 
     ensures:
-        ConfigGetCompleted(items: Map<String, ConfigurationItem>)
+        ConfigGetCompleted(items: Map<ConfigurationKey, ConfigurationItem>)
 }
 
 rule ConfigSubscribe {
-    when: ConfigSubscribeRequested(cap, keys, on_change)
+    when: ConfigSubscribeRequested(cap, keys, metadata, on_change)
     -- on_change is a callback invoked on every config update from the sidecar
 
     requires: cap.status = open
+    requires: cap.authority = full   -- not offered by the read-only tier
 
     ensures:
         ConfigSubscriptionCreated(
@@ -777,9 +1782,10 @@ rule ConfigSubscribe {
             keys: keys,
             subscription: AutoCloseable
         )
+        -- subscription carries ^{cap}: it cannot outlive the ConfigurationCapability
         -- subscription.close() stops the streaming subscription
         -- on_change is called on a background thread for each update
-        -- If the scope is closed, the subscription is implicitly stopped
+        -- If the scope is closed, the client is closed and the stream ends with it
 }
 
 -- ---- Inbound Dispatch (DaprApp) ----
@@ -787,75 +1793,112 @@ rule ConfigSubscribe {
 -- Registration is implicit: DaprAppServer derives routes from DaprApp at startup.
 
 rule DaprAppServed {
-    when: DaprRuntime.serve returns app: DaprApp
+    when: DaprServeBodyReturned(app)
+    -- DaprServeBodyReturned(app) is the serve body (DaprCapability ?=> DaprApp) returning
+    -- app: DaprApp inside Dapr(config).serve { body }.
 
     ensures:
+        -- serve first calls app.validateOrThrow(); an invalid app raises
+        -- DaprAppValidationException before the port is bound.
         for s in app.subscriptions:
-            PubSubSubscription.registered(
+            PubSubSubscriptionRegistered(
                 pubsub_name: s.pubsub_name,
                 topic: s.topic,
-                route: s.route
+                route: s.route,
+                dead_letter_topic: s.dead_letter_topic
             )
         for inv in app.invokeRoutes:
-            InvokeHandler.registered(path: "/" + inv.method_name.value)
+            InvokeHandlerRegistered(path: "/" + inv.method_name.value)
         for bin in app.bindings:
-            BindingHandler.registered(path: "/" + bin.binding_name.value)
+            BindingHandlerRegistered(path: "/" + bin.binding_name.value)
+        for job in app.jobs:
+            JobHandlerRegistered(path: "/job/" + job.name.value)
         -- GET /dapr/subscribe returns all registered subscriptions before any message is handled
 }
 
 -- ---- Inbound Dispatch (during serving) ----
+-- Black box functions used below:
+--   subscription_for_route / invoke_route_for / binding_route_for / job_route_for:
+--     look up the DaprApp route registered under the given route / name.
+--   is_cloud_event_envelope(json): json parses as a CloudEvent envelope with all required fields.
+--   decodes(json, codec): the payload decodes with the route's JsonCodec.
+--   handler_throws(route, json): the route's handler throws on the decoded payload.
+--   handler_outcome(route, json): the SubscriptionResult returned by the subscription handler
+--     for the CloudEvent<sub.Payload> built from the envelope with decoded data.
+--   handler_response(route, json): the inv.Req -> inv.Resp handler result for the decoded request.
 
 rule PubSubMessageDelivered {
     when: SidecarDeliversPubSubMessage(route, cloud_event_json)
     -- Sidecar POSTs to <route> with a CloudEvent JSON body.
     -- The matching Subscription (by route) provides the handler and codec.
 
+    let sub = subscription_for_route(route)
+
     ensures:
-        if cloud_event_json is not parseable as a CloudEvent envelope:
+        if not is_cloud_event_envelope(cloud_event_json):
             -- Malformed JSON or missing required fields — transient, so retry
-            SubscriptionResult.retry
+            SubscriptionResultReturned(outcome: retry)
+        else if not decodes(cloud_event_json, sub.codec):
+            -- Permanently undecodable payload — drop to avoid retry loop
+            SubscriptionResultReturned(outcome: drop)
+        else if handler_throws(sub, cloud_event_json):
+            SubscriptionResultReturned(outcome: retry)
         else:
-            let envelope = ParseCloudEvent(cloud_event_json)
-            if envelope.data decode fails (using sub.codec):
-                -- Permanently undecodable payload — drop to avoid retry loop
-                SubscriptionResult.drop
-            else:
-                let cloud_event: CloudEvent<sub.Payload> = envelope with decoded data
-                let handler = sub.handler  -- CloudEvent<sub.Payload> -> SubscriptionResult
-                if handler(cloud_event) completes:
-                    handler(cloud_event)   -- propagate Success / Retry / Drop
-                if handler throws:
-                    SubscriptionResult.retry
+            -- handler: CloudEvent<sub.Payload> -> SubscriptionResult;
+            -- its Success / Retry / Drop is propagated unchanged.
+            SubscriptionResultReturned(outcome: handler_outcome(sub, cloud_event_json))
 }
 
 rule BindingEventDelivered {
     when: SidecarDeliversBindingEvent(binding_name, payload_json)
     -- The matching BindingRoute (by binding_name) provides the handler and codec.
+    -- handler: bin.Payload -> Unit
+
+    let bin = binding_route_for(binding_name)
 
     ensures:
-        let handler = bin.handler  -- bin.Payload -> Unit
-        if payload_json decodes and handler(payload) completes:
+        if decodes(payload_json, bin.codec) and not handler_throws(bin, payload_json):
             SidecarAcknowledged()
-        if payload_json decode fails or handler throws:
+        else:
+            -- payload_json decode fails or handler throws
+            SidecarErrorReturned()
+}
+
+rule JobTriggerDelivered {
+    when: SidecarDeliversJobTrigger(job_name, payload_json)
+    -- Sidecar POSTs to /job/<name>. The matching JobRoute (by name) provides the handler and codec.
+    -- handler: job.Payload -> Unit
+
+    let job = job_route_for(job_name)
+
+    ensures:
+        if decodes(payload_json, job.codec) and not handler_throws(job, payload_json):
+            SidecarAcknowledged()
+        else:
+            -- payload_json decode fails or handler throws
             SidecarErrorReturned()
 }
 
 rule InvokeReceived {
     when: SidecarDeliversInvocation(method_name, request_body_json)
     -- The matching InvokeRoute (by method_name) provides the handler and codecs.
+    -- handler: inv.Req -> inv.Resp
+
+    let inv = invoke_route_for(method_name)
 
     ensures:
-        let handler = inv.handler  -- inv.Req -> inv.Resp
-        if request_body_json decodes and handler(request) completes:
-            SidecarResponded(body: inv.respCodec.encode(result))
-        if request_body_json decode fails or handler throws:
+        if decodes(request_body_json, inv.reqCodec) and not handler_throws(inv, request_body_json):
+            SidecarResponded(body: encode(inv.respCodec, handler_response(inv, request_body_json)))
+        else:
+            -- request_body_json decode fails or handler throws
             SidecarErrorReturned()
 }
 
 -- ---- Distributed Lock ----
 
 rule LockTryLock {
-    when: LockTryLockRequested(cap, resourceId, lockOwner, expirySeconds)
+    when: LockTryLockRequested(cap, resourceId, lockOwner, expiry)
+    -- expiry is a FiniteDuration
 
     requires: cap.status = open
 
@@ -865,6 +1908,7 @@ rule LockTryLock {
             -- Returns true
         else:
             -- Returns false; no exception
+            LockNotAcquired(resourceId: resourceId, owner: lockOwner)
 }
 
 rule LockUnlock {
@@ -877,17 +1921,19 @@ rule LockUnlock {
             if DaprLockOwner(cap.store_name, resourceId) = lockOwner:
                 LockReleased(resourceId: resourceId)
                 -- Returns UnlockStatus.Success
+                UnlockCompleted(status: success)
             else:
                 -- Returns UnlockStatus.InternalError (wrong owner)
+                UnlockCompleted(status: internal_error)
         else:
             -- Returns UnlockStatus.LockNotFound
-
+            UnlockCompleted(status: lock_not_found)
 }
 
 -- ---- Output Bindings ----
 
 rule BindingInvoke {
-    when: BindingInvokeRequested(cap, operation, data)
+    when: BindingInvokeRequested(cap, operation, data, metadata)
 
     requires: cap.status = open
 
@@ -921,19 +1967,27 @@ rule JsonDecode {
 }
 
 -- ---- Actor Inbound Dispatch ----
+-- Black box functions used below:
+--   actor_definition_for(actorType): the ActorDefinition in DaprApp.actors with that actor type.
+--   build_actor_routes(defn, actorId): defn.build(actorId) evaluated with a fresh ActorContext
+--     constructed for (actorType, actorId); runs on every incoming invocation.
+--   actor_method_route_for / actor_reminder_route_for / actor_timer_route_for(routes, name):
+--     the route in routes.methods / routes.reminders / routes.timers registered under name.
+--   decodes(json, codec), handler_throws(route, json), handler_response(route, json):
+--     as for the inbound dispatch rules above.
 
 rule ActorMethodInvoked {
     when: SidecarDeliversActorMethod(actorType, actorId, methodName, request_body_json)
     -- Sidecar POSTs to /actors/{type}/{id}/method/{name}
 
+    let routes = build_actor_routes(actor_definition_for(actorType), actorId)
+    let route = actor_method_route_for(routes, methodName)
+
     ensures:
-        let defn = DaprApp.actors where defn.actorType = actorType
-        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
-        let routes = defn.build(actorId, ctx)
-        let route = routes.methods where route.methodName = methodName
-        if request_body_json decodes and route.handler(request) completes:
-            SidecarResponded(body: route.respCodec.encode(result))
-        if request_body_json decode fails or route.handler throws:
+        if decodes(request_body_json, route.reqCodec) and not handler_throws(route, request_body_json):
+            SidecarResponded(body: encode(route.respCodec, handler_response(route, request_body_json)))
+        else:
+            -- request_body_json decode fails or route.handler throws
             SidecarErrorReturned()
 }
 
@@ -943,14 +1997,14 @@ rule ActorReminderDelivered {
     -- Body: {"data":"<base64>","dueTime":"...","period":"..."}
     -- data is base64-encoded JSON of the reminder payload
 
+    let routes = build_actor_routes(actor_definition_for(actorType), actorId)
+    let route = actor_reminder_route_for(routes, reminderName)
+
     ensures:
-        let defn = DaprApp.actors where defn.actorType = actorType
-        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
-        let routes = defn.build(actorId, ctx)
-        let route = routes.reminders where route.reminderName = reminderName
-        if data decodes and route.handler(payload) completes:
+        if decodes(data_base64_json, route.codec) and not handler_throws(route, data_base64_json):
             SidecarAcknowledged()
-        if data decode fails or route.handler throws:
+        else:
+            -- data decode fails or route.handler throws
             SidecarErrorReturned()
 }
 
@@ -959,14 +2013,14 @@ rule ActorTimerDelivered {
     -- Sidecar PUTs /actors/{type}/{id}/method/timer/{name}
     -- Same body format as reminder; data is base64-encoded JSON of the timer payload
 
+    let routes = build_actor_routes(actor_definition_for(actorType), actorId)
+    let route = actor_timer_route_for(routes, timerName)
+
     ensures:
-        let defn = DaprApp.actors where defn.actorType = actorType
-        let ctx = ActorContext.created(actorType: actorType, actorId: actorId)
-        let routes = defn.build(actorId, ctx)
-        let route = routes.timers where route.timerName = timerName
-        if data decodes and route.handler(payload) completes:
+        if decodes(data_base64_json, route.codec) and not handler_throws(route, data_base64_json):
             SidecarAcknowledged()
-        if data decode fails or route.handler throws:
+        else:
+            -- data decode fails or route.handler throws
             SidecarErrorReturned()
 }
 
@@ -985,28 +2039,83 @@ rule ActorDeactivated {
 ------------------------------------------------------------
 
 invariant ScopeContainment {
-    -- A sub-capability with status = open cannot outlive its DaprCapability.
-    -- If DaprCapability.status = closed then all sub-capabilities derived from it
-    -- are also closed. Enforced by the Scala capture checker:
-    -- sub-capability types carry ^{capability}, preventing escape.
-    -- Mechanically: all capability traits extend scala.caps.ExclusiveCapability
-    -- (the exclusive — non-shareable — subtype of the sealed scala.caps.Capability).
-    -- DaprCapability factory methods declare return types as StateCapability^{this} etc.,
-    -- binding each sub-capability's lifetime to the parent via the CC ownership model.
-    for cap in StateCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in PublishCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in InvokeCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in SecretsCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in ConfigurationCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in BindingsCapability where cap.status = open:
-        cap.capability.status = open
-    for cap in LockCapability where cap.status = open:
-        cap.capability.status = open
+    -- No capability with status = open can outlive its parent: an open universal capability
+    -- has an open DaprCapability, an open Instance (or ActorCapability.Type) has an open
+    -- universal capability, and an open ActorCapability.Instance has an open Type.
+    -- Enforced statically by the Scala capture checker, not by a runtime check: all capability
+    -- traits extend scala.caps.ExclusiveCapability, DaprCapability's members return X^{this},
+    -- every X.instance / X.ReadOnly.instance returns its Instance ^{this}, ActorCapability.forType
+    -- returns ActorCapability.Type^{this} and Type.instance returns ActorCapability.Instance^{this},
+    -- so each capability's lifetime is bound to its parent.
+    for c in StateCapability where c.status = open:
+        c.capability.status = open
+    for c in PublishCapability where c.status = open:
+        c.capability.status = open
+    for c in InvokeCapability where c.status = open:
+        c.capability.status = open
+    for c in SecretsCapability where c.status = open:
+        c.capability.status = open
+    for c in ConfigurationCapability where c.status = open:
+        c.capability.status = open
+    for c in BindingsCapability where c.status = open:
+        c.capability.status = open
+    for c in LockCapability where c.status = open:
+        c.capability.status = open
+    for c in CryptoCapability where c.status = open:
+        c.capability.status = open
+    for c in ActorCapability where c.status = open:
+        c.capability.status = open
+    for c in WorkflowCapability where c.status = open:
+        c.capability.status = open
+    for c in JobsCapability where c.status = open:
+        c.capability.status = open
+    for c in ConversationCapability where c.status = open:
+        c.capability.status = open
+    for c in StateCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in PublishCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in InvokeCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in SecretsCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in ConfigurationCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in BindingsCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in LockCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in CryptoCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in ActorCapabilityType where c.status = open:
+        c.universal.status = open
+    for c in WorkflowCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in JobsCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in ConversationCapabilityInstance where c.status = open:
+        c.universal.status = open
+    for c in ActorCapabilityInstance where c.status = open:
+        c.type_capability.status = open
+}
+
+invariant AuthorityPreservedByNarrowing {
+    -- Narrowing never changes authority. X.ReadOnly.instance(name) yields X.Instance.ReadOnly, and
+    -- X overrides instance to yield X.Instance: a read-only universal capability only produces
+    -- read-only instances, and a full one only full instances. The ReadOnly tiers are the
+    -- super-traits, so a full capability can always be used where a read-only one is required,
+    -- never the other way round.
+    -- Enforced statically by the override's narrowed return type.
+    for c in StateCapabilityInstance:
+        c.authority = c.universal.authority
+    for c in SecretsCapabilityInstance:
+        c.authority = c.universal.authority
+    for c in ConfigurationCapabilityInstance:
+        c.authority = c.universal.authority
+    for c in WorkflowCapabilityInstance:
+        c.authority = c.universal.authority
+    for c in JobsCapabilityInstance:
+        c.authority = c.universal.authority
 }
 
 invariant ClientLifetime {
@@ -1026,10 +2135,11 @@ invariant ScopeLifetime {
 -- Non-empty identifier constraints (not machine-expressible as a state invariant;
 -- enforced by constructors at runtime):
 --   Non-empty: StateStoreName, LockStoreName, PubSubName, Topic, AppId, InvokeMethodName, ActorMethodName, BindingName, SecretStoreName,
---              ConfigurationStoreName, LockResourceId, LockOwner, BindingOperation, Route,
---              WorkflowName, ActorType, ReminderName, TimerName, EventName — all reject the
+--              ConfigurationStoreName, CryptoComponentName, CryptoKeyName, ConversationComponentName,
+--              LockResourceId, LockOwner, BindingOperation, Route,
+--              WorkflowName, ActorType, ReminderName, TimerName, EventName, JobName — all reject the
 --              empty string at construction time via require().
---   Accept any string (including empty): StateStoreKey, ActorStateKey, ETag, SecretKey, ConfigurationKey,
+--   Accept any string (including empty): StateStoreKey, ActorStateKey, ETag, SecretKey, SecretValue, ConfigurationKey,
 --              BulkEntryId, WorkflowInstanceId, ActorId.
 
 ------------------------------------------------------------
@@ -1043,7 +2153,7 @@ actor UserCode {
 }
 
 actor LibraryAuthor {
-    -- Non-safe-mode Scala code in internal/ package and DaprRuntime/JsonCodec.
+    -- Non-safe-mode Scala code in internal/ package and Dapr/JsonCodec.
     -- Responsible for @scala.caps.assumeSafe correctness.
     -- Annotates classes and objects with @scala.caps.assumeSafe (from scala.caps package)
     -- to permit safe-mode user code to call them through the public trait interfaces.
@@ -1054,92 +2164,176 @@ actor LibraryAuthor {
 ------------------------------------------------------------
 -- Surfaces
 ------------------------------------------------------------
+-- Method signatures live in the module-level *Operations / *Builders contracts (Contracts
+-- section); each surface references them with `fulfils`. Each family has a surface for its
+-- universal capability and one for its Instance. The five split families (State, Secrets,
+-- Configuration, Workflow, Jobs) have one surface per authority tier, selected with
+-- `context ... where authority = ...`, so the contracts a surface fulfils are exactly the
+-- operations that tier exposes. Instance surfaces expose the bound name and provide the
+-- request triggers that the Rules section handles.
 
 surface DaprRuntimeSurface {
+    -- The entry point is class Dapr(config: DaprConfig = DaprConfig()).
     facing user: UserCode
+
+    provides:
+        DaprRun()
+        DaprBodyCompleted()
+        DaprBodyThrew(exception)
+        DaprServeBodyReturned(app)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        run: (body: DaprCapability ?=> Any) -> Any
-        -- Acquires a DaprClient, provides DaprCapability to body, releases on exit.
-        -- Propagates exceptions after releasing resources.
-        -- DaprRuntime object is annotated @scala.caps.assumeSafe so safe-mode
-        -- user code can call it without violating safe-mode constraints.
-
-        serve: (app_port: Int, body: DaprCapability ?=> DaprApp) -> Unit
-        -- Starts an HTTP server on app_port; body returns a DaprApp describing
-        -- all inbound handlers.  The server is started from the returned DaprApp,
-        -- then blocks until the JVM shuts down or the calling thread is interrupted.
-        -- DaprClient lifecycle matches the server's lifetime.
+        fulfils DaprRuntimeOperations
 
     @guarantee ResourceCleanup
-        -- DaprRuntime.run and serve always close the DaprClient
-        -- on exit, whether the body completes normally or throws.
+        -- Dapr.run and serve always close the DaprClient (and any lazily created actor /
+        -- workflow clients) on exit, whether the body completes normally or throws.
 }
 
 surface DaprCapabilitySurface {
-    -- Transformer methods on the DaprCapability companion object.
-    -- DaprCapability is provided as a context parameter inside DaprRuntime.run / serve bodies.
-    -- Each method acquires the requested sub-capability and provides it as an implicit
-    -- context parameter to body (transformer / context-function pattern), rather than
-    -- returning the sub-capability directly.
-    facing user: UserCode
+    -- Root. DaprCapability is provided as a context parameter inside Dapr(config).run / serve bodies.
+    facing _: UserCode
+    context cap: DaprCapability
 
-    exposes:
-        state:   (store_name: StateStoreName,       body: StateCapability ?=> T)              -> T (using DaprCapability)
-        pubsub:  (pubsub_name: PubSubName,     body: PublishCapability ?=> T)             -> T (using DaprCapability)
-        invoke: (                             body: InvokeCapability ?=> T)  -> T (using DaprCapability)
-        secrets: (store_name: SecretStoreName, body: SecretsCapability ?=> T)            -> T (using DaprCapability)
-        config:  (store_name: ConfigurationStoreName, body: ConfigurationCapability ?=> T)      -> T (using DaprCapability)
-        binding: (binding_name: BindingName,   body: BindingsCapability ?=> T)           -> T (using DaprCapability)
-        lock:    (store_name: LockStoreName,       body: LockCapability ?=> T)    -> T (using DaprCapability)
-        -- Sub-capabilities carry the DaprCapability lifetime (CC: ^{capability}).
-        -- body is a context function; the sub-capability is passed as an implicit and
-        -- is not accessible outside body's lexical scope.
-        -- Calling these methods when DaprCapability is closed results in sub-capabilities
-        -- that reject all operations (ClosedCapabilityRejection invariant).
-        --
-        -- Intentionally omitted from this surface (pending separate specs):
-        --   actor(actorType, actorId) { body: ActorCapability ?=> T }  — Dapr actor framework
-        --   workflow { body: WorkflowCapability ?=> T }                 — Dapr workflow orchestration
+    provides:
+        StateCapabilityRequested(cap, authority)
+        PublishCapabilityRequested(cap)
+        InvokeCapabilityRequested(cap)
+        SecretsCapabilityRequested(cap, authority)
+        ConfigurationCapabilityRequested(cap, authority)
+        BindingsCapabilityRequested(cap)
+        LockCapabilityRequested(cap)
+        CryptoCapabilityRequested(cap)
+        ActorCapabilityRequested(cap)
+        WorkflowCapabilityRequested(cap, authority)
+        JobsCapabilityRequested(cap, authority)
+        ConversationCapabilityRequested(cap)
+
+    contracts:
+        fulfils DaprCapabilityAccessors
+        fulfils DaprCapabilityTransformers
 
     @guarantee CapabilityLifetime
-        -- Every sub-capability provided to a body is open iff the DaprCapability is open
-        -- (ScopeContainment invariant).
+        -- Every universal capability, Instance and ActorCapability.Type is open iff its parent
+        -- is open (ScopeContainment invariant).
 
-    @guarantee ClosedCapabilityRejection
-        -- Operations on closed sub-capabilities are rejected.
-        -- Any operation requested on a sub-capability with status = closed results in
-        -- IllegalStateException, not a DAPR call.
-        -- Enforced at runtime by impl classes annotated @scala.caps.assumeSafe
-        -- (from the scala.caps package), which permits safe-mode user code to call them.
+    @guarantee StaticEscapePrevention
+        -- Closed capabilities are unreachable from well-typed safe-mode code: the ^{this}
+        -- capture sets stop any capability from escaping its scope.
+        -- There is no runtime closed-state check; a use after close (only possible by
+        -- bypassing the capture checker) reaches a closed SDK client and fails with the
+        -- SDK's own exception.
+
+    @guarantee UniversalDelegatesToInstance
+        -- Every universal operation op(name, args) behaves exactly as instance(name).op(args).
+        -- The operation rules are therefore stated once, on the Instance.
+
+    @guarantee PlatformSurface
+        -- jobs and conversation (members and transformers) exist only on the JVM.
+        -- On Scala.js they are absent at compile time; there is no runtime stub.
 }
 
-surface StateCapabilitySurface {
+surface FamilyCompanionSurface {
+    -- The companion objects of every family trait: transformers and forwarders that take the
+    -- capability from the enclosing using context.
+    facing _: UserCode
+
+    contracts:
+        fulfils FamilyCompanionTransformers
+}
+
+surface DaprAppSurface {
     facing user: UserCode
 
     contracts:
         demands JsonCodec
+        fulfils DaprAppBuilders
+
+    @guarantee SubscriptionDiscovery
+        -- GET /dapr/subscribe returns all registered pub/sub subscriptions
+        -- before any request is handled
+
+    @guarantee CapabilityLifetime
+        -- Sub-capabilities captured by handler lambdas share the DaprCapability lifetime
+        -- (ScopeContainment invariant).
+
+    @guarantee Composability
+        -- DaprApp ++ merges all lists from both apps; no handler is lost or duplicated.
+
+    @guarantee StartupValidation
+        -- serve rejects an app with duplicate names/routes or path collisions with
+        -- DaprAppValidationException before binding the port.
+}
+
+-- ---- State (dapr4s.state) ----
+
+surface StateCapabilityReadOnlySurface {
+    -- StateCapability.ReadOnly: universal, read-only tier.
+    facing _: UserCode
+    context u: StateCapability where u.authority = read_only
+
+    provides:
+        StateCapabilityNarrowed(u, store_name)
+
+    contracts:
+        demands JsonCodec
+        fulfils StateReadOnlyOperations
+}
+
+surface StateCapabilitySurface {
+    -- StateCapability: universal, full tier (extends StateCapability.ReadOnly).
+    facing _: UserCode
+    context u: StateCapability where u.authority = full
+
+    provides:
+        StateCapabilityNarrowed(u, store_name)
+
+    contracts:
+        demands JsonCodec
+        fulfils StateReadOnlyOperations
+        fulfils StateOperations
+}
+
+surface StateInstanceReadOnlySurface {
+    -- StateCapability.Instance.ReadOnly: bound to store_name, read-only tier.
+    facing _: UserCode
+    context cap: StateCapabilityInstance where cap.authority = read_only
 
     exposes:
-        get: (key: StateStoreKey) -> Any
-        -- Returns Option[T]; None if key not found
-        get_with_etag: (key: StateStoreKey) -> StateEntry
-        -- Returns StateEntry with value and current ETag
-        get_bulk: (keys: List<StateStoreKey>) -> Map<StateStoreKey, StateEntry>
-        -- Batch fetch; missing keys return StateEntry with value = absent
-        save: (key: StateStoreKey, value: Any) -> Unit
-        save_with_etag: (key: StateStoreKey, value: Any, etag: ETag) -> Option<ETagMismatchException>
-        -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
-        save_bulk: (entries: List<StateKeyValue>) -> Unit
-        delete: (key: StateStoreKey) -> Unit
-        delete_with_etag: (key: StateStoreKey, etag: ETag) -> Option<ETagMismatchException>
-        -- Returns None on success; Some(ETagMismatchException) on ETag conflict (no exception thrown)
-        transaction: (ops: List<StateOp>) -> Unit
-        query_state: (query: StateQuery) -> List<StateEntry>
-        -- Query using DAPR state store query API (store must support queries)
+        cap.store_name
+
+    provides:
+        StateGetRequested(cap, key)
+        StateGetBulkRequested(cap, keys)
+
+    contracts:
+        demands JsonCodec
+        fulfils StateInstanceReadOnlyOperations
+}
+
+surface StateInstanceSurface {
+    -- StateCapability.Instance: bound to store_name, full tier (extends StateCapability.Instance.ReadOnly).
+    facing _: UserCode
+    context cap: StateCapabilityInstance where cap.authority = full
+
+    exposes:
+        cap.store_name
+
+    provides:
+        StateGetRequested(cap, key)
+        StateGetBulkRequested(cap, keys)
+        StateSaveRequested(cap, key, value)
+        StateSaveWithETagRequested(cap, key, value, etag)
+        StateDeleteRequested(cap, key)
+        StateDeleteWithETagRequested(cap, key, etag)
+        StateSaveBulkRequested(cap, entries)
+        StateTransactionRequested(cap, ops)
+
+    contracts:
+        demands JsonCodec
+        fulfils StateInstanceReadOnlyOperations
+        fulfils StateInstanceOperations
 
     @guarantee AtomicTransaction
         -- transaction applies all operations or none (TransactionAtomicity).
@@ -1150,118 +2344,471 @@ surface StateCapabilitySurface {
         -- On mismatch, Some(ETagMismatchException) is returned and no mutation occurs (no exception thrown).
 }
 
-surface PubSubCapabilitySurface {
-    facing user: UserCode
+-- ---- Publish (dapr4s.publish) ----
+
+surface PublishCapabilitySurface {
+    -- PublishCapability: universal; instance(pubsub_name) -> PublishCapability.Instance^{this}.
+    facing _: UserCode
+    context u: PublishCapability
+
+    provides:
+        PublishCapabilityNarrowed(u, pubsub_name)
 
     contracts:
         demands JsonCodec
+        fulfils PublishOperations
+}
+
+surface PublishInstanceSurface {
+    -- PublishCapability.Instance: bound to pubsub_name; its operations never take it.
+    facing _: UserCode
+    context cap: PublishCapabilityInstance
 
     exposes:
-        publish: (topic: Topic, data: Any) -> Unit
-        publish_with_metadata: (topic: Topic, data: Any, metadata: Map<String, String>) -> Unit
-        bulk_publish: (topic: Topic, entries: List<BulkPublishEntry>) -> BulkPublishResult
-        -- Publishes multiple entries in a single call; returns list of failed entry IDs
+        cap.pubsub_name
+
+    provides:
+        PubSubPublishRequested(cap, topic, data)
+        PubSubPublishWithMetadataRequested(cap, topic, data, metadata)
+        PubSubBulkPublishRequested(cap, topic, entries)
+
+    contracts:
+        demands JsonCodec
+        fulfils PublishInstanceOperations
 
     @guarantee PublishAtLeastOnce
         -- publish completing successfully means DAPR has accepted the message.
         -- Delivery to subscribers is at-least-once (DAPR sidecar guarantee).
 }
 
-surface InvokeSurface {
-    facing user: UserCode
+-- ---- Invoke (dapr4s.invoke) ----
+
+surface InvokeCapabilitySurface {
+    -- InvokeCapability: universal; instance(app_id) -> InvokeCapability.Instance^{this}.
+    facing _: UserCode
+    context u: InvokeCapability
+
+    provides:
+        InvokeCapabilityNarrowed(u, app_id)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        invoke: (app_id: AppId, method: InvokeMethodName, data: Any) -> Any
-        invoke_get: (app_id: AppId, method: InvokeMethodName) -> Any
+        fulfils InvokeOperations
 }
 
-surface SecretsSurface {
-    facing user: UserCode
+surface InvokeInstanceSurface {
+    -- InvokeCapability.Instance: bound to app_id; its operations never take it.
+    facing _: UserCode
+    context cap: InvokeCapabilityInstance
 
     exposes:
-        get: (key: SecretKey) -> String?   -- None when key absent; Some(value) when found
-        get_bulk: () -> Map<SecretKey, String>
-}
+        cap.app_id
 
-surface ConfigurationSurface {
-    facing user: UserCode
-
-    exposes:
-        get: (keys: List<ConfigurationKey>) -> Map<ConfigurationKey, ConfigurationItem>
-        subscribe: (keys: List<ConfigurationKey>, on_change: ConfigurationUpdate -> Unit) -> AutoCloseable
-        -- Streams config changes from sidecar; close the AutoCloseable to stop
-}
-
-surface DaprAppSurface {
-    facing user: UserCode
+    provides:
+        ServiceInvokeRequested(cap, method, data, http_method, metadata)
+        ServiceInvokeGetRequested(cap, method)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        -- Two overloads: default route is "/" + topic.value
-        Subscription: (pubsub_name: PubSubName, topic: Topic, handler: CloudEvent -> SubscriptionResult) -> Subscription
-        Subscription: (pubsub_name: PubSubName, topic: Topic, route: Route, handler: CloudEvent -> SubscriptionResult) -> Subscription
-        -- Simple overload: handler receives only the decoded request body.
-        InvokeRoute: (method_name: InvokeMethodName, handler: Req -> Resp) -> InvokeRoute
-        -- Rich overload: handler receives the full InvokeRequest envelope (method name, HTTP verb, body).
-        InvokeRoute.withRequest: (method_name: InvokeMethodName, handler: InvokeRequest<Req> -> Resp) -> InvokeRoute
-        BindingRoute: (binding_name: BindingName, handler: Payload -> Unit) -> BindingRoute
-        DaprApp: (subscriptions: List<Subscription>, invokeRoutes: List<InvokeRoute>, bindings: List<BindingRoute>, workflows: List<Workflow>, activities: List<WorkflowActivity>, actors: List<ActorDefinition>) -> DaprApp
-        ++: (DaprApp, DaprApp) -> DaprApp
-        ActorMethodRoute: (method_name: InvokeMethodName, handler: Req -> Resp) -> ActorMethodRoute
-        ActorReminderRoute: (reminder_name: ReminderName, handler: Payload -> Unit) -> ActorReminderRoute
-        ActorTimerRoute: (timer_name: TimerName, handler: Payload -> Unit) -> ActorTimerRoute
-        ActorRoutes: (methods: List<ActorMethodRoute>, reminders: List<ActorReminderRoute>, timers: List<ActorTimerRoute>) -> ActorRoutes
-        ActorDefinition: (actor_type: ActorType, build: (ActorId, ActorContext) -> ActorRoutes) -> ActorDefinition
-        -- Handler lambdas may capture sub-capabilities from the enclosing DaprCapability
-        -- transformer bodies.
-        -- The recommended pattern is: business logic in explicit methods with
-        -- anonymous (using Capability) context parameters; companion-object
-        -- forwarders (e.g. StateCapability.save(...), PublishCapability.publish(...))
-        -- dispatch to the implicit instance, so callers never name the capability
-        -- value.  Methods are passed as direct handler references (no wrapping lambda)
-        -- because no library method carries a throws annotation.
-        -- Sub-capabilities are acquired via DaprCapability.state/pubsub/etc. transformers.
-
-    @guarantee SubscriptionDiscovery
-        -- GET /dapr/subscribe returns all registered pub/sub subscriptions
-        -- before any request is handled
-
-    @guarantee CapabilityLifetime
-        -- Sub-capabilities captured by handler lambdas share the DaprCapability lifetime.
-        -- Invocations after DaprCapability closure result in IllegalStateException
-        -- (ClosedCapabilityRejection invariant).
-
-    @guarantee Composability
-        -- DaprApp ++ merges all lists from both apps; no handler is lost or duplicated.
+        fulfils InvokeInstanceOperations
 }
 
-surface BindingsSurface {
-    facing user: UserCode
+-- ---- Secrets (dapr4s.secrets) ----
+
+surface SecretsCapabilityReadOnlySurface {
+    -- SecretsCapability.ReadOnly: universal, read-only tier.
+    facing _: UserCode
+    context u: SecretsCapability where u.authority = read_only
+
+    provides:
+        SecretsCapabilityNarrowed(u, store_name)
+
+    contracts:
+        fulfils SecretsReadOnlyOperations
+}
+
+surface SecretsCapabilitySurface {
+    -- SecretsCapability: universal, full tier (extends SecretsCapability.ReadOnly).
+    facing _: UserCode
+    context u: SecretsCapability where u.authority = full
+
+    provides:
+        SecretsCapabilityNarrowed(u, store_name)
+
+    contracts:
+        fulfils SecretsReadOnlyOperations
+        fulfils SecretsOperations
+}
+
+surface SecretsInstanceReadOnlySurface {
+    -- SecretsCapability.Instance.ReadOnly: bound to store_name, read-only tier.
+    facing _: UserCode
+    context cap: SecretsCapabilityInstance where cap.authority = read_only
+
+    exposes:
+        cap.store_name
+
+    provides:
+        SecretsGetRequested(cap, key, metadata)
+
+    contracts:
+        fulfils SecretsInstanceReadOnlyOperations
+}
+
+surface SecretsInstanceSurface {
+    -- SecretsCapability.Instance: bound to store_name, full tier (extends SecretsCapability.Instance.ReadOnly).
+    facing _: UserCode
+    context cap: SecretsCapabilityInstance where cap.authority = full
+
+    exposes:
+        cap.store_name
+
+    provides:
+        SecretsGetRequested(cap, key, metadata)
+        SecretsGetBulkRequested(cap, metadata)
+
+    contracts:
+        fulfils SecretsInstanceReadOnlyOperations
+        fulfils SecretsInstanceOperations
+}
+
+-- ---- Configuration (dapr4s.configuration) ----
+
+surface ConfigurationCapabilityReadOnlySurface {
+    -- ConfigurationCapability.ReadOnly: universal, read-only tier.
+    facing _: UserCode
+    context u: ConfigurationCapability where u.authority = read_only
+
+    provides:
+        ConfigurationCapabilityNarrowed(u, store_name)
+
+    contracts:
+        fulfils ConfigurationReadOnlyOperations
+}
+
+surface ConfigurationCapabilitySurface {
+    -- ConfigurationCapability: universal, full tier (extends ConfigurationCapability.ReadOnly).
+    facing _: UserCode
+    context u: ConfigurationCapability where u.authority = full
+
+    provides:
+        ConfigurationCapabilityNarrowed(u, store_name)
+
+    contracts:
+        fulfils ConfigurationReadOnlyOperations
+        fulfils ConfigurationOperations
+}
+
+surface ConfigurationInstanceReadOnlySurface {
+    -- ConfigurationCapability.Instance.ReadOnly: bound to store_name, read-only tier.
+    facing _: UserCode
+    context cap: ConfigurationCapabilityInstance where cap.authority = read_only
+
+    exposes:
+        cap.store_name
+
+    provides:
+        ConfigGetRequested(cap, keys, metadata)
+
+    contracts:
+        fulfils ConfigurationInstanceReadOnlyOperations
+}
+
+surface ConfigurationInstanceSurface {
+    -- ConfigurationCapability.Instance: bound to store_name, full tier (extends ConfigurationCapability.Instance.ReadOnly).
+    facing _: UserCode
+    context cap: ConfigurationCapabilityInstance where cap.authority = full
+
+    exposes:
+        cap.store_name
+
+    provides:
+        ConfigGetRequested(cap, keys, metadata)
+        ConfigSubscribeRequested(cap, keys, metadata, on_change)
+
+    contracts:
+        fulfils ConfigurationInstanceReadOnlyOperations
+        fulfils ConfigurationInstanceOperations
+}
+
+-- ---- Bindings (dapr4s.bindings) ----
+
+surface BindingsCapabilitySurface {
+    -- BindingsCapability: universal; instance(binding_name) -> BindingsCapability.Instance^{this}.
+    facing _: UserCode
+    context u: BindingsCapability
+
+    provides:
+        BindingsCapabilityNarrowed(u, binding_name)
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        invoke: (operation: BindingOperation, data: T) -> T?
-        -- Returns Option[Resp]; None if binding has no response.
-        -- T requires JsonCodec; actual request and response types are caller-determined.
-        invoke_one_way: (operation: BindingOperation, data: Any) -> Unit
-        -- Fire-and-forget binding invocation; no response expected
+        fulfils BindingsOperations
 }
 
-surface LockSurface {
-    facing user: UserCode
+surface BindingsInstanceSurface {
+    -- BindingsCapability.Instance: bound to binding_name; its operations never take it.
+    facing _: UserCode
+    context cap: BindingsCapabilityInstance
 
     exposes:
-        try_lock: (resourceId: LockResourceId, lockOwner: LockOwner, expirySeconds: Int) -> Boolean
-        -- Attempts to acquire lock; returns true if acquired, false if already held
-        unlock: (resourceId: LockResourceId, lockOwner: LockOwner) -> UnlockStatus
-        -- Releases lock; returns Success, LockNotFound, or InternalError (wrong owner)
+        cap.binding_name
+
+    provides:
+        BindingInvokeRequested(cap, operation, data, metadata)
+
+    contracts:
+        demands JsonCodec
+        fulfils BindingsInstanceOperations
+}
+
+-- ---- Lock (dapr4s.lock) ----
+
+surface LockCapabilitySurface {
+    -- LockCapability: universal; instance(store_name) -> LockCapability.Instance^{this}.
+    facing _: UserCode
+    context u: LockCapability
+
+    provides:
+        LockCapabilityNarrowed(u, store_name)
+
+    contracts:
+        fulfils LockOperations
+}
+
+surface LockInstanceSurface {
+    -- LockCapability.Instance: bound to store_name; its operations never take it.
+    facing _: UserCode
+    context cap: LockCapabilityInstance
+
+    exposes:
+        cap.store_name
+
+    provides:
+        LockTryLockRequested(cap, resourceId, lockOwner, expiry)
+        LockUnlockRequested(cap, resourceId, lockOwner)
+
+    contracts:
+        fulfils LockInstanceOperations
+}
+
+-- ---- Crypto (dapr4s.crypto) ----
+
+surface CryptoCapabilitySurface {
+    -- CryptoCapability: universal; instance(component_name) -> CryptoCapability.Instance^{this}.
+    facing _: UserCode
+    context u: CryptoCapability
+
+    provides:
+        CryptoCapabilityNarrowed(u, component_name)
+
+    contracts:
+        fulfils CryptoOperations
+}
+
+surface CryptoInstanceSurface {
+    -- CryptoCapability.Instance: bound to component_name; its operations never take it.
+    facing _: UserCode
+    context cap: CryptoCapabilityInstance
+
+    exposes:
+        cap.component_name
+
+    contracts:
+        fulfils CryptoInstanceOperations
+}
+
+-- ---- Actor (dapr4s.actor) ----
+
+surface ActorCapabilitySurface {
+    -- ActorCapability: universal; forType(actor_type) -> ActorCapability.Type^{this}.
+    facing _: UserCode
+    context u: ActorCapability
+
+    provides:
+        ActorCapabilityNarrowed(u, actor_type)
+
+    contracts:
+        demands JsonCodec
+        fulfils ActorOperations
+}
+
+surface ActorTypeSurface {
+    -- ActorCapability.Type: bound to actor_type; instance(actor_id) -> ActorCapability.Instance^{this}.
+    facing _: UserCode
+    context t: ActorCapabilityType
+
+    exposes:
+        t.actor_type
+
+    provides:
+        ActorTypeNarrowed(t, actor_id)
+
+    contracts:
+        demands JsonCodec
+        fulfils ActorTypeOperations
+}
+
+surface ActorInstanceSurface {
+    -- ActorCapability.Instance: bound to actor_type and actor_id.
+    facing _: UserCode
+    context cap: ActorCapabilityInstance
+
+    exposes:
+        cap.actor_type
+        cap.actor_id
+
+    contracts:
+        demands JsonCodec
+        fulfils ActorInstanceOperations
+}
+
+-- ---- Workflow (dapr4s.workflow) ----
+
+surface WorkflowCapabilityReadOnlySurface {
+    -- WorkflowCapability.ReadOnly: universal, read-only tier.
+    facing _: UserCode
+    context u: WorkflowCapability where u.authority = read_only
+
+    provides:
+        WorkflowCapabilityNarrowed(u, instance_id)
+
+    contracts:
+        demands JsonCodec
+        fulfils WorkflowReadOnlyOperations
+}
+
+surface WorkflowCapabilitySurface {
+    -- WorkflowCapability: universal, full tier (extends WorkflowCapability.ReadOnly).
+    facing _: UserCode
+    context u: WorkflowCapability where u.authority = full
+
+    provides:
+        WorkflowCapabilityNarrowed(u, instance_id)
+
+    contracts:
+        demands JsonCodec
+        fulfils WorkflowReadOnlyOperations
+        fulfils WorkflowOperations
+}
+
+surface WorkflowInstanceReadOnlySurface {
+    -- WorkflowCapability.Instance.ReadOnly: bound to instance_id, read-only tier.
+    facing _: UserCode
+    context cap: WorkflowCapabilityInstance where cap.authority = read_only
+
+    exposes:
+        cap.instance_id
+
+    contracts:
+        demands JsonCodec
+        fulfils WorkflowInstanceReadOnlyOperations
+}
+
+surface WorkflowInstanceSurface {
+    -- WorkflowCapability.Instance: bound to instance_id, full tier (extends WorkflowCapability.Instance.ReadOnly).
+    facing _: UserCode
+    context cap: WorkflowCapabilityInstance where cap.authority = full
+
+    exposes:
+        cap.instance_id
+
+    contracts:
+        demands JsonCodec
+        fulfils WorkflowInstanceReadOnlyOperations
+        fulfils WorkflowInstanceOperations
+}
+
+-- Handle sugar (WorkflowInstanceId companion extensions): id.getStatus and
+-- id.waitForCompletion(t) behave exactly like the universal getStatus(id) /
+-- waitForCompletion(id, t) and require only a read_only WorkflowCapability; id.suspend(),
+-- resume(), terminate(), purge() and raiseEvent(name, payload) behave like the universal
+-- operations of the same name and require authority = full. No new behaviour, no new rules.
+
+-- ---- Jobs (dapr4s.jobs) ----
+-- Handle sugar (JobName extensions, JVM only): name.get requires a read_only JobsCapability;
+-- name.schedule(...), scheduleOnce(...), delete() require authority = full. Each behaves exactly
+-- like the universal operation with the job name as its first argument.
+
+
+surface JobsCapabilityReadOnlySurface {
+    -- JVM only. JobsCapability.ReadOnly: universal, read-only tier.
+    facing _: UserCode
+    context u: JobsCapability where u.authority = read_only
+
+    provides:
+        JobsCapabilityNarrowed(u, job_name)
+
+    contracts:
+        demands JsonCodec
+        fulfils JobsReadOnlyOperations
+}
+
+surface JobsCapabilitySurface {
+    -- JVM only. JobsCapability: universal, full tier (extends JobsCapability.ReadOnly).
+    facing _: UserCode
+    context u: JobsCapability where u.authority = full
+
+    provides:
+        JobsCapabilityNarrowed(u, job_name)
+
+    contracts:
+        demands JsonCodec
+        fulfils JobsReadOnlyOperations
+        fulfils JobsOperations
+}
+
+surface JobsInstanceReadOnlySurface {
+    -- JVM only. JobsCapability.Instance.ReadOnly: bound to job_name, read-only tier.
+    facing _: UserCode
+    context cap: JobsCapabilityInstance where cap.authority = read_only
+
+    exposes:
+        cap.job_name
+
+    contracts:
+        demands JsonCodec
+        fulfils JobsInstanceReadOnlyOperations
+}
+
+surface JobsInstanceSurface {
+    -- JVM only. JobsCapability.Instance: bound to job_name, full tier (extends JobsCapability.Instance.ReadOnly).
+    facing _: UserCode
+    context cap: JobsCapabilityInstance where cap.authority = full
+
+    exposes:
+        cap.job_name
+
+    contracts:
+        demands JsonCodec
+        fulfils JobsInstanceReadOnlyOperations
+        fulfils JobsInstanceOperations
+}
+
+-- ---- Conversation (dapr4s.conversation) ----
+
+surface ConversationCapabilitySurface {
+    -- JVM only. ConversationCapability: universal; instance(component_name) -> ConversationCapability.Instance^{this}.
+    facing _: UserCode
+    context u: ConversationCapability
+
+    provides:
+        ConversationCapabilityNarrowed(u, component_name)
+
+    contracts:
+        fulfils ConversationOperations
+}
+
+surface ConversationInstanceSurface {
+    -- JVM only. ConversationCapability.Instance: bound to component_name; its operations never take it.
+    facing _: UserCode
+    context cap: ConversationCapabilityInstance
+
+    exposes:
+        cap.component_name
+
+    contracts:
+        fulfils ConversationInstanceOperations
 }
 
 surface ActorContextSurface {
@@ -1272,25 +2819,7 @@ surface ActorContextSurface {
 
     contracts:
         demands JsonCodec
-
-    exposes:
-        -- State
-        get:    (key: ActorStateKey) -> Option<T>
-        -- None when key absent; Some(T) when present
-        set:    (key: ActorStateKey, value: T) -> Unit
-        remove: (key: ActorStateKey) -> Unit
-
-        -- Reminders (persistent — survive actor deactivation/restart)
-        register_reminder: (name: ReminderName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit
-        -- Registers a persistent callback; sidecar reactivates the actor to deliver it.
-        -- period = None means fire once; period = Some(d) means fire repeatedly every d.
-        unregister_reminder: (name: ReminderName) -> Unit
-        -- No-op if no reminder with name exists.
-
-        -- Timers (non-persistent — lost on actor deactivation)
-        register_timer: (name: TimerName, data: T, dueTime: Duration, period: Option<Duration>?) -> Unit
-        -- Registers a non-persistent callback; silently dropped if actor deactivates before it fires.
-        unregister_timer: (name: TimerName) -> Unit
+        fulfils ActorContextOperations
 
     @guarantee ActorStateIsolation
         -- State operations (get, set, remove) are scoped to the specific (actorType, actorId) pair.
@@ -1312,8 +2841,8 @@ surface ActorContextSurface {
 -- Open Questions
 ------------------------------------------------------------
 
-open question "Should DaprRuntime support a custom DaprClient (e.g. for testing without sidecar)?"
--- Current design always creates a fresh client via DaprClientBuilder.
+open question "Should Dapr support a custom DaprClient (e.g. for testing without sidecar)?"
+-- Current design always creates a fresh client via DaprClientBuilder (JVM) from DaprConfig.
 -- An override for tests would allow passing a mock client.
 
 -- RESOLVED: StateCapability exposes queryState via DAPR state query API.

@@ -1,5 +1,7 @@
 package dapr4s
 
+import dapr4s.actor.*
+
 import java.net.URI
 import scala.concurrent.duration.{FiniteDuration, Duration, DurationInt}
 
@@ -21,7 +23,7 @@ case class DaprConfig(
     actors: ActorRuntimeConfig = ActorRuntimeConfig(),
 )
 
-/** Sidecar connection configuration, mapping to [[io.dapr.config.Properties]] constants.
+/** Sidecar connection configuration, mapping to `io.dapr.config.Properties` constants.
   *
   * @param httpEndpoint
   *   URI of the Dapr sidecar HTTP API (default `http://localhost:3500`).

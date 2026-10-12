@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.workflow.*
 import scala.concurrent.duration.FiniteDuration
 import scala.scalajs.js
 import unsafeExceptions.canThrowAny

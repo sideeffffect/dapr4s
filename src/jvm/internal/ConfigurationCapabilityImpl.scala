@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.configuration.*
 import io.dapr.client.domain.{ConfigurationItem as JConfigItem, SubscribeConfigurationResponse}
 import java.util.logging.{Level, Logger}
 
@@ -14,7 +15,7 @@ import NullOps.*
 private[internal] final class ConfigurationCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: ConfigurationStoreName,
-) extends ConfigurationCapability:
+) extends ConfigurationCapability.Instance:
 
   import ConfigurationCapabilityImpl.*
 

@@ -2,6 +2,7 @@
 package dapr4s.internal
 
 import dapr4s.*
+import dapr4s.configuration.*
 import scala.scalajs.js
 import scala.scalajs.js.JSConverters.*
 import scala.util.control.NonFatal
@@ -14,7 +15,7 @@ import dapr4styped.daprDapr.typesConfigurationSubscribeConfigurationResponseMod.
 private[internal] final class ConfigurationCapabilityImpl(
     scope: DaprCapabilityImpl,
     val storeName: ConfigurationStoreName,
-) extends ConfigurationCapability:
+) extends ConfigurationCapability.Instance:
 
   import ConfigurationCapabilityImpl.*
 

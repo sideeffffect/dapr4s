@@ -1,6 +1,8 @@
 //> using target.platform "jvm"
 package dapr4s
 
+import dapr4s.jobs.*, dapr4s.conversation.*
+
 /** JVM half of the [[DaprCapability]] surface — the factory methods for building blocks the Dapr
   * Java SDK supports but the Dapr JS SDK does not (jobs, conversation).
   *
@@ -22,17 +24,19 @@ package dapr4s
 trait DaprCapabilityPlatform:
   this: DaprCapability =>
 
-  /** Obtain the [[JobsCapability]] (shared; no named component). */
+  /** Obtain the universal [[dapr4s.jobs.JobsCapability]] (any job); `jobs.instance(jobName)` narrows it to one job. */
   def jobs: JobsCapability^{this}
 
-  /** Obtain a [[ConversationCapability]] for the named conversation (LLM) component. */
-  def conversation(componentName: ConversationComponentName): ConversationCapability^{this}
+  /** Obtain the universal [[dapr4s.conversation.ConversationCapability]] (any component); `conversation.instance(componentName)` narrows it to one
+    * component.
+    */
+  def conversation: ConversationCapability^{this}
 
 /** JVM half of the [[DaprCapability$ DaprCapability companion]] transformer API — the
   * transformer methods for the JVM-only building blocks (jobs, conversation), inherited by
   * `object DaprCapability`. The Scala.js twin of this trait is empty.
   *
-  * WHY @assumeSafe: identical to the shared companion — `cap.jobs` / `cap.conversation(...)`
+  * WHY @assumeSafe: identical to the shared companion — `cap.jobs` / `cap.conversation.instance(...)`
   * return capabilities carrying a `^{cap}` capture set, and passing them to a context function
   * expecting the unannotated capability type widens the capture set. That is safe because the
   * `^{this}` return types on [[DaprCapabilityPlatform]] prevent the sub-capabilities from
@@ -41,10 +45,13 @@ trait DaprCapabilityPlatform:
 @scala.caps.assumeSafe
 trait DaprCapabilityCompanionPlatform:
 
+  /** Make the universal [[dapr4s.jobs.JobsCapability]] available to `body` — pass it to [[dapr4s.jobs.Jobs.derive]] clients, or narrow to a
+    * single job with `instance(name)`.
+    */
   def jobs[T](body: JobsCapability ?=> T)(using cap: DaprCapability): T =
     body(using cap.jobs.asInstanceOf[JobsCapability])
 
-  def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability ?=> T)(using
+  def conversation(componentName: ConversationComponentName)[T](body: ConversationCapability.Instance ?=> T)(using
       cap: DaprCapability
   ): T =
-    body(using cap.conversation(componentName).asInstanceOf[ConversationCapability])
+    body(using cap.conversation.instance(componentName).asInstanceOf[ConversationCapability.Instance])

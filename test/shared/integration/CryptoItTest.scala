@@ -1,11 +1,13 @@
 package dapr4s.test.integration
 
 import dapr4s.*
+import dapr4s.state.*, dapr4s.publish.*, dapr4s.invoke.*, dapr4s.secrets.*, dapr4s.configuration.*, dapr4s.bindings.*,
+  dapr4s.lock.*, dapr4s.actor.*, dapr4s.workflow.*, dapr4s.crypto.*, dapr4s.jobs.*
 import dapr4s.given
 import munit.FunSuite
 import unsafeExceptions.canThrowAny
 
-/** [[dapr4s.CryptoCapability]] integration suite — a SINGLE cross-platform file, run via the per-platform
+/** [[CryptoCapability.Instance]] integration suite — a SINGLE cross-platform file, run via the per-platform
   * [[SharedDaprItSuite]] bring-up against the canonical `crypto.dapr.localstorage` store backed by a fresh RSA key
   * (`rsa-key`). Crypto is gRPC-only in the JS SDK, so on Scala.js this exercises the lazily created gRPC alpha1
   * streaming wire API.
@@ -21,12 +23,12 @@ class CryptoItTest extends FunSuite, SharedDaprItSuite:
   def encryptDecryptStringRoundTrip(using DaprCapability): Unit =
     DaprCapability.crypto(ItNames.CryptoStore):
       val plaintext = "the quick brown fox"
-      val cipher = CryptoCapability.encryptString(ItNames.CryptoKey, plaintext, KeyWrapAlgorithm.Rsa)
+      val cipher = CryptoCapability.Instance.encryptString(ItNames.CryptoKey, plaintext, KeyWrapAlgorithm.Rsa)
       assert(cipher.nonEmpty, "ciphertext should not be empty")
-      assertEquals(CryptoCapability.decryptString(cipher), plaintext)
+      assertEquals(CryptoCapability.Instance.decryptString(cipher), plaintext)
 
   def encryptDecryptBytesRoundTrip(using DaprCapability): Unit =
     DaprCapability.crypto(ItNames.CryptoStore):
       val data = Charsets.encodeString("payload-bytes", Charsets.Utf8)
-      val cipher = CryptoCapability.encrypt(ItNames.CryptoKey, data, KeyWrapAlgorithm.Rsa)
-      assertEquals(CryptoCapability.decrypt(cipher), data)
+      val cipher = CryptoCapability.Instance.encrypt(ItNames.CryptoKey, data, KeyWrapAlgorithm.Rsa)
+      assertEquals(CryptoCapability.Instance.decrypt(cipher), data)
