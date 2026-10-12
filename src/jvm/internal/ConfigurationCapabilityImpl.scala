@@ -17,6 +17,8 @@ private[internal] final class ConfigurationCapabilityImpl(
     val storeName: ConfigurationStoreName,
 ) extends ConfigurationCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Configuration, storeName.value)
+
   import ConfigurationCapabilityImpl.*
 
   def get(keys: Seq[ConfigurationKey], metadata: Map[MetadataKey, MetadataValue] = Map.empty): Map[ConfigurationKey, ConfigurationItem] =
@@ -24,7 +26,7 @@ private[internal] final class ConfigurationCapabilityImpl(
     val javaMeta = toJavaMeta(metadata)
     scope.client
       .getConfiguration(storeName.value, javaKeys, javaMeta)
-      .awaitResult()
+      .awaitResult(ctx)
       .toOption
       .fold(Map.empty)(_.asScala.map { case (k, item) => ConfigurationKey(k) -> toConfigItem(k, item) }.toMap)
 

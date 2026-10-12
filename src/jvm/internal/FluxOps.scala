@@ -16,8 +16,8 @@ private[internal] object FluxOps:
       * Uses [[MonoOps.awaitResult]] under the hood (via `collectList`), so it carries the same virtual-thread-friendly
       * blocking semantics as the rest of the library.
       */
-    def collectBytes(): ArraySeq[Byte] =
-      val list = flux.collectList().awaitResult()
+    def collectBytes(ctx: ErrorContext): ArraySeq[Byte] =
+      val list = flux.collectList().awaitResult(ctx)
       if list == null then ArraySeq.empty[Byte]
       else
         val builder = ArraySeq.newBuilder[Byte]

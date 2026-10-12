@@ -35,9 +35,15 @@ import scala.scalajs.js
   * ==Rejected promises==
   *
   * `js.await` rethrows a rejected promise's value; a rejected JS `Error` therefore surfaces in Scala as
-  * `js.JavaScriptException(error)` (a `RuntimeException`, matched by `NonFatal`). Call sites that need typed exceptions
-  * (ETag conflicts, workflow wait timeouts) pattern-match that exception and translate — see `JsInterop.sdkFailureOf`
-  * and `WorkflowCapabilityImpl.waitForCompletion`.
+  * `js.JavaScriptException(error)` (a `RuntimeException`, matched by `NonFatal`).
+  *
+  * Every promise that comes from a '''Dapr call''' (SDK method, `fetch` to the sidecar) is awaited with the
+  * two-argument overload `await(p, ctx)`, which hands that rejection to [[JsErrors.translate]] — the JS wall's
+  * translation point to [[dapr4s.DaprException]], so no `js.JavaScriptException` carrying a sidecar error reaches user
+  * code. The one-argument overload is for promises that are not Dapr calls (reading a `fetch` body, the workflow
+  * runtime's own start, coroutine resumption). Call sites that need an expected outcome as a value (ETag conflicts,
+  * workflow wait timeouts) await raw and inspect the rejection — see `StateCapabilityImpl.softFailure` and
+  * `WorkflowCapabilityImpl.waitForCompletion`.
   */
 @scala.caps.assumeSafe
 private[dapr4s] object JsAwait:
@@ -45,3 +51,15 @@ private[dapr4s] object JsAwait:
 
   /** Suspend until `p` settles; return its value or rethrow its rejection as `js.JavaScriptException`. */
   def await[A](p: js.Promise[A]): A = js.await(p)
+
+  /** Suspend until the Dapr call `p` settles; return its value or throw its rejection translated to a
+    * [[dapr4s.DaprException]] for the call described by `ctx`.
+    *
+    * Catches only `NonFatal` (a rejection is always a `js.JavaScriptException`, a `RuntimeException`). Rethrowing needs
+    * a `CanThrow` in scope, supplied as `MonoOps.awaitResult` does it (`unsafeExceptions.canThrowAny`): this is the
+    * documented propagation point, exception capabilities are not used for Dapr errors.
+    */
+  def await[A](p: js.Promise[A], ctx: ErrorContext): A =
+    given CanThrow[Exception] = unsafeExceptions.canThrowAny
+    try js.await(p)
+    catch case scala.util.control.NonFatal(e) => throw JsErrors.translate(ctx, e)

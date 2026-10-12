@@ -25,3 +25,9 @@ object Charsets:
     */
   def encodeString(text: String, charset: Charset = Utf8): ArraySeq[Byte] =
     ArraySeq.unsafeWrapArray(text.getBytes(charset).nn)
+
+  /** Decode a byte sequence into a `String` using `charset` — the inverse of [[encodeString]]. Malformed input is
+    * replaced (the JDK `new String(bytes, charset)` behaviour), never thrown.
+    */
+  def decodeString(bytes: ArraySeq[Byte], charset: Charset = Utf8): String =
+    new String(bytes.toArray, charset)

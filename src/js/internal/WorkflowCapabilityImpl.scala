@@ -19,23 +19,23 @@ private[internal] final class WorkflowCapabilityUniversalImpl(
 ) extends WorkflowCapability:
 
   def start(name: WorkflowName): WorkflowInstanceId =
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value)))
+    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value), ErrorContext.Runtime))
 
   // Workflow inputs are passed as PARSED JS values: the vendored durabletask client JSON.stringify-s
   // the input (client.js scheduleNewOrchestration), producing single-encoded JSON on the wire —
   // the same as the JVM impl, which passes a parsed Jackson JsonNode for its serializer to encode once.
   def start[I: JsonCodec](name: WorkflowName, input: I): WorkflowInstanceId =
     val value = parseJson(summon[JsonCodec[I]].encode(input))
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value)))
+    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value), ErrorContext.Runtime))
 
   def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId =
     // The `input: Unit` overload passes `undefined` for the input slot, exactly like the hand
     // facade's js.undefined — the vendored client then schedules the instance without an input.
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, (), instanceId.value)))
+    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, (), instanceId.value), ErrorContext.Runtime))
 
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
     val value = parseJson(summon[JsonCodec[I]].encode(input))
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value, instanceId.value)))
+    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value, instanceId.value), ErrorContext.Runtime))
 
   def instance(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this} =
     new WorkflowCapabilityInstanceImpl(client, instanceId).asInstanceOf[WorkflowCapability.Instance]
@@ -65,7 +65,7 @@ private[internal] final class WorkflowCapabilityInstanceImpl(
   import WorkflowCapabilityImpl.*
 
   def getStatus(): Option[WorkflowSnapshot] =
-    val state = JsAwait.await(client.getWorkflowState(instanceId.value, true))
+    val state = JsAwait.await(client.getWorkflowState(instanceId.value, true), ErrorContext.Runtime)
     // Unknown instances come back as `undefined` (the vendored newOrchestrationState returns
     // nothing when the GetInstance response has exists = false) — unlike the Java SDK, which
     // returns a state object with an empty name. The empty-name guard is kept anyway so both
@@ -73,13 +73,13 @@ private[internal] final class WorkflowCapabilityInstanceImpl(
     state.toOption.filter(_.name.nonEmpty).map(toSnapshot)
 
   def suspend(): Unit =
-    JsAwait.await(client.suspendWorkflow(instanceId.value)): Unit
+    JsAwait.await(client.suspendWorkflow(instanceId.value), ErrorContext.Runtime): Unit
 
   def resume(): Unit =
-    JsAwait.await(client.resumeWorkflow(instanceId.value)): Unit
+    JsAwait.await(client.resumeWorkflow(instanceId.value), ErrorContext.Runtime): Unit
 
   def terminate(): Unit =
-    JsAwait.await(client.terminateWorkflow(instanceId.value, null)): Unit
+    JsAwait.await(client.terminateWorkflow(instanceId.value, null), ErrorContext.Runtime): Unit
 
   // Unlike workflow inputs, the event payload is passed as the RAW JSON STRING: the vendored client
   // JSON.stringify-s it (client.js raiseOrchestrationEvent), producing a JSON string value whose
@@ -88,7 +88,7 @@ private[internal] final class WorkflowCapabilityInstanceImpl(
   // The server-side waitForEvent decodes symmetrically, so the platforms stay wire-compatible.
   def raiseEvent[E: JsonCodec](eventName: EventName, payload: E): Unit =
     val jsonPayload: String = summon[JsonCodec[E]].encode(payload)
-    JsAwait.await(client.raiseEvent(instanceId.value, eventName.value, jsonPayload)): Unit
+    JsAwait.await(client.raiseEvent(instanceId.value, eventName.value, jsonPayload), ErrorContext.Runtime): Unit
 
   def waitForCompletion(timeout: FiniteDuration): Option[WorkflowSnapshot] =
     // On timeout, the vendored client REJECTS with its TimeoutError (a bare `class TimeoutError
@@ -108,11 +108,12 @@ private[internal] final class WorkflowCapabilityInstanceImpl(
             throw new java.util.concurrent.TimeoutException(
               s"workflow '${instanceId.value}' did not complete within $timeout",
             )
-          else throw e
+          else throw JsErrors.translate(ErrorContext.Runtime, e)
+        case scala.util.control.NonFatal(e) => throw JsErrors.translate(ErrorContext.Runtime, e)
     state.toOption.map(toSnapshot)
 
   def purge(): Boolean =
-    JsAwait.await(client.purgeWorkflow(instanceId.value))
+    JsAwait.await(client.purgeWorkflow(instanceId.value), ErrorContext.Runtime)
 
 @scala.caps.assumeSafe
 private object WorkflowCapabilityImpl:

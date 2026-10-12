@@ -24,6 +24,8 @@ private[internal] final class ConversationCapabilityImpl(
     val componentName: ConversationComponentName,
 ) extends ConversationCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Conversation, componentName.value)
+
   import ConversationCapabilityImpl.*
 
   def converse(
@@ -42,7 +44,7 @@ private[internal] final class ConversationCapabilityImpl(
     temperature.foreach(t => req.setTemperature(t))
     if tools.nonEmpty then req.setTools(tools.map(toJavaTool).asJava)
     toolChoice.foreach(tc => req.setToolChoice(tc.wireValue))
-    val resp = scope.clientPreview.converseAlpha2(req).awaitResult()
+    val resp = scope.clientPreview.converseAlpha2(req).awaitResult(ctx)
     toResponse(resp)
 
 @scala.caps.assumeSafe

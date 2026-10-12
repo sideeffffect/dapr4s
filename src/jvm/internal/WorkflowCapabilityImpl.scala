@@ -15,20 +15,20 @@ private[internal] final class WorkflowCapabilityUniversalImpl(
   import WorkflowCapabilityImpl.*
 
   def start(name: WorkflowName): WorkflowInstanceId =
-    WorkflowInstanceId(client.scheduleNewWorkflow(name.value).nn)
+    WorkflowInstanceId(JvmErrors.guard(ErrorContext.Runtime)(client.scheduleNewWorkflow(name.value).nn))
 
   def start[I: JsonCodec](name: WorkflowName, input: I): WorkflowInstanceId =
     val node = toJsonNode(summon[JsonCodec[I]].encode(input))
-    WorkflowInstanceId(client.scheduleNewWorkflow(name.value, node.asInstanceOf[Object]).nn)
+    WorkflowInstanceId(JvmErrors.guard(ErrorContext.Runtime)(client.scheduleNewWorkflow(name.value, node.asInstanceOf[Object]).nn))
 
   def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId =
     val opts = new NewWorkflowOptions().setInstanceId(instanceId.value)
-    WorkflowInstanceId(client.scheduleNewWorkflow(name.value, opts).nn)
+    WorkflowInstanceId(JvmErrors.guard(ErrorContext.Runtime)(client.scheduleNewWorkflow(name.value, opts).nn))
 
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
     val node = toJsonNode(summon[JsonCodec[I]].encode(input))
     val opts = new NewWorkflowOptions().setInstanceId(instanceId.value).setInput(node.asInstanceOf[Object])
-    WorkflowInstanceId(client.scheduleNewWorkflow(name.value, opts).nn)
+    WorkflowInstanceId(JvmErrors.guard(ErrorContext.Runtime)(client.scheduleNewWorkflow(name.value, opts).nn))
 
   def instance(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this} =
     new WorkflowCapabilityInstanceImpl(client, instanceId).asInstanceOf[WorkflowCapability.Instance]
@@ -58,7 +58,7 @@ private[internal] final class WorkflowCapabilityInstanceImpl(
   import WorkflowCapabilityImpl.*
 
   def getStatus(): Option[WorkflowSnapshot] =
-    val state = client.getWorkflowState(instanceId.value, true)
+    val state = JvmErrors.guard(ErrorContext.Runtime)(client.getWorkflowState(instanceId.value, true))
     // The SDK returns a non-null WorkflowState even for unknown or purged instances; durabletask signals
     // "not found" by an empty workflow name (a scheduled instance always carries its orchestrator name).
     if state == null then None
@@ -67,24 +67,24 @@ private[internal] final class WorkflowCapabilityInstanceImpl(
       if name == null || name.isEmpty then None else Some(toSnapshot(state))
 
   def suspend(): Unit =
-    client.suspendWorkflow(instanceId.value, null)
+    JvmErrors.guard(ErrorContext.Runtime)(client.suspendWorkflow(instanceId.value, null))
 
   def resume(): Unit =
-    client.resumeWorkflow(instanceId.value, null)
+    JvmErrors.guard(ErrorContext.Runtime)(client.resumeWorkflow(instanceId.value, null))
 
   def terminate(): Unit =
-    client.terminateWorkflow(instanceId.value, null)
+    JvmErrors.guard(ErrorContext.Runtime)(client.terminateWorkflow(instanceId.value, null))
 
   def raiseEvent[E: JsonCodec](eventName: EventName, payload: E): Unit =
     val jsonPayload: String = summon[JsonCodec[E]].encode(payload)
-    client.raiseEvent(instanceId.value, eventName.value, jsonPayload.asInstanceOf[Object])
+    JvmErrors.guard(ErrorContext.Runtime)(client.raiseEvent(instanceId.value, eventName.value, jsonPayload.asInstanceOf[Object]))
 
   def waitForCompletion(timeout: FiniteDuration): Option[WorkflowSnapshot] =
-    val state = client.waitForWorkflowCompletion(instanceId.value, java.time.Duration.ofNanos(timeout.toNanos), true)
+    val state = JvmErrors.guard(ErrorContext.Runtime)(client.waitForWorkflowCompletion(instanceId.value, java.time.Duration.ofNanos(timeout.toNanos), true))
     if state == null then None else Some(toSnapshot(state))
 
   def purge(): Boolean =
-    client.purgeWorkflow(instanceId.value)
+    JvmErrors.guard(ErrorContext.Runtime)(client.purgeWorkflow(instanceId.value))
 
 @scala.caps.assumeSafe
 private object WorkflowCapabilityImpl:

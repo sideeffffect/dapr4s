@@ -11,11 +11,14 @@ private[internal] final class LockCapabilityImpl(
     val storeName: LockStoreName,
 ) extends LockCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Lock, storeName.value)
+
   def tryLock(resourceId: LockResourceId, lockOwner: LockOwner, expiry: FiniteDuration): Boolean =
     // expiry.toSeconds truncates to whole seconds — the same rounding the JVM impl applies
     // (`expiry.toSeconds.toInt` into LockRequest).
     val response = JsAwait.await(
       scope.client.lock.lock(storeName.value, resourceId.value, lockOwner.value, expiry.toSeconds.toDouble),
+      ctx,
     )
     // ScalablyTyped types `success` as a required Boolean; the equality test (rather than trusting the typed read)
     // keeps the JVM twin's null-handling (`.toOption.exists(_.booleanValue())`): an absent/undefined field at
@@ -23,7 +26,7 @@ private[internal] final class LockCapabilityImpl(
     (response.success: Any) == true
 
   def unlock(resourceId: LockResourceId, lockOwner: LockOwner): UnlockStatus =
-    val response = JsAwait.await(scope.client.lock.unlock(storeName.value, resourceId.value, lockOwner.value))
+    val response = JsAwait.await(scope.client.lock.unlock(storeName.value, resourceId.value, lockOwner.value), ctx)
     // Numeric LockStatus → UnlockStatus, copied from the JVM impl's UnlockResponseStatus mapping:
     // Success (0) → Success, LockDoesNotExist (1) → LockNotFound, LockBelongsToOthers (2) →
     // LockBelongsToOthers; InternalError (3), unknown values, and an absent status (JVM: null

@@ -3,102 +3,59 @@ package dapr4s.internal
 
 import dapr4s.*
 import dapr4s.invoke.*
+import scala.collection.immutable.ArraySeq
 import scala.scalajs.js
-import JsInterop.*
-// The TYPE comes from the deep module (types are erased — no import is emitted), but the VALUES
-// must be read off the "@dapr/dapr" root re-export: ScalablyTyped's deep-module specifiers
-// (`@dapr/dapr/enum/HttpMethod.enum`) carry no `.js` extension and `@dapr/dapr` has no `exports`
-// map, so Node ESM (the Wasm/JSPI production target) cannot resolve them — ERR_MODULE_NOT_FOUND
-// at load time (runtime-verified). Only root re-exports may be referenced in value position.
-import dapr4styped.daprDapr.enumHttpMethodDotenumMod.HttpMethod as SdkHttpMethod
-import dapr4styped.daprDapr.mod.HttpMethod as SdkHttpMethods
-import dapr4styped.daprDapr.typesInvokerOptionsDottypeMod.InvokerOptions
+import scala.scalajs.js.typedarray.{ArrayBuffer, Int8Array}
 import dapr4styped.node.globalsMod.global as NodeGlobals
-import dapr4styped.undiciTypes.fetchMod.RequestInit
+import dapr4styped.undiciTypes.fetchMod.{RequestInit, RequestRedirect}
 
 @scala.caps.assumeSafe
 private object InvokeCapabilityImpl:
 
-  /** Invoke over the raw sidecar HTTP API (`{verb} /v1.0/invoke/{appId}/method/{method}`), bypassing the SDK.
-    *
-    * Exists because the SDK cannot transmit JS-falsy payloads: `HTTPClient.execute` only attaches a body when
-    * `if (params?.body)` is truthy (`node_modules/@dapr/dapr/implementation/Client/HTTPClient/HTTPClient.js`), so the
-    * JSON documents `0`, `false`, `null` and `""` would be sent with an '''empty''' body. Same raw-fetch precedent as
-    * [[ActorCapabilityImpl]]; the pre-encoded JSON string goes on the wire verbatim with
-    * `Content-Type: application/json` (no SDK serializer involved, so no double encoding) and metadata as extra headers
-    * like the SDK path. The method name is encoded segment-by-segment: Dapr method names may legitimately be
-    * multi-segment routes (`api/orders`), where the `/` must survive as a path separator while everything else is
-    * percent-encoded. The response is handled like the SDK path: non-2xx throws (raw-fetch message shape), an empty
-    * body reaches the codec as `null` (the JVM's empty `Mono` → `null` bytes), and a non-empty body '''is''' already
-    * the JSON document, decoded directly.
-    */
-  private def rawInvoke[Resp: JsonCodec](
-      sidecar: SidecarConfig,
-      appId: AppId,
-      method: InvokeMethodName,
-      json: String,
-      httpMethod: HttpMethod,
-      metadata: Map[MetadataKey, MetadataValue],
-  ): Resp =
-    import ActorCapabilityImpl.urlSegment
-    val methodPath = method.value.split("/").nn.map(s => urlSegment(s.nn)).mkString("/")
-    val base = ActorCapabilityImpl.httpBase(sidecar)
-    val url = s"$base/v1.0/invoke/${urlSegment(appId.value)}/method/$methodPath"
-    // baseHeaders supplies Content-Type: application/json + dapr-api-token; metadata adds headers
-    // on top, mirroring the SDK path's InvokerOptions.headers. A metadata key that collides with a
-    // base header REPLACES it (drop the base pair first): filling fetch Headers from a pairs array
-    // APPENDS, and duplicate names are combined as "v1, v2" — which would corrupt Content-Type or
-    // dapr-api-token instead of letting the caller override them.
-    val headers = ActorCapabilityImpl
-      .baseHeaders(sidecar)
-      .filterNot(pair => metadata.keys.exists(_.value.equalsIgnoreCase(pair(0))))
-    metadata.foreach { case (k, v) => headers.push(js.Array(k.value, v.value)): Unit }
-    // fetch only auto-uppercases the six spec-listed methods (notably NOT "patch"), so uppercase
-    // explicitly like the SDK does (`params?.method.toLocaleUpperCase()`).
-    val init = RequestInit().setMethod(toJsMethod(httpMethod).toUpperCase).setHeaders(headers).setBody(json)
-    val response = JsAwait.await(NodeGlobals.fetch(url, init))
-    // Always consume the body (Node fetch keep-alive invariant — see HttpActorContext.postJson).
-    val text = JsAwait.await(response.text())
-    if response.status >= 400 then throw new RuntimeException(s"Dapr API error ${response.status} at $url: $text")
-    JsonCodec.decodeOrThrow[Resp](if text.isEmpty then null else text)
-
-  /** dapr4s [[HttpMethod]] → the SDK's lowercase `HttpMethod` string values (`enum/HttpMethod.enum.js`). The
-    * intersection with `String` is how ScalablyTyped types the enum's members (a TS string enum), and it keeps plain
-    * string operations (`toUpperCase` in [[rawInvoke]]) available.
-    *
-    * WHAT (Head/Options branches): `asInstanceOf` conjuring an `SdkHttpMethod` from a string literal.
-    *
-    * WHY: the SDK enum only declares get/delete/post/put/patch — there are no HEAD/OPTIONS members to reference — but
-    * dapr4s supports those verbs.
-    *
-    * WHY SAFE: the runtime representation of the TS string enum IS the string; `"head"`/`"options"` flow verbatim into
-    * `HTTPClient.execute`, which upper-cases the value and hands it to fetch (`clientOptions.method =
-    * params?.method.toLocaleUpperCase()`) — verified in the SDK sources, same contract as the five declared members.
-    */
-  private def toJsMethod(m: HttpMethod): SdkHttpMethod & String =
+  /** fetch only auto-uppercases the six spec-listed methods (notably NOT "patch"), so the verb is spelled out. */
+  private def verb(m: HttpMethod): String =
     m match
-      case HttpMethod.Get     => SdkHttpMethods.GET
-      case HttpMethod.Post    => SdkHttpMethods.POST
-      case HttpMethod.Put     => SdkHttpMethods.PUT
-      case HttpMethod.Delete  => SdkHttpMethods.DELETE
-      case HttpMethod.Patch   => SdkHttpMethods.PATCH
-      case HttpMethod.Head    => "head".asInstanceOf[SdkHttpMethod & String]
-      case HttpMethod.Options => "options".asInstanceOf[SdkHttpMethod & String]
+      case HttpMethod.Get     => "GET"
+      case HttpMethod.Post    => "POST"
+      case HttpMethod.Put     => "PUT"
+      case HttpMethod.Delete  => "DELETE"
+      case HttpMethod.Patch   => "PATCH"
+      case HttpMethod.Head    => "HEAD"
+      case HttpMethod.Options => "OPTIONS"
 
-  /** WHAT: asInstanceOf viewing a parsed JSON value (`js.Any`) as `js.Object`, the SDK's invoke-data type.
-    *
-    * WHY: the TypeScript signature (`data?: object`) is narrower than the runtime contract — with the explicit
-    * application/json header, `serializeHttp` JSON.stringify-s '''any''' JS value, and dapr4s must pass JSON scalar
-    * documents (truthy numbers/booleans/strings) down this path. Only JS-falsy values are excluded (they take the
-    * rawInvoke bypass).
-    *
-    * WHY SAFE: erased, zero-cost view change; every value here came out of `JSON.parse`, and the SDK's only operation
-    * on it is the single `JSON.stringify` that puts our original document back on the wire. Same rationale as
-    * `PublishCapabilityImpl.asPublishData`.
+  /** Copy the bytes into a fresh `ArrayBuffer`, the `BodyInit` member fetch sends verbatim. */
+  private def toArrayBuffer(bytes: ArraySeq[Byte]): ArrayBuffer =
+    val typed = new Int8Array(bytes.length)
+    var i = 0
+    bytes.foreach { b =>
+      typed(i) = b
+      i += 1
+    }
+    typed.buffer
+
+  /** Copy a response `ArrayBuffer` out into an immutable byte sequence (the array never escapes, so wrapping it is
+    * safe).
     */
-  private def asInvokeData(parsed: js.Any): js.Object =
-    parsed.asInstanceOf[js.Object]
+  private def fromArrayBuffer(buffer: ArrayBuffer): ArraySeq[Byte] =
+    val typed = new Int8Array(buffer)
+    val out = new Array[Byte](typed.length)
+    var i = 0
+    while i < typed.length do
+      out(i) = typed(i)
+      i += 1
+    ArraySeq.unsafeWrapArray(out)
 
+/** Service invocation over the raw sidecar HTTP API (`{verb} /v1.0/invoke/{appId}/method/{method}`) with Node's `fetch`
+  * — the SDK's `invoker.invoke` is not used at all.
+  *
+  * WHY: the SDK cannot express either half of the invoke contract. `HTTPClient.execute` rejects every status outside
+  * 200–399 with the body squeezed into a JSON-stringified `Error.message` and drops all response headers, so
+  * `invokeHttp`'s status/headers/body result cannot be built from it, and it RESOLVES 3xx while the JVM twin's typed
+  * `invoke` treats them as failures. It also drops JS-falsy request bodies (`if (params?.body)` — the JSON documents
+  * `0`, `false`, `null`, `""`). The raw API passes the target app's status, headers and body through unchanged; the JVM
+  * twin uses the same API through `java.net.http`, and the typed `invoke` on both is the shared
+  * [[InvokeSupport.invokeTyped]] on top of [[invokeHttp]], so the two platforms behave identically.
+  */
 @scala.caps.assumeSafe
 private[internal] final class InvokeCapabilityImpl(
     scope: DaprCapabilityImpl,
@@ -107,39 +64,50 @@ private[internal] final class InvokeCapabilityImpl(
 
   import InvokeCapabilityImpl.*
 
+  private val ctx = ErrorContext.App(appId)
+
   def invoke[Req: JsonCodec](
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec]: Resp =
-    val json = summon[JsonCodec[Req]].encode(data)
-    val parsed = parseJson(json)
-    // Falsy payloads (0, false, null, "") cannot take the SDK path: HTTPClient.execute attaches
-    // the request body only behind a JS truthiness check (`if (params?.body)` — implementation/
-    // Client/HTTPClient/HTTPClient.js), so the body would be silently dropped. They go through
-    // rawInvoke (raw fetch) instead — see JsInterop.isFalsyJson.
-    if isFalsyJson(parsed) then rawInvoke[Resp](scope.sidecar, appId, method, json, httpMethod, metadata)
-    else
-      // Metadata maps to extra HTTP headers (InvokerOptions.headers — the JVM impl's invokeMethod
-      // metadata are headers too). The explicit Content-Type: application/json header makes the
-      // SDK's serializeHttp JSON.stringify the parsed value rather than inferring text/plain for
-      // JSON scalar payloads — same wire-format reasoning as PublishCapabilityImpl.publish.
-      val headers = toDict[Any](metadata)
-      headers("Content-Type") = "application/json"
-      val response = JsAwait.await(
-        scope.client.invoker.invoke(
-          appId.value,
-          method.value,
-          toJsMethod(httpMethod),
-          asInvokeData(parsed),
-          InvokerOptions().setHeaders(headers),
-        ),
-      )
-      // An empty response body surfaces as "" (HTTPClient.execute's tryParseJson); jsonStringOrNull
-      // maps it to null so the codec sees the same input as on the JVM (empty Mono → null bytes).
-      JsonCodec.decodeOrThrow[Resp](jsonStringOrNull(response))
+    InvokeSupport.invokeTyped[Req, Resp](this, method, data, httpMethod, metadata)
 
   def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp =
-    val response = JsAwait.await(scope.client.invoker.invoke(appId.value, method.value, SdkHttpMethods.GET))
-    JsonCodec.decodeOrThrow[Resp](jsonStringOrNull(response))
+    InvokeSupport.invokeTypedNoBody[Resp](this, method)
+
+  def invokeHttp(
+      method: InvokeMethodName,
+      body: ArraySeq[Byte] = ArraySeq.empty,
+      httpMethod: HttpMethod = HttpMethod.Post,
+      headers: Map[MetadataKey, MetadataValue] = Map.empty,
+      query: Map[QueryParamName, QueryParamValue] = Map.empty,
+  ): InvokeResponse =
+    val url = ActorCapabilityImpl.httpBase(scope.sidecar) + InvokeSupport.invokePath(appId, method, query)
+    // The API token first; caller headers on top. A caller header that collides with a base header REPLACES it (drop
+    // the base pair first): filling fetch Headers from a pairs array APPENDS, and duplicate names are combined as
+    // "v1, v2". baseHeaders also carries Content-Type: application/json, which is NOT wanted here — invokeHttp sends
+    // bytes as is and adds no content type (the typed invoke passes its own).
+    val requestHeaders = ActorCapabilityImpl
+      .baseHeaders(scope.sidecar)
+      .filterNot(pair => pair(0).equalsIgnoreCase("Content-Type"))
+      .filterNot(pair => headers.keys.exists(_.value.equalsIgnoreCase(pair(0))))
+    headers.foreach { (k, v) => requestHeaders.push(js.Array(k.value, v.value)): Unit }
+    // redirect: "manual" — a 3xx is the target's answer, returned as is (fetch follows redirects by default; the JVM
+    // client never does).
+    val init = RequestInit().setMethod(verb(httpMethod)).setHeaders(requestHeaders).setRedirect(RequestRedirect.manual)
+    if body.nonEmpty then init.setBody(toArrayBuffer(body)): Unit
+    val response = JsAwait.await(NodeGlobals.fetch(url, init), ctx)
+    // Always consume the body (Node fetch keep-alive invariant — see HttpActorContext.postJson).
+    val bytes = fromArrayBuffer(JsAwait.await(response.arrayBuffer(), ctx))
+    val status = response.status.toInt
+    if status < 200 || status >= 300 then
+      InvokeSupport.throwIfSidecarError(
+        appId,
+        status,
+        JsErrors.parseErrorBody(status, Charsets.decodeString(bytes, Charsets.Utf8)),
+      )
+    val rawHeaders = List.newBuilder[(String, String)]
+    response.headers.forEach((value, name, _) => rawHeaders += name -> value: Unit)
+    InvokeResponse(status, InvokeSupport.normaliseHeaders(rawHeaders.result()), bytes)

@@ -14,12 +14,14 @@ private[internal] final class PublishCapabilityImpl(
     val pubsubName: PubSubName,
 ) extends PublishCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.PubSub, pubsubName.value)
+
   // Publish the already-encoded JSON as raw bytes: the Dapr SDK's serializer passes byte[] through
   // untouched but would re-serialize a String, double-encoding the event data into a JSON string
   // (which subscribers then fail to decode as an object).
   def publish[T: JsonCodec](topic: Topic, data: T): Unit =
     val json = summon[JsonCodec[T]].encode(data).getBytes(UTF_8)
-    scope.client.publishEvent(pubsubName.value, topic.value, json).awaitResult(): Unit
+    scope.client.publishEvent(pubsubName.value, topic.value, json).awaitResult(ctx): Unit
 
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
@@ -30,7 +32,7 @@ private[internal] final class PublishCapabilityImpl(
     val javaMeta: java.util.Map[String, String] = metadata.map { case (k, v) => k.value -> v.value }.asJava
     scope.client
       .publishEvent(pubsubName.value, topic.value, json, javaMeta)
-      .awaitResult(): Unit
+      .awaitResult(ctx): Unit
 
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult =
     // Two reasons this mirrors `publish` (raw byte[]) and uses the BulkPublishRequest overload:
@@ -51,7 +53,7 @@ private[internal] final class PublishCapabilityImpl(
       }.asJava
     val request =
       new io.dapr.client.domain.BulkPublishRequest[Array[Byte]](pubsubName.value, topic.value, javaEntries)
-    val response = scope.client.publishEvents(request).awaitResult()
+    val response = scope.client.publishEvents(request).awaitResult(ctx)
     if response == null then return BulkPublishResult(List.empty)
     val failedItems = response.getFailedEntries
     if failedItems == null then BulkPublishResult(List.empty)

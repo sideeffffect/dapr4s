@@ -21,6 +21,8 @@ private[internal] final class PublishCapabilityImpl(
     val pubsubName: PubSubName,
 ) extends PublishCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.PubSub, pubsubName.value)
+
   import PublishCapabilityImpl.*
 
   // The pre-encoded JSON is parsed into a JS value and published with an explicit
@@ -44,8 +46,9 @@ private[internal] final class PublishCapabilityImpl(
     else
       val response = JsAwait.await(
         scope.client.pubsub.publish(pubsubName.value, topic.value, asPublishData(parsed), jsonContentTypeOptions),
+        ctx,
       )
-      throwIfFailed(response)
+      throwIfFailed(ctx, response)
 
   def publishWithMetadata[T: JsonCodec](
       topic: Topic,
@@ -60,8 +63,9 @@ private[internal] final class PublishCapabilityImpl(
       val options = PubSubPublishOptions().setContentType("application/json").setMetadata(toDict(metadata))
       val response = JsAwait.await(
         scope.client.pubsub.publish(pubsubName.value, topic.value, asPublishData(parsed), options),
+        ctx,
       )
-      throwIfFailed(response)
+      throwIfFailed(ctx, response)
 
   def bulkPublish[T: JsonCodec](topic: Topic, entries: Seq[BulkPublishEntry[T]]): BulkPublishResult =
     // The explicit {entryID, event, contentType} message shape keeps our entry IDs authoritative
@@ -78,9 +82,9 @@ private[internal] final class PublishCapabilityImpl(
           .setContentType("application/json")
       }
       .toJSArray
-    val response = JsAwait.await(scope.client.pubsub.publishBulk(pubsubName.value, topic.value, messages))
+    val response = JsAwait.await(scope.client.pubsub.publishBulk(pubsubName.value, topic.value, messages), ctx)
     val failed = response.failedMessages.toList
-    // Whole-request failures must THROW (the JVM twin's bulkPublish throws DaprException there),
+    // Whole-request failures must THROW (the JVM twin's bulkPublish throws a DaprException there),
     // but the SDK never lets them escape: publishBulk catches the rejection and fabricates a
     // per-entry failure list covering every entry, all sharing the ONE caught error object
     // (handleBulkPublishError/getBulkPublishResponse — implementation/Client/HTTPClient/pubsub.js
@@ -94,7 +98,7 @@ private[internal] final class PublishCapabilityImpl(
           if failed.sizeIs == entries.size
             && failed.forall(_.error eq first.error)
             && sdkFailureOf(first.error).isDefined =>
-        throw js.JavaScriptException(first.error)
+        throw JsErrors.fromJsError(ctx, first.error, js.JavaScriptException(first.error))
       case _ =>
         BulkPublishResult(failed.map(fm => BulkEntryId(fm.message.entryID)))
 
@@ -117,11 +121,11 @@ private object PublishCapabilityImpl:
     parsed.asInstanceOf[js.Object]
 
   /** `pubsub.publish` soft-fails (`{error}` instead of rejecting — `implementation/Client/HTTPClient/pubsub.js`, typed
-    * `PubSubPublishResponseType` with an optional `error`); rethrow to mirror the JVM impl, where a failed
-    * `publishEvent` throws `DaprException`.
+    * `PubSubPublishResponseType` with an optional `error`); throw it translated to mirror the JVM impl, where a failed
+    * `publishEvent` throws a translated `DaprException`.
     */
-  private def throwIfFailed(response: PubSubPublishResponseType): Unit =
-    response.error.toOption.foreach(e => throw js.JavaScriptException(e))
+  private def throwIfFailed(ctx: ErrorContext, response: PubSubPublishResponseType): Unit =
+    response.error.toOption.foreach(e => throw JsErrors.fromJsError(ctx, e, js.JavaScriptException(e)))
 
   /** Publish over the raw sidecar HTTP API (`POST /v1.0/publish/{pubsub}/{topic}`), bypassing the SDK.
     *
@@ -131,7 +135,7 @@ private object PublishCapabilityImpl:
     * as [[ActorCapabilityImpl]]/[[StateCapabilityImpl.getWithETag]]; the pre-encoded JSON string goes on the wire
     * verbatim with `Content-Type: application/json` (no SDK serializer involved, so no double encoding), and metadata
     * becomes `metadata.{key}` query parameters exactly like the SDK's `createHTTPQueryParam` builds them. Non-2xx
-    * answers throw with the shared raw-fetch message shape.
+    * answers throw translated ([[JsErrors.fromHttp]]), like every SDK-path failure.
     */
   private def rawPublish(
       sidecar: SidecarConfig,
@@ -150,7 +154,8 @@ private object PublishCapabilityImpl:
     val base = ActorCapabilityImpl.httpBase(sidecar)
     val url = s"$base/v1.0/publish/${urlSegment(pubsubName.value)}/${urlSegment(topic.value)}$query"
     val init = RequestInit().setMethod("POST").setHeaders(ActorCapabilityImpl.baseHeaders(sidecar)).setBody(json)
-    val response = JsAwait.await(NodeGlobals.fetch(url, init))
+    val ctx = ErrorContext.Component(DaprComponentKind.PubSub, pubsubName.value)
+    val response = JsAwait.await(NodeGlobals.fetch(url, init), ctx)
     // Always consume the body (Node fetch keep-alive invariant — see HttpActorContext.postJson).
     val text = JsAwait.await(response.text())
-    if response.status >= 400 then throw new RuntimeException(s"Dapr API error ${response.status} at $url: $text")
+    if response.status >= 400 then throw JsErrors.fromHttp(ctx, response.status.toInt, text)

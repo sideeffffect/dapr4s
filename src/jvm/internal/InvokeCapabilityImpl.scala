@@ -3,30 +3,74 @@ package dapr4s.internal
 
 import dapr4s.*
 import dapr4s.invoke.*
-import io.dapr.client.domain.HttpExtension
-import MonoOps.*
+import io.dapr.config.Properties
+import java.net.URI
+import java.net.http.{HttpClient, HttpRequest, HttpResponse}
+import scala.collection.immutable.ArraySeq
 import scala.jdk.CollectionConverters.*
-import java.nio.charset.StandardCharsets.UTF_8
+import NullOps.*
 
 @scala.caps.assumeSafe
 private object InvokeCapabilityImpl:
-  private def toJava(m: HttpMethod): HttpExtension =
+
+  /** One HTTP client for every invoke call of the process.
+    *
+    * WHY raw HTTP and not the Java SDK's `DaprClient.invokeMethod`: the SDK turns every non-2xx answer (3xx included)
+    * into its `DaprException` and drops the response headers on success, so neither `invokeHttp`'s status/headers/body
+    * result nor a faithful [[InvokeHttpException]] can be built from it. The sidecar's `/v1.0/invoke` HTTP API passes
+    * the target app's status, headers and body through unchanged.
+    *
+    * HTTP/1.1 pinned: daprd's HTTP API does not speak h2c, and the JDK client's default `HTTP_2` would send an
+    * `Upgrade: h2c` header on every request for nothing. Redirects are never followed (`Redirect.NEVER`, the default,
+    * stated explicitly): a 3xx is the target's answer and is returned as such. `HttpClient.send` parks a virtual thread
+    * without pinning its carrier, like `MonoOps.awaitResult`.
+    *
+    * The client is never closed: it holds no per-sidecar state (the sidecar URL is per request), its selector thread is
+    * a daemon, and it lives as long as the class — the same lifetime as the JDK's own shared clients.
+    */
+  private lazy val http: HttpClient =
+    HttpClient
+      .newBuilder()
+      .nn
+      .version(HttpClient.Version.HTTP_1_1)
+      .nn
+      .followRedirects(HttpClient.Redirect.NEVER)
+      .nn
+      .build()
+      .nn
+
+  /** Headers the JDK client forbids callers to set (`jdk.internal.net.http.common.Utils.DISALLOWED_HEADERS_SET`):
+    * setting one throws `IllegalArgumentException`. The client computes them itself, so they are dropped silently.
+    */
+  private val restrictedHeaders: Set[String] = Set("connection", "content-length", "expect", "host", "upgrade")
+
+  /** `http.send` with the interrupt flag restored.
+    *
+    * WHY WE CATCH InterruptedException HERE — the same contract as `MonoOps.awaitResult` (see the full argument there):
+    * `HttpClient.send` waits on a `CompletableFuture`, whose `get()` CLEARS the interrupt flag when it throws
+    * `InterruptedException`, and the JDK client rethrows it as is. Restoring the flag immediately keeps the
+    * cancellation signal visible to every caller up the stack. We rethrow the original exception unchanged — never
+    * wrapped in a `DaprException` (that would hide the interrupt) — so this is propagation, not suppression.
+    * `JvmErrors.guard` around this call matches only `NonFatal`, which excludes `InterruptedException`, so it passes
+    * through untouched.
+    */
+  private def send(request: HttpRequest): HttpResponse[Array[Byte]] =
+    given CanThrow[Exception] = unsafeExceptions.canThrowAny
+    try http.send(request, HttpResponse.BodyHandlers.ofByteArray()).nn
+    catch
+      case e: InterruptedException =>
+        Thread.currentThread().interrupt()
+        throw e
+
+  private def verb(m: HttpMethod): String =
     m match
-      case HttpMethod.Get     => HttpExtension.GET
-      case HttpMethod.Post    => HttpExtension.POST
-      case HttpMethod.Put     => HttpExtension.PUT
-      case HttpMethod.Delete  => HttpExtension.DELETE
-      case HttpMethod.Patch   => HttpExtension.PATCH
-      case HttpMethod.Head    => HttpExtension.HEAD
-      case HttpMethod.Options => new HttpExtension(io.dapr.client.DaprHttp.HttpMethods.OPTIONS)
-
-  private val emptyMeta: java.util.Map[String, String] = java.util.Collections.emptyMap()
-
-  private def bytesToString(bytes: Array[Byte] | Null): String | Null =
-    if bytes == null then null else new String(bytes, UTF_8)
-
-  private def toJavaMeta(m: Map[MetadataKey, MetadataValue]): java.util.Map[String, String] =
-    m.map { case (k, v) => k.value -> v.value }.asJava
+      case HttpMethod.Get     => "GET"
+      case HttpMethod.Post    => "POST"
+      case HttpMethod.Put     => "PUT"
+      case HttpMethod.Delete  => "DELETE"
+      case HttpMethod.Patch   => "PATCH"
+      case HttpMethod.Head    => "HEAD"
+      case HttpMethod.Options => "OPTIONS"
 
 @scala.caps.assumeSafe
 private[internal] final class InvokeCapabilityImpl(
@@ -36,31 +80,54 @@ private[internal] final class InvokeCapabilityImpl(
 
   import InvokeCapabilityImpl.*
 
+  private val ctx = ErrorContext.App(appId)
+
   def invoke[Req: JsonCodec](
       method: InvokeMethodName,
       data: Req,
       httpMethod: HttpMethod = HttpMethod.Post,
       metadata: Map[MetadataKey, MetadataValue] = Map.empty,
   )[Resp: JsonCodec]: Resp =
-    // Exchange raw bytes with the sidecar in both directions: the Dapr SDK's serializer would otherwise
-    // re-serialize our already-encoded JSON String on the way out (double-encoding the request into a JSON
-    // string) and Jackson-parse the response into a String on the way back (mangling it before our own
-    // codec sees it). The byte[]-in/byte[]-out overload skips serialization entirely; dapr4s owns the JSON.
-    val reqBytes = summon[JsonCodec[Req]].encode(data).getBytes(UTF_8)
-    val javaMeta = toJavaMeta(metadata)
-    JsonCodec.decodeOrThrow[Resp](
-      bytesToString(
-        scope.client
-          .invokeMethod(appId.value, method.value, reqBytes, toJava(httpMethod), javaMeta)
-          .awaitResult(),
-      ),
-    )
+    InvokeSupport.invokeTyped[Req, Resp](this, method, data, httpMethod, metadata)
 
   def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp =
-    JsonCodec.decodeOrThrow[Resp](
-      bytesToString(
-        scope.client
-          .invokeMethod(appId.value, method.value, Array.emptyByteArray, HttpExtension.GET, emptyMeta)
-          .awaitResult(),
-      ),
-    )
+    InvokeSupport.invokeTypedNoBody[Resp](this, method)
+
+  def invokeHttp(
+      method: InvokeMethodName,
+      body: ArraySeq[Byte] = ArraySeq.empty,
+      httpMethod: HttpMethod = HttpMethod.Post,
+      headers: Map[MetadataKey, MetadataValue] = Map.empty,
+      query: Map[QueryParamName, QueryParamValue] = Map.empty,
+  ): InvokeResponse =
+    val base = scope.sidecarProperties.getValue(Properties.HTTP_ENDPOINT).toOption.getOrElse("http://localhost:3500")
+    val uri = URI.create(base.stripSuffix("/") + InvokeSupport.invokePath(appId, method, query)).nn
+    val publisher =
+      if body.isEmpty then HttpRequest.BodyPublishers.noBody().nn
+      else HttpRequest.BodyPublishers.ofByteArray(body.toArray).nn
+    val builder = HttpRequest.newBuilder(uri).nn.method(verb(httpMethod), publisher).nn
+    // The API token goes first; a caller header of the same name replaces it (setHeader overwrites), mirroring the JS
+    // twin where caller metadata replaces the base headers.
+    scope.sidecarProperties
+      .getValue(Properties.API_TOKEN)
+      .toOption
+      .filter(_.nonEmpty)
+      .foreach(t => builder.setHeader("dapr-api-token", t): Unit)
+    headers.foreach { (k, v) =>
+      if !restrictedHeaders(k.value.toLowerCase(java.util.Locale.ROOT).nn) then
+        builder.setHeader(k.value, v.value): Unit
+    }
+    // send() throws IOException on a transport failure (→ DaprApiException("UNAVAILABLE") via the guard).
+    val response = JvmErrors.guard(ctx)(send(builder.build().nn))
+    val status = response.statusCode
+    val bytes = response.body.toOption.getOrElse(Array.emptyByteArray)
+    if status < 200 || status >= 300 then
+      InvokeSupport.throwIfSidecarError(
+        appId,
+        status,
+        JvmErrors.parseErrorBody(status, new String(bytes, java.nio.charset.StandardCharsets.UTF_8)),
+      )
+    val rawHeaders = response.headers.nn.map.nn.asScala.toList.flatMap { (name, values) =>
+      values.asScala.map(v => name -> v)
+    }
+    InvokeResponse(status, InvokeSupport.normaliseHeaders(rawHeaders), ArraySeq.unsafeWrapArray(bytes))

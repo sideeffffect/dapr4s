@@ -14,13 +14,15 @@ private[internal] final class SecretsCapabilityImpl(
     val storeName: SecretStoreName,
 ) extends SecretsCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Secrets, storeName.value)
+
   import SecretsCapabilityImpl.toJavaMeta
 
   def get(key: SecretKey, metadata: Map[MetadataKey, MetadataValue] = Map.empty): Option[SecretValue] =
     val javaMeta = toJavaMeta(metadata)
     scope.client
       .getSecret(storeName.value, key.value, javaMeta)
-      .awaitResult()
+      .awaitResult(ctx)
       .toOption
       .filterNot(_.isEmpty)
       .flatMap { m =>
@@ -34,7 +36,7 @@ private[internal] final class SecretsCapabilityImpl(
     val javaMeta = toJavaMeta(metadata)
     scope.client
       .getBulkSecret(storeName.value, javaMeta)
-      .awaitResult()
+      .awaitResult(ctx)
       .toOption
       .fold(Map.empty) { result =>
         result.asScala.flatMap { case (secretKey, subMap) =>

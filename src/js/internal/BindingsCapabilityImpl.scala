@@ -12,6 +12,8 @@ private[internal] final class BindingsCapabilityImpl(
     val bindingName: BindingName,
 ) extends BindingsCapability.Instance:
 
+  private val ctx = ErrorContext.Component(DaprComponentKind.Binding, bindingName.value)
+
   def invoke[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
@@ -37,11 +39,14 @@ private[internal] final class BindingsCapabilityImpl(
   // `binding.send` wraps everything into the {operation, data, metadata} body of POST /v1.0/bindings/{name}
   // (implementation/Client/HTTPClient/binding.js) — `data` is embedded as a JS value, so the pre-encoded JSON is
   // parsed first; the wrapper object then serializes as application/json, putting our exact JSON document into
-  // `data` like the JVM's byte[] pass-through does. Errors reject the promise and propagate (JVM: DaprException).
+  // `data` like the JVM's byte[] pass-through does. Errors reject the promise and propagate translated (as on the JVM).
   private def invokeRaw[Req: JsonCodec](
       operation: BindingOperation,
       data: Req,
       metadata: Map[MetadataKey, MetadataValue],
   ): js.Any =
     val json = summon[JsonCodec[Req]].encode(data)
-    JsAwait.await(scope.client.binding.send(bindingName.value, operation.value, parseJson(json), toDict(metadata)))
+    JsAwait.await(
+      scope.client.binding.send(bindingName.value, operation.value, parseJson(json), toDict(metadata)),
+      ctx,
+    )

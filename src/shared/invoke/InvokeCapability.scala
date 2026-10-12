@@ -1,6 +1,7 @@
 package dapr4s.invoke
 
 import dapr4s.*
+import scala.collection.immutable.ArraySeq
 
 /** Universal capability for synchronous service invocation (RPC) via DAPR: reaches **any** app, so every operation
   * names its target [[AppId]].
@@ -30,6 +31,16 @@ trait InvokeCapability extends scala.caps.ExclusiveCapability:
   /** Invoke a remote method on `appId` with no request body (GET, no metadata). */
   def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName): Resp
 
+  /** HTTP-level call of a method on `appId`; see [[InvokeCapability.Instance.invokeHttp]]. */
+  def invokeHttp(
+      appId: AppId,
+      method: InvokeMethodName,
+      body: ArraySeq[Byte] = ArraySeq.empty,
+      httpMethod: HttpMethod = HttpMethod.Post,
+      headers: Map[MetadataKey, MetadataValue] = Map.empty,
+      query: Map[QueryParamName, QueryParamValue] = Map.empty,
+  ): InvokeResponse
+
 /** The [[InvokeCapability]] family: the app-bound [[InvokeCapability.Instance]] and the companion-object forwarders for
   * both interfaces.
   *
@@ -51,6 +62,14 @@ object InvokeCapability:
     /** Invoke a remote method with a request body. `Req` is inferred from `data`; `Resp` is specified at the call
       * site: {{{invoke.invoke(method, requestData)[ResponseType]}}}
       *
+      * The request goes out as `Content-Type: application/json` (overridable via `metadata`). A 2xx answer's body is
+      * decoded as `Resp` (an empty body reaches the codec as `null`). Errors, identical on every platform:
+      *   - the target app answered non-2xx → [[InvokeHttpException]] with its status and body (3xx included —
+      *     redirects are not followed);
+      *   - the target app could not be reached (unknown app id, not healthy) → [[AppUnreachableException]];
+      *   - an access-control policy denied the call → [[PermissionDeniedException]];
+      *   - any other sidecar error → [[DaprApiException]].
+      *
       * @param httpMethod
       *   HTTP verb to use; defaults to [[HttpMethod.Post]]
       * @param metadata
@@ -69,6 +88,23 @@ object InvokeCapability:
       */
     def invoke[Resp: JsonCodec](method: InvokeMethodName): Resp
 
+    /** HTTP-level call: send `body` with `httpMethod`, `headers` and `query` to the target app's `method` route and
+      * return its answer — status, headers and body — '''whatever the status'''. A non-2xx answer is a value here, not
+      * an exception; only a failure to get an answer from the target app throws ([[AppUnreachableException]],
+      * [[PermissionDeniedException]], [[DaprApiException]]).
+      *
+      * No body encoding takes place: `body` goes on the wire as is, and no `Content-Type` is added — pass one in
+      * `headers` when the target needs it. Redirects are not followed. The method name may contain `/` (multi-segment
+      * routes); every segment and every query parameter is percent-encoded.
+      */
+    def invokeHttp(
+        method: InvokeMethodName,
+        body: ArraySeq[Byte] = ArraySeq.empty,
+        httpMethod: HttpMethod = HttpMethod.Post,
+        headers: Map[MetadataKey, MetadataValue] = Map.empty,
+        query: Map[QueryParamName, QueryParamValue] = Map.empty,
+    ): InvokeResponse
+
   /** Forwarders for [[InvokeCapability.Instance]]. */
   @scala.caps.assumeSafe
   object Instance:
@@ -81,6 +117,14 @@ object InvokeCapability:
       cap.invoke(method, data, httpMethod, metadata)[Resp]
     def invoke[Resp: JsonCodec](method: InvokeMethodName)(using cap: Instance): Resp =
       cap.invoke(method)
+    def invokeHttp(
+        method: InvokeMethodName,
+        body: ArraySeq[Byte] = ArraySeq.empty,
+        httpMethod: HttpMethod = HttpMethod.Post,
+        headers: Map[MetadataKey, MetadataValue] = Map.empty,
+        query: Map[QueryParamName, QueryParamValue] = Map.empty,
+    )(using cap: Instance): InvokeResponse =
+      cap.invokeHttp(method, body, httpMethod, headers, query)
 
   /** Narrow the universal capability in scope to one target app and return it. */
   def instance(appId: AppId)(using cap: InvokeCapability): Instance^{cap} =
@@ -95,3 +139,12 @@ object InvokeCapability:
     cap.invoke(appId, method, data, httpMethod, metadata)[Resp]
   def invoke[Resp: JsonCodec](appId: AppId, method: InvokeMethodName)(using cap: InvokeCapability): Resp =
     cap.invoke(appId, method)
+  def invokeHttp(
+      appId: AppId,
+      method: InvokeMethodName,
+      body: ArraySeq[Byte] = ArraySeq.empty,
+      httpMethod: HttpMethod = HttpMethod.Post,
+      headers: Map[MetadataKey, MetadataValue] = Map.empty,
+      query: Map[QueryParamName, QueryParamValue] = Map.empty,
+  )(using cap: InvokeCapability): InvokeResponse =
+    cap.invokeHttp(appId, method, body, httpMethod, headers, query)
