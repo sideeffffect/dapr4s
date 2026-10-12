@@ -13,6 +13,23 @@ private[dapr4s] object InvokeSupport:
 
   private val ContentTypeHeader = "Content-Type"
 
+  /** Headers the HTTP clients compute themselves and refuse from callers (the JDK client throws
+    * `IllegalArgumentException`, undici rejects some): dropped on both platforms, so they behave the same.
+    */
+  val restrictedHeaders: Set[String] = Set("connection", "content-length", "expect", "host", "upgrade")
+
+  /** Caller headers minus [[restrictedHeaders]] (case-insensitive). */
+  def sendableHeaders(headers: Map[MetadataKey, MetadataValue]): Map[MetadataKey, MetadataValue] =
+    headers.filterNot((k, _) => restrictedHeaders(k.value.toLowerCase(java.util.Locale.ROOT).nn))
+
+  /** The body actually sent: none for GET/HEAD (fetch rejects a body there, and HTTP gives it no meaning), `body`
+    * otherwise — the same on both platforms.
+    */
+  def sendableBody(httpMethod: HttpMethod, body: ArraySeq[Byte]): ArraySeq[Byte] =
+    httpMethod match
+      case HttpMethod.Get | HttpMethod.Head => ArraySeq.empty
+      case _                                => body
+
   /** Typed invoke with a JSON request body. `metadata` are extra HTTP headers; a caller-supplied `Content-Type` (any
     * case) replaces the default `application/json`.
     */

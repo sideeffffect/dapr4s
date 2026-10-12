@@ -93,11 +93,12 @@ private[internal] final class InvokeCapabilityImpl(
       .baseHeaders(scope.sidecar)
       .filterNot(pair => pair(0).equalsIgnoreCase("Content-Type"))
       .filterNot(pair => headers.keys.exists(_.value.equalsIgnoreCase(pair(0))))
-    headers.foreach { (k, v) => requestHeaders.push(js.Array(k.value, v.value)): Unit }
+    InvokeSupport.sendableHeaders(headers).foreach { (k, v) => requestHeaders.push(js.Array(k.value, v.value)): Unit }
     // redirect: "manual" — a 3xx is the target's answer, returned as is (fetch follows redirects by default; the JVM
     // client never does).
     val init = RequestInit().setMethod(verb(httpMethod)).setHeaders(requestHeaders).setRedirect(RequestRedirect.manual)
-    if body.nonEmpty then init.setBody(toArrayBuffer(body)): Unit
+    val sent = InvokeSupport.sendableBody(httpMethod, body)
+    if sent.nonEmpty then init.setBody(toArrayBuffer(sent)): Unit
     val response = JsAwait.await(NodeGlobals.fetch(url, init), ctx)
     // Always consume the body (Node fetch keep-alive invariant — see HttpActorContext.postJson).
     val bytes = fromArrayBuffer(JsAwait.await(response.arrayBuffer(), ctx))

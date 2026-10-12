@@ -117,7 +117,8 @@ private[dapr4s] object DaprErrors:
       err.httpStatus.contains(403) ||
       // Service-invocation ACL denials arrive wrapped: ERR_DIRECT_INVOKE whose message embeds the callee's
       // gRPC status ("... err: rpc error: code = PermissionDenied desc = access control policy has denied ...").
-      err.message.contains("code = PermissionDenied")
+      // Only under ERR_DIRECT_INVOKE: a component wrapping its cloud backend's gRPC denial is not a Dapr policy.
+      (codes(err).contains("ERR_DIRECT_INVOKE") && err.message.contains("code = PermissionDenied"))
 
   private def isComponentNotFound(kind: DaprComponentKind, name: String, err: SidecarError): Boolean =
     codes(err).exists(notFoundCodes.getOrElse(kind, Set.empty)) ||
@@ -128,7 +129,9 @@ private[dapr4s] object DaprErrors:
     * unknown app id ("couldn't find service: X" from mDNS), no healthy instance, connection refused, ...
     */
   private def isAppUnreachable(err: SidecarError): Boolean =
-    codes(err).contains("ERR_DIRECT_INVOKE") || err.message.startsWith("failed to invoke, id:")
+    (codes(err).contains("ERR_DIRECT_INVOKE") || err.message.startsWith("failed to invoke, id:")) &&
+      // A resiliency/deadline timeout means the app WAS reached but did not answer in time: not "unreachable".
+      !err.message.contains("deadline exceeded")
 
   /** Decide the [[DaprException]] for `err` raised by a call addressing `ctx`. `cause` is the platform exception, kept
     * for logging. Order: permission denied (any context) → component not found → app unreachable → generic.

@@ -39,11 +39,6 @@ private object InvokeCapabilityImpl:
       .build()
       .nn
 
-  /** Headers the JDK client forbids callers to set (`jdk.internal.net.http.common.Utils.DISALLOWED_HEADERS_SET`):
-    * setting one throws `IllegalArgumentException`. The client computes them itself, so they are dropped silently.
-    */
-  private val restrictedHeaders: Set[String] = Set("connection", "content-length", "expect", "host", "upgrade")
-
   /** `http.send` with the interrupt flag restored.
     *
     * WHY WE CATCH InterruptedException HERE — the same contract as `MonoOps.awaitResult` (see the full argument there):
@@ -102,10 +97,18 @@ private[internal] final class InvokeCapabilityImpl(
   ): InvokeResponse =
     val base = scope.sidecarProperties.getValue(Properties.HTTP_ENDPOINT).toOption.getOrElse("http://localhost:3500")
     val uri = URI.create(base.stripSuffix("/") + InvokeSupport.invokePath(appId, method, query)).nn
+    val sent = InvokeSupport.sendableBody(httpMethod, body)
     val publisher =
-      if body.isEmpty then HttpRequest.BodyPublishers.noBody().nn
-      else HttpRequest.BodyPublishers.ofByteArray(body.toArray).nn
+      if sent.isEmpty then HttpRequest.BodyPublishers.noBody().nn
+      else HttpRequest.BodyPublishers.ofByteArray(sent.toArray).nn
     val builder = HttpRequest.newBuilder(uri).nn.method(verb(httpMethod), publisher).nn
+    // SidecarConfig.httpClientReadTimeout (Dapr.sidecarProperties): an invoke of a hung app fails with
+    // DaprApiException("DEADLINE_EXCEEDED") instead of blocking forever, as the SDK's OkHttp client did.
+    scope.sidecarProperties
+      .getValue(Properties.HTTP_CLIENT_READ_TIMEOUT_SECONDS)
+      .toOption
+      .filter(_.intValue > 0)
+      .foreach(s => builder.timeout(java.time.Duration.ofSeconds(s.longValue)): Unit)
     // The API token goes first; a caller header of the same name replaces it (setHeader overwrites), mirroring the JS
     // twin where caller metadata replaces the base headers.
     scope.sidecarProperties
@@ -113,10 +116,7 @@ private[internal] final class InvokeCapabilityImpl(
       .toOption
       .filter(_.nonEmpty)
       .foreach(t => builder.setHeader("dapr-api-token", t): Unit)
-    headers.foreach { (k, v) =>
-      if !restrictedHeaders(k.value.toLowerCase(java.util.Locale.ROOT).nn) then
-        builder.setHeader(k.value, v.value): Unit
-    }
+    InvokeSupport.sendableHeaders(headers).foreach((k, v) => builder.setHeader(k.value, v.value): Unit)
     // send() throws IOException on a transport failure (→ DaprApiException("UNAVAILABLE") via the guard).
     val response = JvmErrors.guard(ctx)(send(builder.build().nn))
     val status = response.statusCode

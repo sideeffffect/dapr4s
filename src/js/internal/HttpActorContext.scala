@@ -66,7 +66,7 @@ private[internal] final class HttpActorContext(
     // Consume the body BEFORE branching on the status: the always-consume invariant (see postJson)
     // also covers the 204/404 early return, or the unread (empty) body would pin the connection in
     // Node fetch's keep-alive pool.
-    val text = JsAwait.await(response.text())
+    val text = JsAwait.await(response.text(), ErrorContext.Runtime)
     val code = response.status
     if code == 204 || code == 404 then None
     // Any other error status fails loudly (translated, like the JVM twin) instead of silently decoding an error body.
@@ -138,7 +138,7 @@ private object HttpActorContext:
   private def postJson(sidecar: SidecarConfig, url: String, body: String): Unit =
     val init = RequestInit().setMethod("POST").setHeaders(ActorCapabilityImpl.baseHeaders(sidecar)).setBody(body)
     val response = JsAwait.await(NodeGlobals.fetch(url, init), ErrorContext.Runtime)
-    val text = JsAwait.await(response.text())
+    val text = JsAwait.await(response.text(), ErrorContext.Runtime)
     if response.status >= 400 then throw JsErrors.fromHttp(ErrorContext.Runtime, response.status.toInt, text)
 
   /** DELETE with the status deliberately ignored, mirroring the JVM twin (`val _ = conn.getResponseCode`):
@@ -147,4 +147,4 @@ private object HttpActorContext:
   private def deleteRequest(sidecar: SidecarConfig, url: String): Unit =
     val init = RequestInit().setMethod("DELETE").setHeaders(ActorCapabilityImpl.baseHeaders(sidecar))
     val response = JsAwait.await(NodeGlobals.fetch(url, init), ErrorContext.Runtime)
-    val _ = JsAwait.await(response.text())
+    val _ = JsAwait.await(response.text(), ErrorContext.Runtime)

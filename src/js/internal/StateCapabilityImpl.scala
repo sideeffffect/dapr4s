@@ -155,7 +155,7 @@ private[internal] final class StateCapabilityImpl(
       NodeGlobals.fetch(url, RequestInit().setMethod("GET").setHeaders(ActorCapabilityImpl.baseHeaders(scope.sidecar))),
       ctx,
     )
-    val body = JsAwait.await(response.text())
+    val body = JsAwait.await(response.text(), ctx)
     if response.status == 204 then StateEntry[T](None, None)
     else if response.status >= 400 then throw JsErrors.fromHttp(ctx, response.status.toInt, body)
     else

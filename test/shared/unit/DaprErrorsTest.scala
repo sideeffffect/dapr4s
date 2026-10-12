@@ -232,3 +232,23 @@ class DaprErrorsTest extends FunSuite:
     given InvokeCapability.Instance = InvokeCapability.instance(app)
     InvokeCapability.Instance.invokeHttp(method, query = Map(QueryParamName("a") -> QueryParamValue("b")))
     assertEquals(rec.calls.toList, List("http|target|m|2|Put|0|0", "http|target|m|0|Post|0|1"))
+
+  test("a backend's gRPC PermissionDenied wrapped by a component is NOT a Dapr policy denial"):
+    val err = http(500, "ERR_PUBSUB_PUBLISH_MESSAGE", "rpc error: code = PermissionDenied desc = gcp says no")
+    assert(DaprErrors.translate(component(DaprComponentKind.PubSub, "p"), err, null).isInstanceOf[DaprApiException])
+
+  test("an invoke deadline (app reached but too slow) is not AppUnreachableException"):
+    val err = http(500, "ERR_DIRECT_INVOKE", "failed to invoke, id: slow, err: context deadline exceeded")
+    DaprErrors.translate(ErrorContext.App(AppId("slow")), err, null) match
+      case e: DaprApiException => assertEquals(e.errorCode, "ERR_DIRECT_INVOKE")
+      case other               => fail(s"expected DaprApiException, got $other")
+
+  test("sendableBody drops the body for GET/HEAD; sendableHeaders drops client-computed headers"):
+    val body = Charsets.encodeString("x")
+    assertEquals(InvokeSupport.sendableBody(HttpMethod.Get, body), ArraySeq.empty[Byte])
+    assertEquals(InvokeSupport.sendableBody(HttpMethod.Head, body), ArraySeq.empty[Byte])
+    assertEquals(InvokeSupport.sendableBody(HttpMethod.Post, body), body)
+    val h = InvokeSupport.sendableHeaders(
+      Map(MetadataKey("Host") -> MetadataValue("h"), MetadataKey("X-Ok") -> MetadataValue("1")),
+    )
+    assertEquals(h.keySet, Set(MetadataKey("X-Ok")))

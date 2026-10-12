@@ -31,11 +31,17 @@ private[internal] final class WorkflowCapabilityUniversalImpl(
   def startWithId(name: WorkflowName, instanceId: WorkflowInstanceId): WorkflowInstanceId =
     // The `input: Unit` overload passes `undefined` for the input slot, exactly like the hand
     // facade's js.undefined — the vendored client then schedules the instance without an input.
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, (), instanceId.value), ErrorContext.Runtime))
+    WorkflowInstanceId(JsAwait.await(
+      client.scheduleNewWorkflow(name.value, (), instanceId.value),
+      ErrorContext.Runtime,
+    ))
 
   def startWithId[I: JsonCodec](name: WorkflowName, instanceId: WorkflowInstanceId, input: I): WorkflowInstanceId =
     val value = parseJson(summon[JsonCodec[I]].encode(input))
-    WorkflowInstanceId(JsAwait.await(client.scheduleNewWorkflow(name.value, value, instanceId.value), ErrorContext.Runtime))
+    WorkflowInstanceId(JsAwait.await(
+      client.scheduleNewWorkflow(name.value, value, instanceId.value),
+      ErrorContext.Runtime,
+    ))
 
   def instance(instanceId: WorkflowInstanceId): WorkflowCapability.Instance^{this} =
     new WorkflowCapabilityInstanceImpl(client, instanceId).asInstanceOf[WorkflowCapability.Instance]

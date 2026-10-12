@@ -157,5 +157,5 @@ private object PublishCapabilityImpl:
     val ctx = ErrorContext.Component(DaprComponentKind.PubSub, pubsubName.value)
     val response = JsAwait.await(NodeGlobals.fetch(url, init), ctx)
     // Always consume the body (Node fetch keep-alive invariant — see HttpActorContext.postJson).
-    val text = JsAwait.await(response.text())
+    val text = JsAwait.await(response.text(), ctx)
     if response.status >= 400 then throw JsErrors.fromHttp(ctx, response.status.toInt, text)

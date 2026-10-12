@@ -31,8 +31,20 @@ private[internal] object JvmErrors:
           case None      =>
             t match
               case d: io.dapr.exceptions.DaprException => DaprErrors.translate(ctx, fromSdkHttp(d), d)
-              case io: java.io.IOException             => DaprErrors.unavailable(String.valueOf(io.getMessage).nn, io)
+              case io: java.io.IOException             => fromIo(io)
               case other                               => other
+
+  /** Raw-HTTP transport failures. Only "could not connect" is `UNAVAILABLE`; a request timeout is `DEADLINE_EXCEEDED`
+    * (the sidecar was reached); any other I/O failure mid-exchange is `UNKNOWN`.
+    */
+  private def fromIo(io: java.io.IOException): dapr4s.DaprException =
+    val msg = String.valueOf(io.getMessage).nn
+    io match
+      case _: java.net.http.HttpConnectTimeoutException | _: java.net.ConnectException |
+          _: java.net.UnknownHostException | _: java.net.NoRouteToHostException =>
+        DaprErrors.unavailable(msg, io)
+      case _: java.net.http.HttpTimeoutException => dapr4s.DaprApiException("DEADLINE_EXCEEDED", msg, io)
+      case _                                     => dapr4s.DaprApiException("UNKNOWN", msg, io)
 
   /** Run a synchronous SDK call (one that throws instead of returning a `Mono`) and translate its failure.
     *

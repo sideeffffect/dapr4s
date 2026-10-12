@@ -102,7 +102,7 @@ private[internal] object ActorCapabilityImpl:
     val init = RequestInit().setMethod("POST").setHeaders(baseHeaders(sidecar))
     body.foreach(b => init.setBody(b): Unit)
     val response = JsAwait.await(NodeGlobals.fetch(url, init), ErrorContext.Runtime)
-    val text = JsAwait.await(response.text())
+    val text = JsAwait.await(response.text(), ErrorContext.Runtime)
     if response.status >= 400 then throw JsErrors.fromHttp(ErrorContext.Runtime, response.status.toInt, text)
     text
 
