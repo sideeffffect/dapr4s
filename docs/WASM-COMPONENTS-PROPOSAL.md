@@ -57,6 +57,12 @@ The `scala-wasm` fork ships only as an sbt plugin (`moduleKind = WasmComponent`,
 | `scala-cli-tmpfs.sh` (`__loader.js` pick), `wasm-test.sh` exit-1 tolerance | scala-cli-specific bugs. They go away |
 | per-file `target.platform` directives | real `jvm` / `js` / `wasm` projects over `src/{shared,jvm,js,wasm}` |
 
+**Status (2026-10): done for `jvm` + `js`** in [PR #42](https://github.com/sideeffffect/dapr4s/pull/42). Differences
+from the plan above: the facades still need an embedding step, but it is now an sbt `packageBin / mappings` entry
+(only `.sjsir` of the main-closure packages) instead of a script, because the generated code has to compile in its
+own project (`stFacades`, without the CC / explicit-nulls / fatal-warning flags). The per-file `target.platform`
+lines stay as comments for now; removing them is a separate follow-up.
+
 Projects: `core.jvm`, `core.js` (current Node/JSPI target), **`core.wasm`** (scala-wasm linker, Wasm-component
 javalib). Artifact for the new target: `dapr4s-wasm_sjs1_3`. It is a different artifact because its public surface
 differs (see 2c).

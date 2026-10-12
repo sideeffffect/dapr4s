@@ -2,7 +2,7 @@
 
 Adds the three Dapr building blocks dapr4s does not yet cover, bringing
 coverage to all 12. Grounded against the Dapr Java SDK **1.17.2** (the version
-`project.scala` already depends on) and the existing capability idiom.
+the build already depends on) and the existing capability idiom.
 
 ## Scope decisions (confirmed with maintainer)
 

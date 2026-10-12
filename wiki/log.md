@@ -151,3 +151,8 @@
 - Reported (not fixed): broken link java-interop-safe-scala.md:187 → scala-cli-build-tool.md (article missing; raw scala-cli sources exist but no compiled article)
 
 ## [2026-10-12] ingest | dapr-wasm-components WIT vs dapr4s
+
+## [2026-10-12] update | dapr4s scala-cli -> sbt migration
+- Updated: scala-js/scalablytyped-with-scala-cli.md — sbt GenSource plugin findings (beta45 needs scalajs-bundler, npmUpdate override to keep package-lock in charge, separate facade project, embedding via packageBin mappings)
+- Updated: scala-js/scala-js-async-jspi-wasm.md — Scala.js 1.22 `withUseJSPI`, sbt removes the scala-cli harness workarounds, parallelExecution one-Node-worker-per-suite EADDRINUSE footgun
+- Updated: scala-js/scala-js-cross-building-scala-cli.md, scala-js/capture-checking-on-scala-js.md — note that dapr4s moved to sbt; scala-cli knowledge kept

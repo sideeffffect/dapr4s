@@ -2,7 +2,9 @@
 
 > Sources: Empirical probe (/tmp/cc-js-probe, dapr4s nightly 3.10.0-RC1-bin-20260607-dec42ae-NIGHTLY), scala/scala3 Compiler.scala, scala/scala3 issue tracker, scala-cli v1.13.0 release notes, 2026-06-11
 > Raw: [CC on Scala.js probe report](../../raw/scala-js/2026-06-11-cc-on-scalajs-probe.md)
-> Updated: 2026-06-11
+> Updated: 2026-10-12
+
+> **Note (2026-10-12): dapr4s moved from scala-cli to sbt** ([PR #42](https://github.com/sideeffffect/dapr4s/pull/42)). This article stays as the record of the scala-cli build and remains valid for scala-cli users; for the sbt equivalents see [Cross-Building JVM + Scala.js](scala-js-cross-building-scala-cli.md). Capture checking on Scala.js under sbt behaves the same (dapr4s's full flag set compiles `coreJS` with Scala.js 1.22).
 
 ## Overview
 
