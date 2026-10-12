@@ -22,6 +22,7 @@ infrastructure failures are not in the type). The main gaps are **workflow autho
 | Name binding | name is the first param of every function | universal `XCapability` takes the name; `X.Instance` binds it | exact — `Instance` is pure Scala sugar |
 | Payloads | `list<u8>` | `JsonCodec[T]` values | codec encodes to bytes at the wall |
 | Expected failures | `result<_, variant>` (`key-not-found`, `etag-mismatch`, `not-acquired`) | `Option`, `Boolean`, `Option[ETagMismatchException]`, `UnlockStatus` | good — map variants to the existing shapes |
+| Setup errors | `*-error` variants (`store-not-found`, `permission-denied`, ...) | since D2: `DaprException` subtypes (`ComponentNotFoundException`, `PermissionDeniedException`, `AppUnreachableException`, `InvokeHttpException`, `DaprApiException`) — mapping in [Dapr error codes](dapr-error-codes.md) | good — one variant ↔ one subtype |
 | Infra failures | provider **traps** | exceptions (`NonFatal`) | a trap cannot be caught in-component; dapr4s exceptions for those just never occur |
 | Read-only tiers | none (WIT has no authority split) | `X.ReadOnly` / `X.Instance.ReadOnly` | dapr4s-only layer — no conflict |
 | Inbound | exported callbacks, mandatory, dispatch by data | `DaprApp` routes list | good — one generic callback impl dispatches over `DaprApp` |
@@ -35,7 +36,7 @@ infrastructure failures are not in the type). The main gaps are **workflow autho
 | Bindings | invoke-binding | invoke, invokeOneWay | **100 %** (oneWay = ignore response) |
 | Secrets | get-secret (multi-value map), get-bulk-secret | get → `Option[SecretValue]`, getBulk | **high**. WIT secret is `list<tuple<string,string>>`; dapr4s `SecretValue` is one string (pick by key) |
 | Configuration | get, subscribe → id, unsubscribe | get, subscribe(onChange) → `AutoCloseable` | **high**, but push is inverted: updates arrive on `configuration-callback.on-configuration-event`; dapr4s needs an id → closure registry |
-| Invocation | invoke(app-id, path, verb, headers, query, body) → status/headers/body | invoke(appId, method, data, httpMethod, metadata) → `Resp` | **high**. WIT is richer (status, response headers, query); dapr4s exposes only the decoded body |
+| Invocation | invoke(app-id, path, verb, headers, query, body) → status/headers/body | invoke(appId, method, data, httpMethod, metadata) → `Resp`; since D3 also `invokeHttp(appId, method, body, httpMethod, headers, query)` → `InvokeResponse(status, headers, body)` | **~100 %** since D3 (2026-10-12). The typed `invoke` throws `InvokeHttpException` on non-2xx |
 | Lock | try-lock, unlock | tryLock → Boolean, unlock → `UnlockStatus` | **~100 %**. WIT has `lock-belongs-to-others`; dapr4s `UnlockStatus` has no such case (only Success/LockNotFound/InternalError) |
 | Workflow (client) | start, get, terminate, raise-event, pause, resume, purge (needs `workflow-component`) | start/startWithId, getStatus, waitForCompletion, suspend/resume, terminate, raiseEvent, purge | **high**. `waitForCompletion` = poll `get`; WIT `workflow-instance` has no typed output (properties map) |
 | Jobs | schedule (failure policy), get, delete | schedule/scheduleOnce, get, delete (JVM only) | **high** — and it would bring jobs to Scala.js-on-Wasm |
