@@ -1,6 +1,6 @@
 # Proposal: dapr4s on WebAssembly components (dapr-wasm-components)
 
-Status: **proposal** (2026-10-12). Implemented so far: D1, D2, D3 (see the table in 2a); W1–W4 in WIT `dapr-wasm-components:interfaces@0.7.0` ([dapr-wasm-components PR #11](https://github.com/sideeffffect/dapr-wasm-components/pull/11), see section 1).
+Status: **proposal** (2026-10-12). **Phase 0 done: partial go** (section 6). Implemented so far: D1, D2, D3 (see the table in 2a); W1–W4 in WIT `dapr-wasm-components:interfaces@0.7.0` ([dapr-wasm-components PR #11](https://github.com/sideeffffect/dapr-wasm-components/pull/11), see section 1).
 
 Decisions (2026-10-12):
 - **W1 accepted, along the `ReadOnly` line only.** WIT gets `x-read` + `x` interfaces where dapr4s has
@@ -93,7 +93,8 @@ differs (see 2c).
   registered `DaprApp`. The actor callback drives `ActorContext` through the outbound `actors` interface. Config
   pushes go through an id → `onChange` registry (W2 handle owns the entry).
 - Entry point: a reactor has no `main`. The user writes `object App extends DaprComponent { val app: DaprApp = ... }`.
-  How the library's export glue finds that object depends on scala-wasm's export mechanism (**spike question**).
+  How the library's export glue finds that object depends on scala-wasm's export mechanism (**spike question**;
+  answered in section 6: a fixed-FQN object, resolved at link time).
 - No connection config: the outbound provider reads `DAPR_HTTP_ENDPOINT` / `DAPR_API_TOKEN` itself.
 
 ## 3. dapr4s-examples
@@ -106,11 +107,11 @@ existing JVM example (state + pub/sub + invoke + an actor) so the three platform
 
 | Phase | Work | Size | Depends on |
 |---|---|---|---|
-| 0 | **Spike**: scala-wasm + Scala 3.9 nightly + CC flags → component importing `state` and exporting `invocation-callback`, composed and run against Dapr | 1–2 days | — (go/no-go) |
+| 0 | **Spike**: scala-wasm + Scala 3.9 nightly + CC flags → component importing `state` and exporting `invocation-callback`, composed and run against Dapr. **Done 2026-10-12: partial go** (section 6) | 1–2 days | — (go/no-go) |
 | 1 | dapr4s → sbt (jvm + js only, CI parity) | 3–5 days | — |
 | 2 | D1–D3 (then D4–D7) | ~1 day each | — |
 | 3 | WIT 0.7.0: W1–W4 + provider updates + Rust SDK | 2–4 days | — |
-| 4 | dapr4s `wasm` platform, outbound + inbound, no workflows | 1–2 weeks | 0, 1, 3 |
+| 4 | dapr4s `wasm` platform, outbound + inbound, no workflows. **Revised after Phase 0: 3–4 weeks** plus upstream scala-wasm fixes (section 6) | ~~1–2 weeks~~ 3–4 weeks | 0, 1, 3, scala-wasm fixes |
 | 5 | dapr4s-examples `wasm-component` + e2e | 1–2 days | 4 |
 | 6 | W5 workflow authoring (WASI 0.3 async provider) + Scala durabletask replay engine | weeks, uncertain | 4, WASI 0.3 in hosts |
 
@@ -122,3 +123,66 @@ existing JVM example (state + pub/sub + invoke + an actor) so the three platform
   `@JSImport`. Unknown until Phase 0.
 - **Hosts**: GC + EH components need Spin canary or recent wasmtime. The gRPC provider is Spin-only.
 - **Fork churn**: the scala-wasm API "is subject to change without notice". Pin versions.
+
+## 6. Phase 0 result (2026-10-12): partial go
+
+Spike: local repo `dapr4s-wasm-spike` (not published). Details, commands and evidence:
+[`wiki/scala-js/scala-wasm-component-spike.md`](../wiki/scala-js/scala-wasm-component-spike.md).
+
+**It works end to end.** A counter app was written against dapr4s 3.0.0's `StateCapability.Instance` + `JsonCodec`
+and compiled by dapr4s's nightly (`3.10.0-RC1-bin-20260607-dec42ae-NIGHTLY`) with all dapr4s flags. It linked as a
+WASI component with scala-wasm 1.22.1-wasm.6. The WIT `dapr-wasm-components:interfaces@0.7.0` came from OCI via
+`wkg wit fetch`, and the bindings from `wit-bindgen-scala` 0.1.0 via `scalaJSWitDirectory`. It composed with
+`compose.sh` (http out + http in), ran under `wasmtime serve -S cli` 49.0.2 next to daprd 1.17.7 + Redis, and
+`dapr invoke --method counter` returned 1, then 2. The error mapping also works: `store-not-found` →
+`ComponentNotFoundException(State, name)`, `etag-mismatch` → `ETagMismatchException`.
+**Partial**, because it needs 5 workarounds, and 3 of them must become upstream scala-wasm work before shipping.
+
+Answers to the risk questions (section 5):
+
+1. **IR compatibility: yes, with an overlay.** The 1.22.1-wasm.6 linker reads the nightly's IR. But the nightly's
+   Scala.js stdlib (built on Scala.js 1.20.2) uses JS `===` in `BoxesRunTime`, which is reachable from any program.
+   We overlay the 4 library-js classes that scala-wasm's Scala 3 fork patched. **The bigger finding:** mainline
+   Scala 3 has no WIT codegen. WIT imports are lowered at the call site by the compiler, and `@WitExport` is
+   compiler-emitted. The nightly compiles the bindings but emits no WIT IR (the linker writes an empty output and
+   reports success). scala-wasm's only Scala 3 build (`3.8.3-RC1-wasm.4`) is stale and rejects the current
+   generator's output.
+2. **Shared code without JS: yes, for what dapr4s itself uses.** Opaque types, `JsonCodec`, the capability tiers,
+   `DaprApp`/`InvokeRoute`/validation and the exceptions link with zero JS. Excluded: `java.time`
+   formatting/parsing (`Instant.parse`/`toString`, so also `WorkflowSnapshot.toString`): scala-java-time →
+   `Locale.getDefault` → scala-java-locales `DefaultLocale` → `window`. Also `Instant.now`/`currentTimeMillis`,
+   `println` and `UUID.randomUUID` (no `SecureRandom`). `java.time.Duration`, `FiniteDuration`, `UUID.fromString`
+   and `String.format` link. The published POM also brings mainline `scalajs-library`/`javalib` 1.22.0; the `wasm`
+   build must exclude them.
+3. **Bindings under the CC flags: they compile with zero warnings under all six flags, but that does not help,
+   because the nightly ignores WIT.** They must be compiled by Scala 2.13 + the scala-wasm plugin. This is the same
+   isolation as the ScalablyTyped `stFacades` project, but the reason is the compiler, not the flags. Scala 3 code
+   then uses the generated records/variants directly and calls imports through plain forwarders compiled on the
+   2.13 side.
+4. **Exports from a library: yes.** The 15 `@WitExport` functions live in a library jar, and the linker picks them
+   up from any classpath entry. A reactor has no `main` (module initializers need an export; `Reflect` is
+   JS-backed), so the app supplies its `DaprApp` through one fixed-FQN object (`object ComponentRoot { def
+   component = MyApp }`). The library compiles against a `Provided` stub, and a missing root is a link error.
+5. **Compose + runtime: yes, after two linker workarounds.** (a) The linker cannot lift exports with more than 16
+   flat params (`??? // TODO read params from linear memory`). This hits `on-topic-event` and `on-timer`; the
+   import side (`jobs.schedule`, `converse`, `register-reminder`, `register-timer`) fails at `component new`. A
+   ~20-line export-side linker patch was used. (b) The synthesized component type drops WIT aliases, so `wac`
+   rejects the composition ("missing expected list export `metadata`"). Fix: re-embed the real world with
+   `wasm-tools component embed --encoding utf16`. With utf8, strings arrive garbled. W1 holds: the app imports
+   only `state-read.get` + `state.save`.
+
+Numbers: dapr4s app 498 KB (fullopt), composed 2.3 MB. Cold start (spawn → first 200, uncached) ~0.8 s, ~40 ms
+with wasmtime's cache. Warm round trip through the sidecar 2.4 ms median, incl. Redis get + save.
+
+**Revised Phase 4: 3–4 weeks** (was 1–2), plus upstream work in scala-wasm (not ours to schedule):
+- The `wasm` artifact becomes a two-compiler build: a Scala 2.13 sub-project (generated bindings, the
+  `@WitExport` glue, *generated* import forwarders for the ~100 WIT functions) under the Scala 3 `wasm` wall.
+  Publishing a 2.13 artifact that a Scala 3 artifact depends on is new for dapr4s.
+- Upstream (scala-wasm): params via linear memory on both sides; use the configured WIT world, or keep aliases,
+  in the component type; a Scala 3 WIT backend that tracks the library (or upstreaming to Scala.js). Until then:
+  carry the linker patch and the re-embed step, and keep the stdlib overlay per nightly bump.
+- dapr4s shared code must avoid `java.time` formatting and wall-clock/random APIs on the `wasm` path (or provide
+  WASI-backed replacements).
+- Also found: `compose.sh` exits 1 on success (`tmp` assigned in a `$(...)` subshell), and the wasi-http
+  provider's `store-not-found` payload is daprd's raw body, not the store name.
+
