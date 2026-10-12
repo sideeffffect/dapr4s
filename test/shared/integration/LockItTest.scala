@@ -20,6 +20,7 @@ class LockItTest extends FunSuite, SharedDaprItSuite:
   test("lock: unlock by the owner returns Success, re-unlock returns LockNotFound")(
     withDapr(unlockByOwnerThenLockNotFound),
   )
+  test("lock: unlock by a different owner returns LockBelongsToOthers")(withDapr(unlockByOtherOwner))
 
   private def res() = LockResourceId(ItNames.fresh("res"))
   private def owner() = LockOwner(ItNames.fresh("owner"))
@@ -41,3 +42,11 @@ class LockItTest extends FunSuite, SharedDaprItSuite:
       assert(LockCapability.Instance.tryLock(r, o, 30.seconds))
       assertEquals(LockCapability.Instance.unlock(r, o), UnlockStatus.Success)
       assertEquals(LockCapability.Instance.unlock(r, o), UnlockStatus.LockNotFound)
+
+  def unlockByOtherOwner(using DaprCapability): Unit =
+    DaprCapability.lock(ItNames.LockStore):
+      val r = res()
+      val o = owner()
+      assert(LockCapability.Instance.tryLock(r, o, 30.seconds))
+      assertEquals(LockCapability.Instance.unlock(r, owner()), UnlockStatus.LockBelongsToOthers)
+      assertEquals(LockCapability.Instance.unlock(r, o), UnlockStatus.Success)
