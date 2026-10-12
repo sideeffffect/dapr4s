@@ -133,6 +133,11 @@ private[internal] object JsErrors:
 
   /** `google.rpc.ErrorInfo.reason` from a Connect error's `details` (`[{type, value: Uint8Array}]`). ErrorInfo's field
     * 1 is `reason` (tag byte 0x0A, then a varint length — one byte for every reason daprd sends, all < 128 chars).
+    * Anything that does not fit that shape (longer reason, other field order) yields `None`, and the message fallback
+    * in [[DaprErrors]] still applies.
+    *
+    * WHAT: `asInstanceOf[js.Dynamic]` on each `details` element. WHY: Connect's detail objects have no facade. WHY
+    * SAFE: zero-cost view of a JS object; `type` and `value` are type-tested (`String`, `Uint8Array`) before use.
     */
   private def connectReason(d: js.Dynamic): Option[String] =
     (d.selectDynamic("details"): Any) match

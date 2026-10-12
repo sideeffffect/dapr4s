@@ -130,4 +130,6 @@ private[internal] final class InvokeCapabilityImpl(
     val rawHeaders = response.headers.nn.map.nn.asScala.toList.flatMap { (name, values) =>
       values.asScala.map(v => name -> v)
     }
+    // unsafeWrapArray (no copy): `bytes` is the fresh array the body handler allocated for this response and no
+    // other reference to it survives this method, so the ArraySeq is effectively immutable.
     InvokeResponse(status, InvokeSupport.normaliseHeaders(rawHeaders), ArraySeq.unsafeWrapArray(bytes))
