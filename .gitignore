@@ -1,6 +1,11 @@
 .claude
 node_modules/
-# Scratch tree of the ScalablyTyped converter (scripts/generate-st-facades.sh); the script
-# removes it after every run, ignored here as a second line of defence — scala-cli would
-# otherwise compile it as project sources.
-out/
+# sbt: build output of every project (core .jvm/.js, .integration/.jvm/.js, .st-facades), the
+# meta-build, the sbt server/BSP state.
+target/
+.bsp/
+# Metals / Bloop
+.metals/
+.bloop/
+project/metals.sbt
+project/project/

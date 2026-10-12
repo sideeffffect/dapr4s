@@ -47,7 +47,7 @@ import dapr4styped.daprDapr.mod.{DaprClient, DaprWorkflowClient}
   *
   * Annotated `@scala.caps.assumeSafe` so that safe-mode user code can call `Dapr(config).run` without seeing any unsafe
   * operations. The internal use of `DaprCapabilityImpl` (a JS-SDK-backed class) and the ScalablyTyped-generated SDK
-  * clients it wraps (`dapr4styped.daprDapr` — see js-deps.scala) are managed entirely here.
+  * clients it wraps (`dapr4styped.daprDapr` — see stFacades in build.sbt) are managed entirely here.
   */
 @scala.caps.assumeSafe
 class Dapr(config: DaprConfig = DaprConfig()):
