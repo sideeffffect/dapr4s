@@ -203,7 +203,11 @@ object Dapr4sWasm {
   val StdlibOverlayVersion = "3.8.3-RC1-wasm.4"
   val OverlayClassPrefixes: Seq[String] = Seq(
     "scala/runtime/BoxesRunTime",
+    // The fork's patched Symbol.scala also defines (Wasm-safe) UniquenessCache and JSUniquenessCache; the nightly's
+    // UniquenessCache is backed by js.Dictionary. Reached by any app that creates a Symbol (e.g. upickle).
     "scala/Symbol",
+    "scala/UniquenessCache",
+    "scala/JSUniquenessCache",
     "scala/collection/mutable/ArrayBuilder",
     "scala/collection/mutable/Buffer",
   )
