@@ -442,7 +442,6 @@ object `package` extends Module {
       Seq(src / "shared" / "src" / "main" / "scala", src / "shared" / "src" / "main" / "scala-2", src / "jvm" / "src" / "main" / "scala")
         .map(PathRef(_))
     }
-    override def resources = Task.Sources()
     override def mvnDeps = Seq(
       mvn"$ScalaWasmOrg::scalajs-linker-interface:$ScalaWasmVersion",
       mvn"$ScalaWasmOrg::scalajs-ir:$ScalaWasmVersion",
@@ -461,10 +460,8 @@ object `package` extends Module {
       os.write(dir / "META-INF" / "NOTICE", os.read(noticeDapr4s().path) + os.read(src / "NOTICE"))
       PathRef(dir)
     }
-    override def jar: T[PathRef] = Task {
-      val dirs = Seq(compile().classes.path, releasedLinkerResources().path, noticeDir().path)
-      PathRef(mill.util.Jvm.createJar(Task.dest / "out.jar", dirs, manifest()))
-    }
+    // The private library .sjsir + LICENSE/NOTICE: on the run classpath (the link driver) and in the jar.
+    override def resources = Task(Seq(releasedLinkerResources(), noticeDir()))
     override def sourceJar: T[PathRef] = Task {
       val dir = Task.dest / "extra"
       os.copy(
