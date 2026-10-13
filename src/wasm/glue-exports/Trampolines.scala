@@ -4,7 +4,7 @@
 // `dapr-wasm-components:interfaces/app@0.7.2`. Each one delegates to the Scala 3 implementation behind the fixed-name
 // object `AppRoot` (stub: src/wasm/glue-root-stub; real one: the wall's src/wasm/internal/AppRoot.scala).
 //
-// Only COMPONENTS depend on this project (`witExports`): every `@WitExport` is a linker entry point, and a plain
+// Only COMPONENTS depend on this module (`wasm.glueExports`): every `@WitExport` is a linker entry point, and a plain
 // Scala.js link (the wall's unit tests on Node) rejects them ("Invalid top level export").
 package dapr4s.internal.witglue
 

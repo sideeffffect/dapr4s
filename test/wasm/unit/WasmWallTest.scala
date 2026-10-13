@@ -72,7 +72,7 @@ final class FakeState(
   ): wit.Result[Unit, witState.TransactionError] = transactionResult
 
 /** Unit tests of the `wasm` wall: state error mapping into dapr4s's `DaprException` family (the rules of
-  * docs/WASM-COMPONENTS-PROPOSAL.md §2c) and invoke dispatch. Run with `cd wasm && sbt wallWasm/test`.
+  * docs/WASM-COMPONENTS-PROPOSAL.md §2c) and invoke dispatch. Run with `./mill 'wasm.lib[source].wall.test'`.
   */
 @scala.caps.assumeSafe
 class WasmWallTest extends FunSuite:
