@@ -80,6 +80,29 @@ trait Dapr4sJs extends ScalaJSModule {
   def scalaJSVersion = Versions.scalaJS
 }
 
+/** Scala.js test modules on Scala >= 3.8.
+  *
+  * WHAT: `scalaJSTestDeps` (the test bridge and the Scala.js library, which Mill PREPENDS to the test link
+  * classpath) without their transitive `scalajs-scalalib_2.13:2.13.x+1.22.0`.
+  * WHY: since Scala 3.8 the stdlib IR comes from `scalajs-scalalib_2.13:<Scala 3 version>`; Mill resolves the
+  * bridge transitively, which brings the Scala 2.13 stdlib IR as well and puts it FIRST, and the linker keeps
+  * the first IR file per class: the Wasm link of the integration suites then fails with "Referring to
+  * non-existent method scala.Some.orNull()" (2.13's Option shadowing 3.10's).
+  * WHY SAFE: the right stdlib IR is on the module's own run classpath (via scala3-library_sjs1_3), exactly as
+  * sbt-scalajs links it. RETIRES when Mill resolves the test deps together with the module's dependencies
+  * (upstream Mill fix).
+  */
+trait Scala3JsTests extends TestScalaJSModule {
+  override def scalaJSTestDeps = Task {
+    defaultResolver().classpath(
+      Seq(
+        mvn"org.scala-js::scalajs-library:${scalaJSVersion()}",
+        mvn"org.scala-js::scalajs-test-bridge:${scalaJSVersion()}",
+      ).map(_.withDottyCompat(scalaVersion()).exclude("org.scala-js" -> "scalajs-scalalib_2.13")),
+    )
+  }
+}
+
 // -------------------------------------------------------------------------------------------------
 // The library
 // -------------------------------------------------------------------------------------------------
@@ -156,7 +179,7 @@ object core extends Module {
       PathRef(out)
     }
 
-    object test extends ScalaJSTests with TestModule.Munit with UnitTestSources {
+    object test extends ScalaJSTests with Scala3JsTests with TestModule.Munit with UnitTestSources {
       override def sources = Task.Sources(Dapr4sPaths.test / "shared", Dapr4sPaths.test / "js")
       override def resources = Task.Sources()
       override def mvnDeps = Seq(
@@ -194,7 +217,7 @@ object integration extends Module {
     )
   }
 
-  object js extends Dapr4sFlags with Dapr4sJs with TestScalaJSModule with TestModule.Munit {
+  object js extends Dapr4sFlags with Dapr4sJs with Scala3JsTests with TestModule.Munit {
     override def moduleDeps = Seq(core.js.test)
     override def sources = Task.Sources(Dapr4sPaths.test / "shared" / "integration", Dapr4sPaths.test / "js" / "integration")
     override def resources = Task.Sources()

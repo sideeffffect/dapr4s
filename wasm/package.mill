@@ -78,17 +78,17 @@ object `package` extends Module {
   /** The resolved WIT directory (world.wit + deps/). */
   def wit: T[PathRef] = Task {
     val base = Task.dest
-    os.copy(wasmDir / "wit" / "world.wit", base / "wit" / "world.wit", createFolders = true)
-    os.copy(wasmDir / "wkg-config.toml", base / "wkg-config.toml")
-    os.copy(wasmDir / "wkg.lock", base / "wkg.lock")
-    val _ = witInputs()
+    val Seq(world, config, lock) = witInputs().map(_.path)
+    os.copy(world, base / "wit" / "world.wit", createFolders = true)
+    os.copy(config, base / "wkg-config.toml")
+    os.copy(lock, base / "wkg.lock")
     os.proc("wkg", "wit", "fetch", "--config", "wkg-config.toml").call(cwd = base, stderr = os.Pipe)
     PathRef(base / "wit")
   }
 
   /** The Scala.js organization of every module here: the scala-wasm fork, not org.scala-js. */
   trait ScalaWasm extends ScalaJSModule {
-    def scalaJSVersion = ScalaWasmVersion
+    override def scalaJSVersion = ScalaWasmVersion
     override def scalacPluginMvnDeps = Task {
       super.scalacPluginMvnDeps().filterNot(_.dep.module.organization.value == "org.scala-js") ++
         Option.when(!scalaVersion().startsWith("3."))(mvn"$ScalaWasmOrg:::scalajs-compiler:$ScalaWasmVersion")
@@ -298,7 +298,7 @@ object `package` extends Module {
         * plain Scala.js and run on Node: no WIT import is reachable from them, so they need neither wasmtime
         * nor a sidecar.
         */
-      object test extends ScalaJSTests with TestModule.Munit {
+      object test extends ScalaJSTests with ScalaWasm with TestModule.Munit {
         override def sources = Task.Sources(Dapr4sPaths.test / "wasm" / "unit")
         override def resources = Task.Sources()
         override def mvnDeps = Seq(mvn"org.scalameta::munit::${Versions.munit}")
@@ -308,7 +308,7 @@ object `package` extends Module {
             Seq(
               mvn"$ScalaWasmOrg::scalajs-library:$ScalaWasmVersion",
               mvn"$ScalaWasmOrg::scalajs-test-bridge:$ScalaWasmVersion",
-            ).map(_.withDottyCompat(scalaVersion())),
+            ).map(_.withDottyCompat(scalaVersion()).exclude(Exclusions*)),
           )
         }
       }
@@ -430,6 +430,7 @@ object `package` extends Module {
       Dapr4sPaths.root / "scripts" / "wasm" / "prepare-patched-linker.sh",
       Dapr4sPaths.root / "scripts" / "wasm" / "patches",
     )
+    def noticeDapr4s = Task.Source(wasmDir / "linker" / "NOTICE-dapr4s")
     def patchedSources: T[PathRef] = Task {
       val _ = patchInputs()
       os.proc(Dapr4sPaths.root / "scripts" / "wasm" / "prepare-patched-linker.sh", Task.dest)
@@ -457,7 +458,7 @@ object `package` extends Module {
       val src = patchedSources().path
       val dir = Task.dest / "notice"
       os.write(dir / "META-INF" / "LICENSE", os.read(src / "LICENSE"), createFolders = true)
-      os.write(dir / "META-INF" / "NOTICE", os.read(wasmDir / "linker" / "NOTICE-dapr4s") + os.read(src / "NOTICE"))
+      os.write(dir / "META-INF" / "NOTICE", os.read(noticeDapr4s().path) + os.read(src / "NOTICE"))
       PathRef(dir)
     }
     override def jar: T[PathRef] = Task {
@@ -467,7 +468,7 @@ object `package` extends Module {
     override def sourceJar: T[PathRef] = Task {
       val dir = Task.dest / "extra"
       os.copy(
-        Dapr4sPaths.root / "scripts" / "wasm" / "patches" / "scala-wasm-params-via-memory.patch",
+        patchInputs()(1).path / "scala-wasm-params-via-memory.patch",
         dir / "scala-wasm-params-via-memory.patch",
         createFolders = true,
       )
@@ -475,7 +476,7 @@ object `package` extends Module {
     }
     override def docJar: T[PathRef] = Task {
       val dir = Task.dest / "notice"
-      os.copy(wasmDir / "linker" / "NOTICE-dapr4s", dir / "NOTICE", createFolders = true)
+      os.copy(noticeDapr4s().path, dir / "NOTICE", createFolders = true)
       PathRef(mill.util.Jvm.createJar(Task.dest / "out.jar", Seq(dir)))
     }
   }
