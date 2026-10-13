@@ -366,8 +366,16 @@ scala-wasm fork of Scala.js (`io.github.scala-wasm`, `ModuleKind.WasmComponent`)
 Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
 `wiki/scala-js/scala-wasm-component-spike.md`. The six artifacts are **published to Maven Central**
 by the same `publish` job as core (snapshots on master pushes, releases on tags); `publishLocal` works.
-**No PRs, issues, forks or pushed branches to scala/* or scala-wasm/* repositories** (user rule):
-upstream gaps are worked around here.
+Upstream gaps are worked around here AND fixed upstream (the earlier "no upstream PRs" rule was lifted on
+2026-10-13). Open upstream PRs, each retiring one workaround: scala-wasm/scala-wasm
+[#268](https://github.com/scala-wasm/scala-wasm/pull/268) (params via memory → patched linker),
+[#269](https://github.com/scala-wasm/scala-wasm/pull/269) (WIT aliases → re-embed),
+[#270](https://github.com/scala-wasm/scala-wasm/pull/270) (pluggable System → println/clock rules),
+[#271](https://github.com/scala-wasm/scala-wasm/pull/271) (core-lib exclusions),
+scala/scala3 [#27300](https://github.com/scala/scala3/pull/27300) (unpickler crash → empty javadoc),
+cquiroz/scala-java-locales [#640](https://github.com/cquiroz/scala-java-locales/pull/640) (java.time formatting).
+**scala/scala3 and VirtusLab/scala-cli forbid LLM-written PR/issue text** (their `LLM_POLICY.md`): there,
+agents push branches / open drafts with an EMPTY description; the user writes the text.
 
 - **In the main build, isolated by the fork swap** (`wasm/package.mill`, `wasm/components.mill`; the sbt
   plugin sources stay in `wasm/sbt-plugin/`). With sbt, the fork's `sbt-scalajs` could not share a
