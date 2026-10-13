@@ -227,7 +227,10 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   re-embed) cannot be a library, so they moved into that plugin
   ([`wasm/sbt-plugin`](../wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala)), which dapr4s's own
   `wasm/` build compiles into its meta-build. The link-time stubs stay unpublished (`Provided`). The first consumer
-  is [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' separate `wasm/` sbt build.
+  is [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' separate `wasm/` sbt build. It uses the
+  **release mode** (`-Ddapr4s.wasm.coreRelease=3.0.0`): the shared API comes from the published `dapr4s_sjs1_3`
+  3.0.0 on Central (linked by the scala-wasm linker, as the spike did), and only the wasm layer (wall, generated
+  glue, `DaprComponent`) is local. Once the wasm layer is released, that local part becomes a Central dependency too.
 
 This makes the "two-compiler build" of the revised Phase 4 concrete: the 2.13 part is entirely generated, and only
 the generator (not hand-written forwarders) has to grow to cover all ~100 WIT functions. What remains open for

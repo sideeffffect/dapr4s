@@ -420,6 +420,13 @@ the reusable parts are **`publishLocal`-only** (see below).
   dapr4sWasmWitExports(dapr4sWasmVersion))`; its own `wit/world.wit` + `wkg-config.toml` + `wkg.lock`
   (the plugin re-embeds that world); and `object dapr4s.wasm.ComponentRoot`. The worked example is
   dapr4s-examples' `wasm/` build. What cannot be a library is build logic, hence the plugin.
+- **Release mode** (`sbt -Ddapr4s.wasm.coreRelease=3.0.0 ...`): `coreWasm` compiles only
+  `src/wasm/core/DaprComponent.scala` and depends on the PUBLISHED `dapr4s_sjs1_3:<v>` (Central, Scala.js IR) for
+  the shared API, which the scala-wasm linker links into the component (the JS wall is unreachable and dropped;
+  mainline org.scala-js library/javalib are excluded). Valid because the wasm platform traits equal the JS ones
+  (all empty) and `src/shared` is unchanged since `<v>`. A `publishLocal` in this mode is a SMALL wasm layer on
+  top of Central dapr4s — what dapr4s-examples consumes. The default (source) mode stays for dapr4s's own tests.
+  e2e: `SBT_ARGS=-Ddapr4s.wasm.coreRelease=3.0.0 scripts/wasm/e2e.sh`. Bump `<v>` in CI with each release.
 - **Shared code on the `wasm` path** must avoid `java.time` formatting/parsing, wall-clock
   (`Instant.now`), `println` and `UUID.randomUUID`: they reach JS and fail to link.
 - Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr

@@ -12,7 +12,8 @@
 #
 # Needs: Docker (Redis on localhost:26480), the dapr CLI + daprd (`dapr init --slim`), wasmtime,
 # wasm-tools, wkg, wac, wit-bindgen-scala, sbt, and the patched linker (build-patched-linker.sh).
-# SKIP_BUILD=1 reuses wasm/target/components/*.wasm.
+# SKIP_BUILD=1 reuses wasm/target/components/*.wasm. SBT_ARGS is passed to sbt, e.g.
+# SBT_ARGS=-Ddapr4s.wasm.coreRelease=3.0.0 links against the published dapr4s_sjs1_3 (see wasm/build.sbt).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
@@ -46,7 +47,7 @@ if ! docker ps --format '{{.Names}}' | grep -qx "$redis"; then
 fi
 
 if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
-  (cd "$repo/wasm" && sbt -batch counterRaw/componentWasm counter/componentWasm)
+  (cd "$repo/wasm" && sbt -batch ${SBT_ARGS:-} counterRaw/componentWasm counter/componentWasm)
 fi
 
 expected_imports=$'configuration-read: \ninvocation: \nstate: save\nstate-read: get\ntypes: '

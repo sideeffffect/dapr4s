@@ -166,20 +166,43 @@ def sourcesIn(dirs: File*) = Seq(
 )
 
 // -------------------------------------------------------------------------------------------------
-// dapr4s's shared code, compiled for the wasm platform
+// dapr4s's shared API on the wasm platform — from SOURCE (default) or from a RELEASE (Central).
+//
+// Default (`source`): coreWasm compiles ../src/shared + ../src/wasm/core, so the unit tests and the
+// e2e here cover the shared code under change.
+//
+// `sbt -Ddapr4s.wasm.coreRelease=<v> ...` (e.g. 3.0.0): coreWasm compiles ONLY the wasm entry API
+// (src/wasm/core/DaprComponent.scala) and depends on the PUBLISHED Scala.js artifact
+// `com.github.sideeffffect::dapr4s_sjs1_3:<v>` (Scala.js IR) for everything else, which the
+// scala-wasm linker links into the component. Then a publishLocal yields a SMALL wasm layer (wall +
+// generated glue + DaprComponent) on top of Central dapr4s — what dapr4s-examples consumes. This
+// works because the wasm platform traits (src/wasm/core: DaprCapabilityPlatform, ForwardersPlatform)
+// are identical to the Scala.js ones (all empty), so dapr4s_sjs1_3 IS "shared + empty platform
+// traits" plus the JS wall, which nothing on the wasm path reaches (the linker drops it; its
+// mainline org.scala-js library/javalib are excluded by Dapr4sWasmPlugin). Valid only while
+// src/shared is unchanged since <v> (CI publishes the layer from a pinned commit for that reason).
 // -------------------------------------------------------------------------------------------------
+val coreRelease: Option[String] = sys.props.get("dapr4s.wasm.coreRelease").filter(_.nonEmpty)
+
 lazy val coreWasm = project
   .in(file("core"))
   .enablePlugins(Dapr4sWasmPlugin)
   .settings(publishLocalOnly, nightly)
-  .settings(sourcesIn(repoDir / "src" / "shared", repoDir / "src" / "wasm" / "core"))
-  .settings(
-    name := "dapr4s-wasm-core",
-    // java.time on the Scala.js-family platforms (part of the shared public API). Only
-    // Duration-style arithmetic links without JS; formatting/parsing reaches scala-java-locales'
-    // `window` (wiki: "What dapr4s's shared code needs on a no-JS target").
-    libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTime,
-  )
+  .settings(coreRelease match {
+    case None =>
+      sourcesIn(repoDir / "src" / "shared", repoDir / "src" / "wasm" / "core") ++ Seq(
+        // java.time on the Scala.js-family platforms (part of the shared public API). Only
+        // Duration-style arithmetic links without JS; formatting/parsing reaches scala-java-locales'
+        // `window` (wiki: "What dapr4s's shared code needs on a no-JS target").
+        libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTime,
+      )
+    case Some(release) =>
+      sourcesIn() ++ Seq(
+        Compile / unmanagedSources := Seq(repoDir / "src" / "wasm" / "core" / "DaprComponent.scala"),
+        libraryDependencies += "com.github.sideeffffect" %%% "dapr4s" % release,
+      )
+  })
+  .settings(name := "dapr4s-wasm-core")
 
 // -------------------------------------------------------------------------------------------------
 // The 2.13 side of the wall: GENERATED code only, compiled by the WIT-aware compiler. Nobody writes

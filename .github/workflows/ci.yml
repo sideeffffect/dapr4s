@@ -170,11 +170,13 @@ jobs:
       if: matrix.platform == 'wasm'
       working-directory: wasm
       run: sbt scalafmtCheckAll scalafmtSbtCheck compile wallWasm/test
-    # The publishLocal-only artifacts + the sbt-dapr4s-wasm plugin that dapr4s-examples' wasm build consumes.
-    - name: publishLocal (wasm artifacts + sbt-dapr4s-wasm)
+    # The publishLocal-only wasm layer + the sbt-dapr4s-wasm plugin that dapr4s-examples' wasm build consumes:
+    # built in RELEASE mode (only DaprComponent from source, the rest from Central dapr4s_sjs1_3), exactly as
+    # dapr4s-examples' CI does. Its wall unit tests run again in that mode.
+    - name: publishLocal in release mode (wasm layer on Central dapr4s_sjs1_3 + sbt-dapr4s-wasm)
       if: matrix.platform == 'wasm'
       working-directory: wasm
-      run: sbt publishLocal
+      run: sbt -Ddapr4s.wasm.coreRelease=3.0.0 wallWasm/test publishLocal
     - name: E2E (components + compose + daprd + Redis)
       if: matrix.platform == 'wasm'
       timeout-minutes: 20
