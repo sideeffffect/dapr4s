@@ -351,8 +351,8 @@ The `wasm` platform builds a dapr4s app as a WASI **component** for
 [dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.1, with the
 scala-wasm fork of Scala.js (`io.github.scala-wasm:sbt-scalajs`, `ModuleKind.WasmComponent`).
 Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
-`wiki/scala-js/scala-wasm-component-spike.md`. Six artifacts are wired for publishing, but
-**Central publishing is OFF** until the user approves the first release; `publishLocal` works.
+`wiki/scala-js/scala-wasm-component-spike.md`. The six artifacts are **published to Maven Central**
+by the same `publish` job as core (snapshots on master pushes, releases on tags); `publishLocal` works.
 **No PRs, issues, forks or pushed branches to scala/* or scala-wasm/* repositories** (user rule):
 upstream gaps are worked around here.
 
@@ -446,10 +446,10 @@ upstream gaps are worked around here.
   a link error). The 2.13 trampolines reach the Scala 3 wall the same way, via
   `dapr4s.internal.witglue.AppRoot`. The stubs are never published and are filtered out of the POMs
   (on a linker classpath they would shadow the real objects: first IR file per class wins).
-- **Central publishing switch**: the `publish` job of `.github/workflows/ci.yml` has
-  `PUBLISH_WASM_TO_CENTRAL: 'false'`; the wasm build also keeps `publish / skip` unless that variable is
-  `'true'`. Flip it only after the user approves; the job then publishes `coreJS` locally and runs
-  `sbt -Ddapr4s.wasm.core=<version> ci-release` in `wasm/`.
+- **Central publishing switch**: the `publish` job of `.github/workflows/ci.yml` sets
+  `PUBLISH_WASM_TO_CENTRAL: 'true'` (ON since 2026-10-13, approved by the user); the wasm build keeps
+  `publish / skip` unless that variable is `'true'`, so local `sbt publish` in `wasm/` never reaches Central.
+  The job publishes `coreJS` locally and runs `sbt -Ddapr4s.wasm.core=<version> ci-release` in `wasm/`.
 - **Shared code on the `wasm` path** must avoid `java.time` formatting/parsing, wall-clock
   (`Instant.now`), `println` and `UUID.randomUUID`: they reach JS and fail to link.
 - Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr
@@ -500,8 +500,7 @@ Four legs, exactly as CI runs them (`.github/workflows/ci.yml`, one `test` matri
 job; each leg runs compile + unit tests + integration tests). A third include entry, `wasm`, runs
 the opt-in `wasm/` build (format check, compile, `wallWasm/test`, `scripts/wasm/e2e.sh`; see
 "Wasm component layer rules"). It installs its pinned tools, builds and caches the patched linker,
-and is `continue-on-error`: it does not gate `publish` (nothing in it is published, and it depends
-on a patched upstream linker and on ghcr.io).
+and gates `publish` like the other legs (the wasm artifacts are published by the same job).
 
 - **JVM unit tests** (no Docker): `sbt coreJVM/test`. Shared
   suites live in `test/shared/unit/` (`JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`,

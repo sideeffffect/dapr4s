@@ -222,8 +222,8 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   error mapping, the imports probe), `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`,
   `build-patched-linker.sh` + `patches/`.
 - **CI**: a `wasm` entry in the `test` matrix (source-mode unit tests + e2e, release-mode publishLocal + consumer
-  check). It is `continue-on-error`, so it does not gate `publish`.
-- **Packaging (2026-10-13): six artifacts, Central publishing wired but OFF.** All `com.github.sideeffffect`, at core's
+  check). It gates `publish` like the jvm and js legs.
+- **Packaging (2026-10-13): six artifacts, published to Central.** All `com.github.sideeffffect`, at core's
   sbt-dynver version: `dapr4s-wasm_sjs1_3` (the Scala 3 adapters + `DaprComponent` + inert callbacks; depends on dapr4s
   core `dapr4s_sjs1_3` and the glue), `dapr4s-wasm-glue_sjs1_2.13` (WIT bindings + hand-written glue),
   `dapr4s-wasm-glue-exports_sjs1_2.13` (the trampolines; components only), `dapr4s-wasm-scalalib-overlay` (the
@@ -235,8 +235,8 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   (`scripts/wasm/consumer-check.sh` proves it; the first external consumer is
   [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' `wasm/` build). By default the wall depends on the
   PUBLISHED `dapr4s_sjs1_3` (its IR links into the component, as the spike did); `-Ddapr4s.wasm.core=source` tests
-  dapr4s's own `src/shared` instead. sbt-ci-release in the `publish` job publishes all six behind the
-  `PUBLISH_WASM_TO_CENTRAL` switch, `'false'` until the first wasm release is approved. Nothing goes upstream to
+  dapr4s's own `src/shared` instead. sbt-ci-release in the `publish` job publishes all six with core
+  (`PUBLISH_WASM_TO_CENTRAL: 'true'`, approved 2026-10-13). Nothing goes upstream to
   scala/* or scala-wasm/* (decision): the linker patch now covers BOTH sides of params-via-memory (the import side was
   silently missing in 1.22.1-wasm.6), proven by `test/wasm/imports-probe` against daprd.
 

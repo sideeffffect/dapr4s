@@ -1141,8 +1141,8 @@ plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in 
 - **Six artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`,
   `dapr4s-wasm-linker` (scala-wasm's linker + our params-via-memory patch) and the `sbt-dapr4s-wasm` plugin, which
   carries every build-level workaround. A consumer: the plugin + one dependency + the fixed-name `ComponentRoot`.
-  `publishLocal` works; Central publishing is wired (sbt-ci-release) behind the `PUBLISH_WASM_TO_CENTRAL` switch,
-  off until approved. The link-time stubs stay unpublished.
+  They are published to Central with core by sbt-ci-release (the `PUBLISH_WASM_TO_CENTRAL` switch is on);
+  `publishLocal` works too. The link-time stubs stay unpublished.
 
 ```mermaid
 flowchart LR

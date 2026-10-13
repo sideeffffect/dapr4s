@@ -47,12 +47,8 @@ jobs:
   # tests (on Node) and scripts/wasm/e2e.sh in source mode, then publishLocal of the six wasm artifacts
   # and a plugin-only consumer build (scripts/wasm/consumer-check.sh).
   #
-  # WHY the wasm leg does NOT gate `publish` (continue-on-error): Central publishing of the wasm
-  # artifacts is switched off (PUBLISH_WASM_TO_CENTRAL in the publish job), and the leg depends on a
-  # PATCHED upstream linker (scala-wasm 1.22.1-wasm.6 + our patch, built from source here), on
-  # scala-wasm's fork churn and on OCI pulls from ghcr.io. A break there must stay visible (the leg
-  # still shows red) without blocking releases of dapr4s_3/dapr4s_sjs1_3, which contain no wasm code.
-  # Make it gating together with switching the wasm publishing on.
+  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the six wasm
+  # artifacts to Central (PUBLISH_WASM_TO_CENTRAL), so a broken wasm build must never reach a release.
   test:
     strategy:
       fail-fast: false
@@ -65,7 +61,6 @@ jobs:
           - platform: wasm
             project: Wasm
     name: test (${{ matrix.platform }})
-    continue-on-error: ${{ matrix.platform == 'wasm' }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
@@ -206,9 +201,10 @@ jobs:
       cancel-in-progress: false
     runs-on: ubuntu-latest
     env:
-      # THE SWITCH for Central publishing of the wasm artifacts. 'false' until the user approves the first
-      # wasm release; core (dapr4s_3, dapr4s_sjs1_3) publishes regardless.
-      PUBLISH_WASM_TO_CENTRAL: 'false'
+      # The switch for Central publishing of the wasm artifacts (ON since 2026-10-13, approved by the
+      # user). Setting it to 'false' stops only the wasm artifacts; core (dapr4s_3, dapr4s_sjs1_3)
+      # publishes regardless.
+      PUBLISH_WASM_TO_CENTRAL: 'true'
     steps:
     - uses: actions/checkout@v5
       with:
@@ -252,8 +248,8 @@ jobs:
     # ---- The wasm artifacts (wasm/ build): dapr4s-wasm, dapr4s-wasm-glue(-exports), dapr4s-wasm-scalalib-overlay,
     # dapr4s-wasm-linker, sbt-dapr4s-wasm — at the same version as core, the wall depending on the dapr4s_sjs1_3
     # of THIS version (published locally first so the wasm build resolves it before Central has it).
-    # SWITCHED OFF until the first wasm release is approved: flip PUBLISH_WASM_TO_CENTRAL to 'true' (the wasm
-    # build also refuses `publish` unless that variable is 'true'). See AGENTS.md "Wasm component layer rules".
+    # Gated by PUBLISH_WASM_TO_CENTRAL (the wasm build also refuses `publish` unless that variable is 'true',
+    # so a local `sbt publish` in wasm/ can never reach Central by accident). See AGENTS.md "Wasm component layer rules".
     - name: Install wasm tools for the wasm publish (wkg, wasm-tools, wit-bindgen-scala)
       if: env.PUBLISH_WASM_TO_CENTRAL == 'true'
       run: |
@@ -265,7 +261,7 @@ jobs:
         curl -fsSL -o "$bin/wkg" "$rel/wasm-pkg-tools/releases/download/v0.16.1/wkg-x86_64-unknown-linux-gnu"
         chmod +x "$bin/wkg"
         cargo install wit-bindgen-scala --version 0.1.0 --locked
-    - name: Publish the wasm artifacts (OFF until approved)
+    - name: Publish the wasm artifacts
       if: env.PUBLISH_WASM_TO_CENTRAL == 'true'
       run: |
         key="${PUBLISH_SECRET_KEY#base64:}"

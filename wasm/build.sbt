@@ -134,10 +134,9 @@ val coreMode: String = sys.props.get("dapr4s.wasm.core").filter(_.nonEmpty).getO
 val coreFromSource: Boolean = coreMode == "source"
 
 // -------------------------------------------------------------------------------------------------
-// Publishing. `publishLocal` always works (release mode). Central publishing is wired (sbt-ci-release,
-// the `publish` job of ../.github/workflows/ci.yml) but OFF until the first release is approved: it
-// needs PUBLISH_WASM_TO_CENTRAL=true in the environment, which ci.yml sets only behind its switch of
-// the same name. Keep both gates until then.
+// Publishing. `publishLocal` always works (release mode). Central publishing (sbt-ci-release, the
+// `publish` job of ../.github/workflows/ci.yml, which sets PUBLISH_WASM_TO_CENTRAL=true) needs that
+// variable in the environment, so a local `sbt publish` here can never reach Central by accident.
 // -------------------------------------------------------------------------------------------------
 val publishToCentral: Boolean = sys.env.get("PUBLISH_WASM_TO_CENTRAL").contains("true")
 
@@ -147,6 +146,8 @@ lazy val published = Seq(
   publishLocal / skip := coreFromSource,
   // Central needs a javadoc jar; scaladoc of the nightly/CC code is slow, so only build it to publish.
   Compile / packageDoc / publishArtifact := publishToCentral,
+  // Test docs are never published (and the wall's would hit the same scaladoc crash as its main docs).
+  Test / packageDoc / publishArtifact := false,
 )
 
 // -------------------------------------------------------------------------------------------------
@@ -283,6 +284,15 @@ lazy val wallWasm = withCore(
     .settings(sourcesIn(repoDir / "src" / "wasm" / "internal"))
     .settings(
       name := "dapr4s-wasm",
+      // WHAT: the javadoc jar of dapr4s-wasm is built from NO sources (an empty but valid scaladoc jar).
+      // WHY: dotty's scaladoc crashes on this project (ClassCastException Constant -> Tree in
+      // Scala2Unpickler.readAnnotArg, reached from MacroAnnotations.isMacroAnnotation) while reading the
+      // annotation arguments Scala 2.13 pickled into the wit-bindgen-scala bindings of dapr4s-wasm-glue
+      // (@WitImport/@WitExport/@WitScope). Plain compilation never forces those annotations; scaladoc does.
+      // WHY SAFE: Central only requires a -javadoc.jar to exist; the -sources.jar still ships every source
+      // with its doc comments, and the API a user touches (dapr4s.wasm.DaprComponent) is documented there.
+      // RETIRES: when a Scala 3 nightly fixes the unpickler crash, or when the 2.13 glue goes away.
+      Compile / doc / sources := Nil,
       projectDependencies := projectDependencies.value.filterNot(m => embeddedInWall(m.name)),
       Compile / packageBin / mappings ++=
         (wasmApi / Compile / packageBin / mappings).value ++ (wallInert / Compile / packageBin / mappings).value,
@@ -409,6 +419,9 @@ lazy val sbtDapr4sWasm = project
   .settings(published)
   .settings(
     name := "sbt-dapr4s-wasm",
+    // Maven-conformant file names (sbt-dapr4s-wasm_2.12_1.0-<v>.jar): the legacy sbt-plugin layout is
+    // rejected by the Central Portal's validation. Consumers need sbt >= 1.9 to resolve it.
+    sbtPluginPublishLegacyMavenStyle := false,
     // The meta-build's Scala (sbt 1.x plugins are Scala 2.12), not this build's nightly.
     scalaVersion := scala.util.Properties.versionNumberString,
     scalacOptions := Nil,
