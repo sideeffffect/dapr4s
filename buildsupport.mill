@@ -1,0 +1,206 @@
+package build
+
+// Plain helpers of build.mill (versions, paths, the dynver-compatible version, the sbt-layout POM).
+// No modules here.
+
+import mill.*
+import mill.javalib.publish.*
+import coursier.maven.MavenRepository
+
+object Versions {
+  // Always the newest nightly: capture checking and safe mode are still moving fast.
+  val scala3Nightly = "3.10.0-RC1-bin-20260607-dec42ae-NIGHTLY"
+
+  // The ScalablyTyped converter needs a released Scala 3 to target (it renders version-specific
+  // syntax), and the facades are plain Scala.js code that does not need capture checking: they are
+  // compiled with the LTS compiler. The nightly reads the older TASTy without complaint.
+  val scala3Facades = "3.3.6"
+
+  val scalaJS = "1.22.0"
+  val daprJava = "1.17.2"
+  val munit = "1.3.0"
+  val upickle = "3.3.1" // pinned: 4.x crashes on CC-annotated types
+  val testcontainersScala = "0.43.6"
+  val scalaJavaTime = "2.6.0"
+  val scalablytypedRuntime = "2.4.2"
+  val scalajsDom = "2.8.1"
+  val scalablytypedConverter = "1.0.0-beta45"
+
+  val compilerFlags = Seq(
+    "-language:experimental.captureChecking",
+    "-language:experimental.pureFunctions",
+    "-Ycc-verbose",
+    "-Yexplicit-nulls",
+    "-experimental",
+    "-Wconf:any:error",
+  )
+  // Note: -language:experimental.safe is NOT applied globally because non-safe-mode files (Dapr,
+  // JsonCodec, internal/*) need to use @scala.caps.assumeSafe. Safe mode is enabled per-file via
+  // `import language.experimental.safe`.
+}
+
+object Repos {
+  // Scala 3 nightlies (compiler + sbt bridge) live in the scala-lang nightly repository. It is a
+  // BUILD resolver only: it is never written into a POM.
+  val nightlies = MavenRepository("https://repo.scala-lang.org/artifactory/maven-nightlies")
+}
+
+object Dapr4sPaths {
+  def root: os.Path = mill.api.BuildCtx.workspaceRoot
+  def src: os.Path = root / "src"
+  def test: os.Path = root / "test"
+
+  /** A test source of an `integration/` directory (relative to the checkout, so a checkout that itself
+    * sits under some `integration/` directory still works).
+    */
+  def isIntegrationSource(p: os.Path): Boolean =
+    p.startsWith(root) && p.relativeTo(root).segments.contains("integration")
+}
+
+/** The version scheme of sbt-dynver as sbt-ci-release configured it, so that the switch to Mill does not
+  * change how versions look (dapr4s-examples and Central consumers see the same scheme):
+  *
+  *   - HEAD is the `vX.Y.Z` tag and the tree is clean: `X.Y.Z` (a release);
+  *   - otherwise `X.Y.Z+<commits since the tag>-<8-char sha>` plus, for a dirty tree,
+  *     `+<yyyyMMdd-HHmm>`, plus `-SNAPSHOT` (a Central snapshot on master, a local build elsewhere);
+  *   - no `v*` tag at all: `0.0.0+<commits>-<sha>-SNAPSHOT`.
+  */
+object Dynver {
+  def version(root: os.Path): String = {
+    def git(args: String*): Option[String] = {
+      val r = os.proc("git" +: args).call(cwd = root, check = false, stderr = os.Pipe)
+      Option.when(r.exitCode == 0)(r.out.trim()).filter(_.nonEmpty)
+    }
+    val dirty = git("status", "--porcelain", "--untracked-files=no").nonEmpty
+    val sha = git("rev-parse", "--short=8", "HEAD").getOrElse("00000000")
+    val described = git("describe", "--long", "--tags", "--abbrev=8", "--match", "v[0-9]*", "HEAD")
+    val Described = """v(.+)-(\d+)-g([0-9a-f]+)""".r
+    val (tag, distance) = described match {
+      case Some(Described(t, d, _)) => (t, d.toInt)
+      case _ =>
+        val count = git("rev-list", "--count", "HEAD").map(_.toInt).getOrElse(0)
+        ("0.0.0", count)
+    }
+    if (distance == 0 && !dirty) tag
+    else {
+      val stamp =
+        if (!dirty) ""
+        else "+" + java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmm"))
+      s"$tag+$distance-$sha$stamp-SNAPSHOT"
+    }
+  }
+}
+
+/** The POM in exactly the layout sbt wrote (and scala-cli before it): same elements, same order, same
+  * metadata. Mill's own renderer omits <organization>, writes an empty <email> and orders elements
+  * differently; the dapr4s POMs are compared against the published 3.0.0 ones (see AGENTS.md).
+  */
+object Dapr4sPom {
+  val organization = "com.github.sideeffffect"
+  val url = "https://github.com/sideeffffect/dapr4s/"
+
+  def settings(description: String): PomSettings = PomSettings(
+    description = description,
+    organization = organization,
+    url = url,
+    licenses = Seq(License("Apache-2.0", "Apache-2.0", "https://spdx.org/licenses/Apache-2.0.html", false, false, "repo")),
+    versionControl = VersionControl(
+      browsableRepository = Some("https://github.com/sideeffffect/dapr4s.git"),
+      connection = Some("scm:git:github.com/sideeffffect/dapr4s.git"),
+      developerConnection = Some("scm:git:git@github.com:sideeffffect/dapr4s.git"),
+      tag = None,
+    ),
+    developers = Seq(Developer("sideeffffect", "Ondra Pelech", "https://github.com/sideeffffect/")),
+  )
+
+  // sbt listed the Scala library first, then the Scala.js library, then the libraryDependencies in
+  // declaration order. Mill's dependency order is the same except for those two, which it may put
+  // elsewhere; restore sbt's order (a stable sort keeps everything else as declared).
+  private def rank(d: Dependency): Int = d.artifact.id match {
+    case id if id.startsWith("scala3-library") || id == "scala-library" => 0
+    case id if id.startsWith("scalajs-library") => 1
+    case _ => 2
+  }
+
+  private def esc(s: String): String = scala.xml.Utility.escape(s)
+
+  def render(
+      artifact: Artifact,
+      name: String,
+      deps: Seq[Dependency],
+      properties: Seq[(String, String)],
+  ): String = {
+    val depsXml = deps.sortBy(rank).map { d =>
+      val scope = d.scope match {
+        case Scope.Compile => ""
+        case Scope.Provided => "\n            <scope>provided</scope>"
+        case Scope.Runtime => "\n            <scope>runtime</scope>"
+        case Scope.Test => "\n            <scope>test</scope>"
+        case Scope.Import => "\n            <scope>import</scope>"
+      }
+      val exclusions =
+        if (d.exclusions.isEmpty) ""
+        else
+          d.exclusions
+            .map { case (g, a) =>
+              s"""                <exclusion>
+                 |                    <groupId>${esc(g)}</groupId>
+                 |                    <artifactId>${esc(a)}</artifactId>
+                 |                </exclusion>""".stripMargin
+            }
+            .mkString("\n            <exclusions>\n", "\n", "\n            </exclusions>")
+      s"""        <dependency>
+         |            <groupId>${esc(d.artifact.group)}</groupId>
+         |            <artifactId>${esc(d.artifact.id)}</artifactId>
+         |            <version>${esc(d.artifact.version)}</version>$scope$exclusions
+         |        </dependency>""".stripMargin
+    }
+    val propsXml =
+      if (properties.isEmpty) ""
+      else
+        properties
+          .map {
+            // sbt writes the plugin-dependency attributes whitespace-preserved (sbt-plugin POMs only).
+            case (k @ "extraDependencyAttributes", v) => s"""        <$k xml:space="preserve">${esc(v)}</$k>"""
+            case (k, v) => s"        <$k>${esc(v)}</$k>"
+          }
+          .mkString("\n    <properties>\n", "\n", "\n    </properties>")
+    val dependencies =
+      if (depsXml.isEmpty) ""
+      else depsXml.mkString("\n    <dependencies>\n", "\n", "\n    </dependencies>")
+    s"""<?xml version='1.0' encoding='UTF-8'?>
+       |<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
+       |    <modelVersion>4.0.0</modelVersion>
+       |    <groupId>${esc(artifact.group)}</groupId>
+       |    <artifactId>${esc(artifact.id)}</artifactId>
+       |    <packaging>jar</packaging>
+       |    <description>${esc(name)}</description>
+       |    <url>$url</url>
+       |    <version>${esc(artifact.version)}</version>
+       |    <licenses>
+       |        <license>
+       |            <name>Apache-2.0</name>
+       |            <url>https://spdx.org/licenses/Apache-2.0.html</url>
+       |            <distribution>repo</distribution>
+       |        </license>
+       |    </licenses>
+       |    <name>${esc(name)}</name>
+       |    <organization>
+       |        <name>$organization</name>
+       |        <url>$url</url>
+       |    </organization>
+       |    <scm>
+       |        <url>https://github.com/sideeffffect/dapr4s.git</url>
+       |        <connection>scm:git:github.com/sideeffffect/dapr4s.git</connection>
+       |        <developerConnection>scm:git:git@github.com:sideeffffect/dapr4s.git</developerConnection>
+       |    </scm>
+       |    <developers>
+       |        <developer>
+       |            <id>sideeffffect</id>
+       |            <name>Ondra Pelech</name>
+       |            <url>https://github.com/sideeffffect/</url>
+       |        </developer>
+       |    </developers>$propsXml$dependencies
+       |</project>""".stripMargin
+  }
+}

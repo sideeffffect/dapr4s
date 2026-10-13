@@ -1,0 +1,87 @@
+package build.wasm
+
+// Component post-processing of the linked core module (no modules here).
+
+/** Upstream blocker: the linker synthesizes the core module's `component-type` section from IR signatures,
+  * where WIT type aliases are already dealiased (`use types.{metadata}` becomes an inline
+  * list<tuple<string,string>>). The EXPORTED instance types then lack the alias type exports (e.g. `metadata`)
+  * that the dapr-wasm-components inbound provider imports, and `wac compose` fails ("instance is missing
+  * expected list export `metadata`"). Rebuild the component from the linked core module with the REAL world:
+  * extract the core module, strip the synthesized section, `wasm-tools component embed --encoding utf16`
+  * (scala-wasm lowers strings as UTF-16; the default utf8 garbles every string) and `wasm-tools component
+  * new`. (`withWitDirectory` / `withWitWorld` exist in WasmFeatures, but the 1.22.1-wasm.6 linker does not
+  * read them.) RETIRES when the linker keeps aliases (or reads the WIT world): use its component as is.
+  *
+  * Same steps as `Dapr4sWasm.buildComponent` of the sbt-dapr4s-wasm plugin (wasm/sbt-plugin), which sbt
+  * consumers run.
+  */
+object Components {
+  def build(linked: os.Path, work: os.Path, witDir: os.Path, world: String): os.Path = {
+    os.makeDir.all(work)
+    val core = work / "core.wasm"
+    val stripped = work / "core-stripped.wasm"
+    val embedded = work / "core-embedded.wasm"
+    val out = work / "component.wasm"
+    os.write.over(core, extractMainCoreModule(linked))
+    wasmTools("strip", "--delete", "component-type.*", core, "-o", stripped)
+    wasmTools("component", "embed", "--encoding", "utf16", witDir, "--world", world, stripped, "-o", embedded)
+    wasmTools("component", "new", embedded, "-o", out)
+    wasmTools("validate", out)
+    out
+  }
+
+  private def wasmTools(args: os.Shellable*): Unit = {
+    val _ = os.proc(("wasm-tools": os.Shellable) +: args).call(stderr = os.Pipe)
+  }
+
+  /** The linker's core module: `wasm-tools component new` adds tiny `wit-component:shim` / `:fixups` modules
+    * for indirect lowering next to it; the linker's module is by far the largest.
+    */
+  private def extractMainCoreModule(component: os.Path): Array[Byte] = {
+    val bytes = os.read.bytes(component)
+    require(
+      bytes.length > 8 && bytes(0) == 0 && bytes(1) == 'a' && bytes(2) == 's' && bytes(3) == 'm',
+      s"$component is not a wasm binary",
+    )
+    var pos = 8
+    def leb(): Int = {
+      var result = 0
+      var shift = 0
+      var b = 0
+      while ({
+        b = bytes(pos) & 0xff
+        pos += 1
+        result |= (b & 0x7f) << shift
+        shift += 7
+        (b & 0x80) != 0
+      }) ()
+      result
+    }
+    val modules = scala.collection.mutable.ListBuffer.empty[Array[Byte]]
+    while (pos < bytes.length) {
+      val id = bytes(pos) & 0xff
+      pos += 1
+      val size = leb()
+      if (id == 1) modules += java.util.Arrays.copyOfRange(bytes, pos, pos + size) // core module section
+      pos += size
+    }
+    require(modules.nonEmpty, s"no core module in $component")
+    modules.maxBy(_.length)
+  }
+}
+
+object Zips {
+
+  /** Extract the file entries of `jar` whose name passes `keep` into `dest`. */
+  def extract(jar: os.Path, dest: os.Path, keep: String => Boolean): Unit = {
+    val zip = new java.util.zip.ZipFile(jar.toIO)
+    try {
+      val entries = zip.entries()
+      while (entries.hasMoreElements) {
+        val e = entries.nextElement()
+        if (!e.isDirectory && keep(e.getName))
+          os.write.over(dest / os.RelPath(e.getName), zip.getInputStream(e), createFolders = true)
+      }
+    } finally zip.close()
+  }
+}
