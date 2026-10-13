@@ -63,7 +63,8 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
 - **Test modules** (`ScalaJSTests`) do not inherit the outer module's overrides of `mandatoryMvnDeps`: mix the
   swap trait into the test module too.
 - **Components**: Mill's linker API has no `ModuleKind.WasmComponent`. A 30-line driver compiled against the
-  fork's linker interface (`StandardImpl.linker(config).link(...)`) does it (`build-tools/wasm-link`).
+  fork's linker interface (`StandardImpl.linker(config).link(...)`) does it (`wasm/linker/src`, shipped inside
+  `dapr4s-wasm-linker` so a consumer resolves linker + driver as one classpath and runs it in a separate JVM).
 - **The patched linker without sbt**: compile `linker/shared/src/main/{scala,scala-2}` + `linker/jvm/src/main/scala`
   of the release commit (2.12) against the released `scalajs-ir` / `scalajs-linker-interface`, and take the
   non-class resources (the private library `.sjsir`: `FloatingPointBitsPolyfills`, `RuntimeLong`, ...) from the
@@ -71,9 +72,29 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
 - **An sbt plugin built by Mill**: a 2.12 module, sbt as `compileMvnDeps`, a generated `sbt/sbt.autoplugins`
   resource listing the AutoPlugin objects, `artifactSuffix = "_2.12_1.0"`, POM properties `scalaVersion`,
   `sbtVersion` (+ `extraDependencyAttributes`). sbt >= 1.9 resolves it from a Maven repository.
+- **A Mill plugin (`mill-dapr4s-wasm`, 2026-10-13)**, the twin of the sbt plugin, with all of the above as traits
+  (`ScalaWasmModule`, `Dapr4sWasmModule`, `Dapr4sWasmTests`, `WitModule`, `WitBindgenModule`,
+  `Dapr4sWasmComponentModule`). Facts:
+  - A Mill 1.x plugin is a Scala 3 library against `com.lihaoyi::mill-libs:<mill version>` with
+    `platformSuffix = "_mill" + mill.util.BuildInfo.millBinPlatform` → `<name>_mill1_3`; a consumer loads it with
+    `//| mvnDeps: ["org::name::version"]` in the `build.mill` header. Compile it with `mill.util.BuildInfo.scalaVersion`
+    (Mill 1.3.0: Scala 3.9.0). 1.x plugins work on the same and newer 1.x Mill, not older.
+  - Plain `.scala` files in `mill-build/src/` are compiled into the meta-build with no `mill-build/build.mill`
+    (and the root header keeps working), so the plugin's sources double as dapr4s's own build logic (like sbt's
+    `project/plugin-sources.sbt` trick).
+  - A local Maven repo for the plugin: `//| repositories: ["file:///..."]` in the header (meta-build) plus
+    `def repositories = Seq("file:///...")` on the modules (app dependencies).
+  - **Do not resolve build TOOLS with a ScalaModule's `defaultResolver()`**: it forces `scala-library` to the
+    module's Scala version (`actualResolutionParamsOverride`), so the 2.12 linker got the Scala 3 library
+    (`NoClassDefFoundError: scala/Serializable`). Use `Lib.resolveDependencies(repositoriesTask(), ...)`.
+  - Task.Sources with relative paths in a trait (`Task.Sources("wit/world.wit", ...)`) resolve against each
+    module's `moduleDir`: good defaults for consumers, overridable.
+  - Dynver on a dirty tree has a minute timestamp: two Mill runs can compute different versions. A script that
+    publishes and then consumes must read the version from what was published.
 - Upstream Mill work that retires the workarounds: [#7783](https://github.com/com-lihaoyi/mill/pull/7783)
   (organization + WasmComponent), [#7784](https://github.com/com-lihaoyi/mill/pull/7784) (wit-bindgen-scala),
   [#7785](https://github.com/com-lihaoyi/mill/pull/7785) (Wasmtime JS env).
+  In the plugin: #7783 → `ScalaWasmModule` + the link driver, #7784 → `WitBindgenModule`.
 
 ## See also
 

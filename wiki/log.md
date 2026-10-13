@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-13] update | mill-dapr4s-wasm: the Mill plugin for Wasm components
+- Updated: scala-js/dapr4s-mill-build.md — Mill 1.x plugin shape (`_mill1_3`, header mvnDeps/repositories), mill-build/src as shared meta-build sources, defaultResolver forces scala-library (tool resolution via Lib.resolveDependencies), link driver shipped in dapr4s-wasm-linker, dynver timestamp race
+
 ## [2026-10-13] update | dapr-wasm-components 0.7.2: probe e2e asserts converse/schedule/timer results
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.2 fixed the three 0.7.1 provider gaps; echo conversation component; scheduler container next to a slim daprd; daprd 1.17.7 job GET encoding bug
 

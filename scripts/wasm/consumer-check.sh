@@ -22,7 +22,9 @@ for m in "${modules[@]}"; do
   args+=("$m.publishM2Local" --m2RepoPath "$local_repo")
 done
 (cd "$repo" && mill "${args[@]}")
-version="$(cd "$repo" && mill show publishVersion | tail -1 | tr -d '"')"
+# The version just published (not `show publishVersion`: on a dirty tree it carries a minute timestamp, which a
+# second Mill run may already compute differently).
+version="$(ls "$local_repo/com/github/sideeffffect/dapr4s-wasm_sjs1_3")"
 nightly="$(cd "$repo" && mill show scala3Nightly | tail -1 | tr -d '"')"
 dir="$repo/wasm/target/consumer-check"
 rm -rf "$dir"

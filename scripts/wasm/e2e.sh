@@ -71,8 +71,8 @@ if [[ " ${E2E_ONLY:-importsProbe} " == *" importsProbe "* ]] &&
   [[ "$ready" == 1 ]] || fail "the scheduler did not come up"
 fi
 
-# `./mill show <module>.component` builds the component and prints `"ref:v0:<hash>:<path>"`.
-component_path() { "$repo/mill" --ticker false show "$1.component" | tail -1 | sed -E 's/^"([^:]*:){3}(.*)"$/\2/'; }
+# `./mill show <module>.dapr4sComponent` builds the component and prints `"ref:v0:<hash>:<path>"`.
+component_path() { "$repo/mill" --ticker false show "$1.dapr4sComponent" | tail -1 | sed -E 's/^"([^:]*:){3}(.*)"$/\2/'; }
 if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   mkdir -p "$components"
   cp "$(component_path wasm.counterRaw)" "$components/counterRaw.wasm"

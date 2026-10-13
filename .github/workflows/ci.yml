@@ -38,10 +38,11 @@ jobs:
   #   integration.<p>  the Docker-based integration suites (test/{shared,<p>}/integration)
   #
   # The `wasm` leg builds the WASI-component platform (wasm/package.mill, docs/WASM-COMPONENTS-PROPOSAL.md
-  # §6): the wall's unit tests (on Node) and scripts/wasm/e2e.sh in both core modes, then a fresh sbt
-  # consumer build with the published-to-a-local-repo artifacts (scripts/wasm/consumer-check.sh).
+  # §6): the wall's unit tests (on Node) and scripts/wasm/e2e.sh in both core modes, then a fresh Mill and a
+  # fresh sbt consumer build with the published-to-a-local-repo artifacts (scripts/wasm/consumer-check-mill.sh,
+  # scripts/wasm/consumer-check.sh).
   #
-  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the six wasm
+  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the seven wasm
   # artifacts to Central (PUBLISH_WASM_TO_CENTRAL), so a broken wasm build must never reach a release.
   test:
     strategy:
@@ -154,8 +155,14 @@ jobs:
       if: matrix.platform == 'wasm'
       timeout-minutes: 20
       run: WASM_CORE=release scripts/wasm/e2e.sh
-    # sbt-dapr4s-wasm is a product for sbt consumers (dapr4s-examples): check it the way they use it, with
-    # a fresh sbt build (the only sbt in CI; dapr4s's own build is Mill).
+    # mill-dapr4s-wasm is a product for Mill consumers (dapr4s-examples): check it the way they use it, with
+    # a fresh Mill build whose header loads the plugin from the local repo.
+    - name: Consumer check, Mill (plugin + one dependency, e2e)
+      if: matrix.platform == 'wasm'
+      timeout-minutes: 20
+      run: scripts/wasm/consumer-check-mill.sh
+    # sbt-dapr4s-wasm is a product for sbt consumers: check it the way they use it, with a fresh sbt build
+    # (the only sbt in CI; dapr4s's own build is Mill).
     - uses: actions/setup-java@v5
       if: matrix.platform == 'wasm'
       with:
@@ -212,8 +219,8 @@ jobs:
         chmod +x "$bin/wkg"
         cargo install wit-bindgen-scala --version 0.1.0 --locked
     # Publishes dapr4s_3 and dapr4s_sjs1_3 (a release tag publishes the clean version to Central, anything
-    # else a `-SNAPSHOT` to the Central snapshots repository) and, with PUBLISH_WASM_TO_CENTRAL, the six
-    # wasm artifacts at the SAME version: dapr4s-wasm's release mode depends on the dapr4s_sjs1_3 of THIS
+    # else a `-SNAPSHOT` to the Central snapshots repository) and, with PUBLISH_WASM_TO_CENTRAL, the seven
+    # wasm artifacts (incl. the two build plugins) at the SAME version: dapr4s-wasm's release mode depends on the dapr4s_sjs1_3 of THIS
     # version (DAPR4S_WASM_CORE_VERSION), published locally first so the build resolves it before Central
     # has it. The secrets keep their scala-cli era names; Mill wants the PGP key base64-encoded, so accept
     # either an ASCII-armored key or an already base64-encoded one.
@@ -233,7 +240,7 @@ jobs:
         if [[ "$PUBLISH_WASM_TO_CENTRAL" == true ]]; then
           ./mill --ticker false core.js.publishLocal
           export DAPR4S_WASM_CORE_VERSION="$version"
-          artifacts='{core.jvm,core.js,wasm.lib[release].wall,wasm.glue,wasm.glueExports,wasm.scalalibOverlay,wasm.linker,wasm.sbtPlugin}.publishArtifacts'
+          artifacts='{core.jvm,core.js,wasm.lib[release].wall,wasm.glue,wasm.glueExports,wasm.scalalibOverlay,wasm.linker,wasm.millPlugin,wasm.sbtPlugin}.publishArtifacts'
         fi
         ./mill --ticker false mill.javalib.SonatypeCentralPublishModule/publishAll --publishArtifacts "$artifacts"
       env:

@@ -671,9 +671,11 @@ dapr4s/
 │                                     # jars, publishVersion; JVM version + daemon heap in its header
 ├── buildsupport.mill                 # Versions (nightly Scala, compiler flags, dependency versions),
 │                                     # Dynver (the sbt-dynver version scheme), Dapr4sPom (sbt-layout POMs)
-├── build-tools/                      # st-gen (facade source generator), wasm-link (component link driver)
-├── wasm/                             # package.mill + components.mill (the wasm platform modules), wit/,
-│                                     # wkg files, sbt-plugin/ (sbt-dapr4s-wasm sources), NOTICE files
+├── mill-build/src/                   # the mill-dapr4s-wasm plugin sources (also this build's meta-build)
+├── build-tools/                      # st-gen (facade source generator)
+├── wasm/                             # package.mill (the wasm platform modules), wit/, wkg files,
+│                                     # linker/src (component link driver), sbt-plugin/ (sbt-dapr4s-wasm
+│                                     # sources), NOTICE files
 ├── package.json                      # npm pins for the JS layer: @dapr/dapr (runtime + converter input),
 │                                     # @types/express + @types/node (converter inputs), testcontainers +
 │                                     # @dapr/testcontainer-node (TEST-scope: JS integration sidecar + converter
@@ -1140,9 +1142,12 @@ plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in 
   the Scala 2.13 code is a small hand-written glue in `src/wasm/glue*` (only what the wall uses): plain import/export
   traits with live import objects, and the `@WitExport` trampolines. So the wall is plain Scala 3 against traits,
   and it is unit-tested with fakes.
-- **Six artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`,
-  `dapr4s-wasm-linker` (scala-wasm's linker + our params-via-memory patch) and the `sbt-dapr4s-wasm` plugin, which
-  carries every build-level workaround for sbt consumers (Mill builds it as a plain sbt-1 plugin jar). A consumer: the plugin + one dependency + the fixed-name `ComponentRoot`.
+- **Seven artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`,
+  `dapr4s-wasm-linker` (scala-wasm's linker + our params-via-memory patch + the component link driver) and two build
+  plugins that carry every build-level workaround: `mill-dapr4s-wasm` for Mill consumers (its sources are also
+  dapr4s's own meta-build, so dapr4s's test components build exactly like a consumer's) and `sbt-dapr4s-wasm` for sbt
+  consumers (Mill builds it as a plain sbt-1 plugin jar). A consumer: a plugin + one dependency + the fixed-name
+  `ComponentRoot`.
   They are published to Central with core by Mill's Central Portal publisher (the `PUBLISH_WASM_TO_CENTRAL` switch is on);
   `publishLocal` works too. The link-time stubs stay unpublished.
 
