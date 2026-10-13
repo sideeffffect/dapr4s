@@ -40,6 +40,17 @@ jobs:
   #
   #   core<P>         the library + its unit tests (test/{shared,<p>} minus integration/)
   #   integration<P>  the Docker-based integration suites (test/{shared,<p>}/integration)
+  #
+  # The `wasm` leg is the Phase-0 WASI-component prototype (docs/WASM-COMPONENTS-PROPOSAL.md §6). It
+  # is a separate, opt-in sbt build in wasm/ (the scala-wasm fork of sbt-scalajs cannot share a
+  # meta-build with mainline sbt-scalajs) and has its own steps below: format check, compile, the
+  # wall's unit tests (wallWasm/test, on Node) and scripts/wasm/e2e.sh (components + daprd + Redis).
+  #
+  # WHY the wasm leg does NOT gate `publish` (continue-on-error): nothing it builds is published,
+  # and it depends on a locally PATCHED upstream linker (scala-wasm 1.22.1-wasm.6 + our patch,
+  # built from source here), on scala-wasm's fork churn and on OCI pulls from ghcr.io. A break there
+  # must stay visible (the leg still shows red) without blocking releases of dapr4s_3/dapr4s_sjs1_3,
+  # which contain no wasm code. Make it gating once scala-wasm ships the linker fixes.
   test:
     strategy:
       fail-fast: false
@@ -49,7 +60,10 @@ jobs:
             project: JVM
           - platform: js
             project: JS
+          - platform: wasm
+            project: Wasm
     name: test (${{ matrix.platform }})
+    continue-on-error: ${{ matrix.platform == 'wasm' }}
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
@@ -82,16 +96,84 @@ jobs:
           .st-facades/target
         key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
     - name: Compile
+      if: matrix.platform != 'wasm'
       run: sbt core${{ matrix.project }}/compile integration${{ matrix.project }}/Test/compile
     - name: Unit tests
+      if: matrix.platform != 'wasm'
       run: sbt core${{ matrix.project }}/test
     - name: Integration tests
+      if: matrix.platform != 'wasm'
       # A real daprd sidecar (+ Redis, placement, scheduler) via testcontainers; Docker is
       # preinstalled on ubuntu-latest. JVM: testcontainers-dapr. JS: @dapr/testcontainer-node,
       # started from inside the Wasm+JSPI test runtime.
       # Both legs normally finish in a few minutes; the timeout turns a hang into a failure instead of a 6h wait.
       timeout-minutes: 20
       run: sbt integration${{ matrix.project }}/test
+
+    # ---- wasm leg (the opt-in wasm/ build) ----------------------------------------------------
+    # Tool versions are the ones the Phase-0 spike used (wiki: scala-wasm-component-spike).
+    - name: Install wasm tools (wasm-tools, wasmtime, wkg, wac)
+      if: matrix.platform == 'wasm'
+      env:
+        WASM_TOOLS_VERSION: 1.261.0
+        WASMTIME_VERSION: 49.0.2
+        WKG_VERSION: 0.16.1
+        WAC_VERSION: 0.10.0
+      run: |
+        set -euo pipefail
+        bin="$HOME/.local/bin"; mkdir -p "$bin"; echo "$bin" >> "$GITHUB_PATH"
+        rel=https://github.com/bytecodealliance
+        curl -fsSL "$rel/wasm-tools/releases/download/v${WASM_TOOLS_VERSION}/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux.tar.gz" \
+          | tar -xz -C /tmp
+        mv "/tmp/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux/wasm-tools" "$bin/"
+        curl -fsSL "$rel/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" \
+          | tar -xJ -C /tmp
+        mv "/tmp/wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime" "$bin/"
+        curl -fsSL -o "$bin/wkg" "$rel/wasm-pkg-tools/releases/download/v${WKG_VERSION}/wkg-x86_64-unknown-linux-gnu"
+        curl -fsSL -o "$bin/wac" "$rel/wac/releases/download/v${WAC_VERSION}/wac-cli-x86_64-unknown-linux-musl"
+        chmod +x "$bin/wkg" "$bin/wac"
+        "$bin/wasm-tools" --version; "$bin/wasmtime" --version; "$bin/wkg" --version; "$bin/wac" --version
+    # The scala-wasm sbt plugin runs `wit-bindgen-scala` (crate 0.1.0) to generate the bindings.
+    - name: Cache wit-bindgen-scala
+      if: matrix.platform == 'wasm'
+      id: cache-wbs
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/wit-bindgen-scala
+        key: wit-bindgen-scala-0.1.0-${{ runner.os }}
+    - name: Install wit-bindgen-scala
+      if: matrix.platform == 'wasm' && steps.cache-wbs.outputs.cache-hit != 'true'
+      run: cargo install wit-bindgen-scala --version 0.1.0 --locked
+    - name: Install the dapr CLI and daprd (slim, no placement/scheduler)
+      if: matrix.platform == 'wasm'
+      run: |
+        wget -q https://raw.githubusercontent.com/dapr/cli/v1.15.1/install/install.sh -O - | /bin/bash -s 1.15.1
+        dapr init --slim --runtime-version 1.17.7
+        echo "$HOME/.dapr/bin" >> "$GITHUB_PATH"
+    # The patched scala-wasm linker (scripts/wasm/build-patched-linker.sh: the 1.22.1-wasm.6 release
+    # commit + our export-params patch, published to ~/.ivy2/local). Rebuilt only when the script, the
+    # patch or the version in wasm/build.sbt changes.
+    - name: Patched linker cache key
+      if: matrix.platform == 'wasm'
+      id: linker-key
+      run: echo "version=$(grep -oP 'patchedLinkerVersion = "\K[^"]+' wasm/build.sbt)" >> "$GITHUB_OUTPUT"
+    - name: Cache the patched scala-wasm linker
+      if: matrix.platform == 'wasm'
+      uses: actions/cache@v4
+      with:
+        path: ~/.ivy2/local/io.github.scala-wasm
+        key: scala-wasm-linker-${{ steps.linker-key.outputs.version }}-${{ hashFiles('scripts/wasm/build-patched-linker.sh', 'scripts/wasm/patches/**') }}
+    - name: Build the patched scala-wasm linker
+      if: matrix.platform == 'wasm'
+      run: scripts/wasm/build-patched-linker.sh
+    - name: Format check, compile, wall unit tests (wasm/)
+      if: matrix.platform == 'wasm'
+      working-directory: wasm
+      run: sbt scalafmtCheckAll scalafmtSbtCheck compile wallWasm/test
+    - name: E2E (components + compose + daprd + Redis)
+      if: matrix.platform == 'wasm'
+      timeout-minutes: 20
+      run: scripts/wasm/e2e.sh
 
   publish:
     needs: [format, test]
