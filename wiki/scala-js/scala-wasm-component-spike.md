@@ -1,8 +1,8 @@
 # scala-wasm Component Spike (dapr4s Phase 0)
 
-> Sources: dapr4s Phase-0 spike (local repo dapr4s-wasm-spike), 2026-10-12; scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24
+> Sources: dapr4s Phase-0 spike, 2026-10-12, ported into dapr4s 2026-10-13 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44): `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`); scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24
 > Raw: [spike build log and evidence](../../raw/scala-js/2026-10-12-dapr4s-wasm-component-spike-log.md); [scala-wasm Limitations](../../raw/scala-js/2026-10-03-scala-wasm-limitations.md); [Scala and Wasm Component Model](../../raw/scala-js/2026-08-24-virtuslab-scala-wasm-component-model.md)
-> Updated: 2026-10-12
+> Updated: 2026-10-13
 
 ## Overview
 
@@ -78,6 +78,38 @@ fixed-name object. The CC side is ordinary: the wasm `StateCapability` needed ex
 - Upstream papercuts: `compose.sh` exits 1 on success (`tmp` set in a `$(...)` subshell, so the EXIT trap
   returns 1). The wasi-http provider's `store-not-found(string)` payload is daprd's raw error body, not the
   store name.
+
+## The code in dapr4s (2026-10-13)
+
+The spike lives in this repo now, as an opt-in, unpublished prototype. The rules are in AGENTS.md
+"Wasm component layer rules".
+
+- `wasm/` is a **nested sbt build**. The scala-wasm plugin shares classes with mainline `sbt-scalajs`, so it cannot be
+  in the root meta-build. Root POMs are unchanged (diffed against master). The build compiles dapr4s's own
+  `src/shared` (+ `src/wasm/core`) for the platform instead of depending on the published `dapr4s_sjs1_3`.
+- **All 2.13 code is generated** by `wasm/project/WitGlue.scala`, which runs scalameta over the wit-bindgen-scala
+  output plus `wasm-tools component wit --json` (wit-bindgen-scala emits only the *types* of exported interfaces).
+  The bindings are generated with `scalaJSWitPackage := "dapr4swit.lowered"` (a dotted `--base-package` works). The
+  generator then emits a **same-name facade** under `dapr4swit`:
+  `type X = lowered.X`, `val X: lowered.X.type = lowered.X` per record/variant/enum, and one forwarder per
+  `@WitImport`. Scala 3 code then writes `state_read.get(...)` and `case state_read.GetError.KeyNotFound`.
+  **Exhaustivity holds through the aliases** under `-Wconf:any:error` (a deliberately partial match is an E029
+  error; the message names the `lowered` FQN). Caveat: a `use`d alias of a record (e.g. `bindings_callback.AppError`)
+  has no companion val, as in the raw bindings, so construct it through its owner (`types.AppError(...)`).
+- Each imported interface also becomes `trait <Iface>Imports` + `object <Iface>Imports` (the live implementation).
+  Each exported interface becomes `trait <Iface>Exports`, implemented in Scala 3 and reached by the generated
+  `@WitExport` trampolines through the generated `AppRoot` stub. The wall depends on the traits, so
+  `wallWasm/test` (15 munit tests with fakes) runs as **plain Scala.js on Node**.
+- Trap: any project whose classpath has the trampolines cannot be linked as plain JS. Every `@WitExport` is a
+  top-level export entry point ("Invalid top level export ... when emitting a Script (NoModule)"). So only the
+  component projects depend on `witExports`.
+- Not generated yet: WIT resources (`crypto` encryptor/decryptor/output, configuration `subscription`). Their
+  methods are imports too, so Scala 3 would need generated wrapper classes.
+- `scripts/wasm/e2e.sh` automates what the spike checked by hand: the W1 import set, counter 1 → 2 for both
+  components, `missing-store` → `ComponentNotFoundException`, and `stale-etag` → `ETagMismatchException` (the stale
+  write does not land). CI runs it as a non-gating `wasm` matrix leg, which builds the patched linker
+  (`1.22.1-wasm.6-dapr4s.1`) from source.
+- The patched linker builds fine on JDK 25 in ~1 min (`scripts/wasm/build-patched-linker.sh`).
 
 ## See Also
 

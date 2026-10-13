@@ -1,5 +1,9 @@
 # Wiki Log
 
+## [2026-10-13] update | scala-wasm component spike ported into dapr4s; generated WIT glue
+- Source: the port itself ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44)): wasm/build.sbt, wasm/project/WitGlue.scala, src/wasm/, test/wasm/, scripts/wasm/.
+- Updated: scala-js/scala-wasm-component-spike.md (new section "The code in dapr4s": nested sbt build, generated same-name facade + import/export traits, exhaustivity through aliases, trampolines break plain-JS linking, resources not generated, e2e automation); index.md row. raw/scala-js/2026-10-12-dapr4s-wasm-component-spike-log.md: dropped the local spike path.
+
 ## [2026-10-12] ingest | Dapr error codes → dapr4s DaprException mapping (D2) + HTTP-level invoke (D3)
 - Raw: raw/dapr/2026-10-12-daprd-1.17-error-codes-probe.md — live daprd 1.17.0 probe over HTTP (curl) and gRPC (grpcurl + dapr.proto), plus a source read of dapr v1.17.0 predefined.go / pkg/api/errors / http.go / grpc.go / direct_messaging.go, dapr/kit errors, java-sdk 1.17.2 DaprException/DaprHttp and @dapr/dapr 3.18.0 HTTPClient.
 - New: wiki/dapr/dapr-error-codes.md — the code table and the DaprException subtype each maps to; key facts: legacy errors carry no ERR_ code over gRPC (match by daprd's exact message format with the requested name), HTTP statuses are unreliable (secret store not found = 401, pubsub not found = 404), "not configured" = not found for the caller, invoke daprd-vs-app errors are distinguished by an ERR_DIRECT_INVOKE/permission body, Java SDK invokeMethod is lossy (throws on 3xx, drops headers) so invokeHttp uses the raw /v1.0/invoke API on both platforms.

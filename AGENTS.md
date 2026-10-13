@@ -35,6 +35,9 @@ All three must stay in sync with the code at all times.
     never published. `integrationJS` links with the Wasm + JSPI linker config.
   - `stFacades` — the ScalablyTyped facades (see "Scala.js layer rules"), never published itself.
   - `root` aggregates them all.
+- **Wasm components (opt-in, unpublished prototype)**: a third platform, `wasm` (WASI components
+  for dapr-wasm-components), lives in its own nested sbt build under `wasm/` — the root build never
+  sees it, so `sbt test` here needs none of its tools. See "Wasm component layer rules" below.
 - **Platforms**: JVM **and Scala.js**. Common commands:
   - `sbt coreJVM/compile`, `sbt coreJS/compile`
   - `sbt coreJVM/test`, `sbt coreJS/test` (unit tests; no Docker, no `--test-only` filter needed)
@@ -342,6 +345,71 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
   silently picks gRPC. `HttpMethod` values are lowercase strings. Options objects are
   `Partial<...>` — ST renders them as builder-style traits (`PartialDaprClientOptions().setX(...)`).
 
+### Wasm component layer rules (opt-in Phase-0 prototype)
+
+The `wasm` platform builds a dapr4s app as a WASI **component** for
+[dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.0, with the
+scala-wasm fork of Scala.js (`io.github.scala-wasm:sbt-scalajs`, `ModuleKind.WasmComponent`).
+Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
+`wiki/scala-js/scala-wasm-component-spike.md`. Nothing of it is published.
+
+- **Opt-in by construction — a nested sbt build in `wasm/`** (`wasm/build.sbt`,
+  `wasm/project/`). WHY: the scala-wasm plugin is a fork of `org.scala-js:sbt-scalajs` with the
+  same classes and keys, so one meta-build cannot load both, and switching the root build to the
+  fork would change `coreJS`'s published artifact. The root build does not know the wasm projects:
+  plain `sbt test` works without any wasm tool. Run it with `cd wasm && sbt ...`. `wasm/build.sbt`
+  reads `scala3Nightly`, `scalaJavaTime` and `munit` from the root `build.sbt` (single source of
+  truth); keep its `compilerFlags` in sync by hand.
+- **Layout**: `src/wasm/core` (wasm platform traits — empty, platform-trait technique — and the
+  `dapr4s.wasm.DaprComponent` entry API; compiled together with `src/shared` as `coreWasm`),
+  `src/wasm/component-root-stub` (link-time stub of `dapr4s.wasm.ComponentRoot`),
+  `src/wasm/inert` (inert callback exports), `src/wasm/internal` (the **third wall**,
+  `dapr4s.internal`: `WasmStateCapability`, `InvokeDispatcher`, `WasmRuntime`, the real
+  `dapr4s.internal.witglue.AppRoot`), `test/wasm/unit` (wall unit tests), `test/wasm/counter`
+  and `test/wasm/counter-raw` (test components), `scripts/wasm/` (e2e, compose, run, measure,
+  linker build + `patches/`), `wasm/wit/world.wit`, `wasm/wkg-config.toml`, `wasm/wkg.lock`.
+- **WIT only through OCI**: `world app { include dapr-wasm-components:interfaces/app@0.7.0; }`
+  + the upstream `wkg-config.toml`; the `witFetch` task runs `wkg wit fetch --config
+  wkg-config.toml` before wit-bindgen-scala. `wkg.lock` is committed, `wasm/wit/deps/` is
+  git-ignored. Never copy WIT from git.
+- **The two-compiler constraint**: mainline Scala 3 has no WIT codegen (imports are lowered at
+  the call site by the compiler backend, `@WitExport` is compiler-emitted). Every import call and
+  every export must be compiled by Scala 2.13 + scala-wasm's compiler plugin. **Nobody writes
+  2.13 code**: `wasm/project/WitGlue.scala` generates all of it (scalameta over the
+  wit-bindgen-scala output + `wasm-tools component wit --json`):
+  1. wit-bindgen-scala emits into the shadow package `dapr4swit.lowered` (`witLowered`);
+  2. `witFacade`: a **same-name facade** under `dapr4swit` — type aliases + companion vals for
+     every record/variant/enum and one forwarder per `@WitImport` — so Scala 3 calls
+     `state_read.get(...)` exactly as wit-bindgen-scala documents (exhaustivity checking works
+     through the aliases); one plain `<Iface>Imports` trait per imported interface (its companion
+     object is the live implementation) and one `<Iface>Exports` trait per exported interface;
+  3. `witRootStub`: the `AppRoot` link-time stub; `witExports`: the `@WitExport` trampolines.
+  If Scala 3 gets a WIT backend, delete the generator and generate straight into `dapr4swit`.
+  WIT resources (`crypto`, configuration `subscription`) are not generated yet.
+- **The wall depends on the import TRAITS, never on the import functions**, and receives their
+  live objects only in `WasmRuntime`. That is what keeps it unit-testable with fakes.
+- **Only component projects depend on `witExports`**: its `@WitExport`s are linker entry points,
+  and a plain-JS test link would reject them ("Invalid top level export").
+- **No `main` in a reactor**: the app supplies `object dapr4s.wasm.ComponentRoot { def component
+  = MyComponent }` (fixed FQN, resolved at link time against a `Provided` stub; a missing one is
+  a link error). The 2.13 trampolines reach the Scala 3 wall the same way, via
+  `dapr4s.internal.witglue.AppRoot`.
+- **Upstream workarounds the build carries** (each documented at its definition in
+  `wasm/build.sbt`): the patched linker `1.22.1-wasm.6-dapr4s.1` (`scripts/wasm/build-patched-linker.sh`,
+  once per machine; params via linear memory), `componentWasm` re-embedding the real WIT world with
+  `--encoding utf16` (the linker drops WIT aliases), the stdlib `.sjsir` overlay (the nightly's
+  library-js uses JS `===`; re-check it on every nightly bump), and the exclusion of mainline
+  `org.scala-js` library/javalib.
+- **Shared code on the `wasm` path** must avoid `java.time` formatting/parsing, wall-clock
+  (`Instant.now`), `println` and `UUID.randomUUID`: they reach JS and fail to link.
+- Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr
+  CLI + daprd from `dapr init --slim`, `wasmtime` and `wac` for the e2e):
+  - `scripts/wasm/build-patched-linker.sh` (once per machine; idempotent)
+  - `cd wasm && sbt compile wallWasm/test` (wall unit tests, plain Scala.js on Node)
+  - `cd wasm && sbt counter/componentWasm` → `wasm/target/components/counter.wasm`
+  - `scripts/wasm/e2e.sh` (both components: W1 authority check, compose, daprd + Redis, counter
+    1 → 2, error mapping)
+
 ---
 
 ## Formatting
@@ -356,6 +424,9 @@ Check without writing: `sbt scalafmtCheckAll scalafmtSbtCheck`
 
 **Always format before committing.** The CI `format` job runs `sbt scalafmtCheckAll scalafmtSbtCheck`
 and blocks the build (and `publish`) on any unformatted file, so a missed format fails CI.
+The `src/wasm`/`test/wasm` sources and `wasm/*.sbt`, `wasm/project/*.scala` are checked by the
+nested build (same `.scalafmt.conf`): `cd wasm && sbt scalafmtAll scalafmtSbt`; CI runs the check
+in the `wasm` matrix leg. The generated WIT glue is managed code and is never formatted.
 
 Some files are intentionally excluded from formatting via `project.excludeFilters` in
 `.scalafmt.conf`: they use experimental capture-checking `^{...}` return-type annotations in a
@@ -374,7 +445,11 @@ for parse errors and prints a pointer to `project.excludeFilters`.
 
 Four legs, exactly as CI runs them (`.github/workflows/ci.yml`, one `test` matrix job with a
 `jvm` and a `js` include entry — a future Scala Native port is a new include entry, not a new
-job; each leg runs compile + unit tests + integration tests):
+job; each leg runs compile + unit tests + integration tests). A third include entry, `wasm`, runs
+the opt-in `wasm/` build (format check, compile, `wallWasm/test`, `scripts/wasm/e2e.sh`; see
+"Wasm component layer rules"). It installs its pinned tools, builds and caches the patched linker,
+and is `continue-on-error`: it does not gate `publish` (nothing in it is published, and it depends
+on a patched upstream linker and on ghcr.io).
 
 - **JVM unit tests** (no Docker): `sbt coreJVM/test`. Shared
   suites live in `test/shared/unit/` (`JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`,
@@ -422,7 +497,7 @@ job; each leg runs compile + unit tests + integration tests):
   paths ScalablyTyped emits for testcontainers, which Node ESM rejects) and sets
   `DAPR4S_REPO_ROOT` (where the suites find `scripts/it/`). `java.util.UUID.randomUUID()` does
   **not link** on Scala.js (SecureRandom is absent from the javalib) — use `JsItEnv.uniqueId()`.
-- CI gates `publish` on the `format` job and **both** matrix legs passing. `publish` runs
+- CI gates `publish` on the `format` job and the `jvm` + `js` matrix legs passing. `publish` runs
   `sbt ci-release` (sbt-ci-release: a release tag publishes the clean dynver version to Central,
   a master push a dynver `-SNAPSHOT`) for `coreJVM` + `coreJS`; the scala-cli era secrets
   (`PUBLISH_USER`, `PUBLISH_PASSWORD`, `PUBLISH_SECRET_KEY`, `PUBLISH_SECRET_KEY_PASSWORD`) are
