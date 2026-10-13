@@ -1,0 +1,55 @@
+diff --git a/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/CABIToScalaJS.scala b/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/CABIToScalaJS.scala
+index 632b871f6..b2dd217f1 100644
+--- a/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/CABIToScalaJS.scala
++++ b/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/CABIToScalaJS.scala
+@@ -514,6 +514,26 @@ object CABIToScalaJS {
+     }
+   }
+ 
++  /** Loads the parameters of a lifted (exported) function from linear memory.
++   *
++   *  When the flattened parameters exceed MAX_FLAT_PARAMS (16), the canonical ABI passes a single
++   *  i32 pointer to a tuple of all parameters (`lift_flat_values`: `ptr = vi.next('i32')`,
++   *  `load(cx, ptr, TupleType(ts))`). Each parameter is aligned to its own alignment and the values
++   *  are left on the Wasm stack in declaration order, like `genLoadStack` does.
++   */
++  def genLoadParamsFromMemory(fb: FunctionBuilder, paramTypes: List[wit.ValType],
++      paramsPtr: wanme.LocalID)(implicit ctx: WasmContext): Unit = {
++    val ptr = fb.addLocal(NoOriginalName, watpe.Int32)
++    fb += wa.LocalGet(paramsPtr)
++    fb += wa.LocalSet(ptr)
++    for (tpe <- paramTypes) {
++      genAlignTo(fb, WitTypeOps.alignment(tpe), ptr)
++      fb += wa.LocalGet(ptr)
++      genLoadMemory(fb, tpe)
++      genMovePtr(fb, ptr, WitTypeOps.elemSize(tpe))
++    }
++  }
++
+   private def genAlignTo(fb: FunctionBuilder, align: Int, ptr: wanme.LocalID): Unit = {
+     // ;; Calculate: (ptr + alignment - 1) / alignment * alignment
+     // ptr + alignment - 1
+diff --git a/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala b/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala
+index 508cf5154..95380f1e1 100644
+--- a/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala
++++ b/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala
+@@ -196,7 +196,18 @@ object InteropEmitter {
+       fb += wa.Call(genFunctionID.loadModule(owningClass))
+ 
+       flatFuncType.paramsOffset match {
+-        case Some(paramsOffset) => ??? // TODO read params from linear memory
++        case Some(_) =>
++          val paramsPtr = fb.addParam(OriginalName("params_ptr"), watpe.Int32)
++          // The host allocated the parameter tuple with cabi_realloc (our bump allocator) before
++          // this call; release it in post-return like strings are released in genLoadMemory.
++          fb += wa.GlobalGet(genGlobalID.savedStackPointer)
++          fb += wa.LocalGet(paramsPtr)
++          fb += wa.I32GtU
++          fb.ifThen() {
++            fb += wa.LocalGet(paramsPtr)
++            fb += wa.GlobalSet(genGlobalID.savedStackPointer)
++          }
++          CABIToScalaJS.genLoadParamsFromMemory(fb, exportDef.signature.paramTypes, paramsPtr)
+         case None               =>
+           val vi = flatFuncType.stackParams.map { t =>
+             (fb.addParam(NoOriginalName, t), t)

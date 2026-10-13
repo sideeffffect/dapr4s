@@ -1,0 +1,10 @@
+# wkg registry configuration for the `dapr-wasm-components` WIT namespace.
+#
+# Maps the package `dapr-wasm-components:interfaces` to the OCI repository
+# `ghcr.io/sideeffffect/dapr-wasm-components/interfaces`. CI publishes with this
+# file (`wkg publish`), and consumers use the same file — or merge this table into
+# their own wkg config — so `wkg wit fetch` resolves the package to the exact
+# reference the publisher wrote. Usage: `wkg wit fetch --config wkg-config.toml`.
+[namespace_registries]
+dapr-wasm-components = { registry = "sideeffffect", metadata = { preferredProtocol = "oci", "oci" = { registry = "ghcr.io", namespacePrefix = "sideeffffect/" } } }
+
