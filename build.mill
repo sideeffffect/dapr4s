@@ -33,8 +33,8 @@ import mill.javalib.publish.*
 // Single source of truth for the nightly, wasm included (scripts read it with `./mill show scala3Nightly`).
 def scala3Nightly: T[String] = Task(Versions.scala3Nightly)
 
-/** The version of every published artifact (core and wasm alike), computed from git like sbt-dynver +
-  * sbt-ci-release did (see Dynver in buildsupport.mill).
+/** The version of every published artifact (core and wasm alike), computed from git like sbt-dynver + sbt-ci-release
+  * did (see Dynver in buildsupport.mill).
   */
 def publishVersion: T[String] = Task.Input(Dynver.version(BuildCtx.workspaceRoot))
 
@@ -82,15 +82,13 @@ trait Dapr4sJs extends ScalaJSModule {
 
 /** Scala.js test modules on Scala >= 3.8.
   *
-  * WHAT: `scalaJSTestDeps` (the test bridge and the Scala.js library, which Mill PREPENDS to the test link
-  * classpath) without their transitive `scalajs-scalalib_2.13:2.13.x+1.22.0`.
-  * WHY: since Scala 3.8 the stdlib IR comes from `scalajs-scalalib_2.13:<Scala 3 version>`; Mill resolves the
-  * bridge transitively, which brings the Scala 2.13 stdlib IR as well and puts it FIRST, and the linker keeps
-  * the first IR file per class: the Wasm link of the integration suites then fails with "Referring to
-  * non-existent method scala.Some.orNull()" (2.13's Option shadowing 3.10's).
-  * WHY SAFE: the right stdlib IR is on the module's own run classpath (via scala3-library_sjs1_3), exactly as
-  * sbt-scalajs links it. RETIRES when Mill resolves the test deps together with the module's dependencies
-  * (upstream Mill fix).
+  * WHAT: `scalaJSTestDeps` (the test bridge and the Scala.js library, which Mill PREPENDS to the test link classpath)
+  * without their transitive `scalajs-scalalib_2.13:2.13.x+1.22.0`. WHY: since Scala 3.8 the stdlib IR comes from
+  * `scalajs-scalalib_2.13:<Scala 3 version>`; Mill resolves the bridge transitively, which brings the Scala 2.13 stdlib
+  * IR as well and puts it FIRST, and the linker keeps the first IR file per class: the Wasm link of the integration
+  * suites then fails with "Referring to non-existent method scala.Some.orNull()" (2.13's Option shadowing 3.10's). WHY
+  * SAFE: the right stdlib IR is on the module's own run classpath (via scala3-library_sjs1_3), exactly as sbt-scalajs
+  * links it. RETIRES when Mill resolves the test deps together with the module's dependencies (upstream Mill fix).
   */
 trait Scala3JsTests extends TestScalaJSModule {
   override def scalaJSTestDeps = Task {
@@ -131,14 +129,6 @@ object core extends Module {
       override def mvnDeps = Seq(
         mvn"org.scalameta::munit:${Versions.munit}",
         mvn"com.lihaoyi::upickle:${Versions.upickle}",
-      )
-      // `core.jvm.test.assembly`: fat jar of the test classpath, for the example service mains in
-      // test/jvm/apps (scripts/k8s-test.sh runs them with `java -cp <jar> <main class>`). Classes
-      // must be identical across jars; duplicated metadata resources (netty's versions.properties,
-      // protobuf .proto copies, ...) only need one copy; gRPC's ServiceLoader files are merged.
-      override def assemblyRules = super.assemblyRules ++ Seq(
-        Assembly.Rule.AppendPattern("META-INF/services/.*"),
-        Assembly.Rule.ExcludePattern(".*module-info\\.class"),
       )
     }
   }
@@ -190,6 +180,28 @@ object core extends Module {
   }
 }
 
+/** The two example service mains of test/jvm/apps as runnable fat jars (`k8s.<service>.assembly`), for
+  * scripts/k8s-test.sh and the Dockerfiles (`java -jar app.jar`). gRPC's ServiceLoader files are merged; other
+  * duplicated metadata (netty's versions.properties, protobuf .proto copies, ...) only needs one copy.
+  */
+object k8s extends Module {
+  trait ServiceApp extends JavaModule {
+    override def moduleDeps = Seq(core.jvm.test)
+    override def sources = Task.Sources()
+    override def resources = Task.Sources()
+    override def assemblyRules = super.assemblyRules ++ Seq(
+      Assembly.Rule.AppendPattern("META-INF/services/.*"),
+      Assembly.Rule.ExcludePattern(".*module-info\\.class"),
+    )
+  }
+  object orderService extends ServiceApp {
+    override def mainClass = Some("dapr4s.test.integration.apps.orderServiceMain")
+  }
+  object inventoryService extends ServiceApp {
+    override def mainClass = Some("dapr4s.test.integration.apps.inventoryServiceMain")
+  }
+}
+
 // -------------------------------------------------------------------------------------------------
 // Integration suites (Docker). Never published.
 //
@@ -203,7 +215,8 @@ object integration extends Module {
 
   object jvm extends Dapr4sFlags with TestModule.Munit {
     override def moduleDeps = Seq(core.jvm.test)
-    override def sources = Task.Sources(Dapr4sPaths.test / "shared" / "integration", Dapr4sPaths.test / "jvm" / "integration")
+    override def sources =
+      Task.Sources(Dapr4sPaths.test / "shared" / "integration", Dapr4sPaths.test / "jvm" / "integration")
     override def resources = Task.Sources()
     override def testParallelism = false
     override def mvnDeps = Seq(
@@ -219,7 +232,8 @@ object integration extends Module {
 
   object js extends Dapr4sFlags with Dapr4sJs with Scala3JsTests with TestModule.Munit {
     override def moduleDeps = Seq(core.js.test)
-    override def sources = Task.Sources(Dapr4sPaths.test / "shared" / "integration", Dapr4sPaths.test / "js" / "integration")
+    override def sources =
+      Task.Sources(Dapr4sPaths.test / "shared" / "integration", Dapr4sPaths.test / "js" / "integration")
     override def resources = Task.Sources()
     override def mvnDeps = Seq(mvn"org.scalameta::munit::${Versions.munit}")
     // The suites block on the Dapr JS SDK through orphan js.await (JsAwait), which only exists on the
@@ -256,10 +270,9 @@ object integration extends Module {
 // `typings.*`, including its own `typings.std`/`typings.node`) would collide with them at link time.
 // -------------------------------------------------------------------------------------------------
 
-/** `npm ci` in the repo root unless node_modules is already installed from the current
-  * package-lock.json. The SAME node_modules serves the converter and the JS integration test runtime.
-  * Returns package.json + package-lock.json (by content), so the facades regenerate exactly when they
-  * change.
+/** `npm ci` in the repo root unless node_modules is already installed from the current package-lock.json. The SAME
+  * node_modules serves the converter and the JS integration test runtime. Returns package.json + package-lock.json (by
+  * content), so the facades regenerate exactly when they change.
   */
 def npmInstall: T[Seq[PathRef]] = Task.Input {
   val root = Dapr4sPaths.root
@@ -300,22 +313,24 @@ object stFacades extends Dapr4sJs with Dapr4sPublish {
     mvn"org.scala-js::scalajs-dom::${Versions.scalajsDom}",
   )
 
-  /** The generated facade sources (dapr4styped.*). ~10 min cold; the converter's parse cache is
-    * ~/.cache/scalablytyped (CI caches it with out/stFacades).
+  /** The generated facade sources (dapr4styped.*). ~10 min cold; the converter's parse cache is ~/.cache/scalablytyped
+    * (CI caches it with out/stFacades).
     */
   def stSources: T[PathRef] = Task {
     val dest = Task.dest / "scalablytyped"
-    stGen.runner().run(
-      args = Seq[String](
-        (Dapr4sPaths.root / "node_modules").toString,
-        dest.toString,
-        scalaVersion(),
-        scalaJSVersion(),
-        "dapr4styped",
-        "es2022",
-      ) ++ npmRoots().map { case (k, v) => s"$k=$v" },
-      mainClass = "dapr4s.stgen.StGen",
-    )
+    stGen
+      .runner()
+      .run(
+        args = Seq[String](
+          (Dapr4sPaths.root / "node_modules").toString,
+          dest.toString,
+          scalaVersion(),
+          scalaJSVersion(),
+          "dapr4styped",
+          "es2022",
+        ) ++ npmRoots().map { case (k, v) => s"$k=$v" },
+        mainClass = "dapr4s.stgen.StGen",
+      )
     PathRef(dest)
   }
   override def generatedSources = Task(Seq(stSources()))
@@ -363,10 +378,9 @@ object stFacades extends Dapr4sJs with Dapr4sPublish {
 
   /** The facade .sjsir that dapr4s_sjs1_3 embeds (a directory laid out as in the jar).
     *
-    * ONLY .sjsir, deliberately not .class/.tasty: consumers only ever LINK against the facades (they
-    * are internal to dapr4s and never surface in the public API), and embedded .tasty would make
-    * scaladoc document the full node/express/@dapr typings (a 1.1 GB -javadoc.jar, over Central's
-    * upload limit: the 0.20.0 publish failure).
+    * ONLY .sjsir, deliberately not .class/.tasty: consumers only ever LINK against the facades (they are internal to
+    * dapr4s and never surface in the public API), and embedded .tasty would make scaladoc document the full
+    * node/express/@dapr typings (a 1.1 GB -javadoc.jar, over Central's upload limit: the 0.20.0 publish failure).
     */
   def embeddedFacades: T[PathRef] = Task {
     val root = compile().classes.path / "dapr4styped"

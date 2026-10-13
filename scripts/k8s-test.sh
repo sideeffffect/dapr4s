@@ -2,7 +2,7 @@
 # k8s-test.sh — Full lifecycle k3d integration test for dapr4s
 #
 # Prerequisites:
-#   k3d (>= v5.8), kubectl, dapr CLI, Docker, sbt (on JDK 25), jq
+#   k3d (>= v5.8), kubectl, dapr CLI, Docker, jq (the build runs with ./mill, which fetches JDK 25 itself)
 #
 # Usage:
 #   ./scripts/k8s-test.sh              # full run
@@ -93,7 +93,6 @@ require_cmd k3d
 require_cmd kubectl
 require_cmd dapr
 require_cmd docker
-require_cmd sbt
 require_cmd jq
 
 # ---- step 1: build fat jars --------------------------------------------------
@@ -101,15 +100,11 @@ require_cmd jq
 if [[ "$SKIP_BUILD" == false ]]; then
   info "Building fat jars..."
 
-  # The two service mains live in the JVM test tree (test/jvm/apps); `coreJVM / Test / assembly`
-  # (sbt-assembly, see build.sbt) packs the test classpath into a fat jar, once per main class.
-  sbt \
-    'set coreJVM / Test / assembly / mainClass := Some("dapr4s.test.integration.apps.orderServiceMain")' \
-    "set coreJVM / Test / assembly / assemblyOutputPath := file(\"$PWD/order-service.jar\")" \
-    coreJVM/Test/assembly \
-    'set coreJVM / Test / assembly / mainClass := Some("dapr4s.test.integration.apps.inventoryServiceMain")' \
-    "set coreJVM / Test / assembly / assemblyOutputPath := file(\"$PWD/inventory-service.jar\")" \
-    coreJVM/Test/assembly
+  # The two service mains live in the JVM test tree (test/jvm/apps); `k8s.<service>.assembly` (build.mill)
+  # packs the test classpath into a runnable fat jar per main class. `show` prints "ref:v0:<hash>:<path>".
+  jar_of() { ./mill --ticker false show "k8s.$1.assembly" | tail -1 | sed -E 's/^"([^:]*:){3}(.*)"$/\2/'; }
+  cp "$(jar_of orderService)" order-service.jar
+  cp "$(jar_of inventoryService)" inventory-service.jar
   info "Built order-service.jar ($(du -sh order-service.jar | cut -f1))"
   info "Built inventory-service.jar ($(du -sh inventory-service.jar | cut -f1))"
 else

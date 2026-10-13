@@ -102,13 +102,15 @@ object `package` extends Module {
     // Plain-JS linking (the wall's unit tests on Node) uses the fork's released 2.13 linker in Mill's
     // Scala.js worker: same package names as mainline, and plain JS reaches none of the patched code.
     override def scalaJSLinkerClasspath: T[Seq[PathRef]] = Task {
-      jvmWorker().defaultResolver().classpath(
-        Seq(
-          mvn"$ScalaWasmOrg:scalajs-linker_2.13:$ScalaWasmVersion",
-          mvn"$ScalaWasmOrg:scalajs-sbt-test-adapter_2.13:$ScalaWasmVersion",
-          mvn"org.scala-js:scalajs-env-nodejs_2.13:1.4.0",
-        ).map(Lib.depToBoundDep(_, mill.util.BuildInfo.scalaVersion, "")),
-      )
+      jvmWorker()
+        .defaultResolver()
+        .classpath(
+          Seq(
+            mvn"$ScalaWasmOrg:scalajs-linker_2.13:$ScalaWasmVersion",
+            mvn"$ScalaWasmOrg:scalajs-sbt-test-adapter_2.13:$ScalaWasmVersion",
+            mvn"org.scala-js:scalajs-env-nodejs_2.13:1.4.0",
+          ).map(Lib.depToBoundDep(_, mill.util.BuildInfo.scalaVersion, "")),
+        )
     }
   }
 
@@ -120,13 +122,12 @@ object `package` extends Module {
 
   /** dapr4s's nightly + flags on the fork.
     *
-    * A nightly-compiled module that depends on 2.13-compiled artifacts (the WIT glue) must NOT see the 2.13
-    * stdlib the fork adds to those (different organization, so no eviction against the nightly's): drop it.
-    * dapr4s core (dapr4s_sjs1_3) and other cross-built dependencies (scala-java-time, upickle, ...) bring
-    * MAINLINE Scala.js (scalajs-library -> scalajs-javalib). Different organization than the fork's, so no
-    * eviction either: both would be on the classpath and the first IR file per class would win. Keep only
-    * the fork's. RETIRES when the fork's library and mainline's can evict each other (same coordinates) or
-    * mainline Scala.js gains the component target.
+    * A nightly-compiled module that depends on 2.13-compiled artifacts (the WIT glue) must NOT see the 2.13 stdlib the
+    * fork adds to those (different organization, so no eviction against the nightly's): drop it. dapr4s core
+    * (dapr4s_sjs1_3) and other cross-built dependencies (scala-java-time, upickle, ...) bring MAINLINE Scala.js
+    * (scalajs-library -> scalajs-javalib). Different organization than the fork's, so no eviction either: both would be
+    * on the classpath and the first IR file per class would win. Keep only the fork's. RETIRES when the fork's library
+    * and mainline's can evict each other (same coordinates) or mainline Scala.js gains the component target.
     */
   trait NightlyWasm extends ScalaWasm with Dapr4sFlags {
     override def resources = Task.Sources()
@@ -141,8 +142,8 @@ object `package` extends Module {
     "org.scala-js" -> "scalajs-javalib",
   )
 
-  /** Published wasm artifacts: core's POM metadata and version, `publishLocal` always, Central only from the
-    * publish job (PUBLISH_WASM_TO_CENTRAL, see .github/workflows/ci.yml).
+  /** Published wasm artifacts: core's POM metadata and version, `publishLocal` always, Central only from the publish
+    * job (PUBLISH_WASM_TO_CENTRAL, see .github/workflows/ci.yml).
     */
   trait WasmPublish extends Dapr4sPublish {
     // Modules merged into this one's jar (or compile-only contracts): their classes ship here, so the
@@ -171,12 +172,13 @@ object `package` extends Module {
   // -----------------------------------------------------------------------------------------------
 
   /** dapr4s-wasm-glue: the bindings of world `app` under `dapr4swit` (a dapr4s-specific root package, like
-    * `dapr4styped` for the ScalablyTyped facades, so a consumer's own wit-bindgen output cannot collide)
-    * + the hand-written import traits/objects and the 7 `*CallbackExports` traits (src/wasm/glue).
+    * `dapr4styped` for the ScalablyTyped facades, so a consumer's own wit-bindgen output cannot collide) + the
+    * hand-written import traits/objects and the 7 `*CallbackExports` traits (src/wasm/glue).
     */
   object glue extends WitAware with WasmPublish {
     def artifactName = "dapr4s-wasm-glue"
     override def sources = Task.Sources(Dapr4sPaths.src / "wasm" / "glue")
+
     /** wit-bindgen-scala 0.1.0 (cargo), the generator the fork's sbt plugin runs, with the same arguments. */
     def witBindings: T[PathRef] = Task {
       val out = Task.dest / "wit-bindgen"
@@ -203,8 +205,8 @@ object `package` extends Module {
     override def moduleDeps = Seq(glue)
   }
 
-  /** dapr4s-wasm-glue-exports: the hand-written `@WitExport` trampolines (src/wasm/glue-exports). Only
-    * COMPONENTS depend on it: every `@WitExport` is a linker entry point, which a plain-JS link rejects.
+  /** dapr4s-wasm-glue-exports: the hand-written `@WitExport` trampolines (src/wasm/glue-exports). Only COMPONENTS
+    * depend on it: every `@WitExport` is a linker entry point, which a plain-JS link rejects.
     */
   object glueExports extends WitAware with WasmPublish {
     def artifactName = "dapr4s-wasm-glue-exports"
@@ -229,8 +231,8 @@ object `package` extends Module {
     override def mvnDeps = Seq(mvn"io.github.cquiroz::scala-java-time::${Versions.scalaJavaTime}")
   }
 
-  /** The inert implementations of the callback exports the prototype does not dispatch yet. Merged into the
-    * dapr4s-wasm jar; the test components that bypass the wall compile src/wasm/inert themselves.
+  /** The inert implementations of the callback exports the prototype does not dispatch yet. Merged into the dapr4s-wasm
+    * jar; the test components that bypass the wall compile src/wasm/inert themselves.
     */
   object inert extends NightlyWasm with WasmPublish {
     def artifactName = "dapr4s-wasm-inert"
@@ -253,8 +255,8 @@ object `package` extends Module {
       }
     }
 
-    /** `dapr4s.wasm.DaprComponent` (src/wasm/api). Its own module only because the ComponentRoot stub needs
-      * the type and the wall needs the stub: merged into the dapr4s-wasm jar, never published alone.
+    /** `dapr4s.wasm.DaprComponent` (src/wasm/api). Its own module only because the ComponentRoot stub needs the type
+      * and the wall needs the stub: merged into the dapr4s-wasm jar, never published alone.
       */
     object api extends WithCore {
       def artifactName = "dapr4s-wasm-api"
@@ -301,9 +303,8 @@ object `package` extends Module {
         PathRef(mill.util.Jvm.createJar(Task.dest / "out.jar", Seq(dir)))
       }
 
-      /** Unit tests of the wall (test/wasm/unit) against FAKES of the hand-written import traits. They link as
-        * plain Scala.js and run on Node: no WIT import is reachable from them, so they need neither wasmtime
-        * nor a sidecar.
+      /** Unit tests of the wall (test/wasm/unit) against FAKES of the hand-written import traits. They link as plain
+        * Scala.js and run on Node: no WIT import is reachable from them, so they need neither wasmtime nor a sidecar.
         */
       object test extends ScalaJSTests with ScalaWasm with TestModule.Munit {
         override def sources = Task.Sources(Dapr4sPaths.test / "wasm" / "unit")
@@ -332,8 +333,8 @@ object `package` extends Module {
   // Components: linked by the link driver, then re-embedded with the real WIT world
   // -----------------------------------------------------------------------------------------------
 
-  /** A dapr4s app linked as a WASI component for dapr-wasm-components. `component` is the component typed by
-    * the real WIT world (`componentFull`: from the optimized link).
+  /** A dapr4s app linked as a WASI component for dapr-wasm-components. `component` is the component typed by the real
+    * WIT world (`componentFull`: from the optimized link).
     */
   trait WasmComponent extends NightlyWasm {
     override def compileModuleDeps = Nil
@@ -343,10 +344,12 @@ object `package` extends Module {
       os.makeDir.all(out)
       // The fork-patched stdlib overlay goes FIRST: the Scala.js IR loader keeps the first IR file per class.
       val cp = Seq(scalalibOverlay.jar().path) ++ runClasspath().map(_.path).filter(os.exists)
-      linkDriver.runner().run(
-        args = Seq[String](if (full) "full" else "fast", out.toString) ++ cp.map(_.toString),
-        mainClass = "dapr4s.wasmlink.WasmLink",
-      )
+      linkDriver
+        .runner()
+        .run(
+          args = Seq[String](if (full) "full" else "fast", out.toString) ++ cp.map(_.toString),
+          mainClass = "dapr4s.wasmlink.WasmLink",
+        )
       PathRef(out / "main.wasm")
     }
     def component: T[PathRef] = Task {
@@ -363,9 +366,8 @@ object `package` extends Module {
     override def moduleDeps = Seq(glue, glueExports)
   }
 
-  /** test/wasm/imports-probe: calls the four WIT imports with > 16 flat params (jobs.schedule,
-    * conversation.converse, actors.register-reminder/-timer): proves the patched linker lowers them
-    * (scripts/wasm/e2e.sh).
+  /** test/wasm/imports-probe: calls the four WIT imports with > 16 flat params (jobs.schedule, conversation.converse,
+    * actors.register-reminder/-timer): proves the patched linker lowers them (scripts/wasm/e2e.sh).
     */
   object importsProbe extends WasmComponent {
     override def sources = Task.Sources(Dapr4sPaths.test / "wasm" / "imports-probe", Dapr4sPaths.src / "wasm" / "inert")
@@ -424,11 +426,11 @@ object `package` extends Module {
     }
   }
 
-  /** dapr4s-wasm-linker_2.12: scala-wasm's 1.22.1-wasm.6 linker with dapr4s's params-via-memory patch,
-    * republished under dapr4s's coordinates. scripts/wasm/prepare-patched-linker.sh puts the patched sources
-    * in out/; this module compiles them against the RELEASED ir and linker-interface (the patch touches only
-    * the linker module) and adds the released linker jar's resources (its private library .sjsir), so the
-    * classes are the patched ones and everything else is the release's.
+  /** dapr4s-wasm-linker_2.12: scala-wasm's 1.22.1-wasm.6 linker with dapr4s's params-via-memory patch, republished
+    * under dapr4s's coordinates. scripts/wasm/prepare-patched-linker.sh puts the patched sources in out/; this module
+    * compiles them against the RELEASED ir and linker-interface (the patch touches only the linker module) and adds the
+    * released linker jar's resources (its private library .sjsir), so the classes are the patched ones and everything
+    * else is the release's.
     */
   object linker extends ScalaModule with Dapr4sPublish {
     def artifactName = "dapr4s-wasm-linker"
@@ -446,7 +448,11 @@ object `package` extends Module {
     }
     override def sources = Task {
       val src = patchedSources().path / "linker"
-      Seq(src / "shared" / "src" / "main" / "scala", src / "shared" / "src" / "main" / "scala-2", src / "jvm" / "src" / "main" / "scala")
+      Seq(
+        src / "shared" / "src" / "main" / "scala",
+        src / "shared" / "src" / "main" / "scala-2",
+        src / "jvm" / "src" / "main" / "scala",
+      )
         .map(PathRef(_))
     }
     override def mvnDeps = Seq(
@@ -455,7 +461,8 @@ object `package` extends Module {
       mvn"com.google.javascript:closure-compiler:v20220202",
     )
     def releasedLinkerResources: T[PathRef] = Task {
-      val jars = defaultResolver().classpath(Seq(mvn"$ScalaWasmOrg::scalajs-linker:$ScalaWasmVersion".exclude("*" -> "*")))
+      val jars =
+        defaultResolver().classpath(Seq(mvn"$ScalaWasmOrg::scalajs-linker:$ScalaWasmVersion".exclude("*" -> "*")))
       val dir = Task.dest / "res"
       jars.foreach(j => Zips.extract(j.path, dir, n => !n.endsWith(".class") && !n.startsWith("META-INF/")))
       PathRef(dir)
@@ -486,12 +493,12 @@ object `package` extends Module {
   }
 
   /** sbt-dapr4s-wasm: the build logic an sbt app needs to depend on dapr4s's wasm artifacts (wasm/sbt-plugin;
-    * dapr4s-examples' wasm/ build uses it). A plain sbt 1 plugin jar is a Scala 2.12 library compiled against
-    * sbt (provided) plus a `sbt/sbt.autoplugins` descriptor, so Mill builds and publishes it exactly as sbt's
-    * `SbtPlugin` did: Maven-conformant name `sbt-dapr4s-wasm_2.12_1.0` (consumers need sbt >= 1.9), the same
-    * POM properties, `Implementation-Version` in the manifest (its `dapr4sWasmVersion` reads it). dapr4s's own
-    * build no longer uses it (the components here are linked by the link driver); scripts/wasm/consumer-check.sh
-    * builds a fresh sbt consumer with it.
+    * dapr4s-examples' wasm/ build uses it). A plain sbt 1 plugin jar is a Scala 2.12 library compiled against sbt
+    * (provided) plus a `sbt/sbt.autoplugins` descriptor, so Mill builds and publishes it exactly as sbt's `SbtPlugin`
+    * did: Maven-conformant name `sbt-dapr4s-wasm_2.12_1.0` (consumers need sbt >= 1.9), the same POM properties,
+    * `Implementation-Version` in the manifest (its `dapr4sWasmVersion` reads it). dapr4s's own build no longer uses it
+    * (the components here are linked by the link driver); scripts/wasm/consumer-check.sh builds a fresh sbt consumer
+    * with it.
     */
   object sbtPlugin extends ScalaModule with Dapr4sPublish {
     val SbtVersion = "1.13.0"
@@ -512,22 +519,27 @@ object `package` extends Module {
     }
     override def resources = Task(Seq(autopluginsDescriptor()))
     override def manifest = Task {
-      super.manifest().add(
-        "Implementation-Title" -> artifactName(),
-        "Implementation-Version" -> publishVersion(),
-        "Implementation-Vendor" -> Dapr4sPom.organization,
-        "Implementation-Vendor-Id" -> Dapr4sPom.organization,
-        "Implementation-URL" -> Dapr4sPom.url,
-        "Specification-Title" -> artifactName(),
-        "Specification-Version" -> publishVersion(),
-        "Specification-Vendor" -> Dapr4sPom.organization,
-      )
+      super
+        .manifest()
+        .add(
+          "Implementation-Title" -> artifactName(),
+          "Implementation-Version" -> publishVersion(),
+          "Implementation-Vendor" -> Dapr4sPom.organization,
+          "Implementation-Vendor-Id" -> Dapr4sPom.organization,
+          "Implementation-URL" -> Dapr4sPom.url,
+          "Specification-Title" -> artifactName(),
+          "Specification-Version" -> publishVersion(),
+          "Specification-Vendor" -> Dapr4sPom.organization,
+        )
     }
     // The sbt plugin POM: the Scala library and sbt are provided by the sbt launcher.
     override def publishXmlDeps = Task.Anon {
-      super.publishXmlDeps().map { d =>
-        if (d.artifact.id == "scala-library") d.copy(scope = Scope.Provided) else d
-      }.sortBy(d => if (d.scope == Scope.Provided) 0 else 1)
+      super
+        .publishXmlDeps()
+        .map { d =>
+          if (d.artifact.id == "scala-library") d.copy(scope = Scope.Provided) else d
+        }
+        .sortBy(d => if (d.scope == Scope.Provided) 0 else 1)
     }
     override def pomProperties = Task {
       Seq(

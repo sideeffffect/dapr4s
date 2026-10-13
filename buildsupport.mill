@@ -50,19 +50,19 @@ object Dapr4sPaths {
   def src: os.Path = root / "src"
   def test: os.Path = root / "test"
 
-  /** A test source of an `integration/` directory (relative to the checkout, so a checkout that itself
-    * sits under some `integration/` directory still works).
+  /** A test source of an `integration/` directory (relative to the checkout, so a checkout that itself sits under some
+    * `integration/` directory still works).
     */
   def isIntegrationSource(p: os.Path): Boolean =
     p.startsWith(root) && p.relativeTo(root).segments.contains("integration")
 }
 
-/** The version scheme of sbt-dynver as sbt-ci-release configured it, so that the switch to Mill does not
-  * change how versions look (dapr4s-examples and Central consumers see the same scheme):
+/** The version scheme of sbt-dynver as sbt-ci-release configured it, so that the switch to Mill does not change how
+  * versions look (dapr4s-examples and Central consumers see the same scheme):
   *
   *   - HEAD is the `vX.Y.Z` tag and the tree is clean: `X.Y.Z` (a release);
-  *   - otherwise `X.Y.Z+<commits since the tag>-<8-char sha>` plus, for a dirty tree,
-  *     `+<yyyyMMdd-HHmm>`, plus `-SNAPSHOT` (a Central snapshot on master, a local build elsewhere);
+  *   - otherwise `X.Y.Z+<commits since the tag>-<8-char sha>` plus, for a dirty tree, `+<yyyyMMdd-HHmm>`, plus
+  *     `-SNAPSHOT` (a Central snapshot on master, a local build elsewhere);
   *   - no `v*` tag at all: `0.0.0+<commits>-<sha>-SNAPSHOT`.
   */
 object Dynver {
@@ -77,7 +77,7 @@ object Dynver {
     val Described = """v(.+)-(\d+)-g([0-9a-f]+)""".r
     val (tag, distance) = described match {
       case Some(Described(t, d, _)) => (t, d.toInt)
-      case _ =>
+      case _                        =>
         val count = git("rev-list", "--count", "HEAD").map(_.toInt).getOrElse(0)
         ("0.0.0", count)
     }
@@ -91,9 +91,9 @@ object Dynver {
   }
 }
 
-/** The POM in exactly the layout sbt wrote (and scala-cli before it): same elements, same order, same
-  * metadata. Mill's own renderer omits <organization>, writes an empty <email> and orders elements
-  * differently; the dapr4s POMs are compared against the published 3.0.0 ones (see AGENTS.md).
+/** The POM in exactly the layout sbt wrote (and scala-cli before it): same elements, same order, same metadata. Mill's
+  * own renderer omits <organization>, writes an empty <email> and orders elements differently; the dapr4s POMs are
+  * compared against the published 3.0.0 ones (see AGENTS.md).
   */
 object Dapr4sPom {
   val organization = "com.github.sideeffffect"
@@ -103,7 +103,8 @@ object Dapr4sPom {
     description = description,
     organization = organization,
     url = url,
-    licenses = Seq(License("Apache-2.0", "Apache-2.0", "https://spdx.org/licenses/Apache-2.0.html", false, false, "repo")),
+    licenses =
+      Seq(License("Apache-2.0", "Apache-2.0", "https://spdx.org/licenses/Apache-2.0.html", false, false, "repo")),
     versionControl = VersionControl(
       browsableRepository = Some("https://github.com/sideeffffect/dapr4s.git"),
       connection = Some("scm:git:github.com/sideeffffect/dapr4s.git"),
@@ -118,8 +119,8 @@ object Dapr4sPom {
   // elsewhere; restore sbt's order (a stable sort keeps everything else as declared).
   private def rank(d: Dependency): Int = d.artifact.id match {
     case id if id.startsWith("scala3-library") || id == "scala-library" => 0
-    case id if id.startsWith("scalajs-library") => 1
-    case _ => 2
+    case id if id.startsWith("scalajs-library")                         => 1
+    case _                                                              => 2
   }
 
   private def esc(s: String): String = scala.xml.Utility.escape(s)
@@ -132,11 +133,11 @@ object Dapr4sPom {
   ): String = {
     val depsXml = deps.sortBy(rank).map { d =>
       val scope = d.scope match {
-        case Scope.Compile => ""
+        case Scope.Compile  => ""
         case Scope.Provided => "\n            <scope>provided</scope>"
-        case Scope.Runtime => "\n            <scope>runtime</scope>"
-        case Scope.Test => "\n            <scope>test</scope>"
-        case Scope.Import => "\n            <scope>import</scope>"
+        case Scope.Runtime  => "\n            <scope>runtime</scope>"
+        case Scope.Test     => "\n            <scope>test</scope>"
+        case Scope.Import   => "\n            <scope>import</scope>"
       }
       val exclusions =
         if (d.exclusions.isEmpty) ""
@@ -162,7 +163,7 @@ object Dapr4sPom {
           .map {
             // sbt writes the plugin-dependency attributes whitespace-preserved (sbt-plugin POMs only).
             case (k @ "extraDependencyAttributes", v) => s"""        <$k xml:space="preserve">${esc(v)}</$k>"""
-            case (k, v) => s"        <$k>${esc(v)}</$k>"
+            case (k, v)                               => s"        <$k>${esc(v)}</$k>"
           }
           .mkString("\n    <properties>\n", "\n", "\n    </properties>")
     val dependencies =

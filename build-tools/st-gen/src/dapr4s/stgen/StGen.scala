@@ -13,19 +13,18 @@ import scala.collection.immutable.{SortedMap, SortedSet}
 /** Generates the ScalablyTyped facade SOURCES of dapr4s (the `stFacades` module of build.mill).
   *
   * WHAT: the very code path of sbt-converter's `ScalablyTypedConverterGenSourcePlugin.stImportSources`
-  * (`ImportTypingsGenSources.apply`, which lives in the sbt-converter jar but uses no sbt API), driven
-  * with the conversion options dapr4s's sbt build set (`stOutputPackage := "dapr4styped"`,
-  * `stStdlib := List("es2022")`, the plugin defaults for the rest). Same converter, same options, same
-  * input node_modules: the same generated sources, so the embedded facade .sjsir do not change with
-  * the build tool.
+  * (`ImportTypingsGenSources.apply`, which lives in the sbt-converter jar but uses no sbt API), driven with the
+  * conversion options dapr4s's sbt build set (`stOutputPackage := "dapr4styped"`, `stStdlib := List("es2022")`, the
+  * plugin defaults for the rest). Same converter, same options, same input node_modules: the same generated sources, so
+  * the embedded facade .sjsir do not change with the build tool.
   *
-  * WHY not mill-scalablytyped (com.github.lolgab, 0.4.1 for Mill 1): its worker hard-codes
-  * `stdLibs = es6` (dapr4s needs es2022: the @types/node and @dapr/dapr typings use ES2020+ library
-  * types) and offers no way to pass the standard library through. RETIRES when a mill-scalablytyped
-  * release exposes the stdlib option: then stFacades extends its `ScalablyTyped` trait instead.
+  * WHY not mill-scalablytyped (com.github.lolgab, 0.4.1 for Mill 1): its worker hard-codes `stdLibs = es6` (dapr4s
+  * needs es2022: the @types/node and @dapr/dapr typings use ES2020+ library types) and offers no way to pass the
+  * standard library through. RETIRES when a mill-scalablytyped release exposes the stdlib option: then stFacades
+  * extends its `ScalablyTyped` trait instead.
   *
-  * Arguments: <node_modules> <target dir> <scala version> <scala.js version> <output package>
-  * <comma-separated stdlibs> <lib=version>...
+  * Arguments: <node_modules> <target dir> <scala version> <scala.js version> <output package> <comma-separated stdlibs>
+  * <lib=version>...
   */
 object StGen {
   def main(args: Array[String]): Unit = {
