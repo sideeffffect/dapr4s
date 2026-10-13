@@ -220,7 +220,16 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
 - **Scripts**: [`scripts/wasm/`](../scripts/wasm): `e2e.sh` (W1 authority check, compose, daprd + Redis, counter
   1 → 2, error mapping), `compose.sh`, `run.sh`, `measure.py`, `build-patched-linker.sh` + `patches/`.
 - **CI**: a `wasm` entry in the `test` matrix. It is `continue-on-error`, so it does not gate `publish`.
+- **`publishLocal` for external apps** (still never Maven Central): `cd wasm && sbt publishLocal` publishes
+  `dapr4s-wasm-core_sjs1_3`, `dapr4s-wasm_sjs1_3` (the wall), `dapr4s-wasm-inert_sjs1_3`, the generated 2.13 glue
+  `dapr4s-wasm-wit-{lowered,facade,exports}_sjs1_2.13` and the sbt plugin `sbt-dapr4s-wasm`, all under the sbt-dynver
+  version. The build-level workarounds (patched linker, stdlib overlay, exclusions, WasmComponent link + WIT
+  re-embed) cannot be a library, so they moved into that plugin
+  ([`wasm/sbt-plugin`](../wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala)), which dapr4s's own
+  `wasm/` build compiles into its meta-build. The link-time stubs stay unpublished (`Provided`). The first consumer
+  is [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' separate `wasm/` sbt build.
 
 This makes the "two-compiler build" of the revised Phase 4 concrete: the 2.13 part is entirely generated, and only
 the generator (not hand-written forwarders) has to grow to cover all ~100 WIT functions. What remains open for
-Phase 4 is resources, the other walls, the upstream linker fixes and how to publish the 2.13 + Scala 3 artifacts.
+Phase 4 is resources, the other walls, the upstream linker fixes and publishing the 2.13 + Scala 3 artifacts (and
+the plugin) to Maven Central; `publishLocal` already works.

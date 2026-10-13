@@ -156,7 +156,7 @@ jobs:
     - name: Patched linker cache key
       if: matrix.platform == 'wasm'
       id: linker-key
-      run: echo "version=$(grep -oP 'patchedLinkerVersion = "\K[^"]+' wasm/build.sbt)" >> "$GITHUB_OUTPUT"
+      run: echo "version=$(grep -oP 'PatchedLinkerVersion = "\K[^"]+' wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala)" >> "$GITHUB_OUTPUT"
     - name: Cache the patched scala-wasm linker
       if: matrix.platform == 'wasm'
       uses: actions/cache@v4
@@ -170,6 +170,11 @@ jobs:
       if: matrix.platform == 'wasm'
       working-directory: wasm
       run: sbt scalafmtCheckAll scalafmtSbtCheck compile wallWasm/test
+    # The publishLocal-only artifacts + the sbt-dapr4s-wasm plugin that dapr4s-examples' wasm build consumes.
+    - name: publishLocal (wasm artifacts + sbt-dapr4s-wasm)
+      if: matrix.platform == 'wasm'
+      working-directory: wasm
+      run: sbt publishLocal
     - name: E2E (components + compose + daprd + Redis)
       if: matrix.platform == 'wasm'
       timeout-minutes: 20

@@ -81,8 +81,8 @@ fixed-name object. The CC side is ordinary: the wasm `StateCapability` needed ex
 
 ## The code in dapr4s (2026-10-13)
 
-The spike lives in this repo now, as an opt-in, unpublished prototype. The rules are in AGENTS.md
-"Wasm component layer rules".
+The spike lives in this repo now, as an opt-in prototype (`publishLocal` only, never Maven Central). The rules
+are in AGENTS.md "Wasm component layer rules".
 
 - `wasm/` is a **nested sbt build**. The scala-wasm plugin shares classes with mainline `sbt-scalajs`, so it cannot be
   in the root meta-build. Root POMs are unchanged (diffed against master). The build compiles dapr4s's own
@@ -110,6 +110,20 @@ The spike lives in this repo now, as an opt-in, unpublished prototype. The rules
   write does not land). CI runs it as a non-gating `wasm` matrix leg, which builds the patched linker
   (`1.22.1-wasm.6-dapr4s.1`) from source.
 - The patched linker builds fine on JDK 25 in ~1 min (`scripts/wasm/build-patched-linker.sh`).
+- **Packaging for external apps (publishLocal).** The build-level workarounds became an sbt plugin,
+  `sbt-dapr4s-wasm` (`wasm/sbt-plugin`), compiled into `wasm/`'s meta-build and published by the same build. Facts
+  learned on the way:
+  - sbt's coursier `dependencyResolution` is per project and **applies the project's `excludeDependencies`** — a
+    `retrieve` of the fork's `scalajs-scalalib_2.13` (the stdlib overlay) through it returns *nothing*, silently,
+    because the exclusions drop that exact artifact. Retrieve through `Global / scalaJSLinkerImpl /
+    dependencyResolution` instead (as the linker override does), and fail if the overlay comes out empty.
+  - Mixed Scala 3 → 2.13 `dependsOn` publishes correctly: the Scala 3 wall's ivy file depends on
+    `dapr4s-wasm-wit-facade_sjs1_2.13`. A consumer's own Scala 3 project needs
+    `CrossVersion.for3Use2_13With("sjs1_", "")` for a 2.13 artifact (`dapr4sWasmWitExports(v)` in the plugin).
+  - `Provided` link-time stubs stay out of a consumer's classpath (ivy conf `provided`), which is what keeps them
+    from shadowing the real `AppRoot`/`ComponentRoot` IR.
+  - A published plugin can learn its own version from its jar manifest (`Implementation-Version`, written by sbt's
+    default `packageOptions`), which `dapr4sWasmVersion` uses for the library dependencies.
 
 ## See Also
 

@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-13] update | scala-wasm component packaging (publishLocal + sbt plugin)
+- Updated: scala-js/scala-wasm-component-spike.md — sbt-dapr4s-wasm plugin; coursier dependencyResolution applies excludeDependencies (silently empty overlay retrieve); mixed 3→2.13 publish; Provided stubs; plugin version from manifest
+
 ## [2026-10-13] update | scala-wasm component spike ported into dapr4s; generated WIT glue
 - Source: the port itself ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44)): wasm/build.sbt, wasm/project/WitGlue.scala, src/wasm/, test/wasm/, scripts/wasm/.
 - Updated: scala-js/scala-wasm-component-spike.md (new section "The code in dapr4s": nested sbt build, generated same-name facade + import/export traits, exhaustivity through aliases, trampolines break plain-JS linking, resources not generated, e2e automation); index.md row. raw/scala-js/2026-10-12-dapr4s-wasm-component-spike-log.md: dropped the local spike path.

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build scala-wasm's linker at the exact 1.22.1-wasm.6 release commit + the export-params patch
-# (scripts/wasm/patches/) and publish it to ~/.ivy2/local under the version wasm/build.sbt's linker
-# override uses (`patchedLinkerVersion`). Once per machine; CI caches ~/.ivy2/local/io.github.scala-wasm.
+# (scripts/wasm/patches/) and publish it to ~/.ivy2/local under the version the sbt-dapr4s-wasm plugin's
+# linker override uses (`Dapr4sWasm.PatchedLinkerVersion`). Once per machine; CI caches ~/.ivy2/local/io.github.scala-wasm.
 #
 # WHY: the released linker cannot lift a WIT export whose flattened params exceed MAX_FLAT_PARAMS = 16
 # (`??? // TODO read params from linear memory`), and two mandatory exports of the dapr-wasm-components
@@ -11,8 +11,9 @@
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
-version="$(sed -n 's/^val patchedLinkerVersion = "\(.*\)"$/\1/p' "$repo/wasm/build.sbt")"
-[[ -n "$version" ]] || { echo "build-patched-linker.sh: no patchedLinkerVersion in wasm/build.sbt" >&2; exit 1; }
+plugin="$repo/wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala"
+version="$(sed -n 's/^ *val PatchedLinkerVersion = "\(.*\)"$/\1/p' "$plugin")"
+[[ -n "$version" ]] || { echo "build-patched-linker.sh: no PatchedLinkerVersion in $plugin" >&2; exit 1; }
 # "1.22.1-wasm.6" (scala-wasm/scala-wasm, merged as #266). No GitHub tag exists for it; the sbt plugin
 # 1.22.1-wasm.6 on Maven Central was released from this commit.
 rev=e24a46b6f1df14483a56c7c02b1787b68bae29a8

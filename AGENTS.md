@@ -351,10 +351,11 @@ The `wasm` platform builds a dapr4s app as a WASI **component** for
 [dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.0, with the
 scala-wasm fork of Scala.js (`io.github.scala-wasm:sbt-scalajs`, `ModuleKind.WasmComponent`).
 Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
-`wiki/scala-js/scala-wasm-component-spike.md`. Nothing of it is published.
+`wiki/scala-js/scala-wasm-component-spike.md`. Nothing of it is published to Maven Central;
+the reusable parts are **`publishLocal`-only** (see below).
 
 - **Opt-in by construction — a nested sbt build in `wasm/`** (`wasm/build.sbt`,
-  `wasm/project/`). WHY: the scala-wasm plugin is a fork of `org.scala-js:sbt-scalajs` with the
+  `wasm/project/`, `wasm/sbt-plugin/`). WHY: the scala-wasm plugin is a fork of `org.scala-js:sbt-scalajs` with the
   same classes and keys, so one meta-build cannot load both, and switching the root build to the
   fork would change `coreJS`'s published artifact. The root build does not know the wasm projects:
   plain `sbt test` works without any wasm tool. Run it with `cd wasm && sbt ...`. `wasm/build.sbt`
@@ -394,12 +395,31 @@ Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
   = MyComponent }` (fixed FQN, resolved at link time against a `Provided` stub; a missing one is
   a link error). The 2.13 trampolines reach the Scala 3 wall the same way, via
   `dapr4s.internal.witglue.AppRoot`.
-- **Upstream workarounds the build carries** (each documented at its definition in
-  `wasm/build.sbt`): the patched linker `1.22.1-wasm.6-dapr4s.1` (`scripts/wasm/build-patched-linker.sh`,
-  once per machine; params via linear memory), `componentWasm` re-embedding the real WIT world with
+- **Upstream workarounds live in the `sbt-dapr4s-wasm` plugin** (`wasm/sbt-plugin/.../Dapr4sWasmPlugin.scala`,
+  each documented at its definition): the patched linker `1.22.1-wasm.6-dapr4s.1`
+  (`scripts/wasm/build-patched-linker.sh`, once per machine; params via linear memory; the script reads
+  `Dapr4sWasm.PatchedLinkerVersion` from the plugin), `componentWasm` re-embedding the real WIT world with
   `--encoding utf16` (the linker drops WIT aliases), the stdlib `.sjsir` overlay (the nightly's
-  library-js uses JS `===`; re-check it on every nightly bump), and the exclusion of mainline
-  `org.scala-js` library/javalib.
+  library-js uses JS `===`; re-check it on every nightly bump; resolved through the linker's GLOBAL
+  `dependencyResolution`, because coursier's per-project one applies `excludeDependencies` and would drop
+  it), and the exclusion of mainline `org.scala-js` library/javalib. `Dapr4sWasmPlugin` (exclusions +
+  linker) goes on every nightly-compiled project, `Dapr4sWasmComponentPlugin` (WasmComponent link,
+  overlay, `componentWasm`) on every component. The same source file is compiled into `wasm/`'s
+  meta-build (`wasm/project/plugin-sources.sbt`) and published as a plugin by `sbtDapr4sWasm`, so dapr4s's
+  test components and an external app build identically.
+- **`publishLocal` only — for external apps (dapr4s-examples), never Central.** `cd wasm && sbt
+  publishLocal` publishes, under the sbt-dynver version (same scheme as the root build:
+  `<tag>+<n>-<sha>-SNAPSHOT`): `dapr4s-wasm-core_sjs1_3` (coreWasm), `dapr4s-wasm_sjs1_3` (wallWasm),
+  `dapr4s-wasm-inert_sjs1_3`, the generated 2.13 glue `dapr4s-wasm-wit-{lowered,facade,exports}_sjs1_2.13`
+  and the plugin `sbt-dapr4s-wasm`. `publish / skip := true` stays on every project, so `publish` cannot
+  reach Central. The two link-time **stubs** (`witRootStub`, `componentRootStub`) are never published:
+  they are `Provided` dependencies, so they stay off a consumer's classpath — on a linker classpath they
+  would shadow the real `AppRoot`/`ComponentRoot` (first IR file per class wins). An app needs:
+  `addSbtPlugin("com.github.sideeffffect" % "sbt-dapr4s-wasm" % v)`; `enablePlugins(Dapr4sWasmComponentPlugin)`;
+  `libraryDependencies ++= Seq("com.github.sideeffffect" %%% "dapr4s-wasm" % dapr4sWasmVersion,
+  dapr4sWasmWitExports(dapr4sWasmVersion))`; its own `wit/world.wit` + `wkg-config.toml` + `wkg.lock`
+  (the plugin re-embeds that world); and `object dapr4s.wasm.ComponentRoot`. The worked example is
+  dapr4s-examples' `wasm/` build. What cannot be a library is build logic, hence the plugin.
 - **Shared code on the `wasm` path** must avoid `java.time` formatting/parsing, wall-clock
   (`Instant.now`), `println` and `UUID.randomUUID`: they reach JS and fail to link.
 - Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr
@@ -407,6 +427,7 @@ Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
   - `scripts/wasm/build-patched-linker.sh` (once per machine; idempotent)
   - `cd wasm && sbt compile wallWasm/test` (wall unit tests, plain Scala.js on Node)
   - `cd wasm && sbt counter/componentWasm` → `wasm/target/components/counter.wasm`
+  - `cd wasm && sbt publishLocal` (the artifacts + plugin above, for dapr4s-examples)
   - `scripts/wasm/e2e.sh` (both components: W1 authority check, compose, daprd + Redis, counter
     1 → 2, error mapping)
 
