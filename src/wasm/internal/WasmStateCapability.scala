@@ -6,11 +6,12 @@ import scala.scalajs.wit
 
 import dapr4s.*
 import dapr4s.state.*
-import dapr4s.internal.witglue.StateForward
 import dapr4swit.dapr_wasm_components.interfaces.{state as witState, state_read}
 
-/** dapr4s's `StateCapability` over the WIT `state-read` / `state` imports (via the 2.13 forwarders in
-  * src/wasm/wit/exports/Exports.scala, which explains why the nightly cannot call the bindings directly).
+/** dapr4s's `StateCapability` over the WIT `state-read` / `state` imports. It depends on the GENERATED plain import
+  * traits (`state_read.StateReadImports`, `state.StateImports`, see wasm/project/WitGlue.scala), not on the import
+  * functions: `WasmRuntime` passes their live objects (compiled by the WIT-aware 2.13 compiler, which is the only one
+  * that can lower an import call), and the unit tests (test/wasm/unit) pass fakes.
   *
   * Mapping (the `wasm` wall rules of docs/WASM-COMPONENTS-PROPOSAL.md §2c; errors land in the `DaprException` family
   * of src/shared/Exceptions.scala like on the JVM/JS):
@@ -22,8 +23,8 @@ import dapr4swit.dapr_wasm_components.interfaces.{state as witState, state_read}
   *
   * WHY @assumeSafe (on this object and the two classes below): same contract as the JVM/JS walls
   * (src/{jvm,js}/internal/StateCapabilityImpl.scala). They are the boundary to the platform SDK — here the generated
-  * WIT bindings and their 2.13 forwarders, plain Scala classes that CC cannot check. They hold no capability but the
-  * component's WIT imports and never leak a binding type into the public API.
+  * WIT bindings and the generated import traits, plain Scala 2.13 classes that CC cannot check. They hold no
+  * capability but the component's WIT imports (behind those traits) and never leak a binding type into the public API.
   */
 @scala.caps.assumeSafe
 private object WasmState:
@@ -67,7 +68,11 @@ private object WasmState:
   def witOption[A](o: Option[A]): wit.Option[A] = o.fold[wit.Option[A]](wit.None)(a => wit.Some(a))
 
 @scala.caps.assumeSafe
-final class WasmStateInstance(val storeName: StateStoreName) extends StateCapability.Instance:
+final class WasmStateInstance(
+    val storeName: StateStoreName,
+    reads: state_read.StateReadImports,
+    writes: witState.StateImports,
+) extends StateCapability.Instance:
   import WasmState.*
 
   def get[T: JsonCodec](key: StateStoreKey, consistency: StateConsistency = StateConsistency.Default): Option[T] =
@@ -77,7 +82,7 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
       key: StateStoreKey,
       consistency: StateConsistency = StateConsistency.Default,
   ): StateEntry[T] =
-    StateForward
+    reads
       .get(storeName.value, key.value, WasmState.consistency(consistency), noMetadata)
       .fold(
         ok => StateEntry(decode[T](ok.data), etagOf(ok.etag)),
@@ -90,8 +95,8 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
   def getBulk[T: JsonCodec](keys: Seq[StateStoreKey]): Map[StateStoreKey, StateEntry[T]] =
     if keys.isEmpty then Map.empty
     else
-      StateForward
-        .getBulk(storeName.value, keys.map(_.value).toArray, noMetadata)
+      reads
+        .getBulk(storeName.value, keys.map(_.value).toArray, wit.None, noMetadata)
         .fold(
           items =>
             items.toList.map { item =>
@@ -102,7 +107,7 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
         )
 
   def queryState[T: JsonCodec](query: StateQuery): List[StateEntry[T]] =
-    StateForward
+    reads
       .query(storeName.value, query.value, noMetadata)
       .fold(
         resp => resp.items.toList.map(i => StateEntry(decode[T](i.data), etagOf(i.etag))),
@@ -130,7 +135,7 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
       md,
       options(consistency, concurrency),
     )
-    StateForward
+    writes
       .save(storeName.value, Array(item), noMetadata)
       .fold(
         _ => None,
@@ -148,7 +153,7 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
     val items = entries.toArray.map { (k, v) =>
       state_read.StateItem(k.value, toBytes(summon[JsonCodec[T]].encode(v)), wit.None, noMetadata, wit.None)
     }
-    StateForward
+    writes
       .save(storeName.value, items, noMetadata)
       .fold(
         _ => (),
@@ -175,7 +180,7 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
       consistency: StateConsistency,
       concurrency: StateConcurrency,
   ): Option[ETagMismatchException] =
-    StateForward
+    writes
       .delete(storeName.value, key.value, witOption(etag.map(_.value)), options(consistency, concurrency), noMetadata)
       .fold(
         _ => None,
@@ -217,7 +222,7 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
           wit.None,
         )
     }
-    StateForward
+    writes
       .executeTransaction(storeName.value, requests, noMetadata)
       .fold(
         _ => (),
@@ -232,30 +237,31 @@ final class WasmStateInstance(val storeName: StateStoreName) extends StateCapabi
 
 /** The universal (name-first) tier: every call narrows to a per-store [[WasmStateInstance]]. */
 @scala.caps.assumeSafe
-final class WasmStateCapability extends StateCapability:
+final class WasmStateCapability(reads: state_read.StateReadImports, writes: witState.StateImports) extends StateCapability:
   // WHAT: `asInstanceOf` drops the fresh capture set of the newly constructed instance.
   // WHY: CC types `new WasmStateInstance(...)` as `^{any created in method instance}`, which cannot
   //   flow into the declared `^{this}`; dapr4s's JVM/JS walls do the identical cast
   //   (internal/DaprCapabilityImpl.scala, `new StateCapabilityImpl(scope, storeName).asInstanceOf`).
-  // WHY SAFE: the instance holds no capability but the WIT imports, whose lifetime is the component
-  //   instance's, i.e. it is no more powerful than `this`.
+  // WHY SAFE: the instance holds nothing but the store name and the same two import traits as `this`
+  //   (the component's WIT imports, whose lifetime is the component instance's), i.e. it is no more
+  //   powerful than `this`.
   // WHERE: src/jvm/internal/DaprCapabilityImpl.scala (`state` / `instance`), same cast and rationale.
   override def instance(storeName: StateStoreName): StateCapability.Instance^{this} =
-    WasmStateInstance(storeName).asInstanceOf[StateCapability.Instance]
+    WasmStateInstance(storeName, reads, writes).asInstanceOf[StateCapability.Instance]
 
   def get[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, consistency: StateConsistency): Option[T] =
-    WasmStateInstance(storeName).get[T](key, consistency)
+    WasmStateInstance(storeName, reads, writes).get[T](key, consistency)
   def getWithETag[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, consistency: StateConsistency)
       : StateEntry[T] =
-    WasmStateInstance(storeName).getWithETag[T](key, consistency)
+    WasmStateInstance(storeName, reads, writes).getWithETag[T](key, consistency)
   def getBulk[T: JsonCodec](storeName: StateStoreName, keys: Seq[StateStoreKey]): Map[StateStoreKey, StateEntry[T]] =
-    WasmStateInstance(storeName).getBulk[T](keys)
+    WasmStateInstance(storeName, reads, writes).getBulk[T](keys)
   def queryState[T: JsonCodec](storeName: StateStoreName, query: StateQuery): List[StateEntry[T]] =
-    WasmStateInstance(storeName).queryState[T](query)
+    WasmStateInstance(storeName, reads, writes).queryState[T](query)
   def save[T: JsonCodec](storeName: StateStoreName, key: StateStoreKey, value: T): Unit =
-    WasmStateInstance(storeName).save(key, value)
+    WasmStateInstance(storeName, reads, writes).save(key, value)
   def saveBulk[T: JsonCodec](storeName: StateStoreName, entries: Seq[(StateStoreKey, T)]): Unit =
-    WasmStateInstance(storeName).saveBulk(entries)
+    WasmStateInstance(storeName, reads, writes).saveBulk(entries)
   def saveWithETag[T: JsonCodec](
       storeName: StateStoreName,
       key: StateStoreKey,
@@ -265,9 +271,9 @@ final class WasmStateCapability extends StateCapability:
       consistency: StateConsistency,
       concurrency: StateConcurrency,
   ): Option[ETagMismatchException] =
-    WasmStateInstance(storeName).saveWithETag(key, value, etag, metadata, consistency, concurrency)
+    WasmStateInstance(storeName, reads, writes).saveWithETag(key, value, etag, metadata, consistency, concurrency)
   def delete(storeName: StateStoreName, key: StateStoreKey): Unit =
-    WasmStateInstance(storeName).delete(key)
+    WasmStateInstance(storeName, reads, writes).delete(key)
   def deleteWithETag(
       storeName: StateStoreName,
       key: StateStoreKey,
@@ -275,6 +281,6 @@ final class WasmStateCapability extends StateCapability:
       consistency: StateConsistency,
       concurrency: StateConcurrency,
   ): Option[ETagMismatchException] =
-    WasmStateInstance(storeName).deleteWithETag(key, etag, consistency, concurrency)
+    WasmStateInstance(storeName, reads, writes).deleteWithETag(key, etag, consistency, concurrency)
   def transaction(storeName: StateStoreName, ops: Seq[StateOp]): Unit =
-    WasmStateInstance(storeName).transaction(ops)
+    WasmStateInstance(storeName, reads, writes).transaction(ops)

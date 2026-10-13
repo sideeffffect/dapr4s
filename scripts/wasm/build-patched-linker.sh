@@ -21,7 +21,7 @@ if [[ -d "$ivy" && "${FORCE:-0}" != 1 ]]; then
   echo "build-patched-linker.sh: $version already in $ivy (FORCE=1 to rebuild)"
   exit 0
 fi
-work="${WORK:-$repo/wasm/target/scala-wasm-src}"
+work="${WORK:-${XDG_CACHE_HOME:-$HOME/.cache}/dapr4s/scala-wasm-src}"
 if [[ ! -d "$work/.git" ]]; then
   git clone --filter=blob:none --no-checkout https://github.com/scala-wasm/scala-wasm.git "$work"
 fi

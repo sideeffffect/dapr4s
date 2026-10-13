@@ -4,12 +4,14 @@ import java.nio.charset.StandardCharsets.UTF_8
 
 import scala.scalajs.wit
 
-import dapr4swit.dapr_wasm_components.interfaces.{invocation, state_read}
+import dapr4swit.dapr_wasm_components.interfaces.{invocation, state, state_read}
 import dapr4swit.exports.dapr_wasm_components.interfaces.invocation_callback
-import dapr4s.internal.witglue.{InvocationHandler, StateForward}
 
-/** The counter directly over the generated WIT bindings (via the 2.13 forwarders), without dapr4s's API: the baseline
-  * that isolates the toolchain from the dapr4s wall. Run by scripts/wasm/e2e.sh (expects 1, then 2).
+/** The counter directly over the WIT bindings, without dapr4s's API: the baseline that isolates the toolchain from the
+  * dapr4s wall. Run by scripts/wasm/e2e.sh (expects 1, then 2).
+  *
+  * It calls `state_read.get` / `state.save` exactly as wit-bindgen-scala documents, from Scala 3: those names are the
+  * generated same-name facade (wasm/project/WitGlue.scala), whose bodies the WIT-aware 2.13 compiler lowered.
   */
 object Counter:
   val StoreName = "statestore"
@@ -18,7 +20,7 @@ object Counter:
   private val noMetadata: Array[wit.Tuple2[String, String]] = Array()
 
   def readCount(): Int =
-    StateForward
+    state_read
       .get(StoreName, Key, wit.None, noMetadata)
       .fold(
         ok => parseCount(ok.data),
@@ -36,11 +38,11 @@ object Counter:
   def increment(): Int =
     val next = readCount() + 1
     val item = state_read.StateItem(Key, next.toString.getBytes(UTF_8), wit.None, noMetadata, wit.None)
-    StateForward
+    state
       .save(StoreName, Array(item), noMetadata)
       .fold(_ => next, err => throw new IllegalStateException(s"state save failed: $err"))
 
-object CounterHandler extends InvocationHandler:
+object CounterHandler extends invocation_callback.InvocationCallbackExports:
   override def onInvoke(request: invocation_callback.InvokeRequest): invocation.HttpResponse =
     request.method match
       case "counter" =>
