@@ -215,24 +215,32 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   Each new building block on the wall adds its import trait by hand. (An earlier iteration generated all of this
   with scalameta; it was dropped as more machinery than the prototype needs.) WIT resources (`crypto`
   encryptor/decryptor/output, configuration `subscription`) are not wired yet.
-- **Test components**: [`test/wasm/counter`](../test/wasm/counter) (dapr4s API) and
-  [`test/wasm/counter-raw`](../test/wasm/counter-raw) (bindings + glue directly).
-- **Scripts**: [`scripts/wasm/`](../scripts/wasm): `e2e.sh` (W1 authority check, compose, daprd + Redis, counter
-  1 → 2, error mapping), `compose.sh`, `run.sh`, `measure.py`, `build-patched-linker.sh` + `patches/`.
-- **CI**: a `wasm` entry in the `test` matrix. It is `continue-on-error`, so it does not gate `publish`.
-- **`publishLocal` for external apps** (still never Maven Central): `cd wasm && sbt publishLocal` publishes
-  `dapr4s-wasm-core_sjs1_3`, `dapr4s-wasm_sjs1_3` (the wall), `dapr4s-wasm-inert_sjs1_3`, the 2.13 bindings + glue
-  `dapr4s-wasm-glue{,-exports}_sjs1_2.13` and the sbt plugin `sbt-dapr4s-wasm`, all under the sbt-dynver
-  version. The build-level workarounds (patched linker, stdlib overlay, exclusions, WasmComponent link + WIT
-  re-embed) cannot be a library, so they moved into that plugin
-  ([`wasm/sbt-plugin`](../wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala)), which dapr4s's own
-  `wasm/` build compiles into its meta-build. The link-time stubs stay unpublished (`Provided`). The first consumer
-  is [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' separate `wasm/` sbt build. It uses the
-  **release mode** (`-Ddapr4s.wasm.coreRelease=3.0.0`): the shared API comes from the published `dapr4s_sjs1_3`
-  3.0.0 on Central (linked by the scala-wasm linker, as the spike did), and only the wasm layer (wall, 2.13
-  bindings + glue, `DaprComponent`) is local. Once the wasm layer is released, that local part becomes a Central dependency too.
+- **Test components**: [`test/wasm/counter`](../test/wasm/counter) (dapr4s API),
+  [`test/wasm/counter-raw`](../test/wasm/counter-raw) (bindings + glue directly) and
+  [`test/wasm/imports-probe`](../test/wasm/imports-probe) (the four imports with > 16 flat params).
+- **Scripts**: [`scripts/wasm/`](../scripts/wasm): `e2e.sh` (import checks, compose, daprd + Redis, counter 1 → 2,
+  error mapping, the imports probe), `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`,
+  `build-patched-linker.sh` + `patches/`.
+- **CI**: a `wasm` entry in the `test` matrix (source-mode unit tests + e2e, release-mode publishLocal + consumer
+  check). It is `continue-on-error`, so it does not gate `publish`.
+- **Packaging (2026-10-13): six artifacts, Central publishing wired but OFF.** All `com.github.sideeffffect`, at core's
+  sbt-dynver version: `dapr4s-wasm_sjs1_3` (the Scala 3 adapters + `DaprComponent` + inert callbacks; depends on dapr4s
+  core `dapr4s_sjs1_3` and the glue), `dapr4s-wasm-glue_sjs1_2.13` (WIT bindings + hand-written glue),
+  `dapr4s-wasm-glue-exports_sjs1_2.13` (the trampolines; components only), `dapr4s-wasm-scalalib-overlay` (the
+  fork-patched stdlib `.sjsir`, with attribution), `dapr4s-wasm-linker_2.12` (scala-wasm's linker + our
+  params-via-memory patch, republished under our coordinates with LICENSE/NOTICE) and the sbt plugin `sbt-dapr4s-wasm`
+  ([`wasm/sbt-plugin`](../wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala): exclusions, linker,
+  overlay, glue-exports, `wkg wit fetch`, `dapr4sComponent`). A consumer needs only the plugin, one
+  `libraryDependency` (`dapr4s-wasm`), its WIT files and the fixed-name `ComponentRoot`
+  (`scripts/wasm/consumer-check.sh` proves it; the first external consumer is
+  [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' `wasm/` build). By default the wall depends on the
+  PUBLISHED `dapr4s_sjs1_3` (its IR links into the component, as the spike did); `-Ddapr4s.wasm.core=source` tests
+  dapr4s's own `src/shared` instead. sbt-ci-release in the `publish` job publishes all six behind the
+  `PUBLISH_WASM_TO_CENTRAL` switch, `'false'` until the first wasm release is approved. Nothing goes upstream to
+  scala/* or scala-wasm/* (decision): the linker patch now covers BOTH sides of params-via-memory (the import side was
+  silently missing in 1.22.1-wasm.6), proven by `test/wasm/imports-probe` against daprd.
 
 This makes the "two-compiler build" of the revised Phase 4 concrete: the 2.13 part is the generated bindings plus a
 small hand-written glue that grows with the wall (a generator can come back once it covers ~100 WIT functions). What remains open for
-Phase 4 is resources, the other walls, the upstream linker fixes and publishing the 2.13 + Scala 3 artifacts (and
-the plugin) to Maven Central; `publishLocal` already works.
+Phase 4 is resources, the other walls, retiring the workarounds as scala-wasm ships fixes, and switching the
+(already wired) Central publishing on.

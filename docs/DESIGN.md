@@ -1119,13 +1119,15 @@ Harness specifics (`integrationJS` settings in `build.sbt`):
 
 ---
 
-## Wasm component platform (Phase-0 prototype, opt-in, publishLocal only)
+## Wasm component platform (prototype, opt-in; Central publishing wired but off)
 
 A third platform builds a dapr4s app as a WASI **component** for dapr-wasm-components 0.7.1. It uses the scala-wasm
 fork of Scala.js (`ModuleKind.WasmComponent`) in a nested sbt build, `wasm/`, which the root build never loads. The
 plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in AGENTS.md "Wasm component layer rules".
 
-- **Same public API.** `src/shared` is compiled for the platform (`coreWasm`) with empty platform traits. The app
+- **Same public API.** The wall depends on dapr4s core: the published `dapr4s_sjs1_3` (its Scala.js IR links into the
+  component; the wasm platform traits equal the JS ones, all empty), or `src/shared` compiled for the platform
+  (`coreWasm`, `-Ddapr4s.wasm.core=source`) to test shared-code changes. The app
   implements `dapr4s.wasm.DaprComponent` (`def app(using StateCapability): DaprApp`) and names it in the fixed-FQN
   object `dapr4s.wasm.ComponentRoot`. A reactor component has no `main`, so the object is resolved at link time.
 - **No connection config and no blocking bridge.** WIT imports are synchronous calls into the composed outbound
@@ -1136,9 +1138,11 @@ plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in 
   the Scala 2.13 code is a small hand-written glue in `src/wasm/glue*` (only what the wall uses): plain import/export
   traits with live import objects, and the `@WitExport` trampolines. So the wall is plain Scala 3 against traits,
   and it is unit-tested with fakes.
-- **publishLocal only.** The wall, `coreWasm` and the 2.13 bindings + glue are `publishLocal`-able (never Maven Central),
-  and the build-level workarounds ship as the `sbt-dapr4s-wasm` plugin, so an external app (dapr4s-examples) builds
-  like dapr4s's own test components. The link-time stubs stay unpublished.
+- **Six artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`,
+  `dapr4s-wasm-linker` (scala-wasm's linker + our params-via-memory patch) and the `sbt-dapr4s-wasm` plugin, which
+  carries every build-level workaround. A consumer: the plugin + one dependency + the fixed-name `ComponentRoot`.
+  `publishLocal` works; Central publishing is wired (sbt-ci-release) behind the `PUBLISH_WASM_TO_CENTRAL` switch,
+  off until approved. The link-time stubs stay unpublished.
 
 ```mermaid
 flowchart LR

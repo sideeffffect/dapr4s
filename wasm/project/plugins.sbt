@@ -3,6 +3,6 @@
 // from the repo root (see build.sbt). 1.22.1-wasm.6 is the newest on Maven Central (2026-10-13).
 addSbtPlugin("io.github.scala-wasm" % "sbt-scalajs" % "1.22.1-wasm.6")
 addSbtPlugin("org.scalameta" % "sbt-scalafmt" % "2.6.2")
-// The version of the publishLocal-able wasm artifacts: derived from git exactly like the root build's (sbt-ci-release
-// uses sbt-dynver), so a `publishLocal` of both builds at one commit yields one version.
-addSbtPlugin("com.github.sbt" % "sbt-dynver" % "5.1.1")
+// Same as the root build: sbt-ci-release (sbt-dynver version from git, so one commit gives core and the wasm artifacts
+// one version; publishSigned + Sonatype for the release workflow, which keeps Central publishing OFF for now).
+addSbtPlugin("com.github.sbt" % "sbt-ci-release" % "1.12.1")

@@ -12,19 +12,30 @@ import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport._
   * WHY a plugin and not a library: everything here is a workaround in the BUILD, not in code — which linker links the
   * app, which stdlib IR wins on the linker classpath, which transitive libraries must not reach the classpath, and how
   * the linked module becomes a component typed by the real WIT world. A library cannot change any of that. dapr4s's own
-  * `wasm/` build compiles this very file into its meta-build (`wasm/project/plugin-sources.sbt`), so the test
+  * `wasm/` build compiles this very file into its meta-build (`wasm/project/plugin-sources.sbt`) and points the two
+  * artifact-backed keys (`dapr4sWasmLinkerClasspath`, `dapr4sWasmScalalibOverlay`) at its own projects, so the test
   * components in dapr4s and an external app (dapr4s-examples) build the same way.
   *
-  * Two plugins, both opt-in (`enablePlugins`), both on top of the scala-wasm FORK of sbt-scalajs
+  * Two plugins, both opt-in (`enablePlugins`), on top of the scala-wasm FORK of sbt-scalajs
   * (`io.github.scala-wasm:sbt-scalajs`), which this plugin depends on:
   *
-  *   - [[Dapr4sWasmPlugin]]: for every project compiled by the Scala 3 nightly against dapr4s's wasm artifacts (library
-  *     or app). Dependency exclusions + the patched linker.
-  *   - [[Dapr4sWasmComponentPlugin]]: for a project linked as a WASI component (an app). WasmComponent linker config,
-  *     the stdlib overlay, `componentWasm` / `componentWasmFull`, `dapr4sWasmWitFetch`.
+  *   - [[Dapr4sWasmPlugin]]: every project compiled by the Scala 3 nightly against dapr4s's wasm artifacts (library or
+  *     app): dependency exclusions + the patched linker (`dapr4s-wasm-linker`).
+  *   - [[Dapr4sWasmComponentPlugin]]: a project linked as a WASI component (an app): WasmComponent link, the stdlib
+  *     overlay (`dapr4s-wasm-scalalib-overlay`), the `@WitExport` trampolines (`dapr4s-wasm-glue-exports`),
+  *     `wkg wit fetch` and `dapr4sComponent` / `dapr4sComponentFull`.
   *
-  * Prototype status: published only with `publishLocal` (never to Maven Central) — see dapr4s AGENTS.md "Wasm component
-  * layer rules".
+  * An app's whole setup:
+  * {{{
+  * // project/plugins.sbt
+  * addSbtPlugin("com.github.sideeffffect" % "sbt-dapr4s-wasm" % "<version>")
+  * // build.sbt (+ wit/world.wit, wkg-config.toml, wkg.lock next to it)
+  * lazy val app = project.enablePlugins(Dapr4sWasmComponentPlugin)
+  *   .settings(libraryDependencies += "com.github.sideeffffect" %%% "dapr4s-wasm" % dapr4sWasmVersion)
+  * // + `object dapr4s.wasm.ComponentRoot { def component: DaprComponent = MyComponent }`
+  * }}}
+  *
+  * Each workaround retires on its own when scala-wasm ships the fix: see dapr4s AGENTS.md "Wasm component layer rules".
   */
 object Dapr4sWasmPlugin extends AutoPlugin {
   override def requires: Plugins = ScalaJSPlugin
@@ -33,12 +44,8 @@ object Dapr4sWasmPlugin extends AutoPlugin {
   object autoImport {
 
     /** The version of dapr4s's wasm artifacts this plugin was published with (they are published together, from the
-      * same dapr4s commit). Use it for the library dependencies:
-      * {{{
-      * libraryDependencies += "com.github.sideeffffect" %%% "dapr4s-wasm" % dapr4sWasmVersion
-      * }}}
-      * Read from the plugin jar's manifest; inside dapr4s's own build (sources compiled into the meta-build, no jar)
-      * there is no version and this fails.
+      * same dapr4s commit, at the same version). Read from the plugin jar's manifest; inside dapr4s's own build
+      * (sources compiled into the meta-build, no jar) there is none and this fails — that build never asks for it.
       */
     lazy val dapr4sWasmVersion: String =
       Option(Dapr4sWasmPlugin.getClass.getPackage)
@@ -47,51 +54,40 @@ object Dapr4sWasmPlugin extends AutoPlugin {
           sys.error("dapr4sWasmVersion: no Implementation-Version (not running from the published plugin jar)"),
         )
 
-    /** The `@WitExport` trampolines (Scala 2.13, `_sjs1_2.13`): a dependency of a COMPONENT only, never of a library or
-      * a unit-tested project (its exports are linker entry points; a plain-JS link rejects them).
-      */
-    def dapr4sWasmGlueExports(version: String): ModuleID =
-      ("com.github.sideeffffect" % "dapr4s-wasm-glue-exports" % version).cross(
-        CrossVersion.for3Use2_13With("sjs1_", ""),
-      )
-
-    val dapr4sWasmPatchedLinkerVersion: String = Dapr4sWasm.PatchedLinkerVersion
+    val dapr4sWasmLinkerClasspath =
+      taskKey[Seq[File]]("Classpath of the linker that links the app: dapr4s-wasm-linker_2.12 + its dependencies")
   }
+  import autoImport._
 
   // -----------------------------------------------------------------------------------------------
-  // Upstream blocker 4 (scala-wasm linker: export params via linear memory are `???`): link with a
-  // linker built from the 1.22.1-wasm.6 release commit + dapr4s's patch
-  // (scripts/wasm/patches/scala-wasm-export-params-from-memory.patch), published to ~/.ivy2/local by
-  // dapr4s's scripts/wasm/build-patched-linker.sh. Only the LINKER is replaced; plugin, library,
-  // javalib and compiler plugin stay the released ones. A missing linker is a clear error.
+  // Upstream blocker (scala-wasm linker: WIT params via linear memory, > 16 flat params): the export
+  // side is a `???`, the import side emits nothing. Link with dapr4s-wasm-linker_2.12, the
+  // 1.22.1-wasm.6 linker rebuilt with dapr4s's patch (scripts/wasm/patches/), republished under
+  // dapr4s's coordinates with scala-wasm's LICENSE/NOTICE. Only the LINKER is replaced; the plugin,
+  // library, javalib and compiler plugin stay the released ones. RETIRES when a scala-wasm release
+  // passes params via memory: drop this override.
   // -----------------------------------------------------------------------------------------------
   override def globalSettings: Seq[Setting[_]] = Seq(
-    Global / scalaJSLinkerImpl / fullClasspath := {
+    dapr4sWasmLinkerClasspath := {
       val s = streams.value
-      val lm = (scalaJSLinkerImpl / dependencyResolution).value
-      lm.retrieve(
-        Dapr4sWasm.ScalaWasmOrg % "scalajs-linker_2.12" % Dapr4sWasm.PatchedLinkerVersion,
-        scalaModuleInfo = None,
-        s.cacheDirectory / "scalajs-linker" / Dapr4sWasm.PatchedLinkerVersion,
+      Dapr4sWasm.retrieve(
+        (scalaJSLinkerImpl / dependencyResolution).value,
+        Dapr4sWasm.Org % "dapr4s-wasm-linker_2.12" % dapr4sWasmVersion,
+        s.cacheDirectory / "dapr4s-wasm-linker",
         s.log,
-      ).fold(
-        w =>
-          sys.error(
-            s"Patched scala-wasm linker ${Dapr4sWasm.PatchedLinkerVersion} not found in ~/.ivy2/local. Build it once " +
-              s"per machine with dapr4s's scripts/wasm/build-patched-linker.sh (${w.resolveException.getMessage})",
-          ),
-        files => files.map(Attributed.blank(_)),
       )
     },
+    scalaJSLinkerImpl / fullClasspath := dapr4sWasmLinkerClasspath.value.map(Attributed.blank(_)),
   )
 
   // -----------------------------------------------------------------------------------------------
-  // A nightly-compiled project that depends on 2.13-compiled projects (dapr4s's generated WIT glue)
-  // must NOT see the 2.13 stdlib the scala-wasm plugin adds to those (different organization, so no
-  // eviction against the nightly's): drop it. Cross-built dependencies (scala-java-time, upickle, ...)
-  // bring MAINLINE Scala.js (scalajs-library -> scalajs-javalib). Different organization than the
-  // fork's, so no eviction either: both would be on the classpath and the first IR file per class
-  // would win. Keep only the fork's.
+  // A nightly-compiled project that depends on 2.13-compiled artifacts (dapr4s's WIT glue) must NOT
+  // see the 2.13 stdlib the scala-wasm plugin adds to those (different organization, so no eviction
+  // against the nightly's): drop it. dapr4s core (dapr4s_sjs1_3) and other cross-built dependencies
+  // (scala-java-time, upickle, ...) bring MAINLINE Scala.js (scalajs-library -> scalajs-javalib).
+  // Different organization than the fork's, so no eviction either: both would be on the classpath and
+  // the first IR file per class would win. Keep only the fork's. RETIRES when the fork's library and
+  // mainline's can evict each other (same coordinates) or mainline Scala.js gains the component target.
   // -----------------------------------------------------------------------------------------------
   override def projectSettings: Seq[Setting[_]] = Seq(
     excludeDependencies ++= Dapr4sWasm.exclusions,
@@ -107,65 +103,67 @@ object Dapr4sWasmComponentPlugin extends AutoPlugin {
     val dapr4sWasmWitDirectory =
       settingKey[File]("WIT directory: world.wit (`include dapr-wasm-components:interfaces/app@...`) + deps/ from wkg")
     val dapr4sWasmWorld = settingKey[String]("WIT world the component targets (default: app)")
-    val dapr4sWasmComponentsDirectory = settingKey[File]("Where componentWasm writes <project name>.wasm")
+    val dapr4sWasmComponentsDirectory = settingKey[File]("Where dapr4sComponent writes <project name>.wasm")
     val dapr4sWasmWitFetch =
       taskKey[Unit]("`wkg wit fetch --config wkg-config.toml` next to the WIT directory (WIT only through OCI)")
-    val dapr4sWasmStdlibOverlay = taskKey[File]("Directory with the fork-patched stdlib .sjsir overlay")
-    val componentWasm = taskKey[File]("Linked app (fastLinkJS) as a WASI component typed by the real WIT world")
-    val componentWasmFull = taskKey[File]("Like componentWasm, from fullLinkJS (optimized)")
+    val dapr4sWasmScalalibOverlay =
+      taskKey[Seq[File]]("The fork-patched stdlib .sjsir (dapr4s-wasm-scalalib-overlay), first on the linker classpath")
+    val dapr4sWasmAddGlueExports =
+      settingKey[Boolean]("Add dapr4s-wasm-glue-exports (the @WitExport trampolines) to libraryDependencies")
+    val dapr4sComponent = taskKey[File]("Linked app (fastLinkJS) as a WASI component typed by the real WIT world")
+    val dapr4sComponentFull = taskKey[File]("Like dapr4sComponent, from fullLinkJS (optimized)")
   }
   import autoImport._
+  import Dapr4sWasmPlugin.autoImport.dapr4sWasmVersion
 
   override def buildSettings: Seq[Setting[_]] = Seq(
     dapr4sWasmWitDirectory := (LocalRootProject / baseDirectory).value / "wit",
     dapr4sWasmWitFetch := Dapr4sWasm.witFetch(dapr4sWasmWitDirectory.value, streams.value.log),
+    // -----------------------------------------------------------------------------------------------
+    // Upstream blocker (the nightly's Scala.js stdlib, org.scala-js:scalajs-scalalib_2.13:<nightly>,
+    // still uses JS interop: BoxesRunTime.equals uses JS `===`, reachable from any program; Symbol's
+    // UniquenessCache is a js.Dictionary; ...). scala-wasm's Scala 3 fork patched exactly those
+    // library-js files; dapr4s-wasm-scalalib-overlay carries their .sjsir and goes FIRST on the linker
+    // classpath (the Scala.js IR loader keeps the first IR file per class name). Resolved with
+    // `retrieve` through the linker's global resolution (not libraryDependencies, whose coursier
+    // resolution applies a project's excludeDependencies). RETIRES when the nightly's library-js is
+    // Wasm-clean: drop the overlay.
+    // -----------------------------------------------------------------------------------------------
+    dapr4sWasmScalalibOverlay := {
+      val s = streams.value
+      Dapr4sWasm.retrieve(
+        (Global / scalaJSLinkerImpl / dependencyResolution).value,
+        (Dapr4sWasm.Org % "dapr4s-wasm-scalalib-overlay" % dapr4sWasmVersion).intransitive(),
+        s.cacheDirectory / "dapr4s-wasm-scalalib-overlay",
+        s.log,
+      )
+    },
   )
 
   override def projectSettings: Seq[Setting[_]] = Seq(
     dapr4sWasmWorld := "app",
     dapr4sWasmComponentsDirectory := (LocalRootProject / target).value / "components",
+    dapr4sWasmAddGlueExports := true,
+    // The trampolines are a COMPONENT's dependency only: every `@WitExport` is a linker entry point,
+    // which a plain-JS link (unit tests of a library) rejects. Hence not a dependency of dapr4s-wasm.
+    libraryDependencies ++= {
+      if (dapr4sWasmAddGlueExports.value)
+        Seq(
+          (Dapr4sWasm.Org % "dapr4s-wasm-glue-exports" % dapr4sWasmVersion).cross(
+            CrossVersion.for3Use2_13With("sjs1_", ""),
+          ),
+        )
+      else Nil
+    },
     Compile / scalaJSLinkerConfig := {
       (Compile / scalaJSLinkerConfig).value
         .withESFeatures(_.withUseWebAssembly(true).withESVersion(ESVersion.ES2022))
         .withModuleKind(ModuleKind.WasmComponent)
     },
-    // -----------------------------------------------------------------------------------------------
-    // Upstream blocker 1: the nightly's Scala.js stdlib (org.scala-js:scalajs-scalalib_2.13:<nightly>)
-    // still uses JS interop in a few classes (BoxesRunTime.equals uses JS `===`, reachable from any
-    // program via Object.toString -> MurmurHash3 -> HashMap). scala-wasm's Scala 3 fork patched exactly
-    // those library-js files (scala-wasm/scala3@17a0deeb). Their .sjsir go FIRST on the linker
-    // classpath: the Scala.js IR loader keeps the first IR file per class name. Resolved with
-    // `retrieve` (not libraryDependencies), so the exclusions above cannot touch it. Re-check on every
-    // nightly bump (a nightly that changes those four files would be silently shadowed).
-    // -----------------------------------------------------------------------------------------------
-    dapr4sWasmStdlibOverlay := {
-      val s = streams.value
-      // NOT the project's `dependencyResolution`: with coursier it carries the project's
-      // `excludeDependencies`, which drop exactly this artifact. The linker's resolution is global.
-      val lm = (Global / scalaJSLinkerImpl / dependencyResolution).value
-      val dir = target.value / "wasm-stdlib-overlay"
-      val jars = lm
-        .retrieve(
-          (Dapr4sWasm.ScalaWasmOrg % "scalajs-scalalib_2.13" % Dapr4sWasm.StdlibOverlayVersion).intransitive(),
-          scalaModuleInfo = None,
-          s.cacheDirectory / "stdlib-overlay",
-          s.log,
-        )
-        .fold(w => throw w.resolveException, identity)
-      require(jars.nonEmpty, s"stdlib overlay: nothing resolved for ${Dapr4sWasm.StdlibOverlayVersion}")
-      IO.delete(dir)
-      jars.foreach { jar =>
-        IO.unzip(
-          jar,
-          dir,
-          (n: String) => n.endsWith(".sjsir") && Dapr4sWasm.OverlayClassPrefixes.exists(p => n.startsWith(p)),
-        )
-      }
-      require(dir.isDirectory, s"stdlib overlay: no ${Dapr4sWasm.OverlayClassPrefixes.mkString(", ")} in $jars")
-      dir
-    },
-    Compile / fullClasspath := Attributed.blank(dapr4sWasmStdlibOverlay.value) +: (Compile / fullClasspath).value,
-    componentWasm := {
+    Compile / fullClasspath :=
+      dapr4sWasmScalalibOverlay.value.map(Attributed.blank(_)) ++ (Compile / fullClasspath).value,
+    dapr4sComponent := {
+      dapr4sWasmWitFetch.value
       (Compile / fastLinkJS).value
       Dapr4sWasm.buildComponent(
         streams.value.log,
@@ -176,7 +174,8 @@ object Dapr4sWasmComponentPlugin extends AutoPlugin {
         dapr4sWasmComponentsDirectory.value / s"${name.value}.wasm",
       )
     },
-    componentWasmFull := {
+    dapr4sComponentFull := {
+      dapr4sWasmWitFetch.value
       (Compile / fullLinkJS).value
       Dapr4sWasm.buildComponent(
         streams.value.log,
@@ -187,32 +186,12 @@ object Dapr4sWasmComponentPlugin extends AutoPlugin {
         dapr4sWasmComponentsDirectory.value / s"${name.value}-opt.wasm",
       )
     },
-    // The re-embed step reads the resolved WIT (wit/deps/), so fetch it first.
-    componentWasm := componentWasm.dependsOn(dapr4sWasmWitFetch).value,
-    componentWasmFull := componentWasmFull.dependsOn(dapr4sWasmWitFetch).value,
   )
 }
 
 object Dapr4sWasm {
+  val Org = "com.github.sideeffffect"
   val ScalaWasmOrg = "io.github.scala-wasm"
-
-  /** Must match `version` in scripts/wasm/build-patched-linker.sh's output (it reads this line). */
-  val PatchedLinkerVersion = "1.22.1-wasm.6-dapr4s.1"
-
-  /** scala-wasm's Scala 3 fork build, whose library-js has the four classes the nightly's library-js still implements
-    * with JS interop.
-    */
-  val StdlibOverlayVersion = "3.8.3-RC1-wasm.4"
-  val OverlayClassPrefixes: Seq[String] = Seq(
-    "scala/runtime/BoxesRunTime",
-    // The fork's patched Symbol.scala also defines (Wasm-safe) UniquenessCache and JSUniquenessCache; the nightly's
-    // UniquenessCache is backed by js.Dictionary. Reached by any app that creates a Symbol (e.g. upickle).
-    "scala/Symbol",
-    "scala/UniquenessCache",
-    "scala/JSUniquenessCache",
-    "scala/collection/mutable/ArrayBuilder",
-    "scala/collection/mutable/Buffer",
-  )
 
   val exclusions: Seq[ExclusionRule] = Seq(
     ExclusionRule(ScalaWasmOrg, "scala-library"),
@@ -222,6 +201,21 @@ object Dapr4sWasm {
     ExclusionRule("org.scala-js", "scalajs-library_2.13"),
     ExclusionRule("org.scala-js", "scalajs-javalib"),
   )
+
+  def retrieve(lm: sbt.librarymanagement.DependencyResolution, module: ModuleID, dir: File, log: Logger): Seq[File] = {
+    val files = lm
+      .retrieve(module, scalaModuleInfo = None, dir, log)
+      .fold(
+        w =>
+          sys.error(
+            s"sbt-dapr4s-wasm: cannot resolve $module (${w.resolveException.getMessage}). If dapr4s's wasm artifacts " +
+              "of this version are not on Maven Central, publishLocal them from dapr4s (`cd wasm && sbt publishLocal`).",
+          ),
+        identity,
+      )
+    require(files.nonEmpty, s"sbt-dapr4s-wasm: nothing resolved for $module")
+    files
+  }
 
   def witFetch(witDir: File, log: Logger): Unit = {
     val base = witDir.getParentFile
@@ -273,7 +267,7 @@ object Dapr4sWasm {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // Upstream blocker 5: the linker synthesizes the core module's `component-type` section from IR
+  // Upstream blocker: the linker synthesizes the core module's `component-type` section from IR
   // signatures, where WIT type aliases are already dealiased (`use types.{metadata}` becomes an inline
   // list<tuple<string,string>>). The EXPORTED instance types then lack the alias type exports (e.g.
   // `metadata`) that the dapr-wasm-components inbound provider imports, and `wac compose` fails
@@ -281,7 +275,8 @@ object Dapr4sWasm {
   // core module with the REAL world: extract the core module, strip the synthesized section,
   // `wasm-tools component embed --encoding utf16` (scala-wasm lowers strings as UTF-16; the default
   // utf8 garbles every string) and `wasm-tools component new`. (`withWitDirectory` / `withWitWorld`
-  // exist in WasmFeatures, but the 1.22.1-wasm.6 linker does not read them.)
+  // exist in WasmFeatures, but the 1.22.1-wasm.6 linker does not read them.) RETIRES when the linker
+  // keeps aliases (or reads the WIT world): use its component as is.
   // -----------------------------------------------------------------------------------------------
   def buildComponent(log: Logger, linked: File, work: File, witDir: File, world: String, out: File): File = {
     IO.createDirectory(work)

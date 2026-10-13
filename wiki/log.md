@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-13] update | wasm packaging: six artifacts, linker import side, consumer check
+- Updated: scala-js/scala-wasm-component-spike.md — own linker + overlay artifacts; republishing a third-party jar from sbt; merged helper projects; released linker's missing import side + our fix proven against daprd; dapr-wasm-components 0.7.1 provider gaps; stale-jar trap
+
 ## [2026-10-13] update | wasm glue hand-written (generator dropped); overlay + release mode
 - Updated: scala-js/scala-wasm-component-spike.md — 2.13 glue now hand-written (facts from the generator kept as history); UniquenessCache overlay; release mode on Central dapr4s_sjs1_3
 

@@ -14,7 +14,7 @@ package dapr4s.internal.witglue
 
 import scala.scalajs.wit
 
-import dapr4swit.dapr_wasm_components.interfaces.{state, state_read, types}
+import dapr4swit.dapr_wasm_components.interfaces.{actors, conversation, jobs, jobs_read, state, state_read, types}
 import dapr4swit.exports.dapr_wasm_components.interfaces.{
   actors_callback,
   bindings_callback,
@@ -114,6 +114,69 @@ object StateImports extends StateImports {
       metadata: types.Metadata,
   ): wit.Result[Unit, state.TransactionError] =
     state.executeTransaction(storeName, operations, metadata)
+}
+
+/** The imports whose flattened params exceed MAX_FLAT_PARAMS = 16, so the canonical ABI passes them through linear
+  * memory — which the released scala-wasm linker does not implement (dapr4s-wasm-linker does). The wall does not use
+  * them yet; test/wasm/imports-probe calls each one to prove the patched linker lowers them (scripts/wasm/e2e.sh).
+  * `jobs.schedule` (`dapr-wasm-components:interfaces/jobs@0.7.1`).
+  */
+trait JobsImports {
+  def schedule(name: String, job: jobs_read.Job, overwrite: Boolean): wit.Result[Unit, jobs.ScheduleError]
+}
+object JobsImports extends JobsImports {
+  override def schedule(name: String, job: jobs_read.Job, overwrite: Boolean): wit.Result[Unit, jobs.ScheduleError] =
+    jobs.schedule(name, job, overwrite)
+}
+
+/** `conversation.converse` (`dapr-wasm-components:interfaces/conversation@0.7.1`); see [[JobsImports]]. */
+trait ConversationImports {
+  def converse(
+      componentName: String,
+      inputs: Array[conversation.ConversationInput],
+      options: wit.Option[conversation.ConversationOptions],
+  ): wit.Result[conversation.ConversationResponse, conversation.ConverseError]
+}
+object ConversationImports extends ConversationImports {
+  override def converse(
+      componentName: String,
+      inputs: Array[conversation.ConversationInput],
+      options: wit.Option[conversation.ConversationOptions],
+  ): wit.Result[conversation.ConversationResponse, conversation.ConverseError] =
+    conversation.converse(componentName, inputs, options)
+}
+
+/** `actors.register-reminder` / `register-timer` (`dapr-wasm-components:interfaces/actors@0.7.1`); see [[JobsImports]].
+  */
+trait ActorsImports {
+  def registerReminder(
+      actorType: String,
+      actorId: String,
+      name: String,
+      reminder: actors.Reminder,
+  ): wit.Result[Unit, actors.ActorsError]
+  def registerTimer(
+      actorType: String,
+      actorId: String,
+      name: String,
+      timer: actors.Timer,
+  ): wit.Result[Unit, actors.ActorsError]
+}
+object ActorsImports extends ActorsImports {
+  override def registerReminder(
+      actorType: String,
+      actorId: String,
+      name: String,
+      reminder: actors.Reminder,
+  ): wit.Result[Unit, actors.ActorsError] =
+    actors.registerReminder(actorType, actorId, name, reminder)
+  override def registerTimer(
+      actorType: String,
+      actorId: String,
+      name: String,
+      timer: actors.Timer,
+  ): wit.Result[Unit, actors.ActorsError] =
+    actors.registerTimer(actorType, actorId, name, timer)
 }
 
 // ---------------------------------------------------------------------------------------------------------------

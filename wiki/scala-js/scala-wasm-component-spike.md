@@ -128,6 +128,27 @@ are in AGENTS.md "Wasm component layer rules".
   - **Release mode**: the wasm layer can sit on the PUBLISHED `dapr4s_sjs1_3` (Central) instead of dapr4s's
     sources — the scala-wasm linker links that mainline-Scala.js IR fine (the JS wall is unreachable and dropped),
     because the wasm platform traits equal the JS ones (all empty).
+  - **Six artifacts, our own linker and overlay (2026-10-13).** The patched linker and the overlay are now
+    artifacts too (`dapr4s-wasm-linker_2.12`, `dapr4s-wasm-scalalib-overlay`), so a consumer needs only the plugin
+    + `dapr4s-wasm` + its WIT files + `ComponentRoot`. Republishing a third-party jar from sbt: a project whose
+    `Compile / packageBin / mappings` are the unzipped jar (minus its `META-INF/MANIFEST.MF`, or the zip writer
+    fails on a duplicate entry) + `META-INF/LICENSE`/`NOTICE`, and whose `libraryDependencies` are the original
+    POM's compile deps. Merging unpublished helper projects into a jar: add their `packageBin`/`packageSrc`
+    mappings and drop them from `projectDependencies` (that only affects the POM/update, not the compile
+    classpath) — also the way to keep `Provided` stubs out of a POM.
+  - **The released linker's IMPORT side of params-via-memory is missing, not `???`:** `genComponentAdapterFunction`
+    has `case Some(offset) => // TODO`, so it pushes nothing and `wasm-tools component new` fails with "type
+    mismatch: expected i32 but nothing on stack" — for `jobs.schedule`, `conversation.converse`,
+    `actors.register-reminder`/`-timer`. dapr4s's patch now `malloc`s the params tuple (each param aligned, tuple
+    aligned to the max), stores each with `ScalaJSToCABI.genStoreMemory` and passes the pointer. Proven against
+    daprd: `converse("no-such-llm", ...)` comes back with "failed finding conversation component no-such-llm",
+    `register-timer` makes daprd log "can't create timer for actor ProbeActor||probe-1".
+  - dapr-wasm-components **0.7.1 wasi-http provider gaps** seen on the way (not ours to fix here): `converse` against
+    daprd 1.17's echo component traps (daprd encodes `usage` token counts as JSON strings, the provider expects
+    u64); `jobs.schedule` calls `/v1.0/jobs/...`, which daprd 1.17 does not route ("failed getting app id");
+    `register-timer` traps on daprd's HTTP 500 instead of returning a WIT error.
+  - A source-file stamp guards rebuilding the linker; picking the built jar by glob once grabbed a STALE jar of an
+    older build with a different version in the same target dir — delete old jars before building.
   - A published plugin can learn its own version from its jar manifest (`Implementation-Version`, written by sbt's
     default `packageOptions`), which `dapr4sWasmVersion` uses for the library dependencies.
 

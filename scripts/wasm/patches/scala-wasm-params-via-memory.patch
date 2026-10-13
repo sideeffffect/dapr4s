@@ -30,10 +30,51 @@ index 632b871f6..b2dd217f1 100644
      // ;; Calculate: (ptr + alignment - 1) / alignment * alignment
      // ptr + alignment - 1
 diff --git a/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala b/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala
-index 508cf5154..95380f1e1 100644
+index 508cf5154..077c5e000 100644
 --- a/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala
 +++ b/linker/shared/src/main/scala/org/scalajs/linker/backend/wasmemitter/canonicalabi/InteropEmitter.scala
-@@ -196,7 +196,18 @@ object InteropEmitter {
+@@ -101,8 +101,38 @@ object InteropEmitter {
+ 
+     // adapt params to CanonicalABI
+     loweredFuncType.paramsOffset match {
+-      case Some(offset) =>
+-        // TODO : put params onto linear memory
++      case Some(_) =>
++        // The flattened params exceed MAX_FLAT_PARAMS (16): the canonical ABI (`lower_flat_values`)
++        // passes a single i32 pointer to a tuple of all params, which the caller allocates and fills
++        // (`store(cx, v, TupleType(ts), ptr)`): each param aligned to its own alignment, the tuple
++        // aligned to the max of them. `malloc` is 8-aligned and the memory is released below, like
++        // every other temporary of this adapter, by restoring the saved stack pointer.
++        val paramTypes = params.map(_._2)
++        val offsets = {
++          var off = 0
++          paramTypes.map { tpe =>
++            val align = WitTypeOps.alignment(tpe)
++            off = ((off + align - 1) / align) * align
++            val o = off
++            off += WitTypeOps.elemSize(tpe)
++            o
++          }
++        }
++        val tupleAlign = (1 :: paramTypes.map(WitTypeOps.alignment(_))).max
++        val endOff = (1 :: offsets.zip(paramTypes).map { case (o, t) => o + WitTypeOps.elemSize(t) }).max
++        val tupleSize = ((endOff + tupleAlign - 1) / tupleAlign) * tupleAlign
++        val paramsPtr = fb.addLocal(NoOriginalName, watpe.Int32)
++        fb += wa.I32Const(tupleSize)
++        fb += wa.Call(genFunctionID.malloc)
++        fb += wa.LocalSet(paramsPtr)
++        params.zip(offsets).foreach { case ((localID, tpe), off) =>
++          fb += wa.LocalGet(paramsPtr)
++          fb += wa.I32Const(off)
++          fb += wa.I32Add
++          fb += wa.LocalGet(localID)
++          ScalaJSToCABI.genStoreMemory(fb, tpe)
++        }
++        fb += wa.LocalGet(paramsPtr)
+       case None =>
+         params.foreach { case (localID, tpe) =>
+           fb += wa.LocalGet(localID)
+@@ -196,7 +226,18 @@ object InteropEmitter {
        fb += wa.Call(genFunctionID.loadModule(owningClass))
  
        flatFuncType.paramsOffset match {
