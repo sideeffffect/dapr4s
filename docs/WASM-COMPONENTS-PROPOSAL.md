@@ -241,8 +241,8 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' `wasm/` build). By default the wall depends on the
   PUBLISHED `dapr4s_sjs1_3` (its IR links into the component, as the spike did); `-Ddapr4s.wasm.core=source` tests
   dapr4s's own `src/shared` instead. sbt-ci-release in the `publish` job publishes all six with core
-  (`PUBLISH_WASM_TO_CENTRAL: 'true'`, approved 2026-10-13). Nothing goes upstream to
-  scala/* or scala-wasm/* (decision): the linker patch now covers BOTH sides of params-via-memory (the import side was
+  (`PUBLISH_WASM_TO_CENTRAL: 'true'`, approved 2026-10-13). The workarounds are also being
+  fixed upstream (scala-wasm #268–#271, scala3 #27300; see AGENTS.md): the linker patch now covers BOTH sides of params-via-memory (the import side was
   silently missing in 1.22.1-wasm.6), proven by `test/wasm/imports-probe` against daprd.
 
 This makes the "two-compiler build" of the revised Phase 4 concrete: the 2.13 part is the generated bindings plus a
