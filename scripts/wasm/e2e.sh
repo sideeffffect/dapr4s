@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test of the `wasm` platform. Builds the test components, then for each:
 #   1. checks the WIT functions it imports (W1 authority: an app imports only what its code reaches);
-#   2. composes it with the dapr-wasm-components 0.7.1 wasi-http providers (compose.sh);
+#   2. composes it with the dapr-wasm-components 0.7.2 wasi-http providers (compose.sh);
 #   3. runs it in `wasmtime serve` next to daprd (`dapr run`, run.sh) and calls it through the sidecar.
 # Components:
 #   counterRaw   (test/wasm/counter-raw: bindings + glue, no wall)   counter -> 1, then 2
@@ -9,13 +9,15 @@
 #                missing-store -> ComponentNotFoundException(State, "no-such-store"); stale-etag ->
 #                ETagMismatchException and the stale write does not land (counter -> 3)
 #   importsProbe (test/wasm/imports-probe): the four imports with > 16 flat params, which only the
-#                patched linker (dapr4s-wasm-linker) lowers: it must import exactly them; `converse` must come
-#                back with daprd's error naming the very component it sent (the params reached the host
-#                intact), and so must register-timer's (daprd names the actor it got); schedule /
-#                register-reminder must come back as well-formed WIT results (see below why not more).
+#                patched linker (dapr4s-wasm-linker) lowers: it must import exactly them; `converse` to daprd's
+#                echo component must answer the very text the probe sent (the params reached the host intact);
+#                `schedule` must succeed (a scheduler runs for it); register-timer / register-reminder on an
+#                actor type this app does not host must be daprd's typed refusal (PermissionDenied), the timer's
+#                naming the very actor the probe sent.
 #
-# Needs: Docker (Redis on localhost:26480), the dapr CLI + daprd
-# (`dapr init --slim`), wasmtime, wasm-tools, wkg, wac, wit-bindgen-scala, sbt.
+# Needs: Docker (Redis on localhost:26480; for importsProbe also the daprio/dapr scheduler of the installed
+# daprd's version on localhost:50006), the dapr CLI + daprd (`dapr init --slim`, which has no placement or
+# scheduler), wasmtime, wasm-tools, wkg, wac, wit-bindgen-scala, sbt.
 # SKIP_BUILD=1 reuses wasm/target/components/*.wasm; E2E_ONLY="counter ..." runs only those components. SBT_ARGS is passed to sbt, e.g.
 # SBT_ARGS=-Ddapr4s.wasm.core=source links against dapr4s's own src/shared (see wasm/build.sbt).
 set -euo pipefail
@@ -24,10 +26,12 @@ repo="$(cd "$here/../.." && pwd)"
 components="$repo/wasm/target/components"
 logs="$repo/wasm/target/e2e"
 redis=dapr4s-wasm-redis
+scheduler=dapr4s-wasm-scheduler
 export APP_ID=dapr4s-wasm APP_PORT=18087 DAPR_HTTP_PORT=3587 DAPR_GRPC_PORT=50087
 mkdir -p "$logs"
 
 started_redis=0
+started_scheduler=0
 stop_app() {
   dapr stop --app-id "$APP_ID" >/dev/null 2>&1 || true
   pkill -f "^wasmtime serve -S cli --addr 127.0.0.1:$APP_PORT" 2>/dev/null || true
@@ -36,6 +40,7 @@ stop_app() {
 cleanup() {
   stop_app
   [[ "$started_redis" == 1 ]] && docker rm -f "$redis" >/dev/null 2>&1 || true
+  [[ "$started_scheduler" == 1 ]] && docker rm -f "$scheduler" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -48,6 +53,21 @@ fail() {
 if ! docker ps --format '{{.Names}}' | grep -qx "$redis"; then
   docker run -d --rm --name "$redis" -p 26480:6379 redis:7-alpine >/dev/null
   started_redis=1
+fi
+
+# The jobs API needs daprd's scheduler, which `dapr init --slim` does not install: run the one of the
+# installed daprd's version on the port daprd dials by default (localhost:50006), only for importsProbe.
+if [[ " ${E2E_ONLY:-importsProbe} " == *" importsProbe "* ]] &&
+  ! docker ps --format '{{.Names}}' | grep -qx "$scheduler"; then
+  docker run -d --rm --name "$scheduler" -p 50006:50006 "daprio/dapr:$(daprd --version)" \
+    ./scheduler --port 50006 --etcd-data-dir /tmp/etcd >/dev/null
+  started_scheduler=1
+  ready=0
+  for _ in $(seq 1 60); do
+    docker logs "$scheduler" 2>&1 | grep -q "api is ready" && { ready=1; break; }
+    sleep 1
+  done
+  [[ "$ready" == 1 ]] || fail "the scheduler did not come up"
 fi
 
 if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
@@ -121,27 +141,18 @@ done
 sleep 2
 conv="$(invoke converse)"
 echo "$v: converse -> $conv"
-[[ "$conv" == error:*"conversation component no-such-llm"* ]] || fail "$v: converse returned '$conv'"
-# schedule / register-reminder: the call must come back as a well-formed WIT result (a params tuple the
-# host cannot lift traps the instance instead). Their happy paths need more than this harness has: actor
-# hosting with placement, and the 0.7.1 wasi-http provider calls daprd 1.17 on `/v1.0/jobs/...`, which
-# daprd does not route ("failed getting app id").
-for m in schedule register-reminder; do
-  r="$(invoke "$m")"
-  echo "$v: $m -> $r"
-  [[ "$r" == ok:* || "$r" == error:* ]] || fail "$v: $m returned '$r'"
-done
-# register-timer: daprd answers HTTP 500 ERR_ACTOR_TIMER_CREATE naming the actor it got, which the 0.7.1
-# provider does not map to a WIT error but traps on (logging daprd's message). The actor in that message
-# must be exactly the one the probe sent.
-r="$(invoke register-timer || true)"
-sleep 1
-if [[ "$r" == ok:* || "$r" == error:* ]]; then
-  echo "$v: register-timer -> $r"
-else
-  grep -q "can't create timer for actor ProbeActor||probe-1" "$logs/run-$v.log" ||
-    fail "$v: register-timer returned '$r' and daprd did not name ProbeActor||probe-1"
-  echo "$v: register-timer -> daprd: \"can't create timer for actor ProbeActor||probe-1: actor type not registered\" (the provider traps on it)"
-fi
+[[ "$conv" == "ok: hello from scala-wasm" ]] || fail "$v: converse returned '$conv'"
+sched="$(invoke schedule)"
+echo "$v: schedule -> $sched"
+[[ "$sched" == "ok: scheduled probe-job" ]] || fail "$v: schedule returned '$sched'"
+# The app hosts no actor type, so daprd refuses both (a reminder with 403, a timer with a generic 500 that
+# the 0.7.2 providers map to the same typed error). That is the deterministic answer without placement.
+rem="$(invoke register-reminder)"
+echo "$v: register-reminder -> $rem"
+[[ "$rem" == "error: PermissionDenied("*"hosted actor types"*")" ]] || fail "$v: register-reminder returned '$rem'"
+timer="$(invoke register-timer)"
+echo "$v: register-timer -> $timer"
+[[ "$timer" == "error: PermissionDenied("*"can't create timer for actor ProbeActor||probe-1"*")" ]] ||
+  fail "$v: register-timer returned '$timer'"
 stop_app
 echo "e2e: OK"

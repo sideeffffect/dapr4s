@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-13] update | dapr-wasm-components 0.7.2: probe e2e asserts converse/schedule/timer results
+- Updated: scala-js/scala-wasm-component-spike.md — 0.7.2 fixed the three 0.7.1 provider gaps; echo conversation component; scheduler container next to a slim daprd; daprd 1.17.7 job GET encoding bug
+
 ## [2026-10-13] update | wasm packaging: six artifacts, linker import side, consumer check
 - Updated: scala-js/scala-wasm-component-spike.md — own linker + overlay artifacts; republishing a third-party jar from sbt; merged helper projects; released linker's missing import side + our fix proven against daprd; dapr-wasm-components 0.7.1 provider gaps; stale-jar trap
 

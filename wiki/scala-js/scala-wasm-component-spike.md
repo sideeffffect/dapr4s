@@ -147,6 +147,19 @@ are in AGENTS.md "Wasm component layer rules".
     daprd 1.17's echo component traps (daprd encodes `usage` token counts as JSON strings, the provider expects
     u64); `jobs.schedule` calls `/v1.0/jobs/...`, which daprd 1.17 does not route ("failed getting app id");
     `register-timer` traps on daprd's HTTP 500 instead of returning a WIT error.
+  - **0.7.2 (2026-10-13) fixed all three** (WIT unchanged, only the package version moved). The e2e now asserts:
+    `converse("echo", ...)` against daprd's built-in `conversation.echo` component (no LLM, no network; one
+    component YAML in `scripts/wasm/components/`) answers `ok: hello from scala-wasm`; `schedule` answers
+    `ok: scheduled probe-job` once a scheduler runs; `register-reminder` / `register-timer` on an actor type the
+    app does not host answer `PermissionDenied(<daprd's message>)`, the timer's naming `ProbeActor||probe-1`.
+    Without a scheduler, 0.7.2's `schedule` still traps (daprd: 500 `DAPR_SCHEDULER_SCHEDULE_JOB` "context
+    deadline exceeded", which the provider does not map).
+  - **A scheduler next to a slim daprd**: `dapr init --slim` installs no placement/scheduler, and daprd dials the
+    scheduler at `localhost:50006` by default. `docker run -p 50006:50006 daprio/dapr:<daprd version> ./scheduler
+    --port 50006 --etcd-data-dir /tmp/etcd` is enough (ready when its log says "api is ready"); no mTLS needed.
+  - daprd 1.17.7 quirk: `GET /v1.0-alpha1/jobs/<name>` of a job scheduled without `data` answers 500
+    `ERR_INTERNAL` "failed to encode response as JSON: proto: google.protobuf.Value: none of the oneof fields is
+    set" (daprd's bug, not the provider's).
   - A source-file stamp guards rebuilding the linker; picking the built jar by glob once grabbed a STALE jar of an
     older build with a different version in the same target dir — delete old jars before building.
   - A published plugin can learn its own version from its jar manifest (`Implementation-Version`, written by sbt's

@@ -348,7 +348,7 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
 ### Wasm component layer rules (opt-in prototype)
 
 The `wasm` platform builds a dapr4s app as a WASI **component** for
-[dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.1, with the
+[dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.2, with the
 scala-wasm fork of Scala.js (`io.github.scala-wasm:sbt-scalajs`, `ModuleKind.WasmComponent`).
 Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
 `wiki/scala-js/scala-wasm-component-spike.md`. The six artifacts are **published to Maven Central**
@@ -385,7 +385,7 @@ upstream gaps are worked around here.
   `addSbtPlugin("com.github.sideeffffect" % "sbt-dapr4s-wasm" % v)`,
   `.enablePlugins(Dapr4sWasmComponentPlugin)`,
   `libraryDependencies += "com.github.sideeffffect" %%% "dapr4s-wasm" % dapr4sWasmVersion`, its own
-  `wit/world.wit` (`include dapr-wasm-components:interfaces/app@0.7.1;`) + `wkg-config.toml` +
+  `wit/world.wit` (`include dapr-wasm-components:interfaces/app@0.7.2;`) + `wkg-config.toml` +
   `wkg.lock`, and the fixed-name `object dapr4s.wasm.ComponentRoot { def component: DaprComponent = ... }`.
   `scripts/wasm/consumer-check.sh` builds `test/wasm/counter` exactly so (fresh build, nothing else)
   and runs its e2e; dapr4s-examples' `wasm/` build is the worked example.
@@ -414,11 +414,11 @@ upstream gaps are worked around here.
   The patch implements both (canonical ABI `lift_flat_values` / `lower_flat_values`).
   `test/wasm/imports-probe` calls the four imports; the e2e checks it imports exactly them and runs
   them against daprd (daprd's answers name the component/actor the probe sent).
-- **WIT only through OCI**: `world app { include dapr-wasm-components:interfaces/app@0.7.1; }`
+- **WIT only through OCI**: `world app { include dapr-wasm-components:interfaces/app@0.7.2; }`
   + the upstream `wkg-config.toml`; `wkg wit fetch --config wkg-config.toml` runs before
   wit-bindgen-scala. `wkg.lock` is committed, `wasm/wit/deps/` is git-ignored. Never copy WIT from git.
 - **Newest everything**: the glue tracks the WIT version (`wasm/wit/world.wit`, the `WitScope`
-  versions in the trampolines). Always the newest dapr-wasm-components WIT release (now 0.7.1), the
+  versions in the trampolines). Always the newest dapr-wasm-components WIT release (now 0.7.2), the
   newest scala-wasm sbt plugin on Central (now 1.22.1-wasm.6) and the newest wit-bindgen-scala (0.1.0).
 - **The two-compiler constraint**: mainline Scala 3 has no WIT codegen (imports are lowered at
   the call site by the compiler backend, `@WitExport` is compiler-emitted). Every import call and
@@ -458,8 +458,10 @@ upstream gaps are worked around here.
     `-Ddapr4s.wasm.core=source` for the source mode)
   - `cd wasm && sbt counter/dapr4sComponent` → `wasm/target/components/counter.wasm`
   - `cd wasm && sbt publishLocal` (the six artifacts, for dapr4s-examples)
-  - `scripts/wasm/e2e.sh` (counter-raw, counter, imports-probe: imports check, compose, daprd + Redis;
-    `SBT_ARGS=-Ddapr4s.wasm.core=source` for the source mode)
+  - `scripts/wasm/e2e.sh` (counter-raw, counter, imports-probe: imports check, compose, daprd + Redis, for the
+    probe also a `daprio/dapr` scheduler container and daprd's echo conversation component; the probe asserts
+    `converse` → `ok: <echo>`, `schedule` → `ok: scheduled …`, register-reminder/-timer on an unhosted actor type →
+    `PermissionDenied`; `SBT_ARGS=-Ddapr4s.wasm.core=source` for the source mode)
   - `scripts/wasm/consumer-check.sh` (after `publishLocal`: a plugin-only consumer build of counter + e2e)
 
 ---

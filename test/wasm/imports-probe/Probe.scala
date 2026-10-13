@@ -11,12 +11,11 @@ import dapr4swit.exports.dapr_wasm_components.interfaces.invocation_callback
 /** Calls each WIT import whose flattened params exceed MAX_FLAT_PARAMS = 16 (params passed through linear memory),
   * which the released scala-wasm linker cannot lower and dapr4s-wasm-linker can. Linking this component at all proves
   * the import side is emitted; scripts/wasm/e2e.sh also checks that the component imports exactly these four, and runs
-  * them against a real daprd: `converse` names a conversation component daprd does not have, so the answer must be
-  * daprd's error naming that very component (`failed finding conversation component no-such-llm`), which proves the
-  * params (passed through linear memory) reach the host intact; the other three must come back as well-formed WIT
-  * results. Each route answers `ok: ...` or `error: <the WIT error>`. (A successful `converse` against daprd's echo
-  * component does not work yet, for an unrelated reason: the dapr-wasm-components 0.7.1 wasi-http provider cannot parse
-  * daprd 1.17's `usage` token counts, which daprd encodes as JSON strings, and traps.)
+  * them against a real daprd (dapr-wasm-components 0.7.2 providers): `converse` goes to daprd's `conversation.echo`
+  * component, so the answer must be the very text the probe sent, which proves the params (passed through linear
+  * memory) reach the host intact; `register-timer` on a type this app does not host must be daprd's typed refusal
+  * naming the actor the probe sent; `schedule` / `register-reminder` must come back as well-formed WIT results. Each
+  * route answers `ok: ...` or `error: <the WIT error>`.
   */
 object ProbeHandler extends witglue.InvocationCallbackExports:
   private def respond(status: Int, text: String): invocation.HttpResponse =
@@ -32,7 +31,7 @@ object ProbeHandler extends witglue.InvocationCallbackExports:
       wit.None,
     )
     witglue.ConversationImports
-      .converse("no-such-llm", Array(input), wit.None)
+      .converse("echo", Array(input), wit.None)
       .fold(
         ok => s"ok: ${ok.outputs.flatMap(_.choices).map(_.message.content).mkString("|")}",
         err => s"error: $err",

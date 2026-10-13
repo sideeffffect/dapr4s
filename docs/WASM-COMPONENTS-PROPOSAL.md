@@ -186,6 +186,10 @@ with wasmtime's cache. Warm round trip through the sidecar 2.4 ms median, incl. 
   WASI-backed replacements).
 - Also found: `compose.sh` exits 1 on success (`tmp` assigned in a `$(...)` subshell), and the wasi-http
   provider's `store-not-found` payload is daprd's raw body, not the store name.
+  Both are fixed upstream (0.7.1: `compose.sh`; 0.7.2: setup-error payloads are daprd's message). 0.7.2 also
+  fixed the three provider gaps the imports probe hit: `converse` trapped on daprd's string-encoded token counts,
+  jobs called `/v1.0/jobs` (daprd 1.17 serves only `/v1.0-alpha1`), and `register-timer` on an unhosted actor type
+  trapped instead of answering `actors-error.permission-denied`. The e2e now asserts the successful/typed answers.
 
 
 ### Phase 0 code in dapr4s (2026-10-13)
@@ -219,7 +223,8 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   [`test/wasm/counter-raw`](../test/wasm/counter-raw) (bindings + glue directly) and
   [`test/wasm/imports-probe`](../test/wasm/imports-probe) (the four imports with > 16 flat params).
 - **Scripts**: [`scripts/wasm/`](../scripts/wasm): `e2e.sh` (import checks, compose, daprd + Redis, counter 1 → 2,
-  error mapping, the imports probe), `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`,
+  error mapping, the imports probe against daprd's echo conversation component and a scheduler container),
+  `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`,
   `build-patched-linker.sh` + `patches/`.
 - **CI**: a `wasm` entry in the `test` matrix (source-mode unit tests + e2e, release-mode publishLocal + consumer
   check). It gates `publish` like the jvm and js legs.
