@@ -7,4 +7,3 @@
 # reference the publisher wrote. Usage: `wkg wit fetch --config wkg-config.toml`.
 [namespace_registries]
 dapr-wasm-components = { registry = "sideeffffect", metadata = { preferredProtocol = "oci", "oci" = { registry = "ghcr.io", namespacePrefix = "sideeffffect/" } } }
-

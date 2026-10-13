@@ -222,7 +222,7 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
 - **CI**: a `wasm` entry in the `test` matrix. It is `continue-on-error`, so it does not gate `publish`.
 - **`publishLocal` for external apps** (still never Maven Central): `cd wasm && sbt publishLocal` publishes
   `dapr4s-wasm-core_sjs1_3`, `dapr4s-wasm_sjs1_3` (the wall), `dapr4s-wasm-inert_sjs1_3`, the 2.13 bindings + glue
-  `dapr4s-wasm-wit-{bindings,glue,exports}_sjs1_2.13` and the sbt plugin `sbt-dapr4s-wasm`, all under the sbt-dynver
+  `dapr4s-wasm-glue{,-exports}_sjs1_2.13` and the sbt plugin `sbt-dapr4s-wasm`, all under the sbt-dynver
   version. The build-level workarounds (patched linker, stdlib overlay, exclusions, WasmComponent link + WIT
   re-embed) cannot be a library, so they moved into that plugin
   ([`wasm/sbt-plugin`](../wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala)), which dapr4s's own

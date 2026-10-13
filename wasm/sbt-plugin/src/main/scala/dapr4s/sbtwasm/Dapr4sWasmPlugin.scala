@@ -50,8 +50,10 @@ object Dapr4sWasmPlugin extends AutoPlugin {
     /** The `@WitExport` trampolines (Scala 2.13, `_sjs1_2.13`): a dependency of a COMPONENT only, never of a library or
       * a unit-tested project (its exports are linker entry points; a plain-JS link rejects them).
       */
-    def dapr4sWasmWitExports(version: String): ModuleID =
-      ("com.github.sideeffffect" % "dapr4s-wasm-wit-exports" % version).cross(CrossVersion.for3Use2_13With("sjs1_", ""))
+    def dapr4sWasmGlueExports(version: String): ModuleID =
+      ("com.github.sideeffffect" % "dapr4s-wasm-glue-exports" % version).cross(
+        CrossVersion.for3Use2_13With("sjs1_", ""),
+      )
 
     val dapr4sWasmPatchedLinkerVersion: String = Dapr4sWasm.PatchedLinkerVersion
   }

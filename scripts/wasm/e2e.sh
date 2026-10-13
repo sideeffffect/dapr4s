@@ -3,7 +3,7 @@
 # (test/wasm/counter-raw: raw WIT bindings; test/wasm/counter: dapr4s API), then for each:
 #   1. W1 authority check: the component imports exactly state-read.get + state.save (and only the
 #      types of types / invocation / configuration-read), nothing else;
-#   2. composes it with the dapr-wasm-components 0.7.0 wasi-http providers (compose.sh);
+#   2. composes it with the dapr-wasm-components 0.7.1 wasi-http providers (compose.sh);
 #   3. runs it in `wasmtime serve` next to daprd (`dapr run`, run.sh) with a Redis state store;
 #   4. invokes `counter` twice through the sidecar and expects 1, then 2.
 # The dapr4s app additionally checks the error mapping into dapr4s's DaprException family:

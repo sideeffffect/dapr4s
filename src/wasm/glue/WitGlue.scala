@@ -30,7 +30,7 @@ import dapr4swit.exports.dapr_wasm_components.interfaces.{
 // bodies are the only import call sites, so this compiler lowers them).
 // ---------------------------------------------------------------------------------------------------------------
 
-/** `dapr-wasm-components:interfaces/state-read@0.7.0`. */
+/** `dapr-wasm-components:interfaces/state-read@0.7.1`. */
 trait StateReadImports {
   def get(
       storeName: String,
@@ -73,7 +73,7 @@ object StateReadImports extends StateReadImports {
     state_read.query(storeName, query, metadata)
 }
 
-/** `dapr-wasm-components:interfaces/state@0.7.0`. */
+/** `dapr-wasm-components:interfaces/state@0.7.1`. */
 trait StateImports {
   def save(
       storeName: String,

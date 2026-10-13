@@ -119,8 +119,8 @@ are in AGENTS.md "Wasm component layer rules".
     because the exclusions drop that exact artifact. Retrieve through `Global / scalaJSLinkerImpl /
     dependencyResolution` instead (as the linker override does), and fail if the overlay comes out empty.
   - Mixed Scala 3 → 2.13 `dependsOn` publishes correctly: the Scala 3 wall's ivy file depends on
-    `dapr4s-wasm-wit-glue_sjs1_2.13`. A consumer's own Scala 3 project needs
-    `CrossVersion.for3Use2_13With("sjs1_", "")` for a 2.13 artifact (`dapr4sWasmWitExports(v)` in the plugin).
+    `dapr4s-wasm-glue_sjs1_2.13`. A consumer's own Scala 3 project needs
+    `CrossVersion.for3Use2_13With("sjs1_", "")` for a 2.13 artifact (`dapr4sWasmGlueExports(v)` in the plugin).
   - `Provided` link-time stubs stay out of a consumer's classpath (ivy conf `provided`), which is what keeps them
     from shadowing the real `AppRoot`/`ComponentRoot` IR.
   - The fork's patched `Symbol.scala` also defines `UniquenessCache`/`JSUniquenessCache`; the overlay needs them

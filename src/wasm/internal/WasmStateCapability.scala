@@ -34,7 +34,7 @@ private object WasmState:
   def stateError(storeName: StateStoreName, e: state_read.StateError): DaprException =
     e match
       case nf: state_read.StateError.StoreNotFound =>
-        // The wasi-http provider (0.7.0) puts daprd's raw error body into the payload, not the
+        // The wasi-http provider (0.7.x) puts daprd's raw error body into the payload, not the
         // store name, so the name comes from the call and the payload becomes the detail.
         ComponentNotFoundException(DaprComponentKind.State, storeName.value, detail = nf.value)
       case pd: state_read.StateError.PermissionDenied => PermissionDeniedException(pd.value)
