@@ -180,3 +180,7 @@
 
 ## [2026-10-12] ingest | scala-wasm Component Spike (dapr4s Phase 0)
 - Updated: dapr/dapr-wasm-components-vs-dapr4s.md — toolchain status: wit-bindgen-scala replaces the archived `wit-bindgen scala` fork; Phase 0 verdict + link
+
+## [2026-10-13] ingest | dapr4s sbt -> Mill migration
+- Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped without the sbt plugin, scala-wasm in Mill
+- Note: the sbt-era notes in scalablytyped-with-scala-cli.md and scala-js-async-jspi-wasm.md are kept as history

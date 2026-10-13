@@ -1,0 +1,82 @@
+# dapr4s on Mill: Scala 3 nightly + Scala.js + ScalablyTyped + scala-wasm
+
+dapr4s moved from sbt to Mill 1.3.0 on 2026-10-13 ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)).
+History: scala-cli until 2026-10-12, then sbt for one day (see
+[ScalablyTyped Facades with Scala CLI](scalablytyped-with-scala-cli.md) and
+[js.async / JSPI](scala-js-async-jspi-wasm.md) for the sbt notes). This article records what was needed and why.
+
+## Parity results (verified against sbt on the same commit)
+
+- `dapr4s_3` / `dapr4s_sjs1_3` POMs: byte-identical to sbt `makePom` (version aside), so identical to the
+  published 3.0.0 POMs. Jar entry sets identical (804 / 13330 entries, facade `.sjsir` included).
+- ScalablyTyped facade sources: byte-identical (3559 files).
+- wasm POMs: overlay, linker and `sbt-dapr4s-wasm` identical; `dapr4s-wasm` / glue / glue-exports differ only by
+  dropped test-scope dependencies and dependency order. Exclusions are kept on every dependency.
+- All test legs green: JVM/JS unit + integration, wall unit tests, e2e in both core modes, sbt consumer check.
+
+## Mill facts learned
+
+- **Scala 3.8+ on the JVM**: Mill depends on `org.scala-lang:scala-library:3.x` directly; sbt on
+  `scala3-library_3` (which brings the same `scala-library`). Override `scalaLibraryMvnDeps` to keep sbt's
+  POM coordinate.
+- **Mill's POM renderer** omits `<organization>`, writes an empty `<email>` and orders elements differently. For
+  byte-identical POMs, override `pom` with your own renderer (`Dapr4sPom` in `buildsupport.mill`).
+- **PublishModule** demands that every `moduleDep` is a `PublishModule`. To keep a never-published module out of
+  the POM (the facades, the wasm stubs), make it a `PublishModule` and filter it out of BOTH `publishXmlDeps`
+  (POM) and `publishMvnDeps` (ivy.xml).
+- **Scala.js test link bug (Scala >= 3.8)**: `TestScalaJSModule.scalaJSTestDeps` resolves the test bridge
+  transitively and PREPENDS it to the link classpath, which brings `scalajs-scalalib_2.13:2.13.x+1.22.0`. The 2.13
+  stdlib IR then shadows the Scala 3 one (first IR file wins): "Referring to non-existent method
+  scala.Some.orNull()". Plain-JS unit tests may not reach such code; the Wasm integration link did. Fix: exclude
+  `org.scala-js:scalajs-scalalib_2.13` from `scalaJSTestDeps`.
+- **JS test parallelism**: Mill's Scala.js test runner uses one Node runtime, so sbt's
+  `parallelExecution := false` footgun does not exist. JVM tests run in parallel by default in Mill 1.x
+  (`testParallelism`); dapr4s's HTTP-server unit suites need `testParallelism = false` (3 s port timeouts).
+- **Filesystem sandbox**: a task may only read files declared through `Task.Source(s)` or `Task.Input`
+  ("Reading from ... not allowed during execution"). Subprocesses (`runner().run`, `os.proc`) are not checked.
+- **CLI**: several tasks need `+` (`./mill a + b`) or brace expansion; plain `./mill a b` passes `b` as an
+  argument to `a`. Commands take named args (`publishM2Local --m2RepoPath <dir>`).
+- **Dry-run publishing**: `MILL_TESTS_PUBLISH_DRY_RUN=1` with `SonatypeCentralPublishModule/publishAll`.
+  Credentials: `MILL_SONATYPE_USERNAME/PASSWORD`; key: `MILL_PGP_SECRET_BASE64` (base64 of the armored secret
+  key) + `MILL_PGP_PASSPHRASE`. Snapshots go to the Central snapshots repository.
+- **JDK**: the build header `//| mill-jvm-version: zulu:25.0.3` makes Mill run on and fork tests with Zulu 25;
+  `//| mill-jvm-opts` sets the daemon heap.
+- **scalafmt**: `./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt [--check]` runs the scalafmt CLI in the
+  workspace root (it honours `project.excludeFilters`). Add `project.git = true` or it formats `out/`.
+
+## ScalablyTyped without an sbt plugin
+
+`mill-scalablytyped` 0.4.1 (Mill 1) hard-codes stdlib `es6` (open:
+[lolgab/mill-scalablytyped#51](https://github.com/lolgab/mill-scalablytyped/pull/51)). The sbt GenSource plugin's
+generator, `org.scalablytyped.converter.internal.ImportTypingsGenSources`, lives in the
+`sbt-converter_2.12_1.0` jar but uses no sbt API. A 2.12 module depending on `importer-portable_2.12` + that jar
+(intransitive) can call it with the sbt plugin's defaults and get the same output (`build-tools/st-gen`).
+Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `ignored = {typescript}`,
+`organization = org.scalablytyped.<outputPackage>`, `minimize = Selection.None`.
+
+## scala-wasm (fork of Scala.js) in Mill
+
+- **Organization swap**: override `mandatoryMvnDeps`, `scalacPluginMvnDeps` (2.13: `scalajs-compiler`),
+  `scalaJSLinkerClasspath` (Mill's worker + the fork's `scalajs-linker_2.13` and test adapter) and the tests'
+  `scalaJSTestDeps`. `scalaJSVersion = "1.22.1-wasm.6"` parses fine (worker "1", suffix `_sjs1`). Mill's worker,
+  compiled against mainline Scala.js, links plain JS with the fork's linker without problems.
+- **Test modules** (`ScalaJSTests`) do not inherit the outer module's overrides of `mandatoryMvnDeps`: mix the
+  swap trait into the test module too.
+- **Components**: Mill's linker API has no `ModuleKind.WasmComponent`. A 30-line driver compiled against the
+  fork's linker interface (`StandardImpl.linker(config).link(...)`) does it (`build-tools/wasm-link`).
+- **The patched linker without sbt**: compile `linker/shared/src/main/{scala,scala-2}` + `linker/jvm/src/main/scala`
+  of the release commit (2.12) against the released `scalajs-ir` / `scalajs-linker-interface`, and take the
+  non-class resources (the private library `.sjsir`: `FloatingPointBitsPolyfills`, `RuntimeLong`, ...) from the
+  released linker jar. Without them the linker fails "couldn't load FloatingPointBitsPolyfills.sjsir from resources".
+- **An sbt plugin built by Mill**: a 2.12 module, sbt as `compileMvnDeps`, a generated `sbt/sbt.autoplugins`
+  resource listing the AutoPlugin objects, `artifactSuffix = "_2.12_1.0"`, POM properties `scalaVersion`,
+  `sbtVersion` (+ `extraDependencyAttributes`). sbt >= 1.9 resolves it from a Maven repository.
+- Upstream Mill work that retires the workarounds: [#7783](https://github.com/com-lihaoyi/mill/pull/7783)
+  (organization + WasmComponent), [#7784](https://github.com/com-lihaoyi/mill/pull/7784) (wit-bindgen-scala),
+  [#7785](https://github.com/com-lihaoyi/mill/pull/7785) (Wasmtime JS env).
+
+## See also
+
+- [scala-wasm Component Spike](scala-wasm-component-spike.md)
+- [ScalablyTyped Facades with Scala CLI](scalablytyped-with-scala-cli.md)
+- [js.async / js.await, JSPI, and the WebAssembly Backend](scala-js-async-jspi-wasm.md)
