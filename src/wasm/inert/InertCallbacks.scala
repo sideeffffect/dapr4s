@@ -20,7 +20,7 @@ import dapr4swit.exports.dapr_wasm_components.interfaces.{
   * Phase 4 replaces them, one by one, with dispatchers over the app's `DaprApp` (like `InvokeDispatcher`).
   */
 object InertCallbacks:
-  object PubSub extends pubsub_callback.PubsubCallbackExports:
+  object PubSub extends witglue.PubsubCallbackExports:
     override def listTopicSubscriptions(): Array[pubsub_callback.TopicSubscription] = Array()
     override def onTopicEvent(event: pubsub_callback.TopicEvent): pubsub_callback.TopicEventResponse =
       pubsub_callback.TopicEventResponse.Drop
@@ -31,18 +31,18 @@ object InertCallbacks:
         pubsub_callback.BulkTopicEventEntryResponse(e.entryId, pubsub_callback.TopicEventResponse.Drop),
       )
 
-  object Bindings extends bindings_callback.BindingsCallbackExports:
+  object Bindings extends witglue.BindingsCallbackExports:
     override def listInputBindings(): Array[String] = Array()
     override def onBindingEvent(
         event: bindings_callback.BindingEvent,
     ): wit.Result[bindings_callback.BindingEventResponse, bindings_callback.AppError] =
       new wit.Err(types.AppError(s"no input binding ${event.name}"))
 
-  object Jobs extends jobs_callback.JobsCallbackExports:
+  object Jobs extends witglue.JobsCallbackExports:
     override def onJobEvent(event: jobs_callback.JobEvent): wit.Result[Unit, jobs_callback.AppError] =
       new wit.Err(types.AppError(s"no job handler ${event.name}"))
 
-  object Actors extends actors_callback.ActorsCallbackExports:
+  object Actors extends witglue.ActorsCallbackExports:
     override def config(): actors_callback.ActorConfig =
       actors_callback.ActorConfig(Array(), wit.None, wit.None, wit.None, wit.None, wit.None, wit.None, wit.None)
     override def onInvoke(
@@ -59,8 +59,8 @@ object InertCallbacks:
     override def deactivate(actorType: String, actorId: String): wit.Result[Unit, actors_callback.AppError] =
       new wit.Ok(())
 
-  object Configuration extends configuration_callback.ConfigurationCallbackExports:
+  object Configuration extends witglue.ConfigurationCallbackExports:
     override def onConfigurationEvent(update: configuration_callback.ConfigurationUpdate): Unit = ()
 
-  object Health extends health_callback.HealthCallbackExports:
+  object Health extends witglue.HealthCallbackExports:
     override def healthCheck(): wit.Result[Unit, health_callback.AppError] = new wit.Ok(())

@@ -19,14 +19,14 @@
 //
 //   coreWasm           dapr4s's shared code (../src/shared) + the wasm platform traits and the
 //                      `DaprComponent` entry API (../src/wasm/core). Nightly + dapr4s flags.
-//   Scala 2.13 + scala-wasm plugin, ALL GENERATED (project/WitGlue.scala; nobody writes 2.13 code):
-//   witLowered         raw wit-bindgen-scala output (scalaJSWitDirectory, world `app`) in the shadow
-//                      package `dapr4swit.lowered`
-//   witFacade          same-name facade under `dapr4swit` (aliases + import forwarders), one plain
-//                      `<Iface>Imports` trait per imported and `<Iface>Exports` trait per exported interface
+//   Scala 2.13 + scala-wasm plugin (the WIT-aware compiler):
+//   witBindings        wit-bindgen-scala output (scalaJSWitDirectory, world `app`) under `dapr4swit`
+//   witGlue            HAND-WRITTEN (src/wasm/glue): import traits + live objects for the imports the
+//                      wall calls (state-read, state), and the 7 `*CallbackExports` traits
 //   witRootStub        link-time contract stub `dapr4s.internal.witglue.AppRoot` (Provided, never linked)
-//   witExports         the 15 `@WitExport` trampolines -> AppRoot. Only COMPONENTS depend on it (its
-//                      exports are linker entry points, which would break plain-JS unit-test linking)
+//   witExports         HAND-WRITTEN (src/wasm/glue-exports): the 15 `@WitExport` trampolines -> AppRoot.
+//                      Only COMPONENTS depend on it (its exports are linker entry points, which would
+//                      break plain-JS unit-test linking)
 //
 //   Scala 3 nightly + dapr4s flags:
 //   componentRootStub  link-time contract stub `dapr4s.wasm.ComponentRoot` (Provided, never linked)
@@ -34,7 +34,7 @@
 //   wallWasm           the `wasm` wall: StateCapability over the import traits, error mapping, the
 //                      invoke dispatcher, the real `AppRoot` (src/wasm/internal). Unit tests with fakes
 //                      in test/wasm/unit, run on Node (`wallWasm/test`).
-//   counterRaw         test component: counter directly over the facade (test/wasm/counter-raw)
+//   counterRaw         test component: counter directly over the bindings + glue (test/wasm/counter-raw)
 //   counter            test component: counter on dapr4s's API (test/wasm/counter)
 //
 //   sbtDapr4sWasm      the sbt-dapr4s-wasm plugin (sbt-plugin/): the build-level workarounds every app
@@ -43,8 +43,8 @@
 // THE TWO-COMPILER CONSTRAINT: mainline Scala 3 (every nightly included) has no WIT codegen. WIT
 // imports are lowered at the CALL SITE by the compiler backend and `@WitExport` is
 // compiler-emitted, so every import call and every export must be compiled by Scala 2.13 +
-// scala-wasm's compiler plugin. The generator confines that to machine-written code: Scala 3 code
-// calls `state_read.get(...)` (a facade forwarder whose body the 2.13 compiler lowered) and
+// scala-wasm's compiler plugin. That 2.13 code is kept small and hand-written (src/wasm/glue*):
+// Scala 3 code calls `witglue.StateReadImports.get(...)` (whose body the 2.13 compiler lowered) and
 // implements plain export traits.
 // =================================================================================================
 
@@ -105,9 +105,9 @@ ThisBuild / scalafmtConfig := repoDir / ".scalafmt.conf"
 //   dapr4s-wasm-core_sjs1_3            coreWasm (shared API + DaprComponent)
 //   dapr4s-wasm_sjs1_3                 wallWasm (the wall + the real AppRoot) -> core, inert, facade
 //   dapr4s-wasm-inert_sjs1_3           wallInert
-//   dapr4s-wasm-wit-lowered_sjs1_2.13  witLowered (generated, 2.13)
-//   dapr4s-wasm-wit-facade_sjs1_2.13   witFacade  (generated, 2.13)
-//   dapr4s-wasm-wit-exports_sjs1_2.13  witExports (generated, 2.13; a COMPONENT's dependency only)
+//   dapr4s-wasm-wit-bindings_sjs1_2.13 witBindings (wit-bindgen-scala output, 2.13)
+//   dapr4s-wasm-wit-glue_sjs1_2.13     witGlue     (hand-written, 2.13)
+//   dapr4s-wasm-wit-exports_sjs1_2.13  witExports  (hand-written, 2.13; a COMPONENT's dependency only)
 //   sbt-dapr4s-wasm (sbt 1, 2.12)      sbtDapr4sWasm (the build logic)
 // Never published: the two link-time STUBS (witRootStub, componentRootStub). They are `Provided`
 // dependencies, so they appear in the dependants' ivy files with conf `provided` and never reach a
@@ -175,7 +175,7 @@ def sourcesIn(dirs: File*) = Seq(
 // (src/wasm/core/DaprComponent.scala) and depends on the PUBLISHED Scala.js artifact
 // `com.github.sideeffffect::dapr4s_sjs1_3:<v>` (Scala.js IR) for everything else, which the
 // scala-wasm linker links into the component. Then a publishLocal yields a SMALL wasm layer (wall +
-// generated glue + DaprComponent) on top of Central dapr4s — what dapr4s-examples consumes. This
+// 2.13 glue + DaprComponent) on top of Central dapr4s — what dapr4s-examples consumes. This
 // works because the wasm platform traits (src/wasm/core: DaprCapabilityPlatform, ForwardersPlatform)
 // are identical to the Scala.js ones (all empty), so dapr4s_sjs1_3 IS "shared + empty platform
 // traits" plus the JS wall, which nothing on the wasm path reaches (the linker drops it; its
@@ -205,78 +205,52 @@ lazy val coreWasm = project
   .settings(name := "dapr4s-wasm-core")
 
 // -------------------------------------------------------------------------------------------------
-// The 2.13 side of the wall: GENERATED code only, compiled by the WIT-aware compiler. Nobody writes
-// 2.13 code. See project/WitGlue.scala for the pipeline: raw bindings -> same-name facade + plain
-// import/export traits -> link-time root stub -> @WitExport trampolines.
+// The 2.13 side of the wall, compiled by the WIT-aware compiler (Scala 2.13 + scala-wasm's plugin):
+// the wit-bindgen-scala BINDINGS (generated by the plugin) + a small HAND-WRITTEN glue (src/wasm/glue*)
+// covering only what the Scala 3 wall uses. See src/wasm/glue/WitGlue.scala for why it must be 2.13.
 // -------------------------------------------------------------------------------------------------
 
-// The exported interfaces of world `app`, read from the resolved WIT (wit-bindgen-scala generates only
-// their types, not their function signatures).
-lazy val witExportedInterfaces = taskKey[List[WitGlue.ExportedIface]]("Exported interfaces of WIT world `app`")
-ThisBuild / witExportedInterfaces := {
-  witFetch.value
-  val cmd = Seq("wasm-tools", "component", "wit", witDir.getPath, "--json")
-  WitGlue.exportedInterfaces(scala.sys.process.Process(cmd, wasmDir).!!, "app")
-}
-
-// wit-bindgen-scala output in the SHADOW package `dapr4swit.lowered`: only the generated facade
-// (witFacade) calls it; Scala 3 code never sees it.
-lazy val witLowered = project
-  .in(file("wit-lowered"))
+// wit-bindgen-scala output (world `app`) under `dapr4swit` (a dapr4s-specific root package, like
+// `dapr4styped` for the ScalablyTyped facades, so a consumer's own wit-bindgen output cannot collide
+// with it). Scala 3 code uses its record/variant/enum types directly; it cannot call its `@WitImport`s.
+lazy val witBindings = project
+  .in(file("wit-bindings"))
   .enablePlugins(ScalaJSPlugin)
   .settings(publishLocalOnly, witAware, sourcesIn())
   .settings(
-    name := "dapr4s-wasm-wit-lowered",
+    name := "dapr4s-wasm-wit-bindings",
     scalaJSWitDirectory := witDir,
     scalaJSWitWorld := Some("app"),
-    scalaJSWitPackage := Some(WitGlue.Lowered),
+    scalaJSWitPackage := Some("dapr4swit"),
     // The plugin also runs the generator for Test; both must wait for wit/deps/ (sbt runs witFetch
     // once per command).
     Compile / scalaJSGenerateWitBindings := (Compile / scalaJSGenerateWitBindings).dependsOn(witFetch).value,
     Test / scalaJSGenerateWitBindings := (Test / scalaJSGenerateWitBindings).dependsOn(witFetch).value,
   )
 
-// The same-name facade under `dapr4swit` (a dapr4s-specific root package, like `dapr4styped` for the
-// ScalablyTyped facades, so a consumer's own wit-bindgen output cannot collide with it), the
-// `<Iface>Imports` traits with their live objects, and the `<Iface>Exports` traits.
-lazy val witFacade = project
-  .in(file("wit-facade"))
+// Hand-written: the import traits + their live objects (the only import call sites) and the 7
+// `*CallbackExports` traits (src/wasm/glue).
+lazy val witGlue = project
+  .in(file("wit-glue"))
   .enablePlugins(ScalaJSPlugin)
-  .settings(publishLocalOnly, witAware, sourcesIn())
-  .settings(
-    name := "dapr4s-wasm-wit-facade",
-    Compile / sourceGenerators += Def.task {
-      val raw = (witLowered / Compile / managedSources).value
-      val rawRoot = (witLowered / Compile / sourceManaged).value / "wit-bindgen"
-      val out = (Compile / sourceManaged).value / "wit-facade"
-      IO.delete(out)
-      WitGlue.facade(raw, rawRoot, out, WitGlue.exportTraits(witExportedInterfaces.value))
-    }.taskValue,
-  )
-  .dependsOn(witLowered)
+  .settings(publishLocalOnly, witAware, sourcesIn(repoDir / "src" / "wasm" / "glue"))
+  .settings(name := "dapr4s-wasm-wit-glue")
+  .dependsOn(witBindings)
 
+// Hand-written link-time stub of `dapr4s.internal.witglue.AppRoot` (src/wasm/glue-root-stub).
 lazy val witRootStub = project
   .in(file("wit-root-stub"))
   .enablePlugins(ScalaJSPlugin)
-  .settings(noPublish, witAware, sourcesIn())
-  .settings(
-    Compile / sourceGenerators += Def.task {
-      WitGlue.rootStub(witExportedInterfaces.value, (Compile / sourceManaged).value / "wit-glue")
-    }.taskValue,
-  )
-  .dependsOn(witFacade)
+  .settings(noPublish, witAware, sourcesIn(repoDir / "src" / "wasm" / "glue-root-stub"))
+  .dependsOn(witGlue)
 
+// Hand-written `@WitExport` trampolines (src/wasm/glue-exports). Only COMPONENTS depend on it.
 lazy val witExports = project
   .in(file("wit-exports"))
   .enablePlugins(ScalaJSPlugin)
-  .settings(publishLocalOnly, witAware, sourcesIn())
-  .settings(
-    name := "dapr4s-wasm-wit-exports",
-    Compile / sourceGenerators += Def.task {
-      WitGlue.trampolines(witExportedInterfaces.value, (Compile / sourceManaged).value / "wit-glue")
-    }.taskValue,
-  )
-  .dependsOn(witFacade, witRootStub % Provided)
+  .settings(publishLocalOnly, witAware, sourcesIn(repoDir / "src" / "wasm" / "glue-exports"))
+  .settings(name := "dapr4s-wasm-wit-exports")
+  .dependsOn(witGlue, witRootStub % Provided)
 
 // -------------------------------------------------------------------------------------------------
 // The Scala 3 side of the wall (dapr4s's nightly + flags)
@@ -296,7 +270,7 @@ lazy val wallInert = project
   .settings(publishLocalOnly, nightly)
   .settings(name := "dapr4s-wasm-inert")
   .settings(sourcesIn(repoDir / "src" / "wasm" / "inert"))
-  .dependsOn(witFacade)
+  .dependsOn(witGlue)
 
 lazy val wallWasm = project
   .in(file("wall"))
@@ -305,7 +279,7 @@ lazy val wallWasm = project
   .settings(sourcesIn(repoDir / "src" / "wasm" / "internal"))
   .settings(
     name := "dapr4s-wasm",
-    // Unit tests of the wall (test/wasm/unit) against FAKES of the generated import traits. They link as
+    // Unit tests of the wall (test/wasm/unit) against FAKES of the hand-written import traits. They link as
     // plain Scala.js (this project keeps the default JS linker config) and run on Node: no WIT import is
     // reachable from them, so they need neither wasmtime nor a sidecar nor the patched linker's export fix.
     Test / unmanagedSourceDirectories := Seq(repoDir / "test" / "wasm" / "unit"),
@@ -350,8 +324,8 @@ lazy val root = project
   .in(file("."))
   .aggregate(
     coreWasm,
-    witLowered,
-    witFacade,
+    witBindings,
+    witGlue,
     witRootStub,
     witExports,
     componentRootStub,

@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-13] update | wasm glue hand-written (generator dropped); overlay + release mode
+- Updated: scala-js/scala-wasm-component-spike.md — 2.13 glue now hand-written (facts from the generator kept as history); UniquenessCache overlay; release mode on Central dapr4s_sjs1_3
+
 ## [2026-10-13] update | scala-wasm component packaging (publishLocal + sbt plugin)
 - Updated: scala-js/scala-wasm-component-spike.md — sbt-dapr4s-wasm plugin; coursier dependencyResolution applies excludeDependencies (silently empty overlay retrieve); mixed 3→2.13 publish; Provided stubs; plugin version from manifest
 

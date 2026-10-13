@@ -5,14 +5,14 @@ import java.nio.charset.StandardCharsets.UTF_8
 import scala.scalajs.wit
 
 import dapr4s.*
-import dapr4s.internal.{InvokeDispatcher, WasmStateCapability}
+import dapr4s.internal.{InvokeDispatcher, WasmStateCapability, witglue}
 import dapr4s.invoke.*
 import dapr4s.state.*
 import dapr4swit.dapr_wasm_components.interfaces.{invocation, state as witState, state_read, types}
 import dapr4swit.exports.dapr_wasm_components.interfaces.invocation_callback
 import munit.FunSuite
 
-/** Fakes of the GENERATED import traits (wasm/project/WitGlue.scala). Every call returns the configured result and
+/** Fakes of the hand-written import traits (src/wasm/glue/WitGlue.scala). Every call returns the configured result and
   * records its arguments, so the wall's mapping is tested without wasmtime, daprd or any WIT import: these tests link
   * as plain Scala.js and run on Node, and the live import objects are never reachable from them.
   */
@@ -22,7 +22,7 @@ final class FakeStateRead(
       new wit.Err(state_read.GetError.KeyNotFound),
     queryResult: wit.Result[state_read.QueryResponse, state_read.QueryError] =
       new wit.Err(state_read.QueryError.NotQueryable),
-) extends state_read.StateReadImports:
+) extends witglue.StateReadImports:
   var lastGet: Option[(String, String)] = None
   override def get(
       storeName: String,
@@ -49,7 +49,7 @@ final class FakeStateRead(
 final class FakeState(
     writeResult: wit.Result[Unit, witState.WriteError] = new wit.Ok(()),
     transactionResult: wit.Result[Unit, witState.TransactionError] = new wit.Ok(()),
-) extends witState.StateImports:
+) extends witglue.StateImports:
   var saved: List[state_read.StateItem] = Nil
   override def save(
       storeName: String,
@@ -87,8 +87,8 @@ class WasmWallTest extends FunSuite:
   private val key = StateStoreKey("k")
 
   private def state(
-      reads: state_read.StateReadImports = FakeStateRead(),
-      writes: witState.StateImports = FakeState(),
+      reads: witglue.StateReadImports = FakeStateRead(),
+      writes: witglue.StateImports = FakeState(),
   ): StateCapability.Instance =
     WasmStateCapability(reads, writes).instance(store)
 
@@ -184,7 +184,7 @@ class WasmWallTest extends FunSuite:
     assertEquals(r.status.toInt, 500)
     assert(body(r).contains("boom"), body(r))
 
-  // `types` is imported so the facade's cross-interface aliases are exercised too.
-  test("facade: a cross-interface alias is the same type as its target"):
+  // The wit-bindgen-scala binding types (compiled by 2.13) are used from Scala 3 directly, with no facade.
+  test("bindings: a WIT record of another interface is usable from Scala 3"):
     val e: types.AppError = types.AppError("x")
     assertEquals(e.message, "x")

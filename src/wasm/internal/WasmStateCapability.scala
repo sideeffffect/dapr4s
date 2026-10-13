@@ -8,8 +8,8 @@ import dapr4s.*
 import dapr4s.state.*
 import dapr4swit.dapr_wasm_components.interfaces.{state as witState, state_read}
 
-/** dapr4s's `StateCapability` over the WIT `state-read` / `state` imports. It depends on the GENERATED plain import
-  * traits (`state_read.StateReadImports`, `state.StateImports`, see wasm/project/WitGlue.scala), not on the import
+/** dapr4s's `StateCapability` over the WIT `state-read` / `state` imports. It depends on the hand-written plain import
+  * traits (`witglue.StateReadImports`, `witglue.StateImports`, src/wasm/glue/WitGlue.scala), not on the import
   * functions: `WasmRuntime` passes their live objects (compiled by the WIT-aware 2.13 compiler, which is the only one
   * that can lower an import call), and the unit tests (test/wasm/unit) pass fakes.
   *
@@ -23,7 +23,7 @@ import dapr4swit.dapr_wasm_components.interfaces.{state as witState, state_read}
   *
   * WHY @assumeSafe (on this object and the two classes below): same contract as the JVM/JS walls
   * (src/{jvm,js}/internal/StateCapabilityImpl.scala). They are the boundary to the platform SDK — here the generated
-  * WIT bindings and the generated import traits, plain Scala 2.13 classes that CC cannot check. They hold no
+  * WIT bindings and the hand-written 2.13 import traits, plain Scala 2.13 classes that CC cannot check. They hold no
   * capability but the component's WIT imports (behind those traits) and never leak a binding type into the public API.
   */
 @scala.caps.assumeSafe
@@ -70,8 +70,8 @@ private object WasmState:
 @scala.caps.assumeSafe
 final class WasmStateInstance(
     val storeName: StateStoreName,
-    reads: state_read.StateReadImports,
-    writes: witState.StateImports,
+    reads: witglue.StateReadImports,
+    writes: witglue.StateImports,
 ) extends StateCapability.Instance:
   import WasmState.*
 
@@ -237,7 +237,7 @@ final class WasmStateInstance(
 
 /** The universal (name-first) tier: every call narrows to a per-store [[WasmStateInstance]]. */
 @scala.caps.assumeSafe
-final class WasmStateCapability(reads: state_read.StateReadImports, writes: witState.StateImports) extends StateCapability:
+final class WasmStateCapability(reads: witglue.StateReadImports, writes: witglue.StateImports) extends StateCapability:
   // WHAT: `asInstanceOf` drops the fresh capture set of the newly constructed instance.
   // WHY: CC types `new WasmStateInstance(...)` as `^{any created in method instance}`, which cannot
   //   flow into the declared `^{this}`; dapr4s's JVM/JS walls do the identical cast

@@ -21,7 +21,7 @@ import dapr4swit.exports.dapr_wasm_components.interfaces.invocation_callback
   * `onInvoke`. Same contract as src/js/internal/DaprAppServer.scala.
   */
 @scala.caps.assumeSafe
-final class InvokeDispatcher(app: DaprApp) extends invocation_callback.InvocationCallbackExports:
+final class InvokeDispatcher(app: DaprApp) extends witglue.InvocationCallbackExports:
   private val routes: Map[String, InvokeRoute] = app.invokeRoutes.map(r => r.methodName.value -> r).toMap
 
   private def respond(status: Int, body: String): invocation.HttpResponse =
@@ -62,7 +62,7 @@ final class InvokeDispatcher(app: DaprApp) extends invocation_callback.Invocatio
   */
 @scala.caps.assumeSafe
 object WasmRuntime:
-  lazy val invocation: invocation_callback.InvocationCallbackExports =
-    // The live objects of the generated import traits: the only place the wall touches the real WIT imports.
-    given state: dapr4s.state.StateCapability = WasmStateCapability(state_read.StateReadImports, witState.StateImports)
+  lazy val invocation: witglue.InvocationCallbackExports =
+    // The live objects of the hand-written import traits (src/wasm/glue): the only place the wall touches the real WIT imports.
+    given state: dapr4s.state.StateCapability = WasmStateCapability(witglue.StateReadImports, witglue.StateImports)
     InvokeDispatcher(ComponentRoot.component.app.validateOrThrow())
