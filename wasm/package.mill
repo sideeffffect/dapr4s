@@ -148,9 +148,15 @@ object `package` extends Module {
     // Modules merged into this one's jar (or compile-only contracts): their classes ship here, so the
     // POM must not name them.
     def embeddedModules: Seq[PublishModule] = Nil
+    // The dependency exclusions of the POM, on EVERY dependency (module dependencies included), as sbt wrote
+    // `excludeDependencies`: they keep the 2.13 stdlib and mainline Scala.js away from a consumer's classpath.
+    def pomExclusions: Seq[(String, String)] = Nil
     override def publishXmlDeps = Task.Anon {
       val embedded = Task.sequence(embeddedModules.map(_.artifactId))().toSet
-      super.publishXmlDeps().filterNot(d => embedded(d.artifact.id))
+      super
+        .publishXmlDeps()
+        .filterNot(d => embedded(d.artifact.id))
+        .map(d => if (pomExclusions.isEmpty) d else d.copy(exclusions = pomExclusions))
     }
     override def publishMvnDeps = Task.Anon {
       val embedded = Task.sequence(embeddedModules.map(_.artifactId))().toSet
@@ -264,6 +270,7 @@ object `package` extends Module {
     /** dapr4s-wasm: the wall (src/wasm/internal) + api + inert in one jar. */
     object wall extends WithCore {
       def artifactName = "dapr4s-wasm"
+      override def pomExclusions = Exclusions
       override def sources = Task.Sources(Dapr4sPaths.src / "wasm" / "internal")
       override def moduleDeps = super.moduleDeps ++ Seq(api, inert, glue)
       override def compileModuleDeps = Seq(componentRootStub)
