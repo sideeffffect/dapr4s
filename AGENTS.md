@@ -631,7 +631,7 @@ legs (the wasm artifacts are published by the same job).
   paths ScalablyTyped emits for testcontainers, which Node ESM rejects) and sets
   `DAPR4S_REPO_ROOT` (where the suites find `scripts/it/`). `java.util.UUID.randomUUID()` does
   **not link** on Scala.js (SecureRandom is absent from the javalib) — use `JsItEnv.uniqueId()`.
-- CI gates `publish` on the `format` job and all `test` matrix legs passing. `publish` runs
+- CI gates `publish` on the `format` job and all three `test` matrix legs (`jvm`, `js`, `wasm`) passing. `publish` runs
   `./mill mill.javalib.SonatypeCentralPublishModule/publishAll` (Mill's Central Portal publisher: a
   release tag publishes the clean version, a master push a `-SNAPSHOT` to the Central snapshots
   repository) for `core.jvm` + `core.js` (+ the eight wasm artifacts, see "Central publishing switch");
