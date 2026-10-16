@@ -254,11 +254,14 @@ lazy val witGlue = project
     scalaJSWitDirectory := witDir,
     scalaJSWitWorld := Some("app"),
     scalaJSWitPackage := Some("dapr4swit"),
-    // The plugin also runs the generator for Test; both must wait for wit/deps/ (sbt runs witFetch
-    // once per command). useWitAliases: see its definition.
+    // The generator must wait for wit/deps/ (sbt runs witFetch once per command). useWitAliases: see
+    // its definition. The plugin also runs the generator for Test, into the SAME directory (it writes to
+    // `Compile / sourceManaged` in both configurations): the two runs in parallel corrupted each other's
+    // files (and the rewrite's). This project has no tests and Test sees the main classes anyway, so Test
+    // generates nothing.
     Compile / scalaJSGenerateWitBindings :=
       useWitAliases((Compile / scalaJSGenerateWitBindings).dependsOn(witFetch).value),
-    Test / scalaJSGenerateWitBindings := useWitAliases((Test / scalaJSGenerateWitBindings).dependsOn(witFetch).value),
+    Test / scalaJSGenerateWitBindings := Nil,
   )
 
 // Hand-written link-time stub of `dapr4s.internal.witglue.AppRoot` (src/wasm/glue-root-stub).
