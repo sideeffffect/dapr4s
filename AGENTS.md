@@ -571,9 +571,9 @@ and gates `publish` like the other legs (the wasm artifacts are published by the
   paths ScalablyTyped emits for testcontainers, which Node ESM rejects) and sets
   `DAPR4S_REPO_ROOT` (where the suites find `scripts/it/`). `java.util.UUID.randomUUID()` does
   **not link** on Scala.js (SecureRandom is absent from the javalib) — use `JsItEnv.uniqueId()`.
-- CI gates `publish` on the `format` job and the `jvm` + `js` matrix legs passing. `publish` runs
+- CI gates `publish` on the `format` job and all three matrix legs (`jvm`, `js`, `wasm`) passing. `publish` runs
   `sbt ci-release` (sbt-ci-release: a release tag publishes the clean dynver version to Central,
-  a master push a dynver `-SNAPSHOT`) for `coreJVM` + `coreJS`; the scala-cli era secrets
+  a master push a dynver `-SNAPSHOT`) for `coreJVM` + `coreJS` (and then the `wasm/` build, see "Wasm component layer rules"); the scala-cli era secrets
   (`PUBLISH_USER`, `PUBLISH_PASSWORD`, `PUBLISH_SECRET_KEY`, `PUBLISH_SECRET_KEY_PASSWORD`) are
   mapped to sbt-ci-release's `SONATYPE_*` / `PGP_*` variables in the workflow. Check a publish
   locally with `sbt coreJVM/publishLocal coreJS/publishLocal` and inspect the POMs in `~/.ivy2/local`.
