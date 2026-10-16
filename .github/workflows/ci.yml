@@ -44,10 +44,10 @@ jobs:
   # The `wasm` leg is the Phase-0 WASI-component prototype (docs/WASM-COMPONENTS-PROPOSAL.md §6). It
   # is a separate, opt-in sbt build in wasm/ (the scala-wasm fork of sbt-scalajs cannot share a
   # meta-build with mainline sbt-scalajs) and has its own steps below: format check, the wall's unit
-  # tests (on Node) and scripts/wasm/e2e.sh in source mode, then publishLocal of the six wasm artifacts
+  # tests (on Node) and scripts/wasm/e2e.sh in source mode, then publishLocal of the five wasm artifacts
   # and a plugin-only consumer build (scripts/wasm/consumer-check.sh).
   #
-  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the six wasm
+  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the five wasm
   # artifacts to Central (PUBLISH_WASM_TO_CENTRAL), so a broken wasm build must never reach a release.
   test:
     strategy:
@@ -147,20 +147,20 @@ jobs:
         wget -q https://raw.githubusercontent.com/dapr/cli/v1.15.1/install/install.sh -O - | /bin/bash -s 1.15.1
         dapr init --slim --runtime-version 1.17.7
         echo "$HOME/.dapr/bin" >> "$GITHUB_PATH"
-    # The patched scala-wasm linker (scripts/wasm/build-patched-linker.sh: the 1.22.1-wasm.6 release
-    # commit + our export-params patch, published to ~/.ivy2/local). Rebuilt only when the script, the
-    # patch or the version in wasm/build.sbt changes.
-    # The patched scala-wasm linker (scripts/wasm/build-patched-linker.sh: the 1.22.1-wasm.6 release commit +
-    # our params-via-memory patch) is built by the `wasmLinker` project on demand; cache its output and the
-    # scala-wasm clone. Rebuilt only when the script or the patch changes.
-    - name: Cache the patched scala-wasm linker build
+    # The UNRELEASED scala-wasm the wasm/ build pins (1.22.1-wasm.7-dapr4s-local: scala-wasm's branch +
+    # the open upstream PRs dapr4s needs, see scripts/wasm/build-scala-wasm.sh). Built from source and
+    # publishLocal'ed; cached by the script's hash (it pins the commit SHAs and the version). Goes away
+    # with the next scala-wasm release on Central.
+    - name: Cache the scala-wasm snapshot build
       if: matrix.platform == 'wasm'
+      id: cache-scala-wasm
       uses: actions/cache@v4
       with:
-        path: |
-          wasm/target/scala-wasm-linker
-          ~/.cache/dapr4s/scala-wasm-src
-        key: scala-wasm-linker-${{ hashFiles('scripts/wasm/build-patched-linker.sh', 'scripts/wasm/patches/**') }}
+        path: ~/.ivy2/local/io.github.scala-wasm
+        key: scala-wasm-snapshot-${{ hashFiles('scripts/wasm/build-scala-wasm.sh') }}
+    - name: Build and publishLocal the scala-wasm snapshot
+      if: matrix.platform == 'wasm'
+      run: scripts/wasm/build-scala-wasm.sh
     # Source mode: the wall over dapr4s's own src/shared (covers shared-code changes), unit tests + e2e
     # (counter-raw, counter, imports-probe against daprd + Redis).
     - name: Format check, wall unit tests (wasm/, source mode)
@@ -171,7 +171,7 @@ jobs:
       if: matrix.platform == 'wasm'
       timeout-minutes: 20
       run: SBT_ARGS=-Ddapr4s.wasm.core=source scripts/wasm/e2e.sh
-    # Release mode (the default): the six artifacts as they would be published (the wall on the published
+    # Release mode (the default): the five artifacts as they would be published (the wall on the published
     # dapr4s_sjs1_3), publishLocal'ed, then a fresh consumer build that has nothing but the plugin + one
     # dependency builds test/wasm/counter and runs its e2e. dapr4s-examples consumes the same artifacts.
     - name: publishLocal (release mode)
@@ -204,7 +204,10 @@ jobs:
       # The switch for Central publishing of the wasm artifacts (ON since 2026-10-13, approved by the
       # user). Setting it to 'false' stops only the wasm artifacts; core (dapr4s_3, dapr4s_sjs1_3)
       # publishes regardless.
-      PUBLISH_WASM_TO_CENTRAL: 'true'
+      # OFF while wasm/ pins the unreleased scala-wasm 1.22.1-wasm.7-dapr4s-local
+      # (scripts/wasm/build-scala-wasm.sh): sbt-dapr4s-wasm's POM would name an sbt-scalajs version that
+      # is not on Central, so no consumer could resolve it. Back to 'true' with a scala-wasm release.
+      PUBLISH_WASM_TO_CENTRAL: 'false'
     steps:
     - uses: actions/checkout@v5
       with:
@@ -246,7 +249,7 @@ jobs:
         PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
         PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
     # ---- The wasm artifacts (wasm/ build): dapr4s-wasm, dapr4s-wasm-glue(-exports), dapr4s-wasm-scalalib-overlay,
-    # dapr4s-wasm-linker, sbt-dapr4s-wasm — at the same version as core, the wall depending on the dapr4s_sjs1_3
+    # sbt-dapr4s-wasm — at the same version as core, the wall depending on the dapr4s_sjs1_3
     # of THIS version (published locally first so the wasm build resolves it before Central has it).
     # Gated by PUBLISH_WASM_TO_CENTRAL (the wasm build also refuses `publish` unless that variable is 'true',
     # so a local `sbt publish` in wasm/ can never reach Central by accident). See AGENTS.md "Wasm component layer rules".

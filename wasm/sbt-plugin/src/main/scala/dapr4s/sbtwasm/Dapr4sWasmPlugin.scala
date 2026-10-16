@@ -9,18 +9,18 @@ import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport._
 
 /** The build logic a dapr4s `wasm` app needs, as an sbt plugin (`sbt-dapr4s-wasm`).
   *
-  * WHY a plugin and not a library: everything here is a workaround in the BUILD, not in code — which linker links the
-  * app, which stdlib IR wins on the linker classpath, which transitive libraries must not reach the classpath, and how
-  * the linked module becomes a component typed by the real WIT world. A library cannot change any of that. dapr4s's own
-  * `wasm/` build compiles this very file into its meta-build (`wasm/project/plugin-sources.sbt`) and points the two
-  * artifact-backed keys (`dapr4sWasmLinkerClasspath`, `dapr4sWasmScalalibOverlay`) at its own projects, so the test
-  * components in dapr4s and an external app (dapr4s-examples) build the same way.
+  * WHY a plugin and not a library: everything here is a workaround in the BUILD, not in code — which stdlib IR wins on
+  * the linker classpath, which transitive libraries must not reach the classpath, and how the linked module becomes a
+  * component typed by the real WIT world. A library cannot change any of that. dapr4s's own `wasm/` build compiles this
+  * very file into its meta-build (`wasm/project/plugin-sources.sbt`) and points the artifact-backed key
+  * (`dapr4sWasmScalalibOverlay`) at its own project, so the test components in dapr4s and an external app
+  * (dapr4s-examples) build the same way.
   *
   * Two plugins, both opt-in (`enablePlugins`), on top of the scala-wasm FORK of sbt-scalajs
   * (`io.github.scala-wasm:sbt-scalajs`), which this plugin depends on:
   *
   *   - [[Dapr4sWasmPlugin]]: every project compiled by the Scala 3 nightly against dapr4s's wasm artifacts (library or
-  *     app): dependency exclusions + the patched linker (`dapr4s-wasm-linker`).
+  *     app): dependency exclusions.
   *   - [[Dapr4sWasmComponentPlugin]]: a project linked as a WASI component (an app): WasmComponent link, the stdlib
   *     overlay (`dapr4s-wasm-scalalib-overlay`), the `@WitExport` trampolines (`dapr4s-wasm-glue-exports`),
   *     `wkg wit fetch` and `dapr4sComponent` / `dapr4sComponentFull`.
@@ -53,32 +53,7 @@ object Dapr4sWasmPlugin extends AutoPlugin {
         .getOrElse(
           sys.error("dapr4sWasmVersion: no Implementation-Version (not running from the published plugin jar)"),
         )
-
-    val dapr4sWasmLinkerClasspath =
-      taskKey[Seq[File]]("Classpath of the linker that links the app: dapr4s-wasm-linker_2.12 + its dependencies")
   }
-  import autoImport._
-
-  // -----------------------------------------------------------------------------------------------
-  // Upstream blocker (scala-wasm linker: WIT params via linear memory, > 16 flat params): the export
-  // side is a `???`, the import side emits nothing. Link with dapr4s-wasm-linker_2.12, the
-  // 1.22.1-wasm.6 linker rebuilt with dapr4s's patch (scripts/wasm/patches/), republished under
-  // dapr4s's coordinates with scala-wasm's LICENSE/NOTICE. Only the LINKER is replaced; the plugin,
-  // library, javalib and compiler plugin stay the released ones. RETIRES when a scala-wasm release
-  // passes params via memory: drop this override.
-  // -----------------------------------------------------------------------------------------------
-  override def globalSettings: Seq[Setting[_]] = Seq(
-    dapr4sWasmLinkerClasspath := {
-      val s = streams.value
-      Dapr4sWasm.retrieve(
-        (scalaJSLinkerImpl / dependencyResolution).value,
-        Dapr4sWasm.Org % "dapr4s-wasm-linker_2.12" % dapr4sWasmVersion,
-        s.cacheDirectory / "dapr4s-wasm-linker",
-        s.log,
-      )
-    },
-    scalaJSLinkerImpl / fullClasspath := dapr4sWasmLinkerClasspath.value.map(Attributed.blank(_)),
-  )
 
   // -----------------------------------------------------------------------------------------------
   // A nightly-compiled project that depends on 2.13-compiled artifacts (dapr4s's WIT glue) must NOT
