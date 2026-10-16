@@ -76,7 +76,14 @@ fi
 
 expected_imports=$'configuration-read: \ninvocation: \nstate: save\nstate-read: get\ntypes: '
 
-invoke() { dapr invoke --app-id "$APP_ID" --method "$1" --verb POST 2>&1 | head -1; }
+# First line of the reply. Not `| head -1`: once head exits, a dapr that still writes gets SIGPIPE, and
+# under pipefail + set -e the whole script dies with exit 141 (seen in CI). Returns dapr's status, as before.
+invoke() {
+  local out rc=0
+  out="$(dapr invoke --app-id "$APP_ID" --method "$1" --verb POST 2>&1)" || rc=$?
+  printf '%s\n' "${out%%$'\n'*}"
+  return "$rc"
+}
 
 for v in ${E2E_ONLY:-counterRaw counter importsProbe}; do
   [[ "$v" == importsProbe ]] && continue
