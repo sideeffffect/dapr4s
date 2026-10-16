@@ -57,12 +57,15 @@ object Dapr4sWasmPlugin extends AutoPlugin {
 
   // -----------------------------------------------------------------------------------------------
   // A nightly-compiled project that depends on 2.13-compiled artifacts (dapr4s's WIT glue) must NOT
-  // see the 2.13 stdlib the scala-wasm plugin adds to those (different organization, so no eviction
-  // against the nightly's): drop it. dapr4s core (dapr4s_sjs1_3) and other cross-built dependencies
-  // (scala-java-time, upickle, ...) bring MAINLINE Scala.js (scalajs-library -> scalajs-javalib).
-  // Different organization than the fork's, so no eviction either: both would be on the classpath and
-  // the first IR file per class would win. Keep only the fork's. RETIRES when the fork's library and
-  // mainline's can evict each other (same coordinates) or mainline Scala.js gains the component target.
+  // see the fork's 2.13 stdlib (io.github.scala-wasm:scalajs-scalalib_2.13:2.13.18+<v>) that the
+  // scala-wasm plugin adds to those: it is a different organization AND version line than the
+  // nightly's own Scala.js stdlib (org.scala-js:scalajs-scalalib_2.13:<nightly>), so nothing evicts
+  // it, both end up on the classpath and the first IR file per class wins. Drop the fork's.
+  // (The UPSTREAM org.scala-js core libraries -- scalajs-library, scalajs-javalib, ... -- that dapr4s
+  // core and other cross-built dependencies bring are excluded by the scala-wasm plugin itself since
+  // https://github.com/scala-wasm/scala-wasm/pull/271, which keeps the upstream scalalib on Scala
+  // 3.8+ and leaves this duplicate open.) RETIRES when the scala-wasm plugin drops the 2.13 scalalib
+  // from Scala 3 projects.
   // -----------------------------------------------------------------------------------------------
   override def projectSettings: Seq[Setting[_]] = Seq(
     excludeDependencies ++= Dapr4sWasm.exclusions,
@@ -168,14 +171,7 @@ object Dapr4sWasm {
   val Org = "com.github.sideeffffect"
   val ScalaWasmOrg = "io.github.scala-wasm"
 
-  val exclusions: Seq[ExclusionRule] = Seq(
-    ExclusionRule(ScalaWasmOrg, "scala-library"),
-    ExclusionRule(ScalaWasmOrg, "scala3-library_3"),
-    ExclusionRule(ScalaWasmOrg, "scala3-library_sjs1_3"),
-    ExclusionRule(ScalaWasmOrg, "scalajs-scalalib_2.13"),
-    ExclusionRule("org.scala-js", "scalajs-library_2.13"),
-    ExclusionRule("org.scala-js", "scalajs-javalib"),
-  )
+  val exclusions: Seq[ExclusionRule] = Seq(ExclusionRule(ScalaWasmOrg, "scalajs-scalalib_2.13"))
 
   def retrieve(lm: sbt.librarymanagement.DependencyResolution, module: ModuleID, dir: File, log: Logger): Seq[File] = {
     val files = lm
