@@ -30,7 +30,7 @@ val versions = new {
   val munit = "1.3.0"
   val upickle = "3.3.1" // pinned: 4.x crashes on CC-annotated types
   val testcontainersScala = "0.43.6"
-  val scalaJavaTime = "2.6.0"
+  val scalaJavaTime = "2.8.0"
   val scalablytypedRuntime = "2.4.2"
   val scalajsDom = "2.8.1"
 }
