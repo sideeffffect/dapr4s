@@ -247,7 +247,7 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
 
 ### Retiring workarounds on an unreleased scala-wasm (2026-10-16)
 
-[PR #46](https://github.com/sideeffffect/dapr4s/pulls?q=is%3Apr+head%3Afeat%2Fwasm-upstream-snapshot) (draft,
+[PR #46](https://github.com/sideeffffect/dapr4s/pull/46) (draft,
 stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` branch at `32cda138` (with
 [scala-wasm#268](https://github.com/scala-wasm/scala-wasm/pull/268), merged) + a local merge of the open
 [#269](https://github.com/scala-wasm/scala-wasm/pull/269) (`be1184cd`) and
