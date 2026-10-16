@@ -16,6 +16,16 @@ for f in compose.sh compose.wac; do
     "https://raw.githubusercontent.com/sideeffffect/dapr-wasm-components/$ref/$f"
 done
 chmod +x "$dir/compose.sh"
+# The providers are pulled here and passed by path: since 2026-10-15 dapr-wasm-components publishes every
+# version under ghcr.io/sideeffffect/dapr-wasm-components/<module> and the flat
+# ghcr.io/sideeffffect/dapr-wasm-components-<module> packages, which compose.sh (every tag up to v0.7.4) pulls,
+# are deleted.
+for d in outbound inbound; do
+  f="$dir/dapr_wasm_components_wasi_http_$d.wasm"
+  [[ -s "$f" ]] || wkg oci pull "ghcr.io/sideeffffect/dapr-wasm-components/wasi-http-$d:0.7.2" -o "$f" >&2
+done
 rm -f "$out"
-"$dir/compose.sh" "$app" -o "$out" --tag 0.7.2
+"$dir/compose.sh" "$app" -o "$out" \
+  --outbound "$dir/dapr_wasm_components_wasi_http_outbound.wasm" \
+  --inbound "$dir/dapr_wasm_components_wasi_http_inbound.wasm"
 wasm-tools validate "$out"
