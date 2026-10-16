@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Prepare the SOURCES of scala-wasm's linker at the exact 1.22.1-wasm.6 release commit + dapr4s's patch
 # (scripts/wasm/patches/scala-wasm-params-via-memory.patch) in $1 (default: out/wasm-linker-src). The
-# `wasm.linker` module of wasm/package.mill runs this script, compiles those sources with Scala 2.12 against
-# the RELEASED scala-wasm ir / linker-interface, adds the released linker jar's resources (the private
-# library .sjsir) and republishes the result, under dapr4s's coordinates, as
-# com.github.sideeffffect:dapr4s-wasm-linker_2.12 (with scala-wasm's LICENSE and NOTICE).
+# `wasm.linker[*]` modules of wasm/package.mill run this script, compile those sources with Scala 2.12 and 2.13 against
+# the RELEASED scala-wasm ir / linker-interface, add the released linker jar's resources (the private
+# library .sjsir) and republish the result, under dapr4s's coordinates, as
+# com.github.sideeffffect:dapr4s-wasm-linker_2.12 and _2.13 (with scala-wasm's LICENSE and NOTICE).
 #
 # WHY: the released linker cannot pass WIT function params through linear memory, which the canonical
 # ABI requires once the flattened params exceed MAX_FLAT_PARAMS = 16: the EXPORT side is a `???`

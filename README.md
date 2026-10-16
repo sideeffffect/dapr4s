@@ -17,8 +17,9 @@ see only Scala types.
 ## Requirements
 
 - Scala `3.10.0-RC1-…-NIGHTLY` (capture checking / safe mode; exact version pinned in `buildsupport.mill`)
-- Nothing else for the build: [Mill](https://mill-build.org/) 1.3.0 runs from the `./mill` bootstrap script and
-  downloads the JDK it needs (Zulu 25)
+- Nothing else for the build: [Mill](https://mill-build.org/) runs from the `./mill` bootstrap script and
+  downloads the JDK it needs (Zulu 25). The build currently uses an UNRELEASED Mill and mill-scalablytyped:
+  run `scripts/upstream-snapshot.sh` once first (it builds and installs them locally)
 - For Scala.js builds: npm (the build installs `package-lock.json` itself); Node 25+ to run
   capability-touching code (the Wasm + JSPI integration tests)
 - Docker (only for the integration tests, which exercise a real `daprd` sidecar + Redis)

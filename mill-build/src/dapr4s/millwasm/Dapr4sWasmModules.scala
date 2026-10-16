@@ -3,6 +3,7 @@ package dapr4s.millwasm
 import mill.*
 import mill.scalalib.*
 import mill.scalajslib.*
+import mill.scalajslib.api.{ESFeatures, ESVersion, ModuleKind, Report}
 
 /** The build logic a dapr4s `wasm` app needs, as a Mill plugin (`mill-dapr4s-wasm`), the twin of the sbt plugin
   * `sbt-dapr4s-wasm` (dapr4s's wasm/sbt-plugin). Keep the two in sync.
@@ -158,42 +159,13 @@ object Dapr4sWasm {
 
 import Dapr4sWasm.*
 
-/** A Scala.js module on the scala-wasm fork (`io.github.scala-wasm`) instead of mainline `org.scala-js`.
-  *
-  * WHAT: overrides of every task that names the `org.scala-js` organization: the Scala.js library (and, for Scala 2.13,
-  * the stdlib IR), the compiler plugin, the linker in Mill's Scala.js worker. WHY: Mill's ScalaJSModule has no setting
-  * for the Scala.js organization. WHY SAFE: the fork keeps mainline's package and class names, so Mill's Scala.js
-  * worker drives the fork's linker unchanged (for the plain-JS links of unit tests; components are linked by the
-  * patched linker, see [[Dapr4sWasmComponentModule]]). RETIRES with com-lihaoyi/mill#7783 (a configurable Scala.js
-  * organization).
+/** A Scala.js module on the scala-wasm fork (`io.github.scala-wasm`) instead of mainline `org.scala-js`: Mill's
+  * `scalaJSOrganization` (com-lihaoyi/mill#7783) swaps the Scala.js library (and, for Scala 2.13, the stdlib IR and the
+  * compiler plugin), the test bridge and the linker in Mill's Scala.js worker.
   */
 trait ScalaWasmModule extends ScalaJSModule {
   override def scalaJSVersion: T[String] = Task(ScalaWasmVersion)
-
-  override def scalacPluginMvnDeps: T[Seq[Dep]] = Task {
-    super.scalacPluginMvnDeps().filterNot(_.dep.module.organization.value == "org.scala-js") ++
-      Option.when(!scalaVersion().startsWith("3."))(mvn"$ScalaWasmOrg:::scalajs-compiler:${scalaJSVersion()}")
-  }
-
-  override def mandatoryMvnDeps: T[Seq[Dep]] = Task {
-    val sv = scalaVersion()
-    super.mandatoryMvnDeps().filterNot(_.dep.module.organization.value == "org.scala-js") ++
-      Seq(mvn"$ScalaWasmOrg::scalajs-library:${scalaJSVersion()}".withDottyCompat(sv)) ++
-      Option.when(sv.startsWith("2."))(mvn"$ScalaWasmOrg::scalajs-scalalib:$sv+${scalaJSVersion()}")
-  }
-
-  // Plain-JS linking (unit tests on Node) uses the fork's released 2.13 linker in Mill's Scala.js worker.
-  override def scalaJSLinkerClasspath: T[Seq[PathRef]] = Task {
-    jvmWorker()
-      .defaultResolver()
-      .classpath(
-        Seq(
-          mvn"$ScalaWasmOrg:scalajs-linker_2.13:${scalaJSVersion()}",
-          mvn"$ScalaWasmOrg:scalajs-sbt-test-adapter_2.13:${scalaJSVersion()}",
-          mvn"org.scala-js:scalajs-env-nodejs_2.13:1.4.0",
-        ).map(Lib.depToBoundDep(_, mill.util.BuildInfo.scalaVersion, "")),
-      )
-  }
+  override def scalaJSOrganization: T[String] = Task(ScalaWasmOrg)
 }
 
 /** A module compiled by Scala 3 against dapr4s's wasm artifacts (a library or an app): the fork + the dependency
@@ -207,19 +179,10 @@ trait Dapr4sWasmModule extends ScalaWasmModule {
   override def allMvnDeps: T[Seq[Dep]] = Task(super.allMvnDeps().map(_.exclude(Exclusions*)))
 }
 
-/** Plain-JS unit tests (Node) of a [[Dapr4sWasmModule]]: the fork's test bridge instead of mainline's, with the
-  * exclusions. Mill prepends `scalaJSTestDeps` to the test link classpath, so they must not bring the 2.13 stdlib.
+/** Plain-JS unit tests (Node) of a [[Dapr4sWasmModule]]: the fork's test bridge (`scalaJSOrganization`), with the
+  * exclusions.
   */
-trait Dapr4sWasmTests extends TestScalaJSModule with Dapr4sWasmModule {
-  override def scalaJSTestDeps: T[Seq[PathRef]] = Task {
-    defaultResolver().classpath(
-      Seq(
-        mvn"$ScalaWasmOrg::scalajs-library:${scalaJSVersion()}",
-        mvn"$ScalaWasmOrg::scalajs-test-bridge:${scalaJSVersion()}",
-      ).map(_.withDottyCompat(scalaVersion()).exclude(Exclusions*)),
-    )
-  }
-}
+trait Dapr4sWasmTests extends TestScalaJSModule with Dapr4sWasmModule
 
 /** The WIT world of a module, resolved through OCI. */
 trait WitModule extends Module {
@@ -269,33 +232,39 @@ trait WitBindgenModule extends ScalaWasmModule with WitModule {
 }
 
 /** A dapr4s app linked as a WASI component for dapr-wasm-components: `dapr4sComponent` (`dapr4sComponentFull`: from the
-  * optimized link) is the component, typed by the real WIT world ([[WitModule.wit]]).
-  *
-  * WHY a link driver and not Mill's own linking: Mill's Scala.js worker is compiled against mainline Scala.js, whose
-  * linker interface has no `ModuleKind.WasmComponent`. The driver (`dapr4s.wasmlink.WasmLink`, shipped in
-  * dapr4s-wasm-linker) calls the fork's linker through its public API, in a separate JVM. RETIRES with
-  * com-lihaoyi/mill#7783 (`ModuleKind.WasmComponent` in Mill's ScalaJSModule); com-lihaoyi/mill#7785 then adds running
-  * and testing components (wasmtime).
+  * optimized link) is the component, typed by the real WIT world ([[WitModule.wit]]). Mill's own `fastLinkJS` /
+  * `fullLinkJS` link it, with `ModuleKind.WasmComponent` (com-lihaoyi/mill#7783; the fork's linker runs
+  * `wasm-tools component new` itself). Running and testing a component in Mill (wasmtime) is com-lihaoyi/mill#7785;
+  * until then the e2e scripts run it.
   */
 trait Dapr4sWasmComponentModule extends Dapr4sWasmModule with WitModule {
 
+  override def moduleKind: T[ModuleKind] = Task(ModuleKind.WasmComponent)
+  override def scalaJSUseWebAssembly: T[Boolean] = Task(true)
+  override def esFeatures: T[ESFeatures] = Task(super.esFeatures().withESVersion(ESVersion.ES2022))
+
   // -----------------------------------------------------------------------------------------------
   // The released scala-wasm linker leaves the EXPORT side of WIT params via linear memory (> 16 flat
-  // params) a `???` and silently emits nothing on the IMPORT side. Link with dapr4s-wasm-linker_2.12,
+  // params) a `???` and silently emits nothing on the IMPORT side. Link with dapr4s-wasm-linker_2.13,
   // the release rebuilt with dapr4s's patch, republished under dapr4s's coordinates with scala-wasm's
-  // LICENSE/NOTICE (+ the link driver). Only the LINKER is replaced; the library, javalib and compiler
-  // plugin stay the released ones. RETIRES with scala-wasm/scala-wasm#268 (params via memory on both
-  // sides), together with the driver (see above): link with the released linker.
+  // LICENSE/NOTICE: it replaces the fork's scalajs-linker_2.13 in Mill's Scala.js worker (the
+  // test adapter and the JS environment stay the defaults). Only the LINKER is replaced; the library,
+  // javalib and compiler plugin stay the released ones. RETIRES with scala-wasm/scala-wasm#268 (params
+  // via memory on both sides): drop this override.
   // -----------------------------------------------------------------------------------------------
-  /** Classpath of the linker + link driver (default: `dapr4s-wasm-linker_2.12` and its dependencies). */
-  def dapr4sWasmLinkerClasspath: T[Seq[PathRef]] = Task {
-    dapr4sWasmResolveTool(Seq(mvn"$Org:dapr4s-wasm-linker_2.12:$dapr4sWasmVersion"))()
+  /** The patched linker (default: `dapr4s-wasm-linker_2.13` and its dependencies). */
+  def dapr4sWasmLinker: T[Seq[PathRef]] = Task {
+    dapr4sWasmResolveTool(Seq(mvn"$Org:dapr4s-wasm-linker_2.13:$dapr4sWasmVersion"))()
+  }
+
+  override def scalaJSLinkerClasspath: T[Seq[PathRef]] = Task {
+    val released = (n: String) => n.startsWith("scalajs-linker_2.13-") && !n.startsWith("scalajs-linker-interface")
+    dapr4sWasmLinker() ++ super.scalaJSLinkerClasspath().filterNot(p => released(p.path.last))
   }
 
   /** Resolve build TOOLING (not dependencies of the app) from this module's repositories. NOT with `defaultResolver()`:
     * a ScalaModule's resolver forces scala-library to the module's Scala version, which would put the Scala 3 library
-    * under the Scala 2.12 linker (`NoClassDefFoundError: scala/Serializable`); and the app's exclusions must not apply
-    * either.
+    * under the linker; and the app's exclusions must not apply either.
     */
   def dapr4sWasmResolveTool(deps: Seq[Dep]): Task[Seq[PathRef]] = Task.Anon {
     Lib
@@ -312,8 +281,8 @@ trait Dapr4sWasmComponentModule extends Dapr4sWasmModule with WitModule {
   // The Scala 3 stdlib IR (org.scala-js:scalajs-scalalib_2.13:<Scala 3 version>) still uses JS
   // interop: BoxesRunTime.equals uses JS `===`, reachable from any program; Symbol's UniquenessCache
   // is a js.Dictionary; ... scala-wasm's Scala 3 fork patched exactly those files;
-  // dapr4s-wasm-scalalib-overlay carries their .sjsir and goes FIRST on the linker classpath (the IR
-  // loader keeps the first IR file per class name). Resolved on its own, intransitively (never a
+  // dapr4s-wasm-scalalib-overlay carries their .sjsir and goes FIRST on the run (= linker) classpath
+  // (the IR loader keeps the first IR file per class name). Resolved on its own, intransitively (never a
   // dependency: the module's exclusions would apply). RETIRES when the Scala 3 stdlib's Scala.js
   // sources are Wasm-clean (scala-wasm's Scala 3 patches upstreamed): drop the overlay.
   // -----------------------------------------------------------------------------------------------
@@ -321,6 +290,8 @@ trait Dapr4sWasmComponentModule extends Dapr4sWasmModule with WitModule {
   def dapr4sWasmScalalibOverlay: T[Seq[PathRef]] = Task {
     dapr4sWasmResolveTool(Seq(mvn"$Org:dapr4s-wasm-scalalib-overlay:$dapr4sWasmVersion".exclude("*" -> "*")))()
   }
+
+  override def runClasspath: T[Seq[PathRef]] = Task(dapr4sWasmScalalibOverlay() ++ super.runClasspath())
 
   /** Add `dapr4s-wasm-glue-exports` (the `@WitExport` trampolines) to the dependencies. They are a COMPONENT's
     * dependency only: every `@WitExport` is a linker entry point, which a plain-JS link (unit tests) rejects. Hence not
@@ -334,26 +305,15 @@ trait Dapr4sWasmComponentModule extends Dapr4sWasmModule with WitModule {
     )
   }
 
-  def dapr4sWasmLinked(full: Boolean): Task[PathRef] = Task.Anon {
-    val out = Task.dest / "linked"
-    os.makeDir.all(out)
-    val cp = (dapr4sWasmScalalibOverlay() ++ runClasspath()).map(_.path).filter(os.exists)
-    mill.util.Jvm.callProcess(
-      mainClass = "dapr4s.wasmlink.WasmLink",
-      classPath = dapr4sWasmLinkerClasspath().map(_.path),
-      mainArgs = Seq[String](if (full) "full" else "fast", out.toString) ++ cp.map(_.toString),
-      stdout = os.Inherit,
-    )
-    PathRef(out / "main.wasm")
-  }
+  private def linkedComponent(report: Report): os.Path = report.dest.path / "main.wasm"
 
   /** The app as a WASI component typed by the real WIT world (fast link). */
   def dapr4sComponent: T[PathRef] = Task {
-    PathRef(buildComponent(dapr4sWasmLinked(full = false)().path, Task.dest, wit().path, witWorld))
+    PathRef(buildComponent(linkedComponent(fastLinkJS()), Task.dest, wit().path, witWorld))
   }
 
   /** Like [[dapr4sComponent]], from the optimized link. */
   def dapr4sComponentFull: T[PathRef] = Task {
-    PathRef(buildComponent(dapr4sWasmLinked(full = true)().path, Task.dest, wit().path, witWorld))
+    PathRef(buildComponent(linkedComponent(fullLinkJS()), Task.dest, wit().path, witWorld))
   }
 }

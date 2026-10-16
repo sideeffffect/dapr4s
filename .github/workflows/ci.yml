@@ -6,9 +6,10 @@ on:
     types: [ published ]
   pull_request:
 
-# The build is Mill (build.mill, wasm/package.mill). `./mill` is the bootstrap script: it downloads Mill
-# 1.3.0, and Mill downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in
-# build.mill) through coursier, so no setup-java is needed for the build itself.
+# The build is Mill (build.mill, wasm/package.mill). `./mill` is the bootstrap script: it runs the
+# unreleased Mill that scripts/upstream-snapshot.sh installs (see the first steps of every job), and Mill
+# downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in build.mill) through
+# coursier, so no setup-java is needed for the build itself.
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -17,6 +18,19 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
+    # Mill (main + https://github.com/com-lihaoyi/mill/pull/7783) and mill-scalablytyped
+    # (https://github.com/lolgab/mill-scalablytyped/pull/50, /51, /52) are unreleased: build them from the
+    # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
+    - name: Cache the upstream Mill + mill-scalablytyped snapshots
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/mill/download
+          ~/.ivy2/local/com.lihaoyi
+          ~/.ivy2/local/com.github.lolgab
+        key: upstream-snapshot-${{ hashFiles('scripts/upstream-snapshot.sh') }}
+    - name: Build the upstream Mill + mill-scalablytyped snapshots
+      run: scripts/upstream-snapshot.sh
     - name: Check formatting (scalafmt)
       run: |
         # Files using experimental capture-checking `^{...}` syntax that scalafmt can't parse are
@@ -59,6 +73,19 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
+    # Mill (main + https://github.com/com-lihaoyi/mill/pull/7783) and mill-scalablytyped
+    # (https://github.com/lolgab/mill-scalablytyped/pull/50, /51, /52) are unreleased: build them from the
+    # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
+    - name: Cache the upstream Mill + mill-scalablytyped snapshots
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/mill/download
+          ~/.ivy2/local/com.lihaoyi
+          ~/.ivy2/local/com.github.lolgab
+        key: upstream-snapshot-${{ hashFiles('scripts/upstream-snapshot.sh') }}
+    - name: Build the upstream Mill + mill-scalablytyped snapshots
+      run: scripts/upstream-snapshot.sh
     # Wasm 3.0 + JSPI are on by default from Node 25; the runner's default Node has neither.
     - name: Set up Node 25
       if: matrix.platform == 'js'
@@ -75,8 +102,7 @@ jobs:
         path: |
           ~/.cache/scalablytyped
           out/stFacades
-          out/stGen
-        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill', 'build-tools/st-gen/**') }}
+        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill', 'scripts/upstream-snapshot.sh') }}
         restore-keys: st-facades-mill-
     - name: Compile
       if: matrix.platform != 'wasm'
@@ -198,14 +224,26 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
+    # Mill (main + https://github.com/com-lihaoyi/mill/pull/7783) and mill-scalablytyped
+    # (https://github.com/lolgab/mill-scalablytyped/pull/50, /51, /52) are unreleased: build them from the
+    # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
+    - name: Cache the upstream Mill + mill-scalablytyped snapshots
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cache/mill/download
+          ~/.ivy2/local/com.lihaoyi
+          ~/.ivy2/local/com.github.lolgab
+        key: upstream-snapshot-${{ hashFiles('scripts/upstream-snapshot.sh') }}
+    - name: Build the upstream Mill + mill-scalablytyped snapshots
+      run: scripts/upstream-snapshot.sh
     - name: Cache ScalablyTyped facades
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/scalablytyped
           out/stFacades
-          out/stGen
-        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill', 'build-tools/st-gen/**') }}
+        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill', 'scripts/upstream-snapshot.sh') }}
         restore-keys: st-facades-mill-
     - name: Install wasm tools for the wasm publish (wkg, wasm-tools, wit-bindgen-scala)
       if: env.PUBLISH_WASM_TO_CENTRAL == 'true'
@@ -240,7 +278,7 @@ jobs:
         if [[ "$PUBLISH_WASM_TO_CENTRAL" == true ]]; then
           ./mill --ticker false core.js.publishLocal
           export DAPR4S_WASM_CORE_VERSION="$version"
-          artifacts='{core.jvm,core.js,wasm.lib[release].wall,wasm.glue,wasm.glueExports,wasm.scalalibOverlay,wasm.linker,wasm.millPlugin,wasm.sbtPlugin}.publishArtifacts'
+          artifacts='{core.jvm,core.js,wasm.lib[release].wall,wasm.glue,wasm.glueExports,wasm.scalalibOverlay,wasm.linker[_],wasm.millPlugin,wasm.sbtPlugin}.publishArtifacts'
         fi
         ./mill --ticker false mill.javalib.SonatypeCentralPublishModule/publishAll --publishArtifacts "$artifacts"
       env:

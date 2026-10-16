@@ -15,8 +15,8 @@ package build.wasm
 //   dapr4s-wasm-glue-exports_sjs1_2.13 glueExports: the hand-written `@WitExport` trampolines. A
 //                                      COMPONENT's dependency only (the build plugins add it)
 //   dapr4s-wasm-scalalib-overlay       scalalibOverlay: the fork-patched stdlib .sjsir
-//   dapr4s-wasm-linker_2.12            linker: scala-wasm's linker with dapr4s's params-via-memory patch + the
-//                                      component link driver (dapr4s.wasmlink.WasmLink)
+//   dapr4s-wasm-linker_2.12 / _2.13   linker[*]: scala-wasm's linker with dapr4s's params-via-memory patch (2.12:
+//                                      for sbt-dapr4s-wasm; 2.13: for Mill's Scala.js worker, mill-dapr4s-wasm)
 //   mill-dapr4s-wasm (_mill1_3)        millPlugin: the build logic for Mill consumers (dapr4s-examples)
 //   sbt-dapr4s-wasm (sbt 1, 2.12)      sbtPlugin: the build logic for sbt consumers
 //
@@ -259,12 +259,12 @@ object `package` extends Module with WitModule {
   // -----------------------------------------------------------------------------------------------
 
   /** A dapr4s test app linked as a WASI component (`dapr4sComponent`, `dapr4sComponentFull`), exactly as a Mill
-    * consumer's app, except that the linker (+ link driver) and the stdlib overlay come from `linker` and
-    * `scalalibOverlay` here, and the trampolines from a module dependency on `glueExports`.
+    * consumer's app, except that the linker and the stdlib overlay come from `linker` and `scalalibOverlay` here, and
+    * the trampolines from a module dependency on `glueExports`.
     */
   trait WasmComponent extends Dapr4sWasmComponentModule with NightlyWasm with SharedWit {
     override def compileModuleDeps = Nil
-    override def dapr4sWasmLinkerClasspath = Task(linker.runClasspath())
+    override def dapr4sWasmLinker = Task(linker(Scala2Wit).runClasspath())
     override def dapr4sWasmScalalibOverlay = Task(Seq(scalalibOverlay.jar()))
     override def dapr4sWasmAddGlueExports = false
   }
@@ -284,7 +284,7 @@ object `package` extends Module with WitModule {
   }
 
   // -----------------------------------------------------------------------------------------------
-  // The build-level artifacts: the stdlib overlay, the patched linker (+ link driver), the build plugins
+  // The build-level artifacts: the stdlib overlay, the patched linker, the build plugins
   // -----------------------------------------------------------------------------------------------
 
   // The .sjsir of the classes scala-wasm's Scala 3 fork patched in library-js (scala-wasm/scala3@17a0deeb:
@@ -335,16 +335,16 @@ object `package` extends Module with WitModule {
     }
   }
 
-  /** dapr4s-wasm-linker_2.12: scala-wasm's 1.22.1-wasm.6 linker with dapr4s's params-via-memory patch, republished
-    * under dapr4s's coordinates. scripts/wasm/prepare-patched-linker.sh puts the patched sources in out/; this module
-    * compiles them against the RELEASED ir and linker-interface (the patch touches only the linker module) and adds the
-    * released linker jar's resources (its private library .sjsir), so the classes are the patched ones and everything
-    * else is the release's. Plus the component link driver (wasm/linker/src: `dapr4s.wasmlink.WasmLink`), which the
-    * Mill plugin runs on this artifact's classpath.
+  /** dapr4s-wasm-linker_2.12 / _2.13: scala-wasm's 1.22.1-wasm.6 linker with dapr4s's params-via-memory patch,
+    * republished under dapr4s's coordinates. scripts/wasm/prepare-patched-linker.sh puts the patched sources in out/;
+    * this module compiles them against the RELEASED ir and linker-interface (the patch touches only the linker module)
+    * and adds the released linker jar's resources (its private library .sjsir), so the classes are the patched ones and
+    * everything else is the release's. Built for both Scala versions the fork's linker is released for: sbt
+    * (sbt-dapr4s-wasm) loads the 2.12 linker, Mill's Scala.js worker the 2.13 one (mill-dapr4s-wasm).
     */
-  object linker extends ScalaModule with Dapr4sPublish {
+  object linker extends Cross[Linker](Scala2Linker, Scala2Wit)
+  trait Linker extends CrossScalaModule with Dapr4sPublish {
     def artifactName = "dapr4s-wasm-linker"
-    def scalaVersion = Scala2Linker
     def patchInputs = Task.Sources(
       Dapr4sPaths.root / "scripts" / "wasm" / "prepare-patched-linker.sh",
       Dapr4sPaths.root / "scripts" / "wasm" / "patches",
@@ -363,13 +363,14 @@ object `package` extends Module with WitModule {
         src / "shared" / "src" / "main" / "scala-2",
         src / "jvm" / "src" / "main" / "scala",
       )
-        .map(PathRef(_)) ++ driverSources()
+        .map(PathRef(_))
     }
-    def driverSources = Task.Sources(wasmDir / "linker" / "src")
     override def mvnDeps = Seq(
       mvn"$ScalaWasmOrg::scalajs-linker-interface:$ScalaWasmVersion",
       mvn"$ScalaWasmOrg::scalajs-ir:$ScalaWasmVersion",
       mvn"com.google.javascript:closure-compiler:v20220202",
+    ) ++ Option.when(scalaVersion().startsWith("2.13."))( // the parallel optimizer (ParCollOps), as in the release
+      mvn"org.scala-lang.modules::scala-parallel-collections:1.2.0",
     )
     def releasedLinkerResources: T[PathRef] = Task {
       val jars =
