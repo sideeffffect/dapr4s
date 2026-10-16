@@ -148,8 +148,8 @@ lazy val published = Seq(
 // WIT dependencies come from OCI via wkg, never from git: `wit/world.wit` includes
 // `dapr-wasm-components:interfaces/app@0.7.2`, `wkg-config.toml` is the upstream file that maps the
 // namespace to ghcr.io, and `wkg wit fetch` writes wit/deps/ (git-ignored) + wkg.lock (committed,
-// pins the package digest). Runs before wit-bindgen-scala. (Same command as the plugin's
-// `dapr4sWasmWitFetch`, which component projects run before re-embedding the WIT world.)
+// pins the package digest). Runs before wit-bindgen-scala. Only this build needs the WIT (to
+// generate dapr4s-wasm-glue's bindings); apps and components do not.
 // -------------------------------------------------------------------------------------------------
 lazy val witFetch = taskKey[Unit]("Fetch WIT dependencies with `wkg wit fetch` (OCI)")
 ThisBuild / witFetch := Dapr4sWasm.witFetch(witDir, streams.value.log)
@@ -195,6 +195,52 @@ def withCore(p: Project): Project =
 // covering only what the Scala 3 wall uses. See src/wasm/glue/WitGlue.scala for why it must be 2.13.
 // -------------------------------------------------------------------------------------------------
 
+// WHAT: rewrites the generated bindings in place so that every `use`d WIT type ALIAS points at its
+// defining interface: in `invocation_callback`, `type Metadata = Array[wit.Tuple2[String, String]]`
+// becomes `type Metadata = dapr4swit.dapr_wasm_components.interfaces.types.Metadata`.
+// WHY: wit-bindgen-scala 0.1.0 renders a `use` of a type alias structurally (its `render_type` writes
+// named list/option/result/tuple typedefs out), so the `@WitAlias` of `types.metadata` is lost and the
+// linker's component-type has no `metadata` type export in the exported `*-callback` instances;
+// `wac compose` with the dapr-wasm-components inbound provider then fails ("instance is missing
+// expected list export `metadata`"). The scala-wasm compiler keeps an alias reached through a plain
+// type alias since https://github.com/scala-wasm/scala-wasm/pull/269 — but only in this form.
+// WHY SAFE: a rewrite replaces a type with an alias of the SAME structural type (both sides are
+// checked equal before rewriting), so no Scala type changes; only the alias the compiler sees does.
+// It applies only to an un-annotated `type X = R` whose name has exactly one `@WitAlias` definition
+// `type X = R` (same R) elsewhere in the bindings, i.e. a `use`. Idempotent: a rewritten line no longer
+// matches. Verified by scripts/wasm/e2e.sh, which composes the linker's component AS IS.
+// RETIRES when wit-bindgen-scala renders `use`d aliases as references to the defining interface.
+def useWitAliases(files: Seq[File]): Seq[File] = {
+  val TypeLine = """^  type (\w+) = (.+)$""".r
+  def objectOf(src: String): String = {
+    val pkg = """(?m)^package ([\w.]+)$""".r.findFirstMatchIn(src).map(_.group(1))
+    val obj = """(?m)^package object (\w+)""".r.findFirstMatchIn(src).map(_.group(1))
+    (pkg.toList ++ obj.toList).mkString(".")
+  }
+  // name -> (FQN of the defining package object, right-hand side), for every @WitAlias definition.
+  val defs = files.flatMap { f =>
+    val lines = IO.readLines(f)
+    lines.indices.collect {
+      case i if i > 0 && lines(i - 1).contains("@scala.scalajs.wit.annotation.WitAlias(") =>
+        lines(i) match { case TypeLine(n, rhs) => Some((n, (objectOf(IO.read(f)), rhs))); case _ => None }
+    }.flatten
+  }
+  val unique = defs.groupBy(_._1).collect { case (n, Seq((_, d))) => n -> d }
+  files.foreach { f =>
+    val lines = IO.readLines(f)
+    val rewritten = lines.indices.map { i =>
+      val annotated = i > 0 && lines(i - 1).contains("@scala.scalajs.wit.annotation.WitAlias(")
+      lines(i) match {
+        case TypeLine(n, rhs) if !annotated && unique.get(n).exists(_._2 == rhs) =>
+          s"  type $n = ${unique(n)._1}.$n"
+        case l => l
+      }
+    }
+    if (rewritten != lines) IO.writeLines(f, rewritten)
+  }
+  files
+}
+
 // The bindings of world `app` under `dapr4swit` (a dapr4s-specific root package, like `dapr4styped` for
 // the ScalablyTyped facades, so a consumer's own wit-bindgen output cannot collide with it) + the
 // hand-written import traits/objects and the 7 `*CallbackExports` traits. Scala 3 uses the binding types
@@ -209,9 +255,10 @@ lazy val witGlue = project
     scalaJSWitWorld := Some("app"),
     scalaJSWitPackage := Some("dapr4swit"),
     // The plugin also runs the generator for Test; both must wait for wit/deps/ (sbt runs witFetch
-    // once per command).
-    Compile / scalaJSGenerateWitBindings := (Compile / scalaJSGenerateWitBindings).dependsOn(witFetch).value,
-    Test / scalaJSGenerateWitBindings := (Test / scalaJSGenerateWitBindings).dependsOn(witFetch).value,
+    // once per command). useWitAliases: see its definition.
+    Compile / scalaJSGenerateWitBindings :=
+      useWitAliases((Compile / scalaJSGenerateWitBindings).dependsOn(witFetch).value),
+    Test / scalaJSGenerateWitBindings := useWitAliases((Test / scalaJSGenerateWitBindings).dependsOn(witFetch).value),
   )
 
 // Hand-written link-time stub of `dapr4s.internal.witglue.AppRoot` (src/wasm/glue-root-stub).

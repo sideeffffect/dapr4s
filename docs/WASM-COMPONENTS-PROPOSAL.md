@@ -224,8 +224,8 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   [`test/wasm/imports-probe`](../test/wasm/imports-probe) (the four imports with > 16 flat params).
 - **Scripts**: [`scripts/wasm/`](../scripts/wasm): `e2e.sh` (import checks, compose, daprd + Redis, counter 1 → 2,
   error mapping, the imports probe against daprd's echo conversation component and a scheduler container),
-  `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`,
-  `build-patched-linker.sh` + `patches/`.
+  `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`, `build-scala-wasm.sh` (the pinned scala-wasm
+  snapshot, see below).
 - **CI**: a `wasm` entry in the `test` matrix (source-mode unit tests + e2e, release-mode publishLocal + consumer
   check). It gates `publish` like the jvm and js legs.
 - **Packaging (2026-10-13): six artifacts, published to Central.** All `com.github.sideeffffect`, at core's
@@ -244,6 +244,26 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   (`PUBLISH_WASM_TO_CENTRAL: 'true'`, approved 2026-10-13). The workarounds are also being
   fixed upstream (scala-wasm #268–#271, scala3 #27300; see AGENTS.md): the linker patch now covers BOTH sides of params-via-memory (the import side was
   silently missing in 1.22.1-wasm.6), proven by `test/wasm/imports-probe` against daprd.
+
+### Retiring workarounds on an unreleased scala-wasm (2026-10-16)
+
+[PR #46](https://github.com/sideeffffect/dapr4s/pulls?q=is%3Apr+head%3Afeat%2Fwasm-upstream-snapshot) (draft,
+stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` branch at `32cda138` (with
+[scala-wasm#268](https://github.com/scala-wasm/scala-wasm/pull/268), merged) + a local merge of the open
+[#269](https://github.com/scala-wasm/scala-wasm/pull/269) (`be1184cd`) and
+[#271](https://github.com/scala-wasm/scala-wasm/pull/271) (`e23da14d`). `scripts/wasm/build-scala-wasm.sh` builds and
+`publishLocal`s it (CI: cached by the script hash). Central publishing of the wasm artifacts is off meanwhile.
+
+| Workaround | Status | Why |
+|---|---|---|
+| Patched linker `dapr4s-wasm-linker` | **removed** (artifact, script, patch) | #268: params through linear memory on both sides. The imports probe runs all four > 16-param imports against daprd. |
+| WIT re-embed (`component embed --encoding utf16` + `component new`) | **removed** | #269 keeps a `@WitAlias` reached through a plain type alias. The linker's component (UTF-16 already) composes with the providers as is. Apps need no WIT files and no wkg. |
+| — | **new, small**: `useWitAliases` in `wasm/build.sbt` | wit-bindgen-scala 0.1.0 renders a `use`d alias structurally (`type Metadata = Array[...]`), so #269 alone does not help. The rewrite makes it `type Metadata = types.Metadata`. Without it, compose fails ("missing expected list export `metadata`"), checked. |
+| `org.scala-js` library/javalib exclusions | **removed** | #271 excludes them in the scala-wasm plugin. Checked on the classpaths. |
+| Fork's 2.13 scalalib exclusion | kept | #271 keeps the upstream scalalib on Scala 3.8+ and leaves the fork's 2.13 one next to it. |
+| — | **new, small**: fork's `scalajs-junit-test-runtime` on `wallWasm/Test` | #271 also excludes the upstream JUnit runtime that munit needs, and adds no fork one. |
+| Empty javadoc jar of `dapr4s-wasm` | kept | [scala/scala3#27300](https://github.com/scala/scala3/pull/27300) merged 2026-10-15 07:43; the newest nightly (`3.10.2-RC1-bin-20261015-88be2f5`) is from before it. |
+| Stdlib overlay | kept | unrelated to these PRs. |
 
 This makes the "two-compiler build" of the revised Phase 4 concrete: the 2.13 part is the generated bindings plus a
 small hand-written glue that grows with the wall (a generator can come back once it covers ~100 WIT functions). What remains open for
