@@ -16,16 +16,15 @@ for f in compose.sh compose.wac; do
     "https://raw.githubusercontent.com/sideeffffect/dapr-wasm-components/$ref/$f"
 done
 chmod +x "$dir/compose.sh"
-# The providers are pulled here and passed by path: since 2026-10-15 dapr-wasm-components publishes every
-# version under ghcr.io/sideeffffect/dapr-wasm-components/<module> and the flat
-# ghcr.io/sideeffffect/dapr-wasm-components-<module> packages, which compose.sh (every tag up to v0.7.4) pulls,
-# are deleted.
+# The providers are pulled HERE and passed as explicit paths: dapr-wasm-components v0.7.4 moved every
+# module to one OCI namespace (ghcr.io/sideeffffect/dapr-wasm-components/<module>; the old flat
+# dapr-wasm-components-<module> packages are gone from ghcr, versions copied byte for byte), but
+# upstream compose.sh (v0.7.2 up to main) still pulls the old flat names.
 for d in outbound inbound; do
-  f="$dir/dapr_wasm_components_wasi_http_$d.wasm"
-  [[ -s "$f" ]] || wkg oci pull "ghcr.io/sideeffffect/dapr-wasm-components/wasi-http-$d:0.7.2" -o "$f" >&2
+  f="$dir/wasi-http-$d-0.7.2.wasm"
+  [[ -s "$f" ]] || wkg oci pull "ghcr.io/sideeffffect/dapr-wasm-components/wasi-http-$d:0.7.2" -o "$f"
 done
 rm -f "$out"
-"$dir/compose.sh" "$app" -o "$out" \
-  --outbound "$dir/dapr_wasm_components_wasi_http_outbound.wasm" \
-  --inbound "$dir/dapr_wasm_components_wasi_http_inbound.wasm"
+"$dir/compose.sh" "$app" -o "$out" --outbound "$dir/wasi-http-outbound-0.7.2.wasm" \
+  --inbound "$dir/wasi-http-inbound-0.7.2.wasm"
 wasm-tools validate "$out"
