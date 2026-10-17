@@ -664,7 +664,8 @@ Sources are split into `src/{shared,jvm,js,wasm}` and `test/{shared,jvm,js,wasm}
 
 ```
 dapr4s/
-├── mill                              # Mill 1.3.0 bootstrap script (downloads Mill, Mill downloads Zulu 25)
+├── mill                              # Mill bootstrap script (runs the unreleased Mill that
+│                                     # scripts/upstream-snapshot.sh installs; Mill downloads Zulu 25)
 ├── build.mill                        # Mill build: core.jvm/core.js (published dapr4s_3/dapr4s_sjs1_3 + unit
 │                                     # tests), integration.jvm/.js (Docker suites; JS on Wasm+JSPI),
 │                                     # stFacades (ScalablyTyped facades, embedded into dapr4s_sjs1_3), k8s fat
@@ -672,9 +673,8 @@ dapr4s/
 ├── buildsupport.mill                 # Versions (nightly Scala, compiler flags, dependency versions),
 │                                     # Dynver (the sbt-dynver version scheme), Dapr4sPom (sbt-layout POMs)
 ├── mill-build/src/                   # the mill-dapr4s-wasm plugin sources (also this build's meta-build)
-├── build-tools/                      # st-gen (facade source generator)
 ├── wasm/                             # package.mill (the wasm platform modules), wit/, wkg files,
-│                                     # linker/src (component link driver), sbt-plugin/ (sbt-dapr4s-wasm
+│                                     # linker/ (NOTICE of the patched linker), sbt-plugin/ (sbt-dapr4s-wasm
 │                                     # sources), NOTICE files
 ├── package.json                      # npm pins for the JS layer: @dapr/dapr (runtime + converter input),
 │                                     # @types/express + @types/node (converter inputs), testcontainers +
@@ -1078,11 +1078,11 @@ Registration uses `registerWorkflowWithName`/`registerActivityWithName` with the
 
 ### ScalablyTyped-generated facades
 
-The JS interop layer's facades over `@dapr/dapr`, express and the Node stdlib are **generated, not hand-written**. The `stFacades` Mill module runs sbt-converter's own source generator `ImportTypingsGenSources` (ScalablyTyped converter `1.0.0-beta45`, driven by `build-tools/st-gen` with output package `dapr4styped`, stdlib `es2022`, Scala 3.3.6 — the same options and byte-identical output as the former sbt plugin setup) and converts the npm packages of `package.json` `dependencies` (`@dapr/dapr` 3.18.0, the conversion roots `@types/express` and `@types/node`, plus the test-only `testcontainers` and `@dapr/testcontainer-node`) into Scala sources in `out/stFacades/`, then compiles them. The converter reads the repo's own `node_modules`, installed by `npm ci` from the committed `package-lock.json` (the build runs `npm ci` when needed, so no unlocked install ever happens). `stFacades` compiles without dapr4s's compiler flags (generated facade code would fail capture checking, explicit nulls and fatal warnings). Generated code is **never committed** and never published as a standalone artifact — its `.sjsir` are embedded into the dapr4s jar (below). (Until 2026-10 the scala-cli build ran the converter CLI from `scripts/generate-st-facades.sh` into `~/.ivy2/local`, pinned the digest-versioned jars as `compileOnly.dep`, and embedded them with `scripts/embed-st-facades.sh`; the sbt build replaced all three; since 2026-10-13 the Mill build generates the same sources.)
+The JS interop layer's facades over `@dapr/dapr`, express and the Node stdlib are **generated, not hand-written**. The `stFacades` Mill module extends mill-scalablytyped's `ScalablyTyped` (an unreleased build of [lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50) + [#51](https://github.com/lolgab/mill-scalablytyped/pull/51) + [#52](https://github.com/lolgab/mill-scalablytyped/pull/52); ScalablyTyped converter `1.0.0-beta45`, output package `dapr4styped`, stdlib `es2022`, Scala 3.3.6 — the options of the former sbt plugin setup) and converts the npm packages of `package.json` `dependencies` (`@dapr/dapr` 3.18.0, the conversion roots `@types/express` and `@types/node`, plus the test-only `testcontainers` and `@dapr/testcontainer-node`) into Scala sources in `out/stFacades/`, then compiles them. The converter reads the repo's own `node_modules`, installed by `npm ci` from the committed `package-lock.json` (the build runs `npm ci` when needed, so no unlocked install ever happens). `stFacades` compiles without dapr4s's compiler flags (generated facade code would fail capture checking, explicit nulls and fatal warnings). Generated code is **never committed** and never published as a standalone artifact — its `.sjsir` are embedded into the dapr4s jar (below). (Until 2026-10 the scala-cli build ran the converter CLI from `scripts/generate-st-facades.sh` into `~/.ivy2/local`, pinned the digest-versioned jars as `compileOnly.dep`, and embedded them with `scripts/embed-st-facades.sh`; the sbt build replaced all three; since 2026-10-13 the Mill build generates the same sources.)
 
 **Why `stOutputPackage := "dapr4styped"` instead of ST's default `typings`**: the facade classes ship inside the published dapr4s jar, and a consumer running its own ScalablyTyped generation always gets `typings.*` (including its own `typings.std`/`typings.node`) — a default-named embedded tree would collide with it at link time. The rename keeps the embedded tree in a dapr4s-owned namespace. It must be a single identifier (the converter parses it as one `Name`; a dotted value would be backtick-escaped into one bizarre identifier, not a nested package).
 
-**Reproducibility**: the facades are a function of (`package-lock.json`, converter version, converter settings). All three are committed (`package-lock.json`, `buildsupport.mill`, `build-tools/st-gen`), so every machine generates the same sources; CI caches `out/stFacades` and `~/.cache/scalablytyped` keyed on those files.
+**Reproducibility**: the facades are a function of (`package-lock.json`, converter version, converter settings). All three are committed (`package-lock.json`, `build.mill`, `scripts/upstream-snapshot.sh` for the plugin version), so every machine generates the same sources; CI caches `out/stFacades` and `~/.cache/scalablytyped` keyed on those files.
 
 **The one hand-written exception**: `src/js/internal/facade/ExpressModule.scala`. ST's entry point for calling the express module captures the module as a namespace import, which under Node ES modules is never callable (`express()` throws `TypeError`), and `express.text` lost its type to a converter warning — so a small `JSImport.Default` shim provides those two members, typed against the ST-generated `Express`/`Handler` types. Everything else uses `dapr4styped.*` directly.
 
@@ -1142,8 +1142,8 @@ plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in 
   the Scala 2.13 code is a small hand-written glue in `src/wasm/glue*` (only what the wall uses): plain import/export
   traits with live import objects, and the `@WitExport` trampolines. So the wall is plain Scala 3 against traits,
   and it is unit-tested with fakes.
-- **Seven artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`,
-  `dapr4s-wasm-linker` (scala-wasm's linker + our params-via-memory patch + the component link driver) and two build
+- **Eight artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`,
+  `dapr4s-wasm-linker` (`_2.12` for sbt, `_2.13` for Mill: scala-wasm's linker + our params-via-memory patch) and two build
   plugins that carry every build-level workaround: `mill-dapr4s-wasm` for Mill consumers (its sources are also
   dapr4s's own meta-build, so dapr4s's test components build exactly like a consumer's) and `sbt-dapr4s-wasm` for sbt
   consumers (Mill builds it as a plain sbt-1 plugin jar). A consumer: a plugin + one dependency + the fixed-name

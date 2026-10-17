@@ -204,8 +204,9 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
 
 - **Build**: the `wasm.*` modules of the Mill build ([`wasm/package.mill`](../wasm/package.mill)), built with the
   traits of the `mill-dapr4s-wasm` plugin ([`mill-build/src`](../mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala),
-  compiled into the meta-build). They swap the `org.scala-js` artifacts for the fork's and link components with a
-  driver on the patched linker (`wasm/linker/src`, shipped in `dapr4s-wasm-linker`), so `core.jvm`/`core.js` and
+  compiled into the meta-build). They swap the `org.scala-js` artifacts for the fork's (Mill's `scalaJSOrganization`) and link components with
+  Mill's own `ModuleKind.WasmComponent` on the patched linker (`dapr4s-wasm-linker_2.13`), both from
+  [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) in an unreleased Mill, so `core.jvm`/`core.js` and
   their POMs are unchanged. (Until 2026-10-13 a nested sbt build
   in `wasm/`: the fork's `sbt-scalajs` could not share the root meta-build.) `wasm/` also
   holds `wit/world.wit`, `wkg-config.toml` and `wkg.lock`. WIT comes only through `wkg wit fetch` (OCI).
@@ -241,8 +242,8 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   version (same scheme as sbt-dynver): `dapr4s-wasm_sjs1_3` (the Scala 3 adapters + `DaprComponent` + inert callbacks; depends on dapr4s
   core `dapr4s_sjs1_3` and the glue), `dapr4s-wasm-glue_sjs1_2.13` (WIT bindings + hand-written glue),
   `dapr4s-wasm-glue-exports_sjs1_2.13` (the trampolines; components only), `dapr4s-wasm-scalalib-overlay` (the
-  fork-patched stdlib `.sjsir`, with attribution), `dapr4s-wasm-linker_2.12` (scala-wasm's linker + our
-  params-via-memory patch + the component link driver, republished under our coordinates with LICENSE/NOTICE) and two
+  fork-patched stdlib `.sjsir`, with attribution), `dapr4s-wasm-linker_2.12` / `_2.13` (scala-wasm's linker + our
+  params-via-memory patch; 2.12 for sbt, 2.13 for Mill, republished under our coordinates with LICENSE/NOTICE) and two
   build plugins with the same feature set: `mill-dapr4s-wasm_mill1_3`
   ([`mill-build/src`](../mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala): fork swap, exclusions, linker,
   overlay, glue-exports, `wkg wit fetch`, wit-bindgen-scala, `dapr4sComponent`) and `sbt-dapr4s-wasm`

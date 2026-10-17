@@ -96,6 +96,32 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
   [#7785](https://github.com/com-lihaoyi/mill/pull/7785) (Wasmtime JS env).
   In the plugin: #7783 → `ScalaWasmModule` + the link driver, #7784 → `WitBindgenModule`.
 
+## On unreleased upstream (2026-10-16, branch build/mill-upstream-snapshot)
+
+The build runs on Mill `1.3.0-18-28026a` (main + [mill#7783](https://github.com/com-lihaoyi/mill/pull/7783), which
+already contains [mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)) and mill-scalablytyped `0.4.1-7-ba56bf`
+([#50](https://github.com/lolgab/mill-scalablytyped/pull/50) + [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
++ [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), both built by `scripts/upstream-snapshot.sh`. Facts:
+
+- **Using a locally built Mill**: `CI=true ./mill dist.installLocal --binFile <file>` publishes ~110 modules to
+  `~/.ivy2/local` and writes an assembly. `CI=true` drops the dirty hash, so the version (`<tag>-<n>-<sha6>`) is the
+  same on every machine with tags fetched. Copy the assembly to `~/.cache/mill/download/<version>` and write
+  `//| mill-version: <version>-jvm`: the launcher then uses it and never downloads.
+- **What retired**: `Scala3JsTests` (mill#7786); `build-tools/st-gen` + `npmInstall` (mill-scalablytyped
+  `scalablyTypedStdLibs`, `scalablyTypedNpmCi`, `scalablyTypedOutputPackage`; the facade jar entries are identical
+  to 3.0.0's, 3559 sources); `ScalaWasmModule`'s per-task overrides (now `scalaJSOrganization`); the component link
+  driver `WasmLink` (Mill's `fastLinkJS` with `ModuleKind.WasmComponent`).
+- **Gotcha**: a module that was a `TestScalaJSModule` only through a removed workaround trait silently becomes a
+  JVM test module: `testForked` then runs munit's JS runner on the JVM ("A method defined in a native JavaScript type
+  ... has been called"). Mix `TestScalaJSModule` in explicitly.
+- **Mill's Scala.js worker is Scala 3 and loads a `_2.13` linker**; sbt loads `_2.12`. The patched linker is now
+  published for both (`dapr4s-wasm-linker_2.12` / `_2.13`). The 2.13 build needs
+  `scala-parallel-collections` 1.2.0 (`ParCollOps`), as scala-wasm's own build adds it.
+- **dapr-wasm-components OCI rename (2026-10-15)**: the flat `ghcr.io/sideeffffect/dapr-wasm-components-<module>`
+  packages are deleted; modules live under `ghcr.io/sideeffffect/dapr-wasm-components/<module>`. Upstream
+  `compose.sh` up to v0.7.4 still pulled the flat names, so dapr4s pulled the providers itself and passed
+  `--outbound` / `--inbound`; v0.7.5's `compose.sh` uses the new names, so dapr4s calls it with `--tag 0.7.5` again.
+
 ## See also
 
 - [scala-wasm Component Spike](scala-wasm-component-spike.md)

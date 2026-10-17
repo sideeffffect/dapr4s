@@ -15,7 +15,7 @@ mill() { "$repo/mill" --ticker false "$@"; }
 local_repo="$repo/wasm/target/consumer-check-repo"
 rm -rf "$local_repo"
 mkdir -p "$local_repo"
-modules=('wasm.lib[release].wall' wasm.glue wasm.glueExports wasm.scalalibOverlay wasm.linker wasm.sbtPlugin)
+modules=('wasm.lib[release].wall' wasm.glue wasm.glueExports wasm.scalalibOverlay 'wasm.linker[2.12.21]' wasm.sbtPlugin)
 args=()
 for m in "${modules[@]}"; do
   [[ ${#args[@]} -gt 0 ]] && args+=(+)
