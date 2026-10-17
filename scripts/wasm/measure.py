@@ -2,8 +2,8 @@
 """Measurements of the wasm test components: sizes, wasmtime compile time, cold start (process spawn ->
 first 200 from the app's own port), first request through the sidecar, warm latency through the sidecar.
 
-Needs the composed components (scripts/wasm/e2e.sh, plus `sbt counterRaw/componentWasmFull
-counter/componentWasmFull` and compose.sh for the -opt variants) and the e2e Redis on localhost:26480.
+Needs the composed components (scripts/wasm/e2e.sh, plus `./mill show wasm.counterRaw.componentFull` /
+`'wasm.lib[release].counter.componentFull'` and compose.sh for the -opt variants) and the e2e Redis on localhost:26480.
 Starts its own sidecar-only `dapr run`. WASMTIME_FLAGS="-C cache=n" measures uncached cold starts."""
 import os, subprocess, sys, time, statistics, urllib.request, urllib.error, signal
 
