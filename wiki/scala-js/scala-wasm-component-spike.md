@@ -168,6 +168,11 @@ are in AGENTS.md "Wasm component layer rules".
     app does not host answer `PermissionDenied(<daprd's message>)`, the timer's naming `ProbeActor||probe-1`.
     Without a scheduler, 0.7.2's `schedule` still traps (daprd: 500 `DAPR_SCHEDULER_SCHEDULE_JOB` "context
     deadline exceeded", which the provider does not map).
+  - **0.7.3 – 0.7.5 (2026-10-15 – 2026-10-17)**: WIT unchanged again (only the package version moved),
+    `wkg-config.toml` unchanged. 0.7.4 moved every OCI module to `ghcr.io/sideeffffect/dapr-wasm-components/<module>`
+    (the flat `dapr-wasm-components-<module>` packages were deleted), but its `compose.sh` still pulled the flat
+    names; 0.7.5's `compose.sh` pulls the new ones, so `scripts/wasm/compose.sh` runs upstream `compose.sh` at the
+    v0.7.5 tag with `--tag 0.7.5` again (no own provider pull). dapr4s now targets 0.7.5.
   - **A scheduler next to a slim daprd**: `dapr init --slim` installs no placement/scheduler, and daprd dials the
     scheduler at `localhost:50006` by default. `docker run -p 50006:50006 daprio/dapr:<daprd version> ./scheduler
     --port 50006 --etcd-data-dir /tmp/etcd` is enough (ready when its log says "api is ready"); no mTLS needed.

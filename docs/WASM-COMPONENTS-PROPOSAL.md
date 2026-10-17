@@ -199,6 +199,7 @@ with wasmtime's cache. Warm round trip through the sidecar 2.4 ms median, incl. 
   fixed the three provider gaps the imports probe hit: `converse` trapped on daprd's string-encoded token counts,
   jobs called `/v1.0/jobs` (daprd 1.17 serves only `/v1.0-alpha1`), and `register-timer` on an unhosted actor type
   trapped instead of answering `actors-error.permission-denied`. The e2e now asserts the successful/typed answers.
+  0.7.3 to 0.7.5 left the WIT unchanged (0.7.4 moved the OCI names, 0.7.5's `compose.sh` follows them); dapr4s targets 0.7.5.
 
 
 ### Phase 0 code in dapr4s (2026-10-13)

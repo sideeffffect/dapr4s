@@ -1121,7 +1121,7 @@ Harness specifics (`integrationJS` settings in `build.sbt`):
 
 ## Wasm component platform (prototype, opt-in; Central publishing wired but off)
 
-A third platform builds a dapr4s app as a WASI **component** for dapr-wasm-components 0.7.2. It uses the scala-wasm
+A third platform builds a dapr4s app as a WASI **component** for dapr-wasm-components 0.7.5. It uses the scala-wasm
 fork of Scala.js (`ModuleKind.WasmComponent`) in a nested sbt build, `wasm/`, which the root build never loads. The
 plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in AGENTS.md "Wasm component layer rules".
 
