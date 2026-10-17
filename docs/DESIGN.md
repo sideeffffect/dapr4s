@@ -1125,7 +1125,7 @@ Harness specifics (`integration.js` settings in `build.mill`):
 
 ## Wasm component platform (prototype, opt-in; Central publishing wired but off)
 
-A third platform builds a dapr4s app as a WASI **component** for dapr-wasm-components 0.7.2. It uses the scala-wasm
+A third platform builds a dapr4s app as a WASI **component** for dapr-wasm-components 0.7.5. It uses the scala-wasm
 fork of Scala.js (`ModuleKind.WasmComponent`) in the `wasm.*` Mill modules (`wasm/package.mill`), which swap in the fork's artifacts and link components with a small driver on the patched linker; nothing else in the build sees the fork. The
 plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in AGENTS.md "Wasm component layer rules".
 

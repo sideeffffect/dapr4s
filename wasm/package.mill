@@ -1,7 +1,7 @@
 package build.wasm
 
 // =================================================================================================
-// dapr4s `wasm` platform: a dapr4s app built as a WASI component for dapr-wasm-components 0.7.2 with
+// dapr4s `wasm` platform: a dapr4s app built as a WASI component for dapr-wasm-components 0.7.5 with
 // the scala-wasm fork of Scala.js (`ModuleKind.WasmComponent`). See AGENTS.md "Wasm component layer
 // rules" and docs/WASM-COMPONENTS-PROPOSAL.md §6.
 //
@@ -72,7 +72,7 @@ object `package` extends Module with WitModule {
 
   def wasmDir: os.Path = Dapr4sPaths.root / "wasm"
 
-  // WIT: only through OCI. wit/world.wit includes `dapr-wasm-components:interfaces/app@0.7.2`,
+  // WIT: only through OCI. wit/world.wit includes `dapr-wasm-components:interfaces/app@0.7.5`,
   // wkg-config.toml maps the namespace to ghcr.io, wkg.lock pins the digest (WitModule's defaults, relative
   // to wasm/). `wkg wit fetch` runs on a copy in out/ (wit/deps/ never lands in the source tree).
 

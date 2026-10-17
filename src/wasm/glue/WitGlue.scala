@@ -30,7 +30,7 @@ import dapr4swit.exports.dapr_wasm_components.interfaces.{
 // bodies are the only import call sites, so this compiler lowers them).
 // ---------------------------------------------------------------------------------------------------------------
 
-/** `dapr-wasm-components:interfaces/state-read@0.7.2`. */
+/** `dapr-wasm-components:interfaces/state-read@0.7.5`. */
 trait StateReadImports {
   def get(
       storeName: String,
@@ -73,7 +73,7 @@ object StateReadImports extends StateReadImports {
     state_read.query(storeName, query, metadata)
 }
 
-/** `dapr-wasm-components:interfaces/state@0.7.2`. */
+/** `dapr-wasm-components:interfaces/state@0.7.5`. */
 trait StateImports {
   def save(
       storeName: String,
@@ -119,7 +119,7 @@ object StateImports extends StateImports {
 /** The imports whose flattened params exceed MAX_FLAT_PARAMS = 16, so the canonical ABI passes them through linear
   * memory — which the released scala-wasm linker does not implement (dapr4s-wasm-linker does). The wall does not use
   * them yet; test/wasm/imports-probe calls each one to prove the patched linker lowers them (scripts/wasm/e2e.sh).
-  * `jobs.schedule` (`dapr-wasm-components:interfaces/jobs@0.7.2`).
+  * `jobs.schedule` (`dapr-wasm-components:interfaces/jobs@0.7.5`).
   */
 trait JobsImports {
   def schedule(name: String, job: jobs_read.Job, overwrite: Boolean): wit.Result[Unit, jobs.ScheduleError]
@@ -129,7 +129,7 @@ object JobsImports extends JobsImports {
     jobs.schedule(name, job, overwrite)
 }
 
-/** `conversation.converse` (`dapr-wasm-components:interfaces/conversation@0.7.2`); see [[JobsImports]]. */
+/** `conversation.converse` (`dapr-wasm-components:interfaces/conversation@0.7.5`); see [[JobsImports]]. */
 trait ConversationImports {
   def converse(
       componentName: String,
@@ -146,7 +146,7 @@ object ConversationImports extends ConversationImports {
     conversation.converse(componentName, inputs, options)
 }
 
-/** `actors.register-reminder` / `register-timer` (`dapr-wasm-components:interfaces/actors@0.7.2`); see [[JobsImports]].
+/** `actors.register-reminder` / `register-timer` (`dapr-wasm-components:interfaces/actors@0.7.5`); see [[JobsImports]].
   */
 trait ActorsImports {
   def registerReminder(

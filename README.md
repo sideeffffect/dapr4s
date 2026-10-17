@@ -188,7 +188,7 @@ package build
 import mill.*, mill.scalalib.*
 import dapr4s.millwasm.*
 
-// + app/wit/world.wit (`include dapr-wasm-components:interfaces/app@0.7.2;`), app/wkg-config.toml, app/wkg.lock
+// + app/wit/world.wit (`include dapr-wasm-components:interfaces/app@0.7.5;`), app/wkg-config.toml, app/wkg.lock
 object app extends Dapr4sWasmComponentModule {
   def scalaVersion = "<the Scala 3 nightly dapr4s is built with>"
   def mvnDeps = Seq(mvn"com.github.sideeffffect::dapr4s-wasm::$dapr4sWasmVersion")
