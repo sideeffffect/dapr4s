@@ -119,8 +119,8 @@ already contains [mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)) and
   `scala-parallel-collections` 1.2.0 (`ParCollOps`), as scala-wasm's own build adds it.
 - **dapr-wasm-components OCI rename (2026-10-15)**: the flat `ghcr.io/sideeffffect/dapr-wasm-components-<module>`
   packages are deleted; modules live under `ghcr.io/sideeffffect/dapr-wasm-components/<module>`. Upstream
-  `compose.sh` (up to v0.7.4) still pulls the flat names, so dapr4s pulls the providers itself and passes
-  `--outbound` / `--inbound`.
+  `compose.sh` up to v0.7.4 still pulled the flat names, so dapr4s pulled the providers itself and passed
+  `--outbound` / `--inbound`; v0.7.5's `compose.sh` uses the new names, so dapr4s calls it with `--tag 0.7.5` again.
 
 ## See also
 

@@ -2,6 +2,7 @@
 
 ## [2026-10-17] update | dapr-wasm-components 0.7.5
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
+- Updated: scala-js/dapr4s-mill-build.md — OCI rename note: v0.7.5's compose.sh follows it
 
 ## [2026-10-13] update | mill-dapr4s-wasm: the Mill plugin for Wasm components
 - Updated: scala-js/dapr4s-mill-build.md — Mill 1.x plugin shape (`_mill1_3`, header mvnDeps/repositories), mill-build/src as shared meta-build sources, defaultResolver forces scala-library (tool resolution via Lib.resolveDependencies), link driver shipped in dapr4s-wasm-linker, dynver timestamp race
