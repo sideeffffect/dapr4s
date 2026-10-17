@@ -368,7 +368,7 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
 ### Wasm component layer rules
 
 The `wasm` platform builds a dapr4s app as a WASI **component** for
-[dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.2, with the
+[dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.5, with the
 scala-wasm fork of Scala.js (`io.github.scala-wasm`, `ModuleKind.WasmComponent`).
 Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
 `wiki/scala-js/scala-wasm-component-spike.md`. The eight artifacts are **published to Maven Central**
@@ -438,7 +438,7 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   `import dapr4s.millwasm.*`, a module `extends Dapr4sWasmComponentModule` with
   `def mvnDeps = Seq(mvn"com.github.sideeffffect::dapr4s-wasm::$dapr4sWasmVersion")` (+ its Scala 3
   nightly `scalaVersion` and a JVM worker that resolves the nightly), its own `wit/world.wit`
-  (`include dapr-wasm-components:interfaces/app@0.7.2;`) + `wkg-config.toml` + `wkg.lock` in the module
+  (`include dapr-wasm-components:interfaces/app@0.7.5;`) + `wkg-config.toml` + `wkg.lock` in the module
   directory (`witFiles` overrides the location), and the fixed-name
   `object dapr4s.wasm.ComponentRoot { def component: DaprComponent = ... }`. `./mill show app.dapr4sComponent`
   (`dapr4sComponentFull`: optimized) prints the component's path. `scripts/wasm/consumer-check-mill.sh`
@@ -488,12 +488,12 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   The patch implements both (canonical ABI `lift_flat_values` / `lower_flat_values`).
   `test/wasm/imports-probe` calls the four imports; the e2e checks it imports exactly them and runs
   them against daprd (daprd's answers name the component/actor the probe sent).
-- **WIT only through OCI**: `world app { include dapr-wasm-components:interfaces/app@0.7.2; }`
+- **WIT only through OCI**: `world app { include dapr-wasm-components:interfaces/app@0.7.5; }`
   + the upstream `wkg-config.toml`; `wasm.wit` runs `wkg wit fetch --config wkg-config.toml` on a copy in
   `out/` before wit-bindgen-scala. `wkg.lock` is committed; `wit/deps/` never lands in the source tree.
   Never copy WIT from git.
 - **Newest everything**: the glue tracks the WIT version (`wasm/wit/world.wit`, the `WitScope`
-  versions in the trampolines). Always the newest dapr-wasm-components WIT release (now 0.7.2), the
+  versions in the trampolines). Always the newest dapr-wasm-components WIT release (now 0.7.5), the
   newest scala-wasm release on Central (now 1.22.1-wasm.6, `ScalaWasmVersion`) and the newest
   wit-bindgen-scala (0.1.0).
 - **The two-compiler constraint**: mainline Scala 3 has no WIT codegen (imports are lowered at
