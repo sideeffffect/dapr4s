@@ -112,25 +112,35 @@ for v in ${E2E_ONLY:-counterRaw counter importsProbe}; do
     sleep 1
   done
   [[ "$up" == 1 ]] || fail "$v: sidecar + component did not come up"
-  sleep 1
+  # "up and running" does not mean the component answers yet: a big component (counter carries the tz
+  # database, ~4 MB) can still be compiling on a slow CI runner, and the first invocations then fail. Warm up
+  # until one succeeds, then reset the counter. Every invoke below is `|| true`, so a failure reaches `fail`
+  # (with dapr's answer and the logs) instead of a silent `set -e` exit.
+  warm=0
+  for _ in $(seq 1 60); do
+    invoke counter >/dev/null && { warm=1; break; }
+    sleep 1
+  done
+  [[ "$warm" == 1 ]] || fail "$v: the component never answered: $(invoke counter || true)"
+  docker exec "$redis" redis-cli DEL "$APP_ID||counter" >/dev/null
 
-  got="$(invoke counter) $(invoke counter)"
+  got="$(invoke counter || true) $(invoke counter || true)"
   echo "$v: counter -> $got"
   [[ "$got" == "1 2" ]] || fail "$v: counter returned '$got', expected '1 2'"
 
   if [[ "$v" == counter ]]; then
-    missing="$(invoke missing-store)"
+    missing="$(invoke missing-store || true)"
     echo "$v: missing-store -> $missing"
     [[ "$missing" == '"ComponentNotFoundException: State no-such-store"' ]] ||
       fail "$v: missing-store returned '$missing'"
-    stale="$(invoke stale-etag)"
+    stale="$(invoke stale-etag || true)"
     echo "$v: stale-etag -> $stale"
     [[ "$stale" == "\"ETagMismatchException: ETag mismatch for key 'counter' (provided: 999999)\"" ]] ||
       fail "$v: stale-etag returned '$stale'"
-    third="$(invoke counter)"
+    third="$(invoke counter || true)"
     [[ "$third" == 3 ]] || fail "$v: counter after the stale write returned '$third', expected 3"
     echo "$v: the stale write did not land (counter -> 3)"
-    jt="$(invoke java-time)"
+    jt="$(invoke java-time || true)"
     echo "$v: java-time -> $jt"
     [[ "$jt" == "$expected_java_time" ]] || fail "$v: java-time returned '$jt', expected '$expected_java_time'"
   fi
