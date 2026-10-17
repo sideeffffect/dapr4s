@@ -3,11 +3,11 @@
 # $SJT_VERSION: scala-java-time_sjs1_3 and scala-java-time-tzdb_sjs1_3. The wasm/ build (build.sbt,
 # `scalaJavaTimeWasm`) uses exactly this version. Nothing else of scala-java-time is built.
 #
-# WHAT: cquiroz/scala-java-time `main` at $BASE, plus a merge of the head of the open upstream PR:
-#   - https://github.com/cquiroz/scala-java-time/pull/618 (open): `TimeZone.getTimeZone` computes the
-#     raw offset lazily, so `DateTimeFormatter.ofPattern` no longer links `Instant.now` (the wall clock,
-#     absent without a JS host).
-# and the tzdb module compiled with a Scala 3 NIGHTLY ($TZDB_SCALA) instead of the build's 3.9.0:
+# WHAT: cquiroz/scala-java-time `main` at $BASE, the merge commit of
+#   - https://github.com/cquiroz/scala-java-time/pull/618 (merged 2026-10-17): `TimeZone.getTimeZone`
+#     computes the raw offset lazily, so `DateTimeFormatter.ofPattern` no longer links `Instant.now` (the
+#     wall clock, absent without a JS host).
+# with the tzdb module compiled with a Scala 3 NIGHTLY ($TZDB_SCALA) instead of the build's 3.9.0:
 #   - `scala-java-time-tzdb`'s provider has `@EnableReflectiveInstantiation`. Its registration runs in a
 #     static initializer, which the linker always keeps. Scala 3 <= 3.10.0 emits it with the JS-backed
 #     `Reflect.registerInstantiatableClass(..., js.Array(...))`, which does not link without a JS host.
@@ -18,25 +18,24 @@
 #     scala3-library of every app that depends on it. So the script rewrites that one version in the
 #     published POM and ivy.xml back to core's. WHY SAFE: the tzdb module's code needs nothing newer
 #     from the library (it compiles against 3.9.0 core and is unchanged); only the codegen differs.
-# WHY: neither fix is in a scala-java-time release yet (newest on Central: 2.8.0). Nothing is pushed
-# anywhere: the merge exists only in the local clone.
-# RETIRES when a scala-java-time release contains #618 and is built with Scala 3 >= 3.10.1: pin that
-# release in wasm/build.sbt (`scalaJavaTimeWasm`), and delete this script and its CI steps.
+# WHY: neither fix is in a scala-java-time release yet (newest on Central: 2.8.0): #618 waits for a release
+# > 2.8.0, and region zones also need that release built with Scala 3 >= 3.10.1.
+# RETIRES when such a release exists: pin it in wasm/build.sbt (`scalaJavaTimeWasm`), and delete this
+# script and its CI steps.
 #
-# Idempotent: skips the build when the stamp (SHAs + compiler + version) matches (FORCE=1 rebuilds).
+# Idempotent: skips the build when the stamp (SHA + compilers + version) matches (FORCE=1 rebuilds).
 # The CI wasm leg caches ~/.ivy2/local/io.github.cquiroz keyed by this file's hash.
 # Needs a JDK 17 for scala-java-time's build (JDK 21+ fails on its fatal deprecation warnings):
 # $SJT_JAVA_HOME, else $JAVA_HOME_17_X64 (set by actions/setup-java), else /usr/lib/jvm/java-17-openjdk-amd64.
 set -euo pipefail
 SJT_VERSION="${SJT_VERSION:-2.8.1-dapr4s-local}"
-BASE=b78d9912b28df70d7b11c213c7620e519ca5ae37 # main, "Merge pull request #617"
-PR618=09ead550b8bb56424720970b934b6b54058a35f0
+BASE=48cf7a60dad673b7fca510f77f62d89005049a05 # main, "Merge pull request #618"
 CORE_SCALA=3.9.0
 TZDB_SCALA=3.10.2-RC1-bin-20261017-ae374e9-NIGHTLY
 ivy="${IVY_LOCAL:-$HOME/.ivy2/local}"
 org="$ivy/io.github.cquiroz"
 stampFile="$org/dapr4s-build-stamp-$SJT_VERSION"
-stamp="$BASE $PR618 $CORE_SCALA $TZDB_SCALA"
+stamp="$BASE $CORE_SCALA $TZDB_SCALA"
 tzdbDir="$org/scala-java-time-tzdb_sjs1_3/$SJT_VERSION"
 if [[ -f "$stampFile" && "$(cat "$stampFile")" == "$stamp" && -s "$tzdbDir/jars/scala-java-time-tzdb_sjs1_3.jar" &&
   "${FORCE:-0}" != 1 ]]; then
@@ -50,13 +49,9 @@ if [[ ! -d "$work/.git" ]]; then
   git clone --filter=blob:none --no-checkout https://github.com/cquiroz/scala-java-time.git "$work"
 fi
 cd "$work"
-for ref in "$BASE" pull/618/head; do git fetch -q origin "$ref"; done
-git cat-file -e "$PR618^{commit}" ||
-  { echo "build-scala-java-time.sh: the pinned PR head is gone from GitHub; re-pin it" >&2; exit 1; }
+git fetch -q origin "$BASE"
 git checkout -q -f --detach "$BASE"
 git clean -q -fdx -e target
-g() { git -c user.name=dapr4s -c user.email=dapr4s@localhost "$@"; }
-g merge -q --no-edit "$PR618"
 # `set` per project, not `++`: `++` is sticky and would override the tzdb module's compiler again.
 JAVA_HOME="$jdk" PATH="$jdk/bin:$PATH" sbt -batch -no-colors --java-home "$jdk" \
   "set ThisBuild / version := \"$SJT_VERSION\"" \

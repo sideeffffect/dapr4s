@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-17] update | cquiroz/scala-java-time#618 merged
+- Updated: scala-js/scala-wasm-component-spike.md — #618 merged (48cf7a6); dapr4s builds that `main` commit (no merge step); waits for a release > 2.8.0, region zones also for one built with Scala 3 >= 3.10.1
+
 ## [2026-10-17] update | ofPattern + region zones on Wasm components (source-built scala-java-time)
 - Updated: scala-js/scala-wasm-component-spike.md — `ofPattern` root cause (`TimeZone.getTimeZone` → `Instant.now`; fixed by cquiroz/scala-java-time#618, lazy raw offset) and tzdb root cause (static initializer = linker entry point; Scala 3 <= 3.10.0 emits the JS-backed `Reflect.registerInstantiatableClass`, V2 since scala/scala3@3bb676972, in 3.10.1); dapr4s builds scala-java-time from source; wall-clock still blocked by scala-wasm's javalib
 

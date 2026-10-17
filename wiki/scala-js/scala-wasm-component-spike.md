@@ -67,7 +67,7 @@ fixes (a local patch was used for one of them).
     `TimeZone.getTimeZone`, and the JS `TimeZone.getTimeZone(zoneId)` computed the raw offset as
     `rules.getStandardOffset(Instant.now)` → `Clock$SystemClock` → `System.currentTimeMillis` → `global:Date["now"]`.
     Once `ofPattern` instantiated the parser, even `Instant.parse` dispatches into it. Fix:
-    [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618), a private `SimpleTimeZone`
+    [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618) (merged 2026-10-17, in no release yet; the script builds `main` at its merge commit 48cf7a6), a private `SimpleTimeZone`
     subclass with a `lazy val` raw offset (rules still looked up eagerly). Nothing calls `getRawOffset` on the
     formatter path, so `Instant.now` is dropped.
   - Region zones: `TzdbZoneRulesProvider` has `@EnableReflectiveInstantiation`, and its registration lives in the
@@ -78,7 +78,7 @@ fixes (a local patch was used for one of them).
     (Scala arrays, `Array[Any] => Any`); the Scala 2 plugin emits it, which is why the 2.13 probe of #617 linked.
     Scala 3 emits V2 since [scala/scala3@3bb676972](https://github.com/scala/scala3/commit/3bb676972) (2026-09-07,
     a forward port of scala-js/scala-js@e754a55; on `release-3.10.1`, NOT in 3.10.0). Nothing in scala-java-time
-    can work around it (no source-level way to write a static initializer), so the fix is the compiler: the script
+    can work around it (no source-level way to write a static initializer), so the fix is the compiler (region zones need a scala-java-time release > 2.8.0 built with Scala 3 >= 3.10.1): the script
     compiles only the tzdb module with nightly `3.10.2-RC1-bin-20261017-ae374e9-NIGHTLY` (core stays on 3.9.0) and
     rewrites the nightly scala3-library version in the published POM/ivy.xml back to 3.9.0 (else it evicts every
     app's scala3-library). `Reflect.lookupInstantiatableClass` (the core side of discovery) is a Scala `HashMap`

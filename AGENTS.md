@@ -472,12 +472,13 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   must have every version it names. An app gets both by depending on that scala-java-time (+ `-tzdb`). The two
   fixes:
   - `ofPattern` (any pattern) kept zone-text printing reachable → `TimeZone.getTimeZone` → `Instant.now`.
-    https://github.com/cquiroz/scala-java-time/pull/618 computes the raw offset lazily.
+    https://github.com/cquiroz/scala-java-time/pull/618 (merged 2026-10-17, waits for a release > 2.8.0)
+    computes the raw offset lazily. The script builds the `main` commit that contains it.
   - tzdb's provider has `@EnableReflectiveInstantiation`. Its registration is a static initializer (always
     linked), and Scala 3 <= 3.10.0 emits it with the JS-backed `Reflect.registerInstantiatableClass(js.Array)`.
     Scala 3 emits the Scala-typed `registerInstantiatableClassV2` since scala/scala3@3bb676972 (in 3.10.1, not
     released yet), so the script compiles the tzdb module with a Scala 3 nightly.
-  Retires with a scala-java-time release that has #618 and is built with Scala 3 >= 3.10.1: pin it in
+  Retires with a scala-java-time release > 2.8.0 (has #618) built with Scala 3 >= 3.10.1 (region zones need both): pin it in
   `dapr4s-wasm`, drop `scalaJavaTimeWasm`, the script and its CI steps.
 - **Shared code on the `wasm` path** must still avoid, because they fail to link:
   - the wall-clock: `Instant.now`, `Clock.system*`, `System.currentTimeMillis` (scala-wasm's javalib calls

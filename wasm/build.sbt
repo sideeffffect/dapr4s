@@ -61,11 +61,11 @@ val scala3Nightly = rootBuildVal("scala3Nightly")
 val scalaJavaTime = rootBuildVal("scalaJavaTime")
 // An UNRELEASED scala-java-time, built from source and publishLocal'ed by scripts/wasm/build-scala-java-time.sh
 // (run it first; CI does). WHAT it adds over the release `scalaJavaTime`: `DateTimeFormatter.ofPattern` links
-// without a JS host (https://github.com/cquiroz/scala-java-time/pull/618), and `scala-java-time-tzdb` (region
+// without a JS host (https://github.com/cquiroz/scala-java-time/pull/618, merged, waits for a release > 2.8.0), and `scala-java-time-tzdb` (region
 // zones) links too: it is built with a Scala 3 that emits the Scala-typed reflective registration.
 // WHY only the test components use it (an app opts in by depending on a newer scala-java-time), not
 // dapr4s-wasm: dapr4s-wasm is published to Central, and its POM must name a version that Central has.
-// RETIRES with a scala-java-time release that has both: then dapr4s-wasm pins that release, and this val, the
+// RETIRES with a scala-java-time release > 2.8.0 built with Scala 3 >= 3.10.1: then dapr4s-wasm pins that release, and this val, the
 // script and its CI steps go (see the script's header).
 val scalaJavaTimeWasm = "2.8.1-dapr4s-local"
 val munitVersion = rootBuildVal("munit")

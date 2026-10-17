@@ -161,11 +161,11 @@ jobs:
           wasm/target/scala-wasm-linker
           ~/.cache/dapr4s/scala-wasm-src
         key: scala-wasm-linker-${{ hashFiles('scripts/wasm/build-patched-linker.sh', 'scripts/wasm/patches/**') }}
-    # The UNRELEASED scala-java-time the wasm/ build pins (2.8.1-dapr4s-local: main + the open
+    # The UNRELEASED scala-java-time the wasm/ build pins (2.8.1-dapr4s-local: main with the merged
     # https://github.com/cquiroz/scala-java-time/pull/618, tzdb compiled with a Scala 3 nightly; see
     # scripts/wasm/build-scala-java-time.sh). Built from source with a JDK 17 and publishLocal'ed; cached
-    # by the script's hash (it pins the SHAs, the compilers and the version). Goes away with a
-    # scala-java-time release that has both.
+    # by the script's hash (it pins the SHA, the compilers and the version). Goes away with a
+    # scala-java-time release > 2.8.0 built with Scala 3 >= 3.10.1.
     # Both JDKs: the last one (25) stays the default; the script finds 17 through $JAVA_HOME_17_X64.
     - name: Install JDK 17 next to 25 (scala-java-time's build)
       if: matrix.platform == 'wasm'
