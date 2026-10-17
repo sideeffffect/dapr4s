@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-17] update | dapr-wasm-components 0.7.5
+- Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
+
 ## [2026-10-13] update | dapr-wasm-components 0.7.2: probe e2e asserts converse/schedule/timer results
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.2 fixed the three 0.7.1 provider gaps; echo conversation component; scheduler container next to a slim daprd; daprd 1.17.7 job GET encoding bug
 

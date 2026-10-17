@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # End-to-end test of the `wasm` platform. Builds the test components, then for each:
 #   1. checks the WIT functions it imports (W1 authority: an app imports only what its code reaches);
-#   2. composes it with the dapr-wasm-components 0.7.2 wasi-http providers (compose.sh);
+#   2. composes it with the dapr-wasm-components 0.7.5 wasi-http providers (compose.sh);
 #   3. runs it in `wasmtime serve` next to daprd (`dapr run`, run.sh) and calls it through the sidecar.
 # Components:
 #   counterRaw   (test/wasm/counter-raw: bindings + glue, no wall)   counter -> 1, then 2
@@ -153,7 +153,7 @@ sched="$(invoke schedule)"
 echo "$v: schedule -> $sched"
 [[ "$sched" == "ok: scheduled probe-job" ]] || fail "$v: schedule returned '$sched'"
 # The app hosts no actor type, so daprd refuses both (a reminder with 403, a timer with a generic 500 that
-# the 0.7.2 providers map to the same typed error). That is the deterministic answer without placement.
+# the 0.7.5 providers map to the same typed error). That is the deterministic answer without placement.
 rem="$(invoke register-reminder)"
 echo "$v: register-reminder -> $rem"
 [[ "$rem" == "error: PermissionDenied("*"hosted actor types"*")" ]] || fail "$v: register-reminder returned '$rem'"
