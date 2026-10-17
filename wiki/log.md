@@ -1,5 +1,24 @@
 # Wiki Log
 
+## [2026-10-17] update | dapr-wasm-components 0.7.5
+- Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
+
+## [2026-10-13] update | dapr-wasm-components 0.7.2: probe e2e asserts converse/schedule/timer results
+- Updated: scala-js/scala-wasm-component-spike.md — 0.7.2 fixed the three 0.7.1 provider gaps; echo conversation component; scheduler container next to a slim daprd; daprd 1.17.7 job GET encoding bug
+
+## [2026-10-13] update | wasm packaging: six artifacts, linker import side, consumer check
+- Updated: scala-js/scala-wasm-component-spike.md — own linker + overlay artifacts; republishing a third-party jar from sbt; merged helper projects; released linker's missing import side + our fix proven against daprd; dapr-wasm-components 0.7.1 provider gaps; stale-jar trap
+
+## [2026-10-13] update | wasm glue hand-written (generator dropped); overlay + release mode
+- Updated: scala-js/scala-wasm-component-spike.md — 2.13 glue now hand-written (facts from the generator kept as history); UniquenessCache overlay; release mode on Central dapr4s_sjs1_3
+
+## [2026-10-13] update | scala-wasm component packaging (publishLocal + sbt plugin)
+- Updated: scala-js/scala-wasm-component-spike.md — sbt-dapr4s-wasm plugin; coursier dependencyResolution applies excludeDependencies (silently empty overlay retrieve); mixed 3→2.13 publish; Provided stubs; plugin version from manifest
+
+## [2026-10-13] update | scala-wasm component spike ported into dapr4s; generated WIT glue
+- Source: the port itself ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44)): wasm/build.sbt, wasm/project/WitGlue.scala, src/wasm/, test/wasm/, scripts/wasm/.
+- Updated: scala-js/scala-wasm-component-spike.md (new section "The code in dapr4s": nested sbt build, generated same-name facade + import/export traits, exhaustivity through aliases, trampolines break plain-JS linking, resources not generated, e2e automation); index.md row. raw/scala-js/2026-10-12-dapr4s-wasm-component-spike-log.md: dropped the local spike path.
+
 ## [2026-10-12] ingest | Dapr error codes → dapr4s DaprException mapping (D2) + HTTP-level invoke (D3)
 - Raw: raw/dapr/2026-10-12-daprd-1.17-error-codes-probe.md — live daprd 1.17.0 probe over HTTP (curl) and gRPC (grpcurl + dapr.proto), plus a source read of dapr v1.17.0 predefined.go / pkg/api/errors / http.go / grpc.go / direct_messaging.go, dapr/kit errors, java-sdk 1.17.2 DaprException/DaprHttp and @dapr/dapr 3.18.0 HTTPClient.
 - New: wiki/dapr/dapr-error-codes.md — the code table and the DaprException subtype each maps to; key facts: legacy errors carry no ERR_ code over gRPC (match by daprd's exact message format with the requested name), HTTP statuses are unreliable (secret store not found = 401, pubsub not found = 404), "not configured" = not found for the caller, invoke daprd-vs-app errors are distinguished by an ERR_DIRECT_INVOKE/permission body, Java SDK invokeMethod is lossy (throws on 3xx, drops headers) so invokeHttp uses the raw /v1.0/invoke API on both platforms.

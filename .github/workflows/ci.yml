@@ -40,6 +40,15 @@ jobs:
   #
   #   core<P>         the library + its unit tests (test/{shared,<p>} minus integration/)
   #   integration<P>  the Docker-based integration suites (test/{shared,<p>}/integration)
+  #
+  # The `wasm` leg is the Phase-0 WASI-component prototype (docs/WASM-COMPONENTS-PROPOSAL.md §6). It
+  # is a separate, opt-in sbt build in wasm/ (the scala-wasm fork of sbt-scalajs cannot share a
+  # meta-build with mainline sbt-scalajs) and has its own steps below: format check, the wall's unit
+  # tests (on Node) and scripts/wasm/e2e.sh in source mode, then publishLocal of the six wasm artifacts
+  # and a plugin-only consumer build (scripts/wasm/consumer-check.sh).
+  #
+  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the six wasm
+  # artifacts to Central (PUBLISH_WASM_TO_CENTRAL), so a broken wasm build must never reach a release.
   test:
     strategy:
       fail-fast: false
@@ -49,6 +58,8 @@ jobs:
             project: JVM
           - platform: js
             project: JS
+          - platform: wasm
+            project: Wasm
     name: test (${{ matrix.platform }})
     runs-on: ubuntu-latest
     steps:
@@ -82,16 +93,95 @@ jobs:
           .st-facades/target
         key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
     - name: Compile
+      if: matrix.platform != 'wasm'
       run: sbt core${{ matrix.project }}/compile integration${{ matrix.project }}/Test/compile
     - name: Unit tests
+      if: matrix.platform != 'wasm'
       run: sbt core${{ matrix.project }}/test
     - name: Integration tests
+      if: matrix.platform != 'wasm'
       # A real daprd sidecar (+ Redis, placement, scheduler) via testcontainers; Docker is
       # preinstalled on ubuntu-latest. JVM: testcontainers-dapr. JS: @dapr/testcontainer-node,
       # started from inside the Wasm+JSPI test runtime.
       # Both legs normally finish in a few minutes; the timeout turns a hang into a failure instead of a 6h wait.
       timeout-minutes: 20
       run: sbt integration${{ matrix.project }}/test
+
+    # ---- wasm leg (the opt-in wasm/ build) ----------------------------------------------------
+    # Tool versions are the ones the Phase-0 spike used (wiki: scala-wasm-component-spike).
+    - name: Install wasm tools (wasm-tools, wasmtime, wkg, wac)
+      if: matrix.platform == 'wasm'
+      env:
+        WASM_TOOLS_VERSION: 1.261.0
+        WASMTIME_VERSION: 49.0.2
+        WKG_VERSION: 0.16.1
+        WAC_VERSION: 0.10.0
+      run: |
+        set -euo pipefail
+        bin="$HOME/.local/bin"; mkdir -p "$bin"; echo "$bin" >> "$GITHUB_PATH"
+        rel=https://github.com/bytecodealliance
+        curl -fsSL "$rel/wasm-tools/releases/download/v${WASM_TOOLS_VERSION}/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux.tar.gz" \
+          | tar -xz -C /tmp
+        mv "/tmp/wasm-tools-${WASM_TOOLS_VERSION}-x86_64-linux/wasm-tools" "$bin/"
+        curl -fsSL "$rel/wasmtime/releases/download/v${WASMTIME_VERSION}/wasmtime-v${WASMTIME_VERSION}-x86_64-linux.tar.xz" \
+          | tar -xJ -C /tmp
+        mv "/tmp/wasmtime-v${WASMTIME_VERSION}-x86_64-linux/wasmtime" "$bin/"
+        curl -fsSL -o "$bin/wkg" "$rel/wasm-pkg-tools/releases/download/v${WKG_VERSION}/wkg-x86_64-unknown-linux-gnu"
+        curl -fsSL -o "$bin/wac" "$rel/wac/releases/download/v${WAC_VERSION}/wac-cli-x86_64-unknown-linux-musl"
+        chmod +x "$bin/wkg" "$bin/wac"
+        "$bin/wasm-tools" --version; "$bin/wasmtime" --version; "$bin/wkg" --version; "$bin/wac" --version
+    # The scala-wasm sbt plugin runs `wit-bindgen-scala` (crate 0.1.0) to generate the bindings.
+    - name: Cache wit-bindgen-scala
+      if: matrix.platform == 'wasm'
+      id: cache-wbs
+      uses: actions/cache@v4
+      with:
+        path: ~/.cargo/bin/wit-bindgen-scala
+        key: wit-bindgen-scala-0.1.0-${{ runner.os }}
+    - name: Install wit-bindgen-scala
+      if: matrix.platform == 'wasm' && steps.cache-wbs.outputs.cache-hit != 'true'
+      run: cargo install wit-bindgen-scala --version 0.1.0 --locked
+    - name: Install the dapr CLI and daprd (slim, no placement/scheduler)
+      if: matrix.platform == 'wasm'
+      run: |
+        wget -q https://raw.githubusercontent.com/dapr/cli/v1.15.1/install/install.sh -O - | /bin/bash -s 1.15.1
+        dapr init --slim --runtime-version 1.17.7
+        echo "$HOME/.dapr/bin" >> "$GITHUB_PATH"
+    # The patched scala-wasm linker (scripts/wasm/build-patched-linker.sh: the 1.22.1-wasm.6 release
+    # commit + our export-params patch, published to ~/.ivy2/local). Rebuilt only when the script, the
+    # patch or the version in wasm/build.sbt changes.
+    # The patched scala-wasm linker (scripts/wasm/build-patched-linker.sh: the 1.22.1-wasm.6 release commit +
+    # our params-via-memory patch) is built by the `wasmLinker` project on demand; cache its output and the
+    # scala-wasm clone. Rebuilt only when the script or the patch changes.
+    - name: Cache the patched scala-wasm linker build
+      if: matrix.platform == 'wasm'
+      uses: actions/cache@v4
+      with:
+        path: |
+          wasm/target/scala-wasm-linker
+          ~/.cache/dapr4s/scala-wasm-src
+        key: scala-wasm-linker-${{ hashFiles('scripts/wasm/build-patched-linker.sh', 'scripts/wasm/patches/**') }}
+    # Source mode: the wall over dapr4s's own src/shared (covers shared-code changes), unit tests + e2e
+    # (counter-raw, counter, imports-probe against daprd + Redis).
+    - name: Format check, wall unit tests (wasm/, source mode)
+      if: matrix.platform == 'wasm'
+      working-directory: wasm
+      run: sbt scalafmtCheckAll scalafmtSbtCheck -Ddapr4s.wasm.core=source wallWasm/test
+    - name: E2E, source mode (components + compose + daprd + Redis)
+      if: matrix.platform == 'wasm'
+      timeout-minutes: 20
+      run: SBT_ARGS=-Ddapr4s.wasm.core=source scripts/wasm/e2e.sh
+    # Release mode (the default): the six artifacts as they would be published (the wall on the published
+    # dapr4s_sjs1_3), publishLocal'ed, then a fresh consumer build that has nothing but the plugin + one
+    # dependency builds test/wasm/counter and runs its e2e. dapr4s-examples consumes the same artifacts.
+    - name: publishLocal (release mode)
+      if: matrix.platform == 'wasm'
+      working-directory: wasm
+      run: sbt wallWasm/test publishLocal
+    - name: Consumer check (plugin + one dependency, e2e)
+      if: matrix.platform == 'wasm'
+      timeout-minutes: 20
+      run: scripts/wasm/consumer-check.sh
 
   publish:
     needs: [format, test]
@@ -110,6 +200,11 @@ jobs:
       group: publish-${{ github.sha }}
       cancel-in-progress: false
     runs-on: ubuntu-latest
+    env:
+      # The switch for Central publishing of the wasm artifacts (ON since 2026-10-13, approved by the
+      # user). Setting it to 'false' stops only the wasm artifacts; core (dapr4s_3, dapr4s_sjs1_3)
+      # publishes regardless.
+      PUBLISH_WASM_TO_CENTRAL: 'true'
     steps:
     - uses: actions/checkout@v5
       with:
@@ -145,6 +240,40 @@ jobs:
         fi
         export PGP_SECRET
         sbt ci-release
+      env:
+        SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
+        SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
+        PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
+        PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+    # ---- The wasm artifacts (wasm/ build): dapr4s-wasm, dapr4s-wasm-glue(-exports), dapr4s-wasm-scalalib-overlay,
+    # dapr4s-wasm-linker, sbt-dapr4s-wasm — at the same version as core, the wall depending on the dapr4s_sjs1_3
+    # of THIS version (published locally first so the wasm build resolves it before Central has it).
+    # Gated by PUBLISH_WASM_TO_CENTRAL (the wasm build also refuses `publish` unless that variable is 'true',
+    # so a local `sbt publish` in wasm/ can never reach Central by accident). See AGENTS.md "Wasm component layer rules".
+    - name: Install wasm tools for the wasm publish (wkg, wasm-tools, wit-bindgen-scala)
+      if: env.PUBLISH_WASM_TO_CENTRAL == 'true'
+      run: |
+        set -euo pipefail
+        bin="$HOME/.local/bin"; mkdir -p "$bin"; echo "$bin" >> "$GITHUB_PATH"
+        rel=https://github.com/bytecodealliance
+        curl -fsSL "$rel/wasm-tools/releases/download/v1.261.0/wasm-tools-1.261.0-x86_64-linux.tar.gz" | tar -xz -C /tmp
+        mv /tmp/wasm-tools-1.261.0-x86_64-linux/wasm-tools "$bin/"
+        curl -fsSL -o "$bin/wkg" "$rel/wasm-pkg-tools/releases/download/v0.16.1/wkg-x86_64-unknown-linux-gnu"
+        chmod +x "$bin/wkg"
+        cargo install wit-bindgen-scala --version 0.1.0 --locked
+    - name: Publish the wasm artifacts
+      if: env.PUBLISH_WASM_TO_CENTRAL == 'true'
+      run: |
+        key="${PUBLISH_SECRET_KEY#base64:}"
+        if printf '%s' "$key" | grep -q -- '-----BEGIN PGP'; then
+          PGP_SECRET="$(printf '%s\n' "$key" | base64 -w0)"
+        else
+          PGP_SECRET="$key"
+        fi
+        export PGP_SECRET
+        version="$(sbt -batch -no-colors 'print coreJS/version' | tail -1 | tr -d '[:space:]')"
+        sbt coreJS/publishLocal
+        cd wasm && sbt -Ddapr4s.wasm.core="$version" ci-release
       env:
         SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
         SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}

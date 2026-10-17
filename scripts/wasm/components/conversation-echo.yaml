@@ -1,0 +1,9 @@
+# daprd's built-in echo conversation component (answers with the input, no LLM, no network): lets the
+# e2e run `conversation.converse` to a successful answer (test/wasm/imports-probe).
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: echo
+spec:
+  type: conversation.echo
+  version: v1
