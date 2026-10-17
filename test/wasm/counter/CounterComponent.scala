@@ -5,6 +5,10 @@ import dapr4s.invoke.*
 import dapr4s.state.*
 import dapr4s.wasm.DaprComponent
 
+import java.time.{Duration, Instant, LocalDate, ZoneId, ZoneOffset, ZonedDateTime}
+import java.time.format.{DateTimeFormatter, TextStyle}
+import java.util.Locale
+
 /** The counter on dapr4s's API (`StateCapability.Instance.get/save` + `JsonCodec`), plus two error-mapping probes.
   * Nothing here knows about WIT or scala-wasm. Run by scripts/wasm/e2e.sh.
   */
@@ -49,6 +53,35 @@ object CounterComponent extends DaprComponent:
       case Some(e) => s"${e.getClass.getSimpleName}: ${e.getMessage}"
       case None    => "unexpected success"
 
+  /** java.time on a Wasm component (scripts/wasm/e2e.sh checks the answer): ISO and pattern formatting with localized
+    * text, parsing, the default zone (UTC without a JS host), fixed-offset zones and region zones (with their summer
+    * and winter time) from scala-java-time-tzdb. Not here because it does not link yet (AGENTS.md "Wasm component layer
+    * rules"): the wall-clock (`Instant.now`, `Clock`).
+    */
+  def javaTime(ignored: Unit): String =
+    val instant = Instant.parse("2026-10-17T10:15:30Z")
+    val local = ZonedDateTime.parse("2026-10-17T12:15:30+02:00")
+    val prague = ZoneId.of("Europe/Prague")
+    val pattern = DateTimeFormatter.ofPattern("dd.MM.uuuu HH:mm VV", Locale.ENGLISH)
+    List(
+      s"instant=$instant",
+      s"date=${LocalDate.parse("2026-10-17").plusDays(1)}",
+      s"zoned=$local",
+      s"same=${local.toInstant == instant}",
+      s"iso=${DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(instant.atOffset(ZoneOffset.ofHours(-5)))}",
+      s"rfc=${DateTimeFormatter.RFC_1123_DATE_TIME.format(local)}",
+      s"day=${local.getDayOfWeek.getDisplayName(TextStyle.FULL, Locale.ENGLISH)}",
+      s"default=${ZoneId.systemDefault()}",
+      s"utc=${ZonedDateTime.ofInstant(instant, ZoneId.of("UTC"))}",
+      s"duration=${Duration.parse("PT1H30M").plusMinutes(15)}",
+      s"prague=${instant.atZone(prague)}",
+      s"winter=${Instant.parse("2026-12-24T17:30:00Z").atZone(prague)}",
+      s"newyork=${instant.atZone(ZoneId.of("America/New_York")).getOffset}",
+      s"pattern=${pattern.format(instant.atZone(prague))}",
+      s"parsed=${ZonedDateTime.parse("24.12.2026 18:30 Europe/Prague", pattern)}",
+      s"text=${DateTimeFormatter.ofPattern("EEEE d MMMM uuuu", Locale.ENGLISH).format(local)}",
+    ).mkString(";")
+
   override def app(using state: StateCapability): DaprApp =
     given StateCapability.Instance = state.instance(Store)
     DaprApp(invokeRoutes =
@@ -56,5 +89,6 @@ object CounterComponent extends DaprComponent:
         InvokeRoute[Unit, Int](InvokeMethodName("counter"))(counter),
         InvokeRoute[Unit, String](InvokeMethodName("missing-store"))(missingStore),
         InvokeRoute[Unit, String](InvokeMethodName("stale-etag"))(staleEtag),
+        InvokeRoute[Unit, String](InvokeMethodName("java-time"))(javaTime),
       ),
     )

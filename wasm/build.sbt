@@ -59,7 +59,18 @@ def rootBuildVal(name: String): String = {
 }
 val scala3Nightly = rootBuildVal("scala3Nightly")
 val scalaJavaTime = rootBuildVal("scalaJavaTime")
+// An UNRELEASED scala-java-time, built from source and publishLocal'ed by scripts/wasm/build-scala-java-time.sh
+// (run it first; CI does). WHAT it adds over the release `scalaJavaTime`: `DateTimeFormatter.ofPattern` links
+// without a JS host (https://github.com/cquiroz/scala-java-time/pull/618, merged, waits for a release > 2.8.0), and `scala-java-time-tzdb` (region
+// zones) links too: it is built with a Scala 3 that emits the Scala-typed reflective registration.
+// WHY only the test components use it (an app opts in by depending on a newer scala-java-time), not
+// dapr4s-wasm: dapr4s-wasm is published to Central, and its POM must name a version that Central has.
+// RETIRES with a scala-java-time release > 2.8.0 built with Scala 3 >= 3.10.1: then dapr4s-wasm pins that release, and this val, the
+// script and its CI steps go (see the script's header).
+val scalaJavaTimeWasm = "2.8.1-dapr4s-local"
 val munitVersion = rootBuildVal("munit")
+// Only the wasm path needs it explicitly (see wallWasm); on JS, scala-java-time's own dependency suffices.
+val scalaJavaLocales = "1.6.0"
 
 // Keep in sync with `compilerFlags` in ../build.sbt.
 lazy val compilerFlags = Seq(
@@ -185,9 +196,9 @@ lazy val coreWasm = project
   .settings(sourcesIn(repoDir / "src" / "shared", repoDir / "src" / "wasm" / "core"))
   .settings(
     name := "dapr4s-wasm-core",
-    // java.time on the Scala.js-family platforms (part of the shared public API). Only
-    // Duration-style arithmetic links without JS; formatting/parsing reaches scala-java-locales'
-    // `window` (wiki: "What dapr4s's shared code needs on a no-JS target").
+    // java.time on the Scala.js-family platforms (part of the shared public API). wallWasm adds
+    // scala-java-locales, whose >= 1.6.0 lets formatting/parsing link without a JS host (wiki: "What
+    // dapr4s's shared code needs on a no-JS target").
     libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTime,
   )
 
@@ -293,6 +304,15 @@ lazy val wallWasm = withCore(
       // with its doc comments, and the API a user touches (dapr4s.wasm.DaprComponent) is documented there.
       // RETIRES: when a Scala 3 nightly fixes the unpickler crash, or when the 2.13 glue goes away.
       Compile / doc / sources := Nil,
+      // java.time on the wasm path. dapr4s core brings scala-java-time (part of the shared API); this pins the
+      // versions a Wasm component needs, in both core modes and for every app (they are in dapr4s-wasm's POM):
+      // scala-java-time >= 2.8.0 (the default zone is UTC without a JS host) and scala-java-locales >= 1.6.0
+      // (`Locale.getDefault`, reached by every formatter/parser, no longer reads `window` without a JS host).
+      // `ofPattern` and region zones need a newer scala-java-time, not released yet: see `scalaJavaTimeWasm`.
+      libraryDependencies ++= Seq(
+        "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTime,
+        "io.github.cquiroz" %%% "scala-java-locales" % scalaJavaLocales,
+      ),
       projectDependencies := projectDependencies.value.filterNot(m => embeddedInWall(m.name)),
       Compile / packageBin / mappings ++=
         (wasmApi / Compile / packageBin / mappings).value ++ (wallInert / Compile / packageBin / mappings).value,
@@ -450,6 +470,14 @@ lazy val counter = project
   .enablePlugins(Dapr4sWasmComponentPlugin)
   .settings(noPublish, nightly, dapr4sWasmAddGlueExports := false)
   .settings(sourcesIn(repoDir / "test" / "wasm" / "counter"))
+  // `DateTimeFormatter.ofPattern` and region zones (`ZoneId.of("Europe/Prague")`, the tz database is the app's
+  // choice, as on JS): the unreleased scala-java-time (see `scalaJavaTimeWasm`). It evicts dapr4s-wasm's 2.8.0.
+  .settings(
+    libraryDependencies ++= Seq(
+      "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTimeWasm,
+      "io.github.cquiroz" %%% "scala-java-time-tzdb" % scalaJavaTimeWasm,
+    ),
+  )
   .dependsOn(wallWasm, witExports)
 
 // Calls the four WIT imports with > 16 flat params (jobs.schedule, conversation.converse,
