@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-17] update | java.time on Wasm components
+- Updated: scala-js/scala-wasm-component-spike.md — java.time formatting/parsing links and runs with scala-java-locales 1.6.0 + scala-java-time 2.8.0 (evidence: counter `java-time` route under daprd); still blocked: wall-clock (`js.Date.now`; also reached by every `DateTimeFormatter.ofPattern` via `TimeZone`), tzdb region zones (`@EnableReflectiveInstantiation` → `Reflect` `js.Array`)
+
 ## [2026-10-13] update | dapr-wasm-components 0.7.2: probe e2e asserts converse/schedule/timer results
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.2 fixed the three 0.7.1 provider gaps; echo conversation component; scheduler container next to a slim daprd; daprd 1.17.7 job GET encoding bug
 

@@ -1,8 +1,8 @@
 # scala-wasm Component Spike (dapr4s Phase 0)
 
-> Sources: dapr4s Phase-0 spike, 2026-10-12, ported into dapr4s 2026-10-13 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44): `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`); scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24
+> Sources: dapr4s Phase-0 spike, 2026-10-12, ported into dapr4s 2026-10-13 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44): `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`); scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24; java.time link/run probe (counter `java-time` route) with scala-java-locales 1.6.0 + scala-java-time 2.8.0, 2026-10-17
 > Raw: [spike build log and evidence](../../raw/scala-js/2026-10-12-dapr4s-wasm-component-spike-log.md); [scala-wasm Limitations](../../raw/scala-js/2026-10-03-scala-wasm-limitations.md); [Scala and Wasm Component Model](../../raw/scala-js/2026-08-24-virtuslab-scala-wasm-component-model.md)
-> Updated: 2026-10-13
+> Updated: 2026-10-17
 
 ## Overview
 
@@ -49,10 +49,24 @@ fixes (a local patch was used for one of them).
 - Links: dapr4s opaque types, `JsonCodec`, `StateCapability` tiers, `DaprApp`/`InvokeRoute`/validation,
   exceptions, `Charsets`, `java.time.Duration`, `FiniteDuration`, `UUID.fromString`, `String.format`.
   dapr4s's JS wall is never reachable unless something calls `Dapr(...)`.
-- Does not link: any `java.time` **formatting/parsing** (`Instant.parse`/`toString`, `ZonedDateTime`, so also
-  `WorkflowSnapshot.toString`). The chain is scala-java-time → `Locale.getDefault` → scala-java-locales
-  `DefaultLocale` → `global:window`. Also `Instant.now`/`currentTimeMillis` (`Date.now`), `println` (`console`),
-  `UUID.randomUUID` (no `SecureRandom`).
+- java.time **formatting/parsing** links and runs since 2026-10-17 (it did not in Phase 0: scala-java-time →
+  `Locale.getDefault` → scala-java-locales `DefaultLocale` → `global:window`). Fixed by scala-java-locales 1.6.0
+  ([#640](https://github.com/cquiroz/scala-java-locales/pull/640): `JSHostLanguage` behind `LinkingInfo.linkTimeIf`,
+  language `en` without a JS host) + scala-java-time 2.8.0 ([#616](https://github.com/cquiroz/scala-java-time/pull/616):
+  default `TimeZone` UTC without a JS host). `dapr4s-wasm` depends on both. Verified in a component under daprd
+  (counter's `java-time` route): `Instant`/`LocalDate`/`ZonedDateTime` `parse`/`toString`, `ISO_OFFSET_DATE_TIME`,
+  `RFC_1123_DATE_TIME`, `DayOfWeek.getDisplayName(FULL, ENGLISH)` = `Saturday`, `ZoneId.systemDefault()` = `UTC`,
+  `ZoneId.of("UTC")`, `ZoneOffset`s, `Duration.parse`.
+- Still does not link (scala-wasm 1.22.1-wasm.6; its `scala-wasm` branch is the same on 2026-10-17):
+  - The wall-clock: `Instant.now`/`Clock.systemUTC`/`currentTimeMillis` → javalib `System.currentTimeMillis` =
+    `js.Date.now()`. Trap: `DateTimeFormatter.ofPattern` reaches it too. Any pattern can contain `z`, so the linker
+    keeps `ZoneTextPrinterParser`, whose print/parse call `TimeZone.getTimeZone` → `TimeZone` computes the standard
+    offset at `Instant.now`. Use the predefined formatters.
+  - Region zones via `scala-java-time-tzdb` 2.8.0, even with its Wasm-portable data
+    ([#617](https://github.com/cquiroz/scala-java-time/pull/617)): `TzdbZoneRulesProvider`'s static initializer
+    (the `@EnableReflectiveInstantiation` registration the Scala 3 Scala.js backend emits) calls
+    `Reflect.registerInstantiatableClass(name, class, js.Array[...])` → `js.Array`/`toJSVarArgs`.
+  - `println` (`console`), `UUID.randomUUID` (no `SecureRandom`).
 - Whole-program trap: once anything instantiates `js.WrappedDictionary`, virtual stdlib calls such as
   `List.groupBy` → `newSpecificBuilder` become JS-tainted everywhere (hit in `DaprAppValidation`).
 - POM hygiene: `dapr4s_sjs1_3` brings mainline `org.scala-js:scalajs-library_2.13:1.22.0` + javalib next to the

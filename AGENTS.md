@@ -458,8 +458,22 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   `PUBLISH_WASM_TO_CENTRAL: 'true'` (ON since 2026-10-13, approved by the user); the wasm build keeps
   `publish / skip` unless that variable is `'true'`, so local `sbt publish` in `wasm/` never reaches Central.
   The job publishes `coreJS` locally and runs `sbt -Ddapr4s.wasm.core=<version> ci-release` in `wasm/`.
-- **Shared code on the `wasm` path** must avoid `java.time` formatting/parsing, wall-clock
-  (`Instant.now`), `println` and `UUID.randomUUID`: they reach JS and fail to link.
+- **java.time on the `wasm` path**: `dapr4s-wasm` depends on scala-java-time >= 2.8.0 (the default zone is
+  UTC without a JS host) and scala-java-locales >= 1.6.0 (`Locale.getDefault` no longer reads `window`). So
+  these link AND run (counter's `java-time` route, checked by `scripts/wasm/e2e.sh` and the consumer check):
+  `toString`/`parse` of the java.time types, the predefined `DateTimeFormatter`s (`ISO_*`, `RFC_1123_DATE_TIME`),
+  localized text (`getDisplayName(TextStyle, Locale)`), `ZoneOffset`s, `ZoneId.of("UTC")`, `ZoneId.systemDefault()`
+  (= UTC), `Duration`.
+- **Shared code on the `wasm` path** must still avoid, because they fail to link:
+  - the wall-clock: `Instant.now`, `Clock.system*`, `System.currentTimeMillis` (scala-wasm's javalib calls
+    `js.Date.now`), and everything that reaches it: `DateTimeFormatter.ofPattern`/`appendPattern` (any pattern
+    makes zone-text printing reachable → `TimeZone.getTimeZone` → `Instant.now`) and `java.util.TimeZone`.
+    Retires when scala-wasm's javalib reads the clock through WASI (`wasi:clocks`).
+  - region zones (`ZoneId.of("Europe/Prague")`) via `scala-java-time-tzdb`: its provider's static initializer
+    (`@EnableReflectiveInstantiation`, emitted by the Scala 3 Scala.js backend) registers through
+    `scala.scalajs.reflect.Reflect`, which builds `js.Array`s. Without tzdb, region ids throw at run time.
+    Retires when scala-wasm's `Reflect` registration is Wasm-only clean.
+  - `println` (`console`) and `UUID.randomUUID` (no `SecureRandom`): they reach JS.
 - Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr
   CLI + daprd from `dapr init --slim`, `wasmtime` and `wac` for the e2e):
   - `cd wasm && sbt wallWasm/test` (wall unit tests, plain Scala.js on Node; add

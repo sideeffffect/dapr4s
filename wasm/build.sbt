@@ -60,6 +60,8 @@ def rootBuildVal(name: String): String = {
 val scala3Nightly = rootBuildVal("scala3Nightly")
 val scalaJavaTime = rootBuildVal("scalaJavaTime")
 val munitVersion = rootBuildVal("munit")
+// Only the wasm path needs it explicitly (see wallWasm); on JS, scala-java-time's own dependency suffices.
+val scalaJavaLocales = "1.6.0"
 
 // Keep in sync with `compilerFlags` in ../build.sbt.
 lazy val compilerFlags = Seq(
@@ -185,9 +187,9 @@ lazy val coreWasm = project
   .settings(sourcesIn(repoDir / "src" / "shared", repoDir / "src" / "wasm" / "core"))
   .settings(
     name := "dapr4s-wasm-core",
-    // java.time on the Scala.js-family platforms (part of the shared public API). Only
-    // Duration-style arithmetic links without JS; formatting/parsing reaches scala-java-locales'
-    // `window` (wiki: "What dapr4s's shared code needs on a no-JS target").
+    // java.time on the Scala.js-family platforms (part of the shared public API). wallWasm adds
+    // scala-java-locales, whose >= 1.6.0 lets formatting/parsing link without a JS host (wiki: "What
+    // dapr4s's shared code needs on a no-JS target").
     libraryDependencies += "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTime,
   )
 
@@ -293,6 +295,14 @@ lazy val wallWasm = withCore(
       // with its doc comments, and the API a user touches (dapr4s.wasm.DaprComponent) is documented there.
       // RETIRES: when a Scala 3 nightly fixes the unpickler crash, or when the 2.13 glue goes away.
       Compile / doc / sources := Nil,
+      // java.time on the wasm path. dapr4s core brings scala-java-time (part of the shared API); this pins the
+      // versions a Wasm component needs, in both core modes and for every app (they are in dapr4s-wasm's POM):
+      // scala-java-time >= 2.8.0 (the default zone is UTC without a JS host) and scala-java-locales >= 1.6.0
+      // (`Locale.getDefault`, reached by every formatter/parser, no longer reads `window` without a JS host).
+      libraryDependencies ++= Seq(
+        "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTime,
+        "io.github.cquiroz" %%% "scala-java-locales" % scalaJavaLocales,
+      ),
       projectDependencies := projectDependencies.value.filterNot(m => embeddedInWall(m.name)),
       Compile / packageBin / mappings ++=
         (wasmApi / Compile / packageBin / mappings).value ++ (wallInert / Compile / packageBin / mappings).value,

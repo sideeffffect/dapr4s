@@ -7,7 +7,8 @@
 #   counterRaw   (test/wasm/counter-raw: bindings + glue, no wall)   counter -> 1, then 2
 #   counter      (test/wasm/counter: dapr4s's API)                    counter -> 1, then 2; error mapping:
 #                missing-store -> ComponentNotFoundException(State, "no-such-store"); stale-etag ->
-#                ETagMismatchException and the stale write does not land (counter -> 3)
+#                ETagMismatchException and the stale write does not land (counter -> 3); java-time -> java.time
+#                parsing/formatting/localized text/default zone (UTC) without a JS host
 #   importsProbe (test/wasm/imports-probe): the four imports with > 16 flat params, which only the
 #                patched linker (dapr4s-wasm-linker) lowers: it must import exactly them; `converse` to daprd's
 #                echo component must answer the very text the probe sent (the params reached the host intact);
@@ -74,6 +75,11 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   (cd "$repo/wasm" && sbt -batch ${SBT_ARGS:-} counterRaw/dapr4sComponent counter/dapr4sComponent importsProbe/dapr4sComponent)
 fi
 
+# counter's java-time route: java.time parsing, ISO/RFC formatting, localized text, the default zone, fixed zones.
+expected_java_time='"instant=2026-10-17T10:15:30Z;date=2026-10-18;zoned=2026-10-17T12:15:30+02:00;same=true;'\
+'iso=2026-10-17T05:15:30-05:00;rfc=Sat, 17 Oct 2026 12:15:30 +0200;day=Saturday;default=UTC;'\
+'utc=2026-10-17T10:15:30Z[UTC];duration=PT1H45M"'
+
 expected_imports=$'configuration-read: \ninvocation: \nstate: save\nstate-read: get\ntypes: '
 
 # First line of the reply. Not `| head -1`: once head exits, a dapr that still writes gets SIGPIPE, and
@@ -121,6 +127,9 @@ for v in ${E2E_ONLY:-counterRaw counter importsProbe}; do
     third="$(invoke counter)"
     [[ "$third" == 3 ]] || fail "$v: counter after the stale write returned '$third', expected 3"
     echo "$v: the stale write did not land (counter -> 3)"
+    jt="$(invoke java-time)"
+    echo "$v: java-time -> $jt"
+    [[ "$jt" == "$expected_java_time" ]] || fail "$v: java-time returned '$jt', expected '$expected_java_time'"
   fi
   stop_app
 done
