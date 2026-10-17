@@ -24,9 +24,7 @@
 //                                      COMPONENT's dependency only (the plugin adds it)
 //   dapr4s-wasm-scalalib-overlay       scalalibOverlay: the fork-patched stdlib .sjsir (no suffix:
 //                                      not Scala code, an IR overlay)
-//   dapr4s-wasm-linker_2.12            wasmLinker: scala-wasm's linker with dapr4s's params-via-memory
-//                                      patch (built by ../scripts/wasm/build-patched-linker.sh)
-//   sbt-dapr4s-wasm (sbt 1, 2.12)      sbtDapr4sWasm: the build logic (exclusions, linker, overlay,
+//   sbt-dapr4s-wasm (sbt 1, 2.12)      sbtDapr4sWasm: the build logic (exclusions, overlay,
 //                                      wkg wit fetch, dapr4sComponent)
 //
 // Never published: the link-time STUBS (witRootStub, componentRootStub; `Provided`, so they never
@@ -77,10 +75,6 @@ lazy val compilerFlags = Seq(
 // (96x "not compatible with the Component Model"); see the wiki article
 // wiki/scala-js/scala-wasm-component-spike.md, blocker 2.
 val scala2Wit = "2.13.18"
-
-// The Scala of the released scala-wasm 1.22.1-wasm.6 linker (its POM's scala-library).
-val scala2Linker = "2.12.21"
-val scalaWasmVersion = "1.22.1-wasm.6"
 
 // The scala-wasm sbt plugin this build runs on (project/plugins.sbt), which the published sbt-dapr4s-wasm plugin
 // depends on. Read from plugins.sbt so the two cannot drift.
@@ -154,8 +148,8 @@ lazy val published = Seq(
 // WIT dependencies come from OCI via wkg, never from git: `wit/world.wit` includes
 // `dapr-wasm-components:interfaces/app@0.7.5`, `wkg-config.toml` is the upstream file that maps the
 // namespace to ghcr.io, and `wkg wit fetch` writes wit/deps/ (git-ignored) + wkg.lock (committed,
-// pins the package digest). Runs before wit-bindgen-scala. (Same command as the plugin's
-// `dapr4sWasmWitFetch`, which component projects run before re-embedding the WIT world.)
+// pins the package digest). Runs before wit-bindgen-scala. Only this build needs the WIT (to
+// generate dapr4s-wasm-glue's bindings); apps and components do not.
 // -------------------------------------------------------------------------------------------------
 lazy val witFetch = taskKey[Unit]("Fetch WIT dependencies with `wkg wit fetch` (OCI)")
 ThisBuild / witFetch := Dapr4sWasm.witFetch(witDir, streams.value.log)
@@ -201,6 +195,52 @@ def withCore(p: Project): Project =
 // covering only what the Scala 3 wall uses. See src/wasm/glue/WitGlue.scala for why it must be 2.13.
 // -------------------------------------------------------------------------------------------------
 
+// WHAT: rewrites the generated bindings in place so that every `use`d WIT type ALIAS points at its
+// defining interface: in `invocation_callback`, `type Metadata = Array[wit.Tuple2[String, String]]`
+// becomes `type Metadata = dapr4swit.dapr_wasm_components.interfaces.types.Metadata`.
+// WHY: wit-bindgen-scala 0.1.0 renders a `use` of a type alias structurally (its `render_type` writes
+// named list/option/result/tuple typedefs out), so the `@WitAlias` of `types.metadata` is lost and the
+// linker's component-type has no `metadata` type export in the exported `*-callback` instances;
+// `wac compose` with the dapr-wasm-components inbound provider then fails ("instance is missing
+// expected list export `metadata`"). The scala-wasm compiler keeps an alias reached through a plain
+// type alias since https://github.com/scala-wasm/scala-wasm/pull/269 — but only in this form.
+// WHY SAFE: a rewrite replaces a type with an alias of the SAME structural type (both sides are
+// checked equal before rewriting), so no Scala type changes; only the alias the compiler sees does.
+// It applies only to an un-annotated `type X = R` whose name has exactly one `@WitAlias` definition
+// `type X = R` (same R) elsewhere in the bindings, i.e. a `use`. Idempotent: a rewritten line no longer
+// matches. Verified by scripts/wasm/e2e.sh, which composes the linker's component AS IS.
+// RETIRES when wit-bindgen-scala renders `use`d aliases as references to the defining interface.
+def useWitAliases(files: Seq[File]): Seq[File] = {
+  val TypeLine = """^  type (\w+) = (.+)$""".r
+  def objectOf(src: String): String = {
+    val pkg = """(?m)^package ([\w.]+)$""".r.findFirstMatchIn(src).map(_.group(1))
+    val obj = """(?m)^package object (\w+)""".r.findFirstMatchIn(src).map(_.group(1))
+    (pkg.toList ++ obj.toList).mkString(".")
+  }
+  // name -> (FQN of the defining package object, right-hand side), for every @WitAlias definition.
+  val defs = files.flatMap { f =>
+    val lines = IO.readLines(f)
+    lines.indices.collect {
+      case i if i > 0 && lines(i - 1).contains("@scala.scalajs.wit.annotation.WitAlias(") =>
+        lines(i) match { case TypeLine(n, rhs) => Some((n, (objectOf(IO.read(f)), rhs))); case _ => None }
+    }.flatten
+  }
+  val unique = defs.groupBy(_._1).collect { case (n, Seq((_, d))) => n -> d }
+  files.foreach { f =>
+    val lines = IO.readLines(f)
+    val rewritten = lines.indices.map { i =>
+      val annotated = i > 0 && lines(i - 1).contains("@scala.scalajs.wit.annotation.WitAlias(")
+      lines(i) match {
+        case TypeLine(n, rhs) if !annotated && unique.get(n).exists(_._2 == rhs) =>
+          s"  type $n = ${unique(n)._1}.$n"
+        case l => l
+      }
+    }
+    if (rewritten != lines) IO.writeLines(f, rewritten)
+  }
+  files
+}
+
 // The bindings of world `app` under `dapr4swit` (a dapr4s-specific root package, like `dapr4styped` for
 // the ScalablyTyped facades, so a consumer's own wit-bindgen output cannot collide with it) + the
 // hand-written import traits/objects and the 7 `*CallbackExports` traits. Scala 3 uses the binding types
@@ -214,10 +254,14 @@ lazy val witGlue = project
     scalaJSWitDirectory := witDir,
     scalaJSWitWorld := Some("app"),
     scalaJSWitPackage := Some("dapr4swit"),
-    // The plugin also runs the generator for Test; both must wait for wit/deps/ (sbt runs witFetch
-    // once per command).
-    Compile / scalaJSGenerateWitBindings := (Compile / scalaJSGenerateWitBindings).dependsOn(witFetch).value,
-    Test / scalaJSGenerateWitBindings := (Test / scalaJSGenerateWitBindings).dependsOn(witFetch).value,
+    // The generator must wait for wit/deps/ (sbt runs witFetch once per command). useWitAliases: see
+    // its definition. The plugin also runs the generator for Test, into the SAME directory (it writes to
+    // `Compile / sourceManaged` in both configurations): the two runs in parallel corrupted each other's
+    // files (and the rewrite's). This project has no tests and Test sees the main classes anyway, so Test
+    // generates nothing.
+    Compile / scalaJSGenerateWitBindings :=
+      useWitAliases((Compile / scalaJSGenerateWitBindings).dependsOn(witFetch).value),
+    Test / scalaJSGenerateWitBindings := Nil,
   )
 
 // Hand-written link-time stub of `dapr4s.internal.witglue.AppRoot` (src/wasm/glue-root-stub).
@@ -302,13 +346,24 @@ lazy val wallWasm = withCore(
       // plain Scala.js (this project keeps the default JS linker config) and run on Node: no WIT import is
       // reachable from them, so they need neither wasmtime nor a sidecar.
       Test / unmanagedSourceDirectories := Seq(repoDir / "test" / "wasm" / "unit"),
-      libraryDependencies += "org.scalameta" %%% "munit" % munitVersion % Test,
+      libraryDependencies ++= Seq(
+        "org.scalameta" %%% "munit" % munitVersion % Test,
+        // WHAT: the fork's JUnit runtime, added by hand. WHY: munit_sjs1 depends on the UPSTREAM
+        // org.scala-js:scalajs-junit-test-runtime_2.13 (it holds org.junit.ComparisonFailure, which munit's
+        // assertions throw), and the scala-wasm plugin now excludes every upstream core library
+        // (https://github.com/scala-wasm/scala-wasm/pull/271) but adds the fork's JUnit runtime only to
+        // projects with its JUnit plugin. Without it the test link fails ("Referring to non-existent class
+        // org.junit.ComparisonFailure"). WHY SAFE: the same artifact at the fork's own version, so the
+        // classes munit links against are exactly the upstream ones it was built for. RETIRES when the plugin
+        // swaps the excluded runtime for the fork's (or munit stops needing it).
+        ("io.github.scala-wasm" % "scalajs-junit-test-runtime_2.13" % scalaJSVersion % Test),
+      ),
     )
     .dependsOn(wasmApi, wallInert, witGlue, componentRootStub % Provided),
 )
 
 // -------------------------------------------------------------------------------------------------
-// The build-level artifacts: the stdlib overlay, the patched linker, the sbt plugin
+// The build-level artifacts: the stdlib overlay, the sbt plugin
 // -------------------------------------------------------------------------------------------------
 
 // The .sjsir of the classes scala-wasm's Scala 3 fork patched in library-js (scala-wasm/scala3@17a0deeb:
@@ -360,57 +415,6 @@ lazy val scalalibOverlay = project
     Compile / packageDoc / mappings := Seq(baseDirectory.value / "NOTICE" -> "NOTICE"),
   )
 
-// scala-wasm's 1.22.1-wasm.6 linker with dapr4s's params-via-memory patch, republished under dapr4s's
-// coordinates. ../scripts/wasm/build-patched-linker.sh builds it (from a clone of scala-wasm at the
-// release commit; idempotent) into target/scala-wasm-linker/; its dependencies are the RELEASED ir and
-// linker-interface (the patch touches only the linker module).
-lazy val patchedLinkerJars = taskKey[File]("Build the patched scala-wasm linker (build-patched-linker.sh)")
-lazy val wasmLinker = project
-  .in(file("linker"))
-  .settings(published)
-  .settings(
-    name := "dapr4s-wasm-linker",
-    scalaVersion := scala2Linker,
-    scalacOptions := Nil,
-    libraryDependencies ++= Seq(
-      "io.github.scala-wasm" %% "scalajs-linker-interface" % scalaWasmVersion,
-      "io.github.scala-wasm" %% "scalajs-ir" % scalaWasmVersion,
-      "com.google.javascript" % "closure-compiler" % "v20220202",
-    ),
-    patchedLinkerJars := {
-      val out = wasmDir / "target" / "scala-wasm-linker"
-      val log = streams.value.log
-      val exit = scala.sys.process
-        .Process(Seq((repoDir / "scripts" / "wasm" / "build-patched-linker.sh").getPath), repoDir, "OUT" -> out.getPath)
-        .!(scala.sys.process.ProcessLogger(log.info(_), log.info(_)))
-      if (exit != 0) sys.error(s"build-patched-linker.sh failed ($exit)")
-      out
-    },
-    Compile / packageBin / mappings := {
-      val out = patchedLinkerJars.value
-      val dir = target.value / "linker-classes"
-      IO.delete(dir)
-      IO.unzip(out / "scalajs-linker_2.12.jar", dir, (n: String) => !n.startsWith("META-INF/MANIFEST"))
-      val notice = target.value / "NOTICE"
-      IO.write(notice, IO.read(baseDirectory.value / "NOTICE-dapr4s") + IO.read(out / "NOTICE"))
-      (dir ** -DirectoryFilter).get.map(f => f -> IO.relativize(dir, f).get) ++ Seq(
-        out / "LICENSE" -> "META-INF/LICENSE",
-        notice -> "META-INF/NOTICE",
-      )
-    },
-    Compile / packageSrc / mappings := {
-      val out = patchedLinkerJars.value
-      val dir = target.value / "linker-sources"
-      IO.delete(dir)
-      IO.unzip(out / "scalajs-linker_2.12-sources.jar", dir, (n: String) => !n.startsWith("META-INF/MANIFEST"))
-      (dir ** -DirectoryFilter).get.map(f => f -> IO.relativize(dir, f).get) ++ Seq(
-        repoDir / "scripts" / "wasm" / "patches" / "scala-wasm-params-via-memory.patch" ->
-          "scala-wasm-params-via-memory.patch",
-      )
-    },
-    Compile / packageDoc / mappings := Seq(baseDirectory.value / "NOTICE-dapr4s" -> "NOTICE"),
-  )
-
 // The sbt-dapr4s-wasm plugin (an app adds it with addSbtPlugin; it brings the scala-wasm fork of
 // sbt-scalajs). Same sources as this build's meta-build (project/plugin-sources.sbt).
 lazy val sbtDapr4sWasm = project
@@ -428,10 +432,8 @@ lazy val sbtDapr4sWasm = project
     addSbtPlugin("io.github.scala-wasm" % "sbt-scalajs" % scalaWasmSbtPluginVersion),
   )
 
-// This build links with its OWN linker and overlay projects (the plugin, run from the meta-build, has
-// no published version to resolve them by), exactly the artifacts an app gets from the plugin.
-Global / dapr4sWasmLinkerClasspath :=
-  (wasmLinker / Compile / packageBin).value +: (wasmLinker / Compile / dependencyClasspath).value.files
+// This build links with its OWN overlay project (the plugin, run from the meta-build, has no published
+// version to resolve it by), exactly the artifact an app gets from the plugin.
 ThisBuild / dapr4sWasmScalalibOverlay := Seq((scalalibOverlay / Compile / packageBin).value)
 
 // -------------------------------------------------------------------------------------------------
@@ -453,7 +455,8 @@ lazy val counter = project
   .dependsOn(wallWasm, witExports)
 
 // Calls the four WIT imports with > 16 flat params (jobs.schedule, conversation.converse,
-// actors.register-reminder/-timer): proves the patched linker lowers them (scripts/wasm/e2e.sh).
+// actors.register-reminder/-timer): proves the linker lowers them through linear memory
+// (https://github.com/scala-wasm/scala-wasm/pull/268; scripts/wasm/e2e.sh).
 lazy val importsProbe = project
   .in(file("imports-probe"))
   .enablePlugins(Dapr4sWasmComponentPlugin)
@@ -473,7 +476,6 @@ lazy val root = project
       wallInert,
       wallWasm,
       scalalibOverlay,
-      wasmLinker,
       sbtDapr4sWasm,
       counterRaw,
       counter,

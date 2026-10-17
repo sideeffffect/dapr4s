@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds the dapr4s test component test/wasm/counter exactly like an external app does: a fresh sbt build
 # (wasm/target/consumer-check) with ONLY `addSbtPlugin(sbt-dapr4s-wasm)`, `enablePlugins(Dapr4sWasmComponentPlugin)`,
-# one libraryDependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the fixed-name ComponentRoot — no
-# in-build workaround. Everything comes from `cd wasm && sbt publishLocal` (run it first) and Maven Central. Then
+# one libraryDependency (`dapr4s-wasm`) and the fixed-name ComponentRoot — no WIT files, no wkg, no in-build
+# workaround. Everything comes from `cd wasm && sbt publishLocal` (run it first), Maven Central and, while
+# wasm/ pins an unreleased scala-wasm, that snapshot in ~/.ivy2/local (scripts/wasm/build-scala-wasm.sh). Then
 # runs the counter part of scripts/wasm/e2e.sh on the result.
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,10 +12,8 @@ version="${DAPR4S_WASM_VERSION:-$(cd "$repo/wasm" && sbt -batch -no-colors 'prin
 nightly="$(sed -n 's/^val scala3Nightly = "\(.*\)"$/\1/p' "$repo/build.sbt")"
 dir="$repo/wasm/target/consumer-check"
 rm -rf "$dir"
-mkdir -p "$dir/project" "$dir/wit" "$dir/src"
+mkdir -p "$dir/project" "$dir/src"
 cp "$repo/wasm/project/build.properties" "$dir/project/"
-cp "$repo/wasm/wit/world.wit" "$dir/wit/"
-cp "$repo/wasm/wkg-config.toml" "$repo/wasm/wkg.lock" "$dir/"
 cp "$repo"/test/wasm/counter/*.scala "$dir/src/"
 cat >"$dir/project/plugins.sbt" <<SBT
 addSbtPlugin("com.github.sideeffffect" % "sbt-dapr4s-wasm" % "$version")

@@ -41,8 +41,8 @@ fixes (a local patch was used for one of them).
 | 1 | The nightly's Scala.js stdlib (`org.scala-js:scalajs-scalalib_2.13:<nightly>`, built on Scala.js 1.20.2) uses JS: `BoxesRunTime.equals` → `(x === y)`, reachable from `Object.toString` | Overlay the `.sjsir` of the 4 files scala-wasm's Scala 3 fork patched (BoxesRunTime, Symbol, ArrayBuilder, Buffer) from `io.github.scala-wasm:scalajs-scalalib_2.13:3.8.3-RC1-wasm.4`, first on the linker classpath (first IR file per class wins) | A pure-Wasm-safe Scala 3 library-js, or a scala-wasm Scala 3 build per nightly |
 | 2 | Mainline Scala 3 has no WIT codegen. The nightly compiles the bindings (zero warnings under all dapr4s flags) but emits no WIT IR, and the linker writes an **empty output with `[success]`**. The fork compiler 3.8.3-RC1-wasm.4 is stale and rejects wit-bindgen-scala 0.1.0's output (96× "not compatible with the Component Model") | Bindings + `@WitExport` glue + import forwarders in **Scala 2.13 + plugin** projects. Scala 3 code depends on them | Scala 3 WIT support tracking scala-wasm (the scala-wasm docs: "No Scala 3" until upstreamed) |
 | 3 | A reactor has no `main`: module initializers run only behind a configured export, and `Reflect` is JS-backed | Link-time contract: the glue references a fixed-FQN object compiled against a `Provided` stub, and the app defines it. Missing = link error | — (design choice) |
-| 4 | Linker: export params via linear memory (> 16 flat params) is `???`. The import side is a no-op `TODO`. Hits `on-topic-event` (22), `on-timer` (17), `jobs.schedule` (24), `converse` (28), `register-reminder` (18), `register-timer` (21) | Local linker 1.22.1-wasm.6-spike1 with a ~20-line export-side patch (load the param tuple with `genLoadMemory`, free it in post-return) | Both sides in scala-wasm |
-| 5 | Linker synthesizes `component-type` from dealiased IR. Exported instances lack alias type exports (`metadata`), so `wac` fails with "instance is missing expected list export `metadata`". `withWitDirectory`/`withWitWorld` are ignored | Extract the core module, strip `component-type.*`, `wasm-tools component embed --encoding utf16 wit --world app`, `component new`. **utf16 is mandatory**: with utf8 `counter` arrives as `潣湵整r` | Linker should use the configured WIT world (or keep aliases) |
+| 4 | Linker: export params via linear memory (> 16 flat params) is `???`. The import side is a no-op `TODO`. Hits `on-topic-event` (22), `on-timer` (17), `jobs.schedule` (24), `converse` (28), `register-reminder` (18), `register-timer` (21) | Local linker 1.22.1-wasm.6-spike1 with a ~20-line export-side patch (load the param tuple with `genLoadMemory`, free it in post-return) | Both sides in scala-wasm (done: #268; retired in dapr4s 2026-10-16, see below) |
+| 5 | Linker synthesizes `component-type` from dealiased IR. Exported instances lack alias type exports (`metadata`), so `wac` fails with "instance is missing expected list export `metadata`". `withWitDirectory`/`withWitWorld` are ignored | Extract the core module, strip `component-type.*`, `wasm-tools component embed --encoding utf16 wit --world app`, `component new`. **utf16 is mandatory**: with utf8 `counter` arrives as `潣湵整r` | Linker should use the configured WIT world (or keep aliases) (done: #269 + an alias rewrite of the bindings; retired 2026-10-16, see below) |
 
 ## What dapr4s's shared code needs on a no-JS target
 
@@ -169,6 +169,44 @@ are in AGENTS.md "Wasm component layer rules".
     older build with a different version in the same target dir — delete old jars before building.
   - A published plugin can learn its own version from its jar manifest (`Implementation-Version`, written by sbt's
     default `packageOptions`), which `dapr4sWasmVersion` uses for the library dependencies.
+
+## Retiring workarounds on an unreleased scala-wasm (2026-10-16)
+
+dapr4s pinned `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` branch at `32cda138` (it has
+[#268](https://github.com/scala-wasm/scala-wasm/pull/268), params via memory) + a local merge of the open
+[#269](https://github.com/scala-wasm/scala-wasm/pull/269) (aliases) and
+[#271](https://github.com/scala-wasm/scala-wasm/pull/271) (exclusions), built by `scripts/wasm/build-scala-wasm.sh`.
+What was learned:
+
+- **Building it**: `version` comes from `ir/.../ScalaJSVersions.scala` (`current`); a pre-release like
+  `1.22.1-wasm.7-dapr4s-local` passes its consistency check (patch > 0). The modules a fork user needs:
+  `ir`/`linkerInterface`/`linker`/`testAdapter`/`sbtPlugin` `2_12`, `javalib`, `javalibintf`, and for 2.13
+  `library`, `scalalib`, `compiler`, `testInterface`, `testBridge`, `jUnitRuntime`, `jUnitPlugin`. Cold ~10 min.
+  Traps: `set every Compile / packageDoc / publishArtifact := false` turns off **every** `publishArtifact` (ivy files
+  published, no jars); and bash reads a script while it runs, so editing a running build script corrupts it.
+- **#268 retires the patched linker**: the imports probe (`jobs.schedule`, `converse`, `register-reminder`/`-timer`)
+  links and runs against daprd; the exports with > 16 params link.
+- **#269 alone does not retire the re-embed with wit-bindgen-scala 0.1.0 bindings**: the generator writes a `use`d
+  alias structurally (`type Metadata = Array[wit.Tuple2[String, String]]` in every `use`r), not as
+  `= types.Metadata`, so the linker's component still has no `metadata` export in the exported callbacks and `wac`
+  fails ("instance is missing expected list export `metadata`"). Rewriting those lines to `= types.Metadata` after
+  generation (dapr4s's `useWitAliases`) is enough: then `wasm-tools component wit` shows `use types.{metadata};` and
+  the linker's component composes AS IS. The linker already sets `string-encoding=utf16`, so the `--encoding utf16`
+  re-embed is not needed either. The linker still runs `wasm-tools component new` itself.
+- **#271** removes the upstream `org.scala-js` library/javalib from Scala 3 classpaths. Two leftovers: (a) the
+  fork's 2.13 scalalib (`io.github.scala-wasm:scalajs-scalalib_2.13:2.13.18+<v>`) still lands next to the nightly's
+  own scalalib (the PR says so), so dapr4s keeps that one exclusion; (b) it also excludes the upstream
+  `scalajs-junit-test-runtime_2.13` that munit_sjs1 needs and adds the fork's only with its JUnit plugin, so a munit
+  test link fails with "Referring to non-existent class org.junit.ComparisonFailure" until the fork's runtime is
+  added by hand.
+- **scala/scala3#27300** (the unpickler crash that forces an empty javadoc jar) merged 2026-10-15 07:43; the newest
+  nightly then was `3.10.2-RC1-bin-20261015-88be2f5` (built 04:20, 11 commits behind the fix), so the workaround stays.
+- **dapr-wasm-components v0.7.4** moved every OCI module to `ghcr.io/sideeffffect/dapr-wasm-components/<module>` and
+  removed the flat `dapr-wasm-components-<module>` packages; upstream `compose.sh` up to v0.7.4 still pulled the flat
+  names, so dapr4s pulled the providers itself. v0.7.5's `compose.sh` uses the new names: dapr4s calls it with
+  `--tag 0.7.5` again.
+- Several agents share one machine: the e2e uses fixed ports and the container name `dapr4s-wasm-redis`, so two
+  concurrent runs break each other ("Port 3587 is not available", "No such container").
 
 ## See Also
 

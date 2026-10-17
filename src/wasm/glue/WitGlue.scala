@@ -117,9 +117,9 @@ object StateImports extends StateImports {
 }
 
 /** The imports whose flattened params exceed MAX_FLAT_PARAMS = 16, so the canonical ABI passes them through linear
-  * memory — which the released scala-wasm linker does not implement (dapr4s-wasm-linker does). The wall does not use
-  * them yet; test/wasm/imports-probe calls each one to prove the patched linker lowers them (scripts/wasm/e2e.sh).
-  * `jobs.schedule` (`dapr-wasm-components:interfaces/jobs@0.7.5`).
+  * memory — which the scala-wasm linker implements since https://github.com/scala-wasm/scala-wasm/pull/268 (not in
+  * 1.22.1-wasm.6). The wall does not use them yet; test/wasm/imports-probe calls each one to prove the linker lowers
+  * them (scripts/wasm/e2e.sh). `jobs.schedule` (`dapr-wasm-components:interfaces/jobs@0.7.5`).
   */
 trait JobsImports {
   def schedule(name: String, job: jobs_read.Job, overwrite: Boolean): wit.Result[Unit, jobs.ScheduleError]
