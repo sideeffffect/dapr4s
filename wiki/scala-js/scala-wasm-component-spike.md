@@ -154,6 +154,11 @@ are in AGENTS.md "Wasm component layer rules".
     app does not host answer `PermissionDenied(<daprd's message>)`, the timer's naming `ProbeActor||probe-1`.
     Without a scheduler, 0.7.2's `schedule` still traps (daprd: 500 `DAPR_SCHEDULER_SCHEDULE_JOB` "context
     deadline exceeded", which the provider does not map).
+  - **0.7.3 – 0.7.5 (2026-10-15 – 2026-10-17)**: WIT unchanged again (only the package version moved),
+    `wkg-config.toml` unchanged. 0.7.4 moved every OCI module to `ghcr.io/sideeffffect/dapr-wasm-components/<module>`
+    (the flat `dapr-wasm-components-<module>` packages were deleted), but its `compose.sh` still pulled the flat
+    names; 0.7.5's `compose.sh` pulls the new ones, so `scripts/wasm/compose.sh` runs upstream `compose.sh` at the
+    v0.7.5 tag with `--tag 0.7.5` again (no own provider pull). dapr4s now targets 0.7.5.
   - **A scheduler next to a slim daprd**: `dapr init --slim` installs no placement/scheduler, and daprd dials the
     scheduler at `localhost:50006` by default. `docker run -p 50006:50006 daprio/dapr:<daprd version> ./scheduler
     --port 50006 --etcd-data-dir /tmp/etcd` is enough (ready when its log says "api is ready"); no mTLS needed.
@@ -197,8 +202,9 @@ What was learned:
 - **scala/scala3#27300** (the unpickler crash that forces an empty javadoc jar) merged 2026-10-15 07:43; the newest
   nightly then was `3.10.2-RC1-bin-20261015-88be2f5` (built 04:20, 11 commits behind the fix), so the workaround stays.
 - **dapr-wasm-components v0.7.4** moved every OCI module to `ghcr.io/sideeffffect/dapr-wasm-components/<module>` and
-  removed the flat `dapr-wasm-components-<module>` packages; upstream `compose.sh` (up to `main`) still pulls the flat
-  names. dapr4s pulls the providers itself (new names) and passes `--outbound`/`--inbound` paths.
+  removed the flat `dapr-wasm-components-<module>` packages; upstream `compose.sh` up to v0.7.4 still pulled the flat
+  names, so dapr4s pulled the providers itself. v0.7.5's `compose.sh` uses the new names: dapr4s calls it with
+  `--tag 0.7.5` again.
 - Several agents share one machine: the e2e uses fixed ports and the container name `dapr4s-wasm-redis`, so two
   concurrent runs break each other ("Port 3587 is not available", "No such container").
 

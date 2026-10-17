@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-10-17] update | dapr-wasm-components 0.7.5
+- Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
+
 ## [2026-10-16] update | wasm workarounds retired on a local scala-wasm build (#268/#269/#271)
 - Updated: scala-js/scala-wasm-component-spike.md — new section: building scala-wasm locally; #268 retires the patched linker; #269 needs bindings that reference the alias (useWitAliases rewrite) to retire the re-embed; #271 leftovers (fork 2.13 scalalib, JUnit runtime); scala3#27300 not in a nightly yet; dapr-wasm-components v0.7.4 OCI rename
 

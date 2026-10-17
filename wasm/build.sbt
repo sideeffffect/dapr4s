@@ -1,7 +1,7 @@
 // =================================================================================================
 // dapr4s `wasm` platform — prototype (docs/WASM-COMPONENTS-PROPOSAL.md §6)
 //
-// A dapr4s app built as a WASI component for dapr-wasm-components 0.7.2 with the scala-wasm fork of
+// A dapr4s app built as a WASI component for dapr-wasm-components 0.7.5 with the scala-wasm fork of
 // Scala.js (`ModuleKind.WasmComponent`).
 //
 // WHY a separate (nested) sbt build and not projects in ../build.sbt: the scala-wasm sbt plugin
@@ -146,7 +146,7 @@ lazy val published = Seq(
 
 // -------------------------------------------------------------------------------------------------
 // WIT dependencies come from OCI via wkg, never from git: `wit/world.wit` includes
-// `dapr-wasm-components:interfaces/app@0.7.2`, `wkg-config.toml` is the upstream file that maps the
+// `dapr-wasm-components:interfaces/app@0.7.5`, `wkg-config.toml` is the upstream file that maps the
 // namespace to ghcr.io, and `wkg wit fetch` writes wit/deps/ (git-ignored) + wkg.lock (committed,
 // pins the package digest). Runs before wit-bindgen-scala. Only this build needs the WIT (to
 // generate dapr4s-wasm-glue's bindings); apps and components do not.

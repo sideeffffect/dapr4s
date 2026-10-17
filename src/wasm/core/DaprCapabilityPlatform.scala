@@ -2,7 +2,7 @@ package dapr4s
 
 /** Wasm-component half of the [[DaprCapability]] surface — empty for now (Phase 0 prototype).
   *
-  * The WIT world `dapr-wasm-components:interfaces/app@0.7.2` does have jobs and conversation, so the finished `wasm`
+  * The WIT world `dapr-wasm-components:interfaces/app@0.7.5` does have jobs and conversation, so the finished `wasm`
   * platform will contribute them here (docs/WASM-COMPONENTS-PROPOSAL.md §2c). The Phase-0 prototype wires only state
   * (`dapr4s.internal.WasmStateCapability`), and an empty trait keeps `DaprCapability.jobs` a compile-time error on this
   * platform until the wall implements it — never a runtime `UnsupportedOperationException` (AGENTS.md "Platform-

@@ -11,7 +11,7 @@ import dapr4swit.exports.dapr_wasm_components.interfaces.invocation_callback
 /** Calls each WIT import whose flattened params exceed MAX_FLAT_PARAMS = 16 (params passed through linear memory),
   * which the scala-wasm linker lowers since https://github.com/scala-wasm/scala-wasm/pull/268 (the 1.22.1-wasm.6
   * release could not). Linking this component at all proves the import side is emitted; scripts/wasm/e2e.sh also checks
-  * that the component imports exactly these four, and runs them against a real daprd (dapr-wasm-components 0.7.2
+  * that the component imports exactly these four, and runs them against a real daprd (dapr-wasm-components 0.7.5
   * providers): `converse` goes to daprd's `conversation.echo` component, so the answer must be the very text the probe
   * sent, which proves the params (passed through linear memory) reach the host intact; `register-timer` on a type this
   * app does not host must be daprd's typed refusal naming the actor the probe sent; `schedule` / `register-reminder`
