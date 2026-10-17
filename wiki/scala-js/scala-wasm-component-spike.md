@@ -57,15 +57,35 @@ fixes (a local patch was used for one of them).
   (counter's `java-time` route): `Instant`/`LocalDate`/`ZonedDateTime` `parse`/`toString`, `ISO_OFFSET_DATE_TIME`,
   `RFC_1123_DATE_TIME`, `DayOfWeek.getDisplayName(FULL, ENGLISH)` = `Saturday`, `ZoneId.systemDefault()` = `UTC`,
   `ZoneId.of("UTC")`, `ZoneOffset`s, `Duration.parse`.
+- `DateTimeFormatter.ofPattern` and region zones link and run since 2026-10-17, with an UNRELEASED scala-java-time
+  (`scripts/wasm/build-scala-java-time.sh`, `2.8.1-dapr4s-local`, used by counter + the consumer check only;
+  `dapr4s-wasm`'s POM stays on 2.8.0 because Central must have it). Counter's answer under wasmtime + daprd adds
+  `prague=2026-10-17T12:15:30+02:00[Europe/Prague];winter=2026-12-24T18:30+01:00[Europe/Prague];newyork=-04:00;`
+  `pattern=17.10.2026 12:15 Europe/Prague;parsed=2026-12-24T18:30+01:00[Europe/Prague];text=Saturday 17 October 2026`
+  (same as the JVM). The two root causes, each proven by a failing link with the released 2.8.0:
+  - `ofPattern`: any pattern can contain `z`, so the linker keeps `ZoneTextPrinterParser`. Its print/parse call
+    `TimeZone.getTimeZone`, and the JS `TimeZone.getTimeZone(zoneId)` computed the raw offset as
+    `rules.getStandardOffset(Instant.now)` → `Clock$SystemClock` → `System.currentTimeMillis` → `global:Date["now"]`.
+    Once `ofPattern` instantiated the parser, even `Instant.parse` dispatches into it. Fix:
+    [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618), a private `SimpleTimeZone`
+    subclass with a `lazy val` raw offset (rules still looked up eagerly). Nothing calls `getRawOffset` on the
+    formatter path, so `Instant.now` is dropped.
+  - Region zones: `TzdbZoneRulesProvider` has `@EnableReflectiveInstantiation`, and its registration lives in the
+    class's static initializer. The linker treats every static initializer as an entry point
+    (`Analyzer.reachEntryPoints`, "called from core module analyzer"), so merely having the tzdb jar on the classpath
+    links it. Scala 3 <= 3.10.0 emits the deprecated `Reflect.registerInstantiatableClass(fqcn, cls, js.Array[js.Tuple2[js.Array[Class[_]], js.Function]])`
+    (JS arrays, JS closures, `toJSVarArgs`). Scala.js 1.20 added the Scala-typed `registerInstantiatableClassV2`
+    (Scala arrays, `Array[Any] => Any`); the Scala 2 plugin emits it, which is why the 2.13 probe of #617 linked.
+    Scala 3 emits V2 since [scala/scala3@3bb676972](https://github.com/scala/scala3/commit/3bb676972) (2026-09-07,
+    a forward port of scala-js/scala-js@e754a55; on `release-3.10.1`, NOT in 3.10.0). Nothing in scala-java-time
+    can work around it (no source-level way to write a static initializer), so the fix is the compiler: the script
+    compiles only the tzdb module with nightly `3.10.2-RC1-bin-20261017-ae374e9-NIGHTLY` (core stays on 3.9.0) and
+    rewrites the nightly scala3-library version in the published POM/ivy.xml back to 3.9.0 (else it evicts every
+    app's scala3-library). `Reflect.lookupInstantiatableClass` (the core side of discovery) is a Scala `HashMap`
+    lookup and links fine.
 - Still does not link (scala-wasm 1.22.1-wasm.6; its `scala-wasm` branch is the same on 2026-10-17):
   - The wall-clock: `Instant.now`/`Clock.systemUTC`/`currentTimeMillis` → javalib `System.currentTimeMillis` =
-    `js.Date.now()`. Trap: `DateTimeFormatter.ofPattern` reaches it too. Any pattern can contain `z`, so the linker
-    keeps `ZoneTextPrinterParser`, whose print/parse call `TimeZone.getTimeZone` → `TimeZone` computes the standard
-    offset at `Instant.now`. Use the predefined formatters.
-  - Region zones via `scala-java-time-tzdb` 2.8.0, even with its Wasm-portable data
-    ([#617](https://github.com/cquiroz/scala-java-time/pull/617)): `TzdbZoneRulesProvider`'s static initializer
-    (the `@EnableReflectiveInstantiation` registration the Scala 3 Scala.js backend emits) calls
-    `Reflect.registerInstantiatableClass(name, class, js.Array[...])` → `js.Array`/`toJSVarArgs`.
+    `js.Date.now()`, and `TimeZone.getRawOffset` (reads it). Out of reach for dapr4s (scala-wasm javalib).
   - `println` (`console`), `UUID.randomUUID` (no `SecureRandom`).
 - Whole-program trap: once anything instantiates `js.WrappedDictionary`, virtual stdlib calls such as
   `List.groupBy` → `newSpecificBuilder` become JS-tainted everywhere (hit in `DaprAppValidation`).

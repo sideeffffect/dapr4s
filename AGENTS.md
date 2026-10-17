@@ -464,18 +464,30 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   `toString`/`parse` of the java.time types, the predefined `DateTimeFormatter`s (`ISO_*`, `RFC_1123_DATE_TIME`),
   localized text (`getDisplayName(TextStyle, Locale)`), `ZoneOffset`s, `ZoneId.of("UTC")`, `ZoneId.systemDefault()`
   (= UTC), `Duration`.
+- **`DateTimeFormatter.ofPattern` and region zones** (`ZoneId.of("Europe/Prague")`, from `scala-java-time-tzdb`)
+  link AND run too, but only with an UNRELEASED scala-java-time: `scripts/wasm/build-scala-java-time.sh` builds it
+  from source and publishLocal's it as `2.8.1-dapr4s-local` (`scalaJavaTimeWasm` in `wasm/build.sbt`; CI runs the
+  script with a JDK 17 and caches `~/.ivy2/local/io.github.cquiroz` by its hash). Only the test components
+  (`counter`, the consumer check) depend on it; `dapr4s-wasm`'s POM stays on the released 2.8.0, because Central
+  must have every version it names. An app gets both by depending on that scala-java-time (+ `-tzdb`). The two
+  fixes:
+  - `ofPattern` (any pattern) kept zone-text printing reachable → `TimeZone.getTimeZone` → `Instant.now`.
+    https://github.com/cquiroz/scala-java-time/pull/618 computes the raw offset lazily.
+  - tzdb's provider has `@EnableReflectiveInstantiation`. Its registration is a static initializer (always
+    linked), and Scala 3 <= 3.10.0 emits it with the JS-backed `Reflect.registerInstantiatableClass(js.Array)`.
+    Scala 3 emits the Scala-typed `registerInstantiatableClassV2` since scala/scala3@3bb676972 (in 3.10.1, not
+    released yet), so the script compiles the tzdb module with a Scala 3 nightly.
+  Retires with a scala-java-time release that has #618 and is built with Scala 3 >= 3.10.1: pin it in
+  `dapr4s-wasm`, drop `scalaJavaTimeWasm`, the script and its CI steps.
 - **Shared code on the `wasm` path** must still avoid, because they fail to link:
   - the wall-clock: `Instant.now`, `Clock.system*`, `System.currentTimeMillis` (scala-wasm's javalib calls
-    `js.Date.now`), and everything that reaches it: `DateTimeFormatter.ofPattern`/`appendPattern` (any pattern
-    makes zone-text printing reachable → `TimeZone.getTimeZone` → `Instant.now`) and `java.util.TimeZone`.
+    `js.Date.now`), and `TimeZone.getRawOffset` (it reads it). With the released scala-java-time 2.8.0 also
+    `DateTimeFormatter.ofPattern`/`appendPattern` and region zones (see above).
     Retires when scala-wasm's javalib reads the clock through WASI (`wasi:clocks`).
-  - region zones (`ZoneId.of("Europe/Prague")`) via `scala-java-time-tzdb`: its provider's static initializer
-    (`@EnableReflectiveInstantiation`, emitted by the Scala 3 Scala.js backend) registers through
-    `scala.scalajs.reflect.Reflect`, which builds `js.Array`s. Without tzdb, region ids throw at run time.
-    Retires when scala-wasm's `Reflect` registration is Wasm-only clean.
   - `println` (`console`) and `UUID.randomUUID` (no `SecureRandom`): they reach JS.
 - Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr
   CLI + daprd from `dapr init --slim`, `wasmtime` and `wac` for the e2e):
+  - `scripts/wasm/build-scala-java-time.sh` first (the unreleased scala-java-time; needs a JDK 17, idempotent)
   - `cd wasm && sbt wallWasm/test` (wall unit tests, plain Scala.js on Node; add
     `-Ddapr4s.wasm.core=source` for the source mode)
   - `cd wasm && sbt counter/dapr4sComponent` → `wasm/target/components/counter.wasm`

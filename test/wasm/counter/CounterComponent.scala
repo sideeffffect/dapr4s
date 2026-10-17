@@ -54,13 +54,15 @@ object CounterComponent extends DaprComponent:
       case None    => "unexpected success"
 
   /** java.time on a Wasm component (scripts/wasm/e2e.sh checks the answer): ISO and pattern formatting with localized
-    * text, parsing, the default zone (UTC without a JS host) and fixed-offset zones. Not here because they do not link
-    * yet (AGENTS.md "Wasm component layer rules"): the wall-clock (`Instant.now`, `Clock`) and region zones from
-    * scala-java-time-tzdb.
+    * text, parsing, the default zone (UTC without a JS host), fixed-offset zones and region zones (with their summer
+    * and winter time) from scala-java-time-tzdb. Not here because it does not link yet (AGENTS.md "Wasm component layer
+    * rules"): the wall-clock (`Instant.now`, `Clock`).
     */
   def javaTime(ignored: Unit): String =
     val instant = Instant.parse("2026-10-17T10:15:30Z")
     val local = ZonedDateTime.parse("2026-10-17T12:15:30+02:00")
+    val prague = ZoneId.of("Europe/Prague")
+    val pattern = DateTimeFormatter.ofPattern("dd.MM.uuuu HH:mm VV", Locale.ENGLISH)
     List(
       s"instant=$instant",
       s"date=${LocalDate.parse("2026-10-17").plusDays(1)}",
@@ -72,6 +74,12 @@ object CounterComponent extends DaprComponent:
       s"default=${ZoneId.systemDefault()}",
       s"utc=${ZonedDateTime.ofInstant(instant, ZoneId.of("UTC"))}",
       s"duration=${Duration.parse("PT1H30M").plusMinutes(15)}",
+      s"prague=${instant.atZone(prague)}",
+      s"winter=${Instant.parse("2026-12-24T17:30:00Z").atZone(prague)}",
+      s"newyork=${instant.atZone(ZoneId.of("America/New_York")).getOffset}",
+      s"pattern=${pattern.format(instant.atZone(prague))}",
+      s"parsed=${ZonedDateTime.parse("24.12.2026 18:30 Europe/Prague", pattern)}",
+      s"text=${DateTimeFormatter.ofPattern("EEEE d MMMM uuuu", Locale.ENGLISH).format(local)}",
     ).mkString(";")
 
   override def app(using state: StateCapability): DaprApp =

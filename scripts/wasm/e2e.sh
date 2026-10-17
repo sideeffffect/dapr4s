@@ -75,10 +75,13 @@ if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
   (cd "$repo/wasm" && sbt -batch ${SBT_ARGS:-} counterRaw/dapr4sComponent counter/dapr4sComponent importsProbe/dapr4sComponent)
 fi
 
-# counter's java-time route: java.time parsing, ISO/RFC formatting, localized text, the default zone, fixed zones.
+# counter's java-time route: java.time parsing, ISO/RFC/pattern formatting, localized text, the default zone,
+# fixed zones, region zones (scala-java-time-tzdb) in summer and winter time, pattern parsing with a region zone.
 expected_java_time='"instant=2026-10-17T10:15:30Z;date=2026-10-18;zoned=2026-10-17T12:15:30+02:00;same=true;'\
 'iso=2026-10-17T05:15:30-05:00;rfc=Sat, 17 Oct 2026 12:15:30 +0200;day=Saturday;default=UTC;'\
-'utc=2026-10-17T10:15:30Z[UTC];duration=PT1H45M"'
+'utc=2026-10-17T10:15:30Z[UTC];duration=PT1H45M;prague=2026-10-17T12:15:30+02:00[Europe/Prague];'\
+'winter=2026-12-24T18:30+01:00[Europe/Prague];newyork=-04:00;pattern=17.10.2026 12:15 Europe/Prague;'\
+'parsed=2026-12-24T18:30+01:00[Europe/Prague];text=Saturday 17 October 2026"'
 
 expected_imports=$'configuration-read: \ninvocation: \nstate: save\nstate-read: get\ntypes: '
 

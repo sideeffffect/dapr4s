@@ -59,6 +59,15 @@ def rootBuildVal(name: String): String = {
 }
 val scala3Nightly = rootBuildVal("scala3Nightly")
 val scalaJavaTime = rootBuildVal("scalaJavaTime")
+// An UNRELEASED scala-java-time, built from source and publishLocal'ed by scripts/wasm/build-scala-java-time.sh
+// (run it first; CI does). WHAT it adds over the release `scalaJavaTime`: `DateTimeFormatter.ofPattern` links
+// without a JS host (https://github.com/cquiroz/scala-java-time/pull/618), and `scala-java-time-tzdb` (region
+// zones) links too: it is built with a Scala 3 that emits the Scala-typed reflective registration.
+// WHY only the test components use it (an app opts in by depending on a newer scala-java-time), not
+// dapr4s-wasm: dapr4s-wasm is published to Central, and its POM must name a version that Central has.
+// RETIRES with a scala-java-time release that has both: then dapr4s-wasm pins that release, and this val, the
+// script and its CI steps go (see the script's header).
+val scalaJavaTimeWasm = "2.8.1-dapr4s-local"
 val munitVersion = rootBuildVal("munit")
 // Only the wasm path needs it explicitly (see wallWasm); on JS, scala-java-time's own dependency suffices.
 val scalaJavaLocales = "1.6.0"
@@ -299,6 +308,7 @@ lazy val wallWasm = withCore(
       // versions a Wasm component needs, in both core modes and for every app (they are in dapr4s-wasm's POM):
       // scala-java-time >= 2.8.0 (the default zone is UTC without a JS host) and scala-java-locales >= 1.6.0
       // (`Locale.getDefault`, reached by every formatter/parser, no longer reads `window` without a JS host).
+      // `ofPattern` and region zones need a newer scala-java-time, not released yet: see `scalaJavaTimeWasm`.
       libraryDependencies ++= Seq(
         "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTime,
         "io.github.cquiroz" %%% "scala-java-locales" % scalaJavaLocales,
@@ -460,6 +470,14 @@ lazy val counter = project
   .enablePlugins(Dapr4sWasmComponentPlugin)
   .settings(noPublish, nightly, dapr4sWasmAddGlueExports := false)
   .settings(sourcesIn(repoDir / "test" / "wasm" / "counter"))
+  // `DateTimeFormatter.ofPattern` and region zones (`ZoneId.of("Europe/Prague")`, the tz database is the app's
+  // choice, as on JS): the unreleased scala-java-time (see `scalaJavaTimeWasm`). It evicts dapr4s-wasm's 2.8.0.
+  .settings(
+    libraryDependencies ++= Seq(
+      "io.github.cquiroz" %%% "scala-java-time" % scalaJavaTimeWasm,
+      "io.github.cquiroz" %%% "scala-java-time-tzdb" % scalaJavaTimeWasm,
+    ),
+  )
   .dependsOn(wallWasm, witExports)
 
 // Calls the four WIT imports with > 16 flat params (jobs.schedule, conversation.converse,
