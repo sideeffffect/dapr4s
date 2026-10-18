@@ -194,3 +194,6 @@
 
 ## [2026-10-16] update | dapr4s Mill build on unreleased upstream
 - Updated: scala-js/dapr4s-mill-build.md — locally built Mill (dist.installLocal + launcher cache), retired workarounds, TestScalaJSModule gotcha, 2.13 patched linker, dapr-wasm-components OCI rename
+
+## [2026-10-18] update | mill-scalablytyped #50 merged
+- Updated: scala-js/dapr4s-mill-build.md — the snapshot is now upstream main (with #50) + #51 + #52, version 0.4.1-9-393207

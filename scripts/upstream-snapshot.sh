@@ -7,7 +7,7 @@
 #                                        https://github.com/com-lihaoyi/mill/pull/7786 (Scala.js test linking on
 #                                        Scala 3.8+). Installed as the launcher's cached download, so `./mill`
 #                                        (header `mill-version: 1.3.0-18-28026a-jvm`) finds it and never downloads.
-#   mill-scalablytyped  0.4.1-7-ba56bf   https://github.com/lolgab/mill-scalablytyped/pull/50 + /pull/51 + /pull/52
+#   mill-scalablytyped  0.4.1-9-393207   main (has https://github.com/lolgab/mill-scalablytyped/pull/50) + /pull/51 + /pull/52
 #                                        merged (branch dapr4s-snapshot of github.com/sideeffffect/mill-scalablytyped).
 #
 # RETIRES when Mill and mill-scalablytyped release these changes: pin the releases in build.mill and delete this
@@ -17,8 +17,8 @@ set -euo pipefail
 
 MILL_SHA=28026a334cb0111e2c1ff67b7934153dd6b625d2
 MILL_VERSION=1.3.0-18-28026a
-MST_SHA=ba56bf068bd5039a220f9b76841631d34684d300
-MST_VERSION=0.4.1-7-ba56bf
+MST_SHA=39320754cd5130df973fb1a5b77f83a6ca0cf105
+MST_VERSION=0.4.1-9-393207
 
 work="${XDG_CACHE_HOME:-$HOME/.cache}/dapr4s/upstream-snapshot"
 ivy="$HOME/.ivy2/local"

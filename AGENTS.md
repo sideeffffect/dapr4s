@@ -31,8 +31,8 @@ All three must stay in sync with the code at all times.
   `./mill` is the bootstrap script). It is Mill main + [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783)
   (`scalaJSOrganization`, `ModuleKind.WasmComponent`; it contains the merged
   [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)), and the meta-build loads an
-  unreleased mill-scalablytyped `0.4.1-7-ba56bf`
-  ([lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50) +
+  unreleased mill-scalablytyped `0.4.1-9-393207`
+  (`main`, which has [lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50) merged, +
   [#51](https://github.com/lolgab/mill-scalablytyped/pull/51) +
   [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)). **Run `scripts/upstream-snapshot.sh`
   once before the first `./mill`**: it builds both from pinned commits and installs them locally

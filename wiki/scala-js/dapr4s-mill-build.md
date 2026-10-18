@@ -99,8 +99,8 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
 ## On unreleased upstream (2026-10-16, branch build/mill-upstream-snapshot)
 
 The build runs on Mill `1.3.0-18-28026a` (main + [mill#7783](https://github.com/com-lihaoyi/mill/pull/7783), which
-already contains [mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)) and mill-scalablytyped `0.4.1-7-ba56bf`
-([#50](https://github.com/lolgab/mill-scalablytyped/pull/50) + [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
+already contains [mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)) and mill-scalablytyped `0.4.1-9-393207`
+(`main`, which has [#50](https://github.com/lolgab/mill-scalablytyped/pull/50) merged, + [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
 + [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), both built by `scripts/upstream-snapshot.sh`. Facts:
 
 - **Using a locally built Mill**: `CI=true ./mill dist.installLocal --binFile <file>` publishes ~110 modules to

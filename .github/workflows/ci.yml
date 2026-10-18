@@ -19,7 +19,7 @@ jobs:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
     # Mill (main + https://github.com/com-lihaoyi/mill/pull/7783) and mill-scalablytyped
-    # (https://github.com/lolgab/mill-scalablytyped/pull/50, /51, /52) are unreleased: build them from the
+    # (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50, + /51 + /52) are unreleased: build them from the
     # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
     - name: Cache the upstream Mill + mill-scalablytyped snapshots
       uses: actions/cache@v4
@@ -74,7 +74,7 @@ jobs:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
     # Mill (main + https://github.com/com-lihaoyi/mill/pull/7783) and mill-scalablytyped
-    # (https://github.com/lolgab/mill-scalablytyped/pull/50, /51, /52) are unreleased: build them from the
+    # (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50, + /51 + /52) are unreleased: build them from the
     # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
     - name: Cache the upstream Mill + mill-scalablytyped snapshots
       uses: actions/cache@v4
@@ -225,7 +225,7 @@ jobs:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
     # Mill (main + https://github.com/com-lihaoyi/mill/pull/7783) and mill-scalablytyped
-    # (https://github.com/lolgab/mill-scalablytyped/pull/50, /51, /52) are unreleased: build them from the
+    # (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50, + /51 + /52) are unreleased: build them from the
     # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
     - name: Cache the upstream Mill + mill-scalablytyped snapshots
       uses: actions/cache@v4

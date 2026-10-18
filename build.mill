@@ -1,7 +1,7 @@
 //| mill-version: 1.3.0-18-28026a-jvm
 //| mill-jvm-version: zulu:25.0.3
 //| mill-jvm-opts: ["-Xss8m", "-Xmx6g"]
-//| mvnDeps: ["com.github.lolgab::mill-scalablytyped::0.4.1-7-ba56bf"]
+//| mvnDeps: ["com.github.lolgab::mill-scalablytyped::0.4.1-9-393207"]
 package build
 
 // THE MILL ABOVE IS UNRELEASED: com-lihaoyi/mill main + https://github.com/com-lihaoyi/mill/pull/7783, built from a
