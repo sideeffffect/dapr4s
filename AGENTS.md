@@ -26,9 +26,9 @@ All three must stay in sync with the code at all times.
   from there). Always use the newest available nightly to get the latest capture-checking and
   safe-mode fixes. Nightlies resolve from the scala-lang nightly repository (a build-only resolver,
   never written into the POM).
-- **Build tool**: **Mill 1.3.0-18-28026a**, an UNRELEASED Mill (`build.mill`, `buildsupport.mill`,
+- **Build tool**: **Mill 1.3.0-20-56dcdf**, an UNRELEASED Mill (`build.mill`, `buildsupport.mill`,
   `wasm/package.mill`, and the meta-build sources `mill-build/src/` = the `mill-dapr4s-wasm` plugin;
-  `./mill` is the bootstrap script). It is Mill main + [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783)
+  `./mill` is the bootstrap script). It is Mill main at the merge of [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783)
   (`scalaJSOrganization`, `ModuleKind.WasmComponent`; it contains the merged
   [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)), and the meta-build loads an
   unreleased mill-scalablytyped `0.4.1-9-393207`
@@ -418,7 +418,7 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   | `dapr4s-wasm-glue-exports_sjs1_2.13` | `wasm.glueExports` | the hand-written `@WitExport` trampolines (a COMPONENT's dependency only; the plugin adds it) |
   | `dapr4s-wasm-scalalib-overlay` | `wasm.scalalibOverlay` | the fork-patched stdlib `.sjsir` (unmodified, from `io.github.scala-wasm:scalajs-scalalib_2.13:3.8.3-RC1-wasm.4`) + LICENSE/NOTICE attribution |
   | `dapr4s-wasm-linker_2.12`, `dapr4s-wasm-linker_2.13` | `wasm.linker[2.12.21]`, `wasm.linker[2.13.18]` | scala-wasm's 1.22.1-wasm.6 linker with our patch (`scripts/wasm/patches/scala-wasm-params-via-memory.patch`): the patched sources compiled by Mill, the released jar's resources, LICENSE/NOTICE, patched sources in the sources jar; depends on the released ir/linker-interface. 2.12 for sbt-dapr4s-wasm (sbt loads a 2.12 linker), 2.13 for Mill's Scala.js worker (mill-dapr4s-wasm) |
-  | `mill-dapr4s-wasm` (`_mill1_3`) | `wasm.millPlugin` | the build logic for Mill consumers (below): the sources of `mill-build/src`, compiled with the Scala and against the `mill-libs` of the Mill running the build (the unreleased 1.3.0-18-28026a: do not release it before Mill releases mill#7783), + a `dapr4s/millwasm/version` resource (the version of the wasm artifacts it resolves) |
+  | `mill-dapr4s-wasm` (`_mill1_3`) | `wasm.millPlugin` | the build logic for Mill consumers (below): the sources of `mill-build/src`, compiled with the Scala and against the `mill-libs` of the Mill running the build (the unreleased 1.3.0-20-56dcdf: do not release it before Mill releases mill#7783), + a `dapr4s/millwasm/version` resource (the version of the wasm artifacts it resolves) |
   | `sbt-dapr4s-wasm` (`_2.12_1.0`) | `wasm.sbtPlugin` | the build logic for sbt consumers (below), the twin of `mill-dapr4s-wasm`. Mill builds it as a plain sbt-1 plugin jar: sbt `provided`, a generated `sbt/sbt.autoplugins`, `Implementation-Version` in the manifest, sbt's POM properties |
 - **Core: published or source** (`wasm.lib` is a cross module). `wasm.lib[release]` (the default for
   publishing and `scripts/wasm/e2e.sh`): the wall depends on the PUBLISHED `dapr4s_sjs1_3`
@@ -476,8 +476,8 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   scala-wasm#269 (the linker keeps WIT aliases): use its component as is; exclusions → scala-wasm#271 (the
   fork's core libraries evict mainline's); overlay → when the nightly's library-js is Wasm-clean, drop
   `dapr4s-wasm-scalalib-overlay`; the 2.13 glue → when Scala 3 gets WIT codegen; Mill only:
-  `WitBindgenModule` → mill#7784, running/testing components → mill#7785 (mill#7783 is already used,
-  from the unreleased Mill).
+  `WitBindgenModule` → mill#7784, running/testing components → mill#7785 (mill#7783 is merged and used
+  from an unreleased Mill build).
 - **The patched linker** (`scripts/wasm/prepare-patched-linker.sh`, run by `wasm.linker[*].patchedSources`:
   `git archive` of the release commit's linker sources from a cached clone in
   `~/.cache/dapr4s/scala-wasm-src` + the patch; Mill compiles them, no scala-wasm sbt build): the

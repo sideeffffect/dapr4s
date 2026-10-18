@@ -2,11 +2,11 @@
 # Builds the UNRELEASED upstream Mill and mill-scalablytyped that this build uses, from pinned commits, and
 # publishes them locally (~/.ivy2/local) unless they are there already:
 #
-#   Mill                1.3.0-18-28026a  com-lihaoyi/mill main + https://github.com/com-lihaoyi/mill/pull/7783
+#   Mill                1.3.0-20-56dcdf  com-lihaoyi/mill main at the merge of https://github.com/com-lihaoyi/mill/pull/7783
 #                                        (scalaJSOrganization, ModuleKind.WasmComponent); it already contains
 #                                        https://github.com/com-lihaoyi/mill/pull/7786 (Scala.js test linking on
 #                                        Scala 3.8+). Installed as the launcher's cached download, so `./mill`
-#                                        (header `mill-version: 1.3.0-18-28026a-jvm`) finds it and never downloads.
+#                                        (header `mill-version: 1.3.0-20-56dcdf-jvm`) finds it and never downloads.
 #   mill-scalablytyped  0.4.1-9-393207   main (has https://github.com/lolgab/mill-scalablytyped/pull/50) + /pull/51 + /pull/52
 #                                        merged (branch dapr4s-snapshot of github.com/sideeffffect/mill-scalablytyped).
 #
@@ -15,8 +15,8 @@
 # the hash of this file, so a new pin rebuilds.
 set -euo pipefail
 
-MILL_SHA=28026a334cb0111e2c1ff67b7934153dd6b625d2
-MILL_VERSION=1.3.0-18-28026a
+MILL_SHA=56dcdf01e0adfd52707a807fd28dcb96dc2ee97a
+MILL_VERSION=1.3.0-20-56dcdf
 MST_SHA=39320754cd5130df973fb1a5b77f83a6ca0cf105
 MST_VERSION=0.4.1-9-393207
 
@@ -38,8 +38,8 @@ if [[ -s "$launcher" && -d "$ivy/com.lihaoyi/mill-libs_3/$MILL_VERSION" ]]; then
   echo "Mill $MILL_VERSION: already installed"
 else
   echo "Mill $MILL_VERSION: building from source"
-  checkout "$work/mill" https://github.com/com-lihaoyi/mill.git https://github.com/sideeffffect/mill.git \
-    scalajs-organization-wasm-component "$MILL_SHA"
+  checkout "$work/mill" https://github.com/com-lihaoyi/mill.git https://github.com/com-lihaoyi/mill.git \
+    main "$MILL_SHA"
   # CI=true: the version ignores local changes, so it is the same on every machine.
   got="$(cd "$work/mill" && CI=true ./mill --ticker false show millVersion | tail -1 | tr -d '"')"
   [[ "$got" == "$MILL_VERSION" ]] || { echo "Mill computed version $got, expected $MILL_VERSION" >&2; exit 1; }
