@@ -1,13 +1,12 @@
-//| mill-version: 1.3.0-20-56dcdf-jvm
+//| mill-version: 1.3.1
 //| mill-jvm-version: zulu:25.0.3
 //| mill-jvm-opts: ["-Xss8m", "-Xmx6g"]
-//| mvnDeps: ["com.github.lolgab::mill-scalablytyped::0.4.1-9-393207"]
+//| mvnDeps: ["com.github.lolgab::mill-scalablytyped::0.4.1-14-c21896"]
 package build
 
-// THE MILL ABOVE IS UNRELEASED: com-lihaoyi/mill main at the merge of https://github.com/com-lihaoyi/mill/pull/7783, built from a
-// pinned commit and installed locally (with mill-scalablytyped's unreleased PRs) by scripts/upstream-snapshot.sh.
-// Run that script once before the first `./mill`; CI runs it in every job. The `-jvm` suffix makes the launcher
-// use the installed assembly. RETIRES with the Mill and mill-scalablytyped releases that contain these PRs.
+// THE MILL-SCALABLYTYPED ABOVE IS UNRELEASED: its main + https://github.com/lolgab/mill-scalablytyped/pull/52, built from
+// a pinned commit and installed locally (~/.ivy2/local) by scripts/upstream-snapshot.sh. Run that script once before
+// the first `./mill`; CI runs it in every job. RETIRES with the mill-scalablytyped release that contains these PRs.
 
 // =================================================================================================
 // dapr4s build (Mill)

@@ -206,7 +206,7 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   traits of the `mill-dapr4s-wasm` plugin ([`mill-build/src`](../mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala),
   compiled into the meta-build). They swap the `org.scala-js` artifacts for the fork's (Mill's `scalaJSOrganization`) and link components with
   Mill's own `ModuleKind.WasmComponent` on the patched linker (`dapr4s-wasm-linker_2.13`), both from
-  [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) in an unreleased Mill, so `core.jvm`/`core.js` and
+  [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) in Mill 1.3.1, so `core.jvm`/`core.js` and
   their POMs are unchanged. (Until 2026-10-13 a nested sbt build
   in `wasm/`: the fork's `sbt-scalajs` could not share the root meta-build.) `wasm/` also
   holds `wit/world.wit`, `wkg-config.toml` and `wkg.lock`. WIT comes only through `wkg wit fetch` (OCI).

@@ -1,28 +1,23 @@
 #!/usr/bin/env bash
-# Builds the UNRELEASED upstream Mill and mill-scalablytyped that this build uses, from pinned commits, and
-# publishes them locally (~/.ivy2/local) unless they are there already:
+# Builds the UNRELEASED upstream mill-scalablytyped that this build uses, from a pinned commit, and publishes it
+# locally (~/.ivy2/local) unless it is there already:
 #
-#   Mill                1.3.0-20-56dcdf  com-lihaoyi/mill main at the merge of https://github.com/com-lihaoyi/mill/pull/7783
-#                                        (scalaJSOrganization, ModuleKind.WasmComponent); it already contains
-#                                        https://github.com/com-lihaoyi/mill/pull/7786 (Scala.js test linking on
-#                                        Scala 3.8+). Installed as the launcher's cached download, so `./mill`
-#                                        (header `mill-version: 1.3.0-20-56dcdf-jvm`) finds it and never downloads.
-#   mill-scalablytyped  0.4.1-9-393207   main (has https://github.com/lolgab/mill-scalablytyped/pull/50) + /pull/51 + /pull/52
-#                                        merged (branch dapr4s-snapshot of github.com/sideeffffect/mill-scalablytyped).
+#   mill-scalablytyped  0.4.1-14-c21896  main (has https://github.com/lolgab/mill-scalablytyped/pull/50 and /pull/51)
+#                                        + /pull/52 merged (branch dapr4s-snapshot of
+#                                        github.com/sideeffffect/mill-scalablytyped).
 #
-# RETIRES when Mill and mill-scalablytyped release these changes: pin the releases in build.mill and delete this
-# script and its CI steps. CI caches ~/.cache/mill/download/<version> and the two ~/.ivy2/local organizations by
-# the hash of this file, so a new pin rebuilds.
+# Mill itself is released: Mill 1.3.1 contains https://github.com/com-lihaoyi/mill/pull/7783 (scalaJSOrganization,
+# ModuleKind.WasmComponent) and https://github.com/com-lihaoyi/mill/pull/7786, so `./mill` downloads it as usual.
+#
+# RETIRES when mill-scalablytyped releases these changes: pin the release in build.mill and delete this script and
+# its CI steps. CI caches the ~/.ivy2/local organization by the hash of this file, so a new pin rebuilds.
 set -euo pipefail
 
-MILL_SHA=56dcdf01e0adfd52707a807fd28dcb96dc2ee97a
-MILL_VERSION=1.3.0-20-56dcdf
-MST_SHA=39320754cd5130df973fb1a5b77f83a6ca0cf105
-MST_VERSION=0.4.1-9-393207
+MST_SHA=c218964986ac520c3f0bbf6bcc7e684e1a3d16f2
+MST_VERSION=0.4.1-14-c21896
 
 work="${XDG_CACHE_HOME:-$HOME/.cache}/dapr4s/upstream-snapshot"
 ivy="$HOME/.ivy2/local"
-launcher="${XDG_CACHE_HOME:-$HOME/.cache}/mill/download/$MILL_VERSION"
 
 checkout() { # <dir> <upstream url> <fork url> <fork branch> <sha>
   local dir=$1
@@ -33,22 +28,6 @@ checkout() { # <dir> <upstream url> <fork url> <fork branch> <sha>
   git -C "$dir" fetch --quiet "$3" "$4"
   git -C "$dir" checkout --quiet --force --detach "$5"
 }
-
-if [[ -s "$launcher" && -d "$ivy/com.lihaoyi/mill-libs_3/$MILL_VERSION" ]]; then
-  echo "Mill $MILL_VERSION: already installed"
-else
-  echo "Mill $MILL_VERSION: building from source"
-  checkout "$work/mill" https://github.com/com-lihaoyi/mill.git https://github.com/com-lihaoyi/mill.git \
-    main "$MILL_SHA"
-  # CI=true: the version ignores local changes, so it is the same on every machine.
-  got="$(cd "$work/mill" && CI=true ./mill --ticker false show millVersion | tail -1 | tr -d '"')"
-  [[ "$got" == "$MILL_VERSION" ]] || { echo "Mill computed version $got, expected $MILL_VERSION" >&2; exit 1; }
-  (cd "$work/mill" && CI=true ./mill --ticker false dist.installLocal --binFile "$work/mill-$MILL_VERSION")
-  (cd "$work/mill" && ./mill --ticker false shutdown) || true
-  mkdir -p "$(dirname "$launcher")"
-  cp "$work/mill-$MILL_VERSION" "$launcher"
-  chmod +x "$launcher"
-fi
 
 if [[ -d "$ivy/com.github.lolgab/mill-scalablytyped_mill1_3/$MST_VERSION" ]]; then
   echo "mill-scalablytyped $MST_VERSION: already installed"

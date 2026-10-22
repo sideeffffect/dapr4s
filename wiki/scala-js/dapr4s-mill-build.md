@@ -1,6 +1,6 @@
 # dapr4s on Mill: Scala 3 nightly + Scala.js + ScalablyTyped + scala-wasm
 
-dapr4s moved from sbt to Mill 1.3.0 on 2026-10-13 ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)).
+dapr4s moved from sbt to Mill 1.3.0 on 2026-10-13 ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)); it is on Mill 1.3.1 since 2026-10-22.
 History: scala-cli until 2026-10-12, then sbt for one day (see
 [ScalablyTyped Facades with Scala CLI](scalablytyped-with-scala-cli.md) and
 [js.async / JSPI](scala-js-async-jspi-wasm.md) for the sbt notes). This article records what was needed and why.
@@ -78,7 +78,7 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
   - A Mill 1.x plugin is a Scala 3 library against `com.lihaoyi::mill-libs:<mill version>` with
     `platformSuffix = "_mill" + mill.util.BuildInfo.millBinPlatform` → `<name>_mill1_3`; a consumer loads it with
     `//| mvnDeps: ["org::name::version"]` in the `build.mill` header. Compile it with `mill.util.BuildInfo.scalaVersion`
-    (Mill 1.3.0: Scala 3.9.0). 1.x plugins work on the same and newer 1.x Mill, not older.
+    (Mill 1.3.0 and 1.3.1: Scala 3.9.0). 1.x plugins work on the same and newer 1.x Mill, not older.
   - Plain `.scala` files in `mill-build/src/` are compiled into the meta-build with no `mill-build/build.mill`
     (and the root header keeps working), so the plugin's sources double as dapr4s's own build logic (like sbt's
     `project/plugin-sources.sbt` trick).
@@ -91,19 +91,20 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
     module's `moduleDir`: good defaults for consumers, overridable.
   - Dynver on a dirty tree has a minute timestamp: two Mill runs can compute different versions. A script that
     publishes and then consumes must read the version from what was published.
-- Upstream Mill work that retires the workarounds: [#7783](https://github.com/com-lihaoyi/mill/pull/7783) (merged 2026-10-17, unreleased)
+- Upstream Mill work that retires the workarounds: [#7783](https://github.com/com-lihaoyi/mill/pull/7783) (merged 2026-10-17, released in Mill 1.3.1 on 2026-10-19)
   (organization + WasmComponent), [#7784](https://github.com/com-lihaoyi/mill/pull/7784) (wit-bindgen-scala),
   [#7785](https://github.com/com-lihaoyi/mill/pull/7785) (Wasmtime JS env).
   In the plugin: #7783 → `ScalaWasmModule` + the link driver, #7784 → `WitBindgenModule`.
 
 ## On unreleased upstream (2026-10-16, branch build/mill-upstream-snapshot)
 
-The build runs on Mill `1.3.0-20-56dcdf` (main at the merge of [mill#7783](https://github.com/com-lihaoyi/mill/pull/7783), which
-already contains [mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)) and mill-scalablytyped `0.4.1-9-393207`
-(`main`, which has [#50](https://github.com/lolgab/mill-scalablytyped/pull/50) merged, + [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
-+ [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), both built by `scripts/upstream-snapshot.sh`. Facts:
+The build runs on the released Mill 1.3.1 (it contains [mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) and
+[mill#7786](https://github.com/com-lihaoyi/mill/pull/7786); until 2026-10-22 `scripts/upstream-snapshot.sh` built Mill
+`1.3.0-20-56dcdf` from source) and the unreleased mill-scalablytyped `0.4.1-14-c21896` (`main`, which has
+[#50](https://github.com/lolgab/mill-scalablytyped/pull/50) and [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
+merged, + [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), built by `scripts/upstream-snapshot.sh`. Facts:
 
-- **Using a locally built Mill**: `CI=true ./mill dist.installLocal --binFile <file>` publishes ~110 modules to
+- **Using a locally built Mill** (history, how the script ran Mill before 1.3.1): `CI=true ./mill dist.installLocal --binFile <file>` publishes ~110 modules to
   `~/.ivy2/local` and writes an assembly. `CI=true` drops the dirty hash, so the version (`<tag>-<n>-<sha6>`) is the
   same on every machine with tags fetched. Copy the assembly to `~/.cache/mill/download/<version>` and write
   `//| mill-version: <version>-jvm`: the launcher then uses it and never downloads.

@@ -6,10 +6,10 @@ on:
     types: [ published ]
   pull_request:
 
-# The build is Mill (build.mill, wasm/package.mill). `./mill` is the bootstrap script: it runs the
-# unreleased Mill that scripts/upstream-snapshot.sh installs (see the first steps of every job), and Mill
-# downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in build.mill) through
-# coursier, so no setup-java is needed for the build itself.
+# The build is Mill (build.mill, wasm/package.mill). `./mill` is the bootstrap script: it downloads Mill
+# 1.3.1, and Mill downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in
+# build.mill) through coursier, so no setup-java is needed for the build itself. The meta-build loads an
+# unreleased mill-scalablytyped that scripts/upstream-snapshot.sh installs (see the first steps of every job).
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -18,18 +18,15 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
-    # Mill (main, which has https://github.com/com-lihaoyi/mill/pull/7783 merged) and mill-scalablytyped
-    # (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50, + /51 + /52) are unreleased: build them from the
-    # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
-    - name: Cache the upstream Mill + mill-scalablytyped snapshots
+    # mill-scalablytyped (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50 and /51, + /52) is
+    # unreleased: build it from the commit pinned in scripts/upstream-snapshot.sh and install it locally, cached by
+    # that file's hash. Mill itself is the released 1.3.1, downloaded by `./mill`.
+    - name: Cache the upstream mill-scalablytyped snapshot
       uses: actions/cache@v4
       with:
-        path: |
-          ~/.cache/mill/download
-          ~/.ivy2/local/com.lihaoyi
-          ~/.ivy2/local/com.github.lolgab
+        path: ~/.ivy2/local/com.github.lolgab
         key: upstream-snapshot-${{ hashFiles('scripts/upstream-snapshot.sh') }}
-    - name: Build the upstream Mill + mill-scalablytyped snapshots
+    - name: Build the upstream mill-scalablytyped snapshot
       run: scripts/upstream-snapshot.sh
     - name: Check formatting (scalafmt)
       run: |
@@ -73,18 +70,15 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
-    # Mill (main, which has https://github.com/com-lihaoyi/mill/pull/7783 merged) and mill-scalablytyped
-    # (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50, + /51 + /52) are unreleased: build them from the
-    # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
-    - name: Cache the upstream Mill + mill-scalablytyped snapshots
+    # mill-scalablytyped (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50 and /51, + /52) is
+    # unreleased: build it from the commit pinned in scripts/upstream-snapshot.sh and install it locally, cached by
+    # that file's hash. Mill itself is the released 1.3.1, downloaded by `./mill`.
+    - name: Cache the upstream mill-scalablytyped snapshot
       uses: actions/cache@v4
       with:
-        path: |
-          ~/.cache/mill/download
-          ~/.ivy2/local/com.lihaoyi
-          ~/.ivy2/local/com.github.lolgab
+        path: ~/.ivy2/local/com.github.lolgab
         key: upstream-snapshot-${{ hashFiles('scripts/upstream-snapshot.sh') }}
-    - name: Build the upstream Mill + mill-scalablytyped snapshots
+    - name: Build the upstream mill-scalablytyped snapshot
       run: scripts/upstream-snapshot.sh
     # Wasm 3.0 + JSPI are on by default from Node 25; the runner's default Node has neither.
     - name: Set up Node 25
@@ -224,18 +218,15 @@ jobs:
       with:
         fetch-depth: 0
     - uses: coursier/cache-action@v8
-    # Mill (main, which has https://github.com/com-lihaoyi/mill/pull/7783 merged) and mill-scalablytyped
-    # (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50, + /51 + /52) are unreleased: build them from the
-    # commits pinned in scripts/upstream-snapshot.sh and install them locally, cached by that file's hash.
-    - name: Cache the upstream Mill + mill-scalablytyped snapshots
+    # mill-scalablytyped (main, which has https://github.com/lolgab/mill-scalablytyped/pull/50 and /51, + /52) is
+    # unreleased: build it from the commit pinned in scripts/upstream-snapshot.sh and install it locally, cached by
+    # that file's hash. Mill itself is the released 1.3.1, downloaded by `./mill`.
+    - name: Cache the upstream mill-scalablytyped snapshot
       uses: actions/cache@v4
       with:
-        path: |
-          ~/.cache/mill/download
-          ~/.ivy2/local/com.lihaoyi
-          ~/.ivy2/local/com.github.lolgab
+        path: ~/.ivy2/local/com.github.lolgab
         key: upstream-snapshot-${{ hashFiles('scripts/upstream-snapshot.sh') }}
-    - name: Build the upstream Mill + mill-scalablytyped snapshots
+    - name: Build the upstream mill-scalablytyped snapshot
       run: scripts/upstream-snapshot.sh
     - name: Cache ScalablyTyped facades
       uses: actions/cache@v4

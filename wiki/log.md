@@ -198,3 +198,7 @@
 ## [2026-10-18] update | mill-scalablytyped #50 merged
 - Updated: scala-js/dapr4s-mill-build.md — the snapshot is now upstream main (with #50) + #51 + #52, version 0.4.1-9-393207
 - Updated: scala-js/dapr4s-mill-build.md — Mill is now main at the merge of mill#7783 (1.3.0-20-56dcdf), fetched from upstream (the fork branch is deleted)
+
+## [2026-10-22] update | dapr4s on Mill 1.3.1
+- Updated: scala-js/dapr4s-mill-build.md — the build is on the released Mill 1.3.1 (still Scala 3.9.0 for 1.x plugins)
+- Updated: scala-js/dapr4s-mill-build.md — Mill 1.3.1 contains mill#7783 + mill#7786, so the snapshot script builds only mill-scalablytyped: main (with #50 + #51) + #52, version 0.4.1-14-c21896
