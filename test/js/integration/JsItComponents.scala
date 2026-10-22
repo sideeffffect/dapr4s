@@ -83,7 +83,7 @@ object JsItComponents:
     )
     res.privateKey.asInstanceOf[String]
 
-  /** Locate the repo root (the dir holding `build.sbt`): the `DAPR4S_REPO_ROOT` env the test runner exports, else walk
+  /** Locate the repo root (the dir holding `build.mill`): the `DAPR4S_REPO_ROOT` env the test runner exports, else walk
     * up from `process.cwd()` — robust to the linked test module running from a temp dir. The JS twin of
     * [[JvmItComponents]]'s `repoRoot`.
     */
@@ -93,7 +93,7 @@ object JsItComponents:
       var found: String | Null = null
       var searching = true
       while searching do
-        if NodeFs.existsSync(NodePath.join(dir, "build.sbt")) then
+        if NodeFs.existsSync(NodePath.join(dir, "build.mill")) then
           found = dir
           searching = false
         else
@@ -101,6 +101,6 @@ object JsItComponents:
           if parent == dir then searching = false else dir = parent
       val f = found
       if f == null then
-        throw RuntimeException(s"could not locate repo root (no build.sbt) from cwd=${NodeProcess.cwd()}")
+        throw RuntimeException(s"could not locate repo root (no build.mill) from cwd=${NodeProcess.cwd()}")
       f
     }

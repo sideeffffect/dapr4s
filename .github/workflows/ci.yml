@@ -6,6 +6,9 @@ on:
     types: [ published ]
   pull_request:
 
+# The build is Mill (build.mill, wasm/package.mill). `./mill` is the bootstrap script: it downloads Mill
+# 1.3.1, and Mill downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in
+# build.mill) through coursier, so no setup-java is needed for the build itself.
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -13,21 +16,14 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: actions/setup-java@v5
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
     - uses: coursier/cache-action@v8
     - name: Check formatting (scalafmt)
       run: |
         # Files using experimental capture-checking `^{...}` syntax that scalafmt can't parse are
         # listed in .scalafmt.conf project.excludeFilters. If a new such file is added without
-        # excluding it, fail loudly here with a pointer to the fix. (Unlike `scala-cli fmt --check`,
-        # which exited 0 on a parse error, sbt-scalafmt fails the task; the grep turns that into an
-        # actionable message and still guards against a tool version that only logs it.)
+        # excluding it, fail loudly here with a pointer to the fix.
         set +e -o pipefail
-        sbt -Dsbt.color=false scalafmtCheckAll scalafmtSbtCheck 2>&1 | tee fmt.log
+        ./mill --ticker false mill.scalalib.scalafmt.ScalafmtModule/scalafmt --check 2>&1 | tee fmt.log
         status=$?
         if grep -qiE 'ParseError|illegal start of|error: \[dialect' fmt.log; then
           echo "::error::scalafmt hit a parse error — add the offending file to .scalafmt.conf project.excludeFilters"
@@ -38,16 +34,15 @@ jobs:
   # One matrix leg per platform. Adding Scala Native one day should be a new include entry
   # (platform: native, ...), not a new job. Each leg: compile, unit tests, integration tests.
   #
-  #   core<P>         the library + its unit tests (test/{shared,<p>} minus integration/)
-  #   integration<P>  the Docker-based integration suites (test/{shared,<p>}/integration)
+  #   core.<p>         the library + its unit tests (core.<p>.test: test/{shared,<p>} minus integration/)
+  #   integration.<p>  the Docker-based integration suites (test/{shared,<p>}/integration)
   #
-  # The `wasm` leg is the Phase-0 WASI-component prototype (docs/WASM-COMPONENTS-PROPOSAL.md §6). It
-  # is a separate, opt-in sbt build in wasm/ (the scala-wasm fork of sbt-scalajs cannot share a
-  # meta-build with mainline sbt-scalajs) and has its own steps below: format check, the wall's unit
-  # tests (on Node) and scripts/wasm/e2e.sh in source mode, then publishLocal of the six wasm artifacts
-  # and a plugin-only consumer build (scripts/wasm/consumer-check.sh).
+  # The `wasm` leg builds the WASI-component platform (wasm/package.mill, docs/WASM-COMPONENTS-PROPOSAL.md
+  # §6): the wall's unit tests (on Node) and scripts/wasm/e2e.sh in both core modes, then a fresh Mill and a
+  # fresh sbt consumer build with the published-to-a-local-repo artifacts (scripts/wasm/consumer-check-mill.sh,
+  # scripts/wasm/consumer-check.sh).
   #
-  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the six wasm
+  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the seven wasm
   # artifacts to Central (PUBLISH_WASM_TO_CENTRAL), so a broken wasm build must never reach a release.
   test:
     strategy:
@@ -55,22 +50,14 @@ jobs:
       matrix:
         include:
           - platform: jvm
-            project: JVM
           - platform: js
-            project: JS
           - platform: wasm
-            project: Wasm
     name: test (${{ matrix.platform }})
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: actions/setup-java@v5
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
     - uses: coursier/cache-action@v8
     # Wasm 3.0 + JSPI are on by default from Node 25; the runner's default Node has neither.
     - name: Set up Node 25
@@ -78,26 +65,25 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 25
-    - name: Install npm dependencies (@dapr/dapr, testcontainers)
-      if: matrix.platform == 'js'
-      run: npm ci
-    # The ScalablyTyped facades are generated from node_modules and compiled by the build
-    # (stFacades, ~3 min cold). Cache the converter's parse cache and the compiled facades;
-    # zinc recompiles anything the restored state does not cover, so a stale hit is only slower.
+    # The ScalablyTyped facades are generated from node_modules (`npm ci`, run by the build) and
+    # compiled by the build (stFacades, several minutes cold). Cache the converter's parse cache and
+    # the facade module's Mill output; Mill recomputes anything the restored state does not cover.
     - name: Cache ScalablyTyped facades
       if: matrix.platform == 'js'
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/scalablytyped
-          .st-facades/target
-        key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
+          out/stFacades
+          out/stGen
+        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill', 'build-tools/st-gen/**') }}
+        restore-keys: st-facades-mill-
     - name: Compile
       if: matrix.platform != 'wasm'
-      run: sbt core${{ matrix.project }}/compile integration${{ matrix.project }}/Test/compile
+      run: ./mill --ticker false core.${{ matrix.platform }}.compile + integration.${{ matrix.platform }}.compile
     - name: Unit tests
       if: matrix.platform != 'wasm'
-      run: sbt core${{ matrix.project }}/test
+      run: ./mill --ticker false core.${{ matrix.platform }}.test
     - name: Integration tests
       if: matrix.platform != 'wasm'
       # A real daprd sidecar (+ Redis, placement, scheduler) via testcontainers; Docker is
@@ -105,9 +91,9 @@ jobs:
       # started from inside the Wasm+JSPI test runtime.
       # Both legs normally finish in a few minutes; the timeout turns a hang into a failure instead of a 6h wait.
       timeout-minutes: 20
-      run: sbt integration${{ matrix.project }}/test
+      run: ./mill --ticker false integration.${{ matrix.platform }}.testForked
 
-    # ---- wasm leg (the opt-in wasm/ build) ----------------------------------------------------
+    # ---- wasm leg ------------------------------------------------------------------------------
     # Tool versions are the ones the Phase-0 spike used (wiki: scala-wasm-component-spike).
     - name: Install wasm tools (wasm-tools, wasmtime, wkg, wac)
       if: matrix.platform == 'wasm'
@@ -130,7 +116,7 @@ jobs:
         curl -fsSL -o "$bin/wac" "$rel/wac/releases/download/v${WAC_VERSION}/wac-cli-x86_64-unknown-linux-musl"
         chmod +x "$bin/wkg" "$bin/wac"
         "$bin/wasm-tools" --version; "$bin/wasmtime" --version; "$bin/wkg" --version; "$bin/wac" --version
-    # The scala-wasm sbt plugin runs `wit-bindgen-scala` (crate 0.1.0) to generate the bindings.
+    # The build runs `wit-bindgen-scala` (crate 0.1.0) to generate the WIT bindings.
     - name: Cache wit-bindgen-scala
       if: matrix.platform == 'wasm'
       id: cache-wbs
@@ -147,38 +133,44 @@ jobs:
         wget -q https://raw.githubusercontent.com/dapr/cli/v1.15.1/install/install.sh -O - | /bin/bash -s 1.15.1
         dapr init --slim --runtime-version 1.17.7
         echo "$HOME/.dapr/bin" >> "$GITHUB_PATH"
-    # The patched scala-wasm linker (scripts/wasm/build-patched-linker.sh: the 1.22.1-wasm.6 release
-    # commit + our export-params patch, published to ~/.ivy2/local). Rebuilt only when the script, the
-    # patch or the version in wasm/build.sbt changes.
-    # The patched scala-wasm linker (scripts/wasm/build-patched-linker.sh: the 1.22.1-wasm.6 release commit +
-    # our params-via-memory patch) is built by the `wasmLinker` project on demand; cache its output and the
-    # scala-wasm clone. Rebuilt only when the script or the patch changes.
-    - name: Cache the patched scala-wasm linker build
+    # The patched scala-wasm linker is compiled by the `wasm.linker` module from the release commit's
+    # sources + our patch (scripts/wasm/prepare-patched-linker.sh); cache the scala-wasm clone.
+    - name: Cache the scala-wasm clone
       if: matrix.platform == 'wasm'
       uses: actions/cache@v4
       with:
-        path: |
-          wasm/target/scala-wasm-linker
-          ~/.cache/dapr4s/scala-wasm-src
-        key: scala-wasm-linker-${{ hashFiles('scripts/wasm/build-patched-linker.sh', 'scripts/wasm/patches/**') }}
+        path: ~/.cache/dapr4s/scala-wasm-src
+        key: scala-wasm-src-${{ hashFiles('scripts/wasm/prepare-patched-linker.sh') }}
+        restore-keys: scala-wasm-src-
     # Source mode: the wall over dapr4s's own src/shared (covers shared-code changes), unit tests + e2e
     # (counter-raw, counter, imports-probe against daprd + Redis).
-    - name: Format check, wall unit tests (wasm/, source mode)
+    - name: Wall unit tests (source + release mode)
       if: matrix.platform == 'wasm'
-      working-directory: wasm
-      run: sbt scalafmtCheckAll scalafmtSbtCheck -Ddapr4s.wasm.core=source wallWasm/test
+      run: ./mill --ticker false 'wasm.lib[source].wall.test' + 'wasm.lib[release].wall.test'
     - name: E2E, source mode (components + compose + daprd + Redis)
       if: matrix.platform == 'wasm'
       timeout-minutes: 20
-      run: SBT_ARGS=-Ddapr4s.wasm.core=source scripts/wasm/e2e.sh
-    # Release mode (the default): the six artifacts as they would be published (the wall on the published
-    # dapr4s_sjs1_3), publishLocal'ed, then a fresh consumer build that has nothing but the plugin + one
-    # dependency builds test/wasm/counter and runs its e2e. dapr4s-examples consumes the same artifacts.
-    - name: publishLocal (release mode)
+      run: WASM_CORE=source scripts/wasm/e2e.sh
+    - name: E2E, release mode (the wall on the published dapr4s_sjs1_3)
       if: matrix.platform == 'wasm'
-      working-directory: wasm
-      run: sbt wallWasm/test publishLocal
-    - name: Consumer check (plugin + one dependency, e2e)
+      timeout-minutes: 20
+      run: WASM_CORE=release scripts/wasm/e2e.sh
+    # mill-dapr4s-wasm is a product for Mill consumers (dapr4s-examples): check it the way they use it, with
+    # a fresh Mill build whose header loads the plugin from the local repo.
+    - name: Consumer check, Mill (plugin + one dependency, e2e)
+      if: matrix.platform == 'wasm'
+      timeout-minutes: 20
+      run: scripts/wasm/consumer-check-mill.sh
+    # sbt-dapr4s-wasm is a product for sbt consumers: check it the way they use it, with a fresh sbt build
+    # (the only sbt in CI; dapr4s's own build is Mill).
+    - uses: actions/setup-java@v5
+      if: matrix.platform == 'wasm'
+      with:
+        distribution: zulu
+        java-version: 25
+    - uses: sbt/setup-sbt@v1
+      if: matrix.platform == 'wasm'
+    - name: Consumer check (sbt plugin + one dependency, e2e)
       if: matrix.platform == 'wasm'
       timeout-minutes: 20
       run: scripts/wasm/consumer-check.sh
@@ -186,16 +178,12 @@ jobs:
   publish:
     needs: [format, test]
     if: github.event_name != 'pull_request'
-    # Serialize publishes that would target the same artifact version. The version
-    # is dynver-derived from git state at the commit, so every publish-triggering
-    # event on one commit (master push, tag push, release:published) resolves to the
-    # SAME version — and two such runs racing on Sonatype's bulk/promote is what made
-    # the v1.0.0 tag-push run 400 ("Publish request failed") while the master-push run
-    # for the same commit won. We can't key on the resolved version string itself:
-    # concurrency.group is evaluated at queue time and can only see github/inputs/vars,
-    # not runtime step outputs — and github.sha maps 1:1 to the dynver version anyway.
-    # cancel-in-progress: false so an in-flight publish is never interrupted mid-promote
-    # (which could leave a half-promoted staging repo); the duplicate simply waits.
+    # Serialize publishes that would target the same artifact version. The version is derived from git
+    # state at the commit (Dynver in buildsupport.mill), so every publish-triggering event on one commit
+    # (master push, tag push, release:published) resolves to the SAME version — and two such runs racing
+    # on the Central Portal is what made the v1.0.0 tag-push run 400 ("Publish request failed") while the
+    # master-push run for the same commit won. github.sha maps 1:1 to the version.
+    # cancel-in-progress: false so an in-flight publish is never interrupted mid-upload; the duplicate waits.
     concurrency:
       group: publish-${{ github.sha }}
       cancel-in-progress: false
@@ -209,47 +197,16 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: actions/setup-java@v5
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
     - uses: coursier/cache-action@v8
-    # The Scala.js artifact embeds the ScalablyTyped facade .sjsir (see build.sbt), which the
-    # build generates from node_modules.
-    - name: Install npm dependencies
-      run: npm ci
     - name: Cache ScalablyTyped facades
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/scalablytyped
-          .st-facades/target
-        key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
-    # Publishes dapr4s_3 and dapr4s_sjs1_3 (sbt-ci-release: a release tag publishes the clean
-    # version, anything else a dynver -SNAPSHOT). The secrets keep their scala-cli era names;
-    # sbt-ci-release wants PGP_SECRET as a base64-encoded ASCII-armored key, so accept either an
-    # armored key or an already base64-encoded one.
-    - name: Publish (JVM + Scala.js)
-      run: |
-        key="${PUBLISH_SECRET_KEY#base64:}"
-        if printf '%s' "$key" | grep -q -- '-----BEGIN PGP'; then
-          PGP_SECRET="$(printf '%s\n' "$key" | base64 -w0)"
-        else
-          PGP_SECRET="$key"
-        fi
-        export PGP_SECRET
-        sbt ci-release
-      env:
-        SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
-        SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
-        PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
-        PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
-    # ---- The wasm artifacts (wasm/ build): dapr4s-wasm, dapr4s-wasm-glue(-exports), dapr4s-wasm-scalalib-overlay,
-    # dapr4s-wasm-linker, sbt-dapr4s-wasm — at the same version as core, the wall depending on the dapr4s_sjs1_3
-    # of THIS version (published locally first so the wasm build resolves it before Central has it).
-    # Gated by PUBLISH_WASM_TO_CENTRAL (the wasm build also refuses `publish` unless that variable is 'true',
-    # so a local `sbt publish` in wasm/ can never reach Central by accident). See AGENTS.md "Wasm component layer rules".
+          out/stFacades
+          out/stGen
+        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill', 'build-tools/st-gen/**') }}
+        restore-keys: st-facades-mill-
     - name: Install wasm tools for the wasm publish (wkg, wasm-tools, wit-bindgen-scala)
       if: env.PUBLISH_WASM_TO_CENTRAL == 'true'
       run: |
@@ -261,21 +218,33 @@ jobs:
         curl -fsSL -o "$bin/wkg" "$rel/wasm-pkg-tools/releases/download/v0.16.1/wkg-x86_64-unknown-linux-gnu"
         chmod +x "$bin/wkg"
         cargo install wit-bindgen-scala --version 0.1.0 --locked
-    - name: Publish the wasm artifacts
-      if: env.PUBLISH_WASM_TO_CENTRAL == 'true'
+    # Publishes dapr4s_3 and dapr4s_sjs1_3 (a release tag publishes the clean version to Central, anything
+    # else a `-SNAPSHOT` to the Central snapshots repository) and, with PUBLISH_WASM_TO_CENTRAL, the seven
+    # wasm artifacts (incl. the two build plugins) at the SAME version: dapr4s-wasm's release mode depends on the dapr4s_sjs1_3 of THIS
+    # version (DAPR4S_WASM_CORE_VERSION), published locally first so the build resolves it before Central
+    # has it. The secrets keep their scala-cli era names; Mill wants the PGP key base64-encoded, so accept
+    # either an ASCII-armored key or an already base64-encoded one.
+    - name: Publish
       run: |
+        set -euo pipefail
         key="${PUBLISH_SECRET_KEY#base64:}"
         if printf '%s' "$key" | grep -q -- '-----BEGIN PGP'; then
-          PGP_SECRET="$(printf '%s\n' "$key" | base64 -w0)"
+          MILL_PGP_SECRET_BASE64="$(printf '%s\n' "$key" | base64 -w0)"
         else
-          PGP_SECRET="$key"
+          MILL_PGP_SECRET_BASE64="$key"
         fi
-        export PGP_SECRET
-        version="$(sbt -batch -no-colors 'print coreJS/version' | tail -1 | tr -d '[:space:]')"
-        sbt coreJS/publishLocal
-        cd wasm && sbt -Ddapr4s.wasm.core="$version" ci-release
+        export MILL_PGP_SECRET_BASE64
+        version="$(./mill --ticker false show publishVersion | tail -1 | tr -d '"')"
+        echo "Publishing version $version"
+        artifacts='{core.jvm,core.js}.publishArtifacts'
+        if [[ "$PUBLISH_WASM_TO_CENTRAL" == true ]]; then
+          ./mill --ticker false core.js.publishLocal
+          export DAPR4S_WASM_CORE_VERSION="$version"
+          artifacts='{core.jvm,core.js,wasm.lib[release].wall,wasm.glue,wasm.glueExports,wasm.scalalibOverlay,wasm.linker,wasm.millPlugin,wasm.sbtPlugin}.publishArtifacts'
+        fi
+        ./mill --ticker false mill.javalib.SonatypeCentralPublishModule/publishAll --publishArtifacts "$artifacts"
       env:
-        SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
-        SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
+        MILL_SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
+        MILL_SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
         PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
-        PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+        MILL_PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}

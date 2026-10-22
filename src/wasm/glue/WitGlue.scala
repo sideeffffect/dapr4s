@@ -1,4 +1,4 @@
-// HAND-WRITTEN Scala 2.13, compiled by Scala 2.13 + scala-wasm's compiler plugin (wasm/build.sbt, `witGlue`).
+// HAND-WRITTEN Scala 2.13, compiled by Scala 2.13 + scala-wasm's compiler plugin (wasm/package.mill, `wasm.glue`).
 //
 // WHY this file is Scala 2.13 and not Scala 3: mainline Scala 3 (every nightly included) has no WIT codegen. A WIT
 // import is lowered at the CALL SITE by the compiler backend and `@WitExport` is compiler-emitted, so every call to

@@ -172,6 +172,7 @@ are in AGENTS.md "Wasm component layer rules".
 
 ## See Also
 
+- [dapr4s on Mill](dapr4s-mill-build.md) — how the wasm modules, the patched linker and the sbt plugin build under Mill (2026-10-13)
 - [dapr-wasm-components WIT vs dapr4s](../dapr/dapr-wasm-components-vs-dapr4s.md)
 - [js.async / js.await, JSPI, and the WebAssembly Backend](scala-js-async-jspi-wasm.md)
 - [Capture Checking on Scala.js](capture-checking-on-scala-js.md)

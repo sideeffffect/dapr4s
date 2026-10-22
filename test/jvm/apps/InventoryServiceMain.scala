@@ -14,13 +14,12 @@ import dapr4s.given
   * Run locally (requires Dapr sidecar on localhost:3500/50001):
   * {{{
   *   dapr run --app-id inventory-service --app-port 8081 -- \
-  *     sbt "coreJVM/Test/runMain dapr4s.test.integration.apps.inventoryServiceMain"
+  *     ./mill k8s.inventoryService.run
   * }}}
   *
   * Build a fat jar for Docker:
   * {{{
-  *   sbt 'set coreJVM / Test / assembly / mainClass := Some("dapr4s.test.integration.apps.inventoryServiceMain")' \
-  *     coreJVM/Test/assembly          # full recipe: scripts/k8s-test.sh
+  *   ./mill show k8s.inventoryService.assembly   # full recipe: scripts/k8s-test.sh
   * }}}
   */
 @main def inventoryServiceMain(): Unit =
