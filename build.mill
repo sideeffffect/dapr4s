@@ -1,7 +1,12 @@
 //| mill-version: 1.3.1
 //| mill-jvm-version: zulu:25.0.3
 //| mill-jvm-opts: ["-Xss8m", "-Xmx6g"]
+//| mvnDeps: ["com.github.lolgab::mill-scalablytyped::0.4.1-14-c21896"]
 package build
+
+// THE MILL-SCALABLYTYPED ABOVE IS UNRELEASED: its main + https://github.com/lolgab/mill-scalablytyped/pull/52, built from
+// a pinned commit and installed locally (~/.ivy2/local) by scripts/upstream-snapshot.sh. Run that script once before
+// the first `./mill`; CI runs it in every job. RETIRES with the mill-scalablytyped release that contains these PRs.
 
 // =================================================================================================
 // dapr4s build (Mill)
@@ -12,7 +17,6 @@ package build
 //   integration.jvm / .js     the Docker-based integration suites (never published)
 //   stFacades                 the ScalablyTyped-generated Scala.js facades (never published on its own;
 //                             its .sjsir are embedded into dapr4s_sjs1_3, see core.js)
-//   stGen                     the generator of the facade sources (build tooling, never published)
 //   wasm.*                    the `wasm` platform (WASI components), see wasm/package.mill
 //
 // Source layout: src/{shared,jvm,js,wasm} and test/{shared,jvm,js,wasm}. The modules point INTO it
@@ -29,6 +33,7 @@ import mill.scalalib.*
 import mill.scalajslib.*
 import mill.scalajslib.api.*
 import mill.javalib.publish.*
+import com.github.lolgab.mill.scalablytyped.ScalablyTyped
 
 // Single source of truth for the nightly, wasm included (scripts read it with `./mill show scala3Nightly`).
 def scala3Nightly: T[String] = Task(Versions.scala3Nightly)
@@ -78,27 +83,6 @@ trait Dapr4sPublish extends PublishModule {
 
 trait Dapr4sJs extends ScalaJSModule {
   def scalaJSVersion = Versions.scalaJS
-}
-
-/** Scala.js test modules on Scala >= 3.8.
-  *
-  * WHAT: `scalaJSTestDeps` (the test bridge and the Scala.js library, which Mill PREPENDS to the test link classpath)
-  * without their transitive `scalajs-scalalib_2.13:2.13.x+1.22.0`. WHY: since Scala 3.8 the stdlib IR comes from
-  * `scalajs-scalalib_2.13:<Scala 3 version>`; Mill resolves the bridge transitively, which brings the Scala 2.13 stdlib
-  * IR as well and puts it FIRST, and the linker keeps the first IR file per class: the Wasm link of the integration
-  * suites then fails with "Referring to non-existent method scala.Some.orNull()" (2.13's Option shadowing 3.10's). WHY
-  * SAFE: the right stdlib IR is on the module's own run classpath (via scala3-library_sjs1_3), exactly as sbt-scalajs
-  * links it. RETIRES when Mill resolves the test deps together with the module's dependencies (upstream Mill fix).
-  */
-trait Scala3JsTests extends TestScalaJSModule {
-  override def scalaJSTestDeps = Task {
-    defaultResolver().classpath(
-      Seq(
-        mvn"org.scala-js::scalajs-library:${scalaJSVersion()}",
-        mvn"org.scala-js::scalajs-test-bridge:${scalaJSVersion()}",
-      ).map(_.withDottyCompat(scalaVersion()).exclude("org.scala-js" -> "scalajs-scalalib_2.13")),
-    )
-  }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -169,7 +153,7 @@ object core extends Module {
       PathRef(out)
     }
 
-    object test extends ScalaJSTests with Scala3JsTests with TestModule.Munit with UnitTestSources {
+    object test extends ScalaJSTests with TestModule.Munit with UnitTestSources {
       override def sources = Task.Sources(Dapr4sPaths.test / "shared", Dapr4sPaths.test / "js")
       override def resources = Task.Sources()
       override def mvnDeps = Seq(
@@ -230,7 +214,7 @@ object integration extends Module {
     )
   }
 
-  object js extends Dapr4sFlags with Dapr4sJs with Scala3JsTests with TestModule.Munit {
+  object js extends Dapr4sFlags with Dapr4sJs with TestScalaJSModule with TestModule.Munit {
     override def moduleDeps = Seq(core.js.test)
     override def sources =
       Task.Sources(Dapr4sPaths.test / "shared" / "integration", Dapr4sPaths.test / "js" / "integration")
@@ -270,70 +254,26 @@ object integration extends Module {
 // `typings.*`, including its own `typings.std`/`typings.node`) would collide with them at link time.
 // -------------------------------------------------------------------------------------------------
 
-/** `npm ci` in the repo root unless node_modules is already installed from the current package-lock.json. The SAME
-  * node_modules serves the converter and the JS integration test runtime. Returns package.json + package-lock.json (by
-  * content), so the facades regenerate exactly when they change.
+/** The facades come from mill-scalablytyped (com.github.lolgab), with the settings sbt's converter plugin had:
+  * `scalablyTypedStdLibs` = sbt's `stStdlib` and `scalablyTypedOutputPackage` = `stOutputPackage`. The conversion roots
+  * are the `dependencies` of package.json (the single source of truth), `npm ci` installs package-lock.json first
+  * (`scalablyTypedNpmCi`, re-run whenever the lock file changes), and the SAME node_modules serves the JS integration
+  * test runtime. ~10 min cold; the converter's parse cache is ~/.cache/scalablytyped (CI caches it with out/stFacades).
   */
-def npmInstall: T[Seq[PathRef]] = Task.Input {
-  val root = Dapr4sPaths.root
-  val lock = root / "package-lock.json"
-  val marker = root / "node_modules" / ".package-lock.json" // npm writes it on every install
-  if (!os.exists(marker) || os.mtime(marker) < os.mtime(lock)) {
-    Task.log.info(s"Running `npm ci` in $root")
-    os.proc("npm", "ci").call(cwd = root, stdout = os.Inherit, stderr = os.Inherit)
-  }
-  Seq(PathRef(root / "package.json"), PathRef(lock))
-}
-
-/** The conversion roots: the `dependencies` of package.json (the single source of truth). */
-def npmRoots: T[Seq[(String, String)]] = Task {
-  val json = ujson.read(os.read(npmInstall().head.path))
-  json("dependencies").obj.toSeq.map { case (k, v) => k -> v.str }
-}
-
-object stGen extends ScalaModule {
-  def scalaVersion = "2.12.20"
-  override def sources = Task.Sources(Dapr4sPaths.root / "build-tools" / "st-gen" / "src")
-  override def resources = Task.Sources()
-  override def mvnDeps = Seq(
-    mvn"org.scalablytyped.converter::importer-portable:${Versions.scalablytypedConverter}",
-    // ImportTypingsGenSources (the sbt plugin's source generator) lives in the sbt plugin jar but uses
-    // no sbt API; take the jar alone, without sbt.
-    mvn"org.scalablytyped.converter:sbt-converter_2.12_1.0:${Versions.scalablytypedConverter}".exclude("*" -> "*"),
-  )
-}
-
-object stFacades extends Dapr4sJs with Dapr4sPublish {
+object stFacades extends Dapr4sJs with ScalablyTyped with Dapr4sPublish {
   def scalaVersion = Versions.scala3Facades
   def artifactName = "dapr4s-st-facades"
   override def sources = Task.Sources()
   override def resources = Task.Sources()
-  override def mvnDeps = Seq(
-    mvn"com.olvind::scalablytyped-runtime::${Versions.scalablytypedRuntime}",
-    mvn"org.scala-js::scalajs-dom::${Versions.scalajsDom}",
+  override def mvnDeps = Task(
+    super.mvnDeps() ++ Seq(
+      mvn"com.olvind::scalablytyped-runtime::${Versions.scalablytypedRuntime}",
+      mvn"org.scala-js::scalajs-dom::${Versions.scalajsDom}",
+    ),
   )
-
-  /** The generated facade sources (dapr4styped.*). ~10 min cold; the converter's parse cache is ~/.cache/scalablytyped
-    * (CI caches it with out/stFacades).
-    */
-  def stSources: T[PathRef] = Task {
-    val dest = Task.dest / "scalablytyped"
-    stGen
-      .runner()
-      .run(
-        args = Seq[String](
-          (Dapr4sPaths.root / "node_modules").toString,
-          dest.toString,
-          scalaVersion(),
-          scalaJSVersion(),
-          "dapr4styped",
-          "es2022",
-        ) ++ npmRoots().map { case (k, v) => s"$k=$v" },
-        mainClass = "dapr4s.stgen.StGen",
-      )
-    PathRef(dest)
-  }
-  override def generatedSources = Task(Seq(stSources()))
+  override def scalablyTypedOutputPackage = "dapr4styped"
+  override def scalablyTypedStdLibs = Seq("es2022")
+  override def scalablyTypedNpmCi = true
   // Facade sources are generated, not documented (never published on their own anyway).
   override def docSources = Task(Seq.empty[PathRef])
 

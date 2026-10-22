@@ -91,10 +91,37 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
     module's `moduleDir`: good defaults for consumers, overridable.
   - Dynver on a dirty tree has a minute timestamp: two Mill runs can compute different versions. A script that
     publishes and then consumes must read the version from what was published.
-- Upstream Mill work that retires the workarounds: [#7783](https://github.com/com-lihaoyi/mill/pull/7783)
+- Upstream Mill work that retires the workarounds: [#7783](https://github.com/com-lihaoyi/mill/pull/7783) (merged 2026-10-17, released in Mill 1.3.1 on 2026-10-19)
   (organization + WasmComponent), [#7784](https://github.com/com-lihaoyi/mill/pull/7784) (wit-bindgen-scala),
   [#7785](https://github.com/com-lihaoyi/mill/pull/7785) (Wasmtime JS env).
   In the plugin: #7783 → `ScalaWasmModule` + the link driver, #7784 → `WitBindgenModule`.
+
+## On unreleased upstream (2026-10-16, branch build/mill-upstream-snapshot)
+
+The build runs on the released Mill 1.3.1 (it contains [mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) and
+[mill#7786](https://github.com/com-lihaoyi/mill/pull/7786); until 2026-10-22 `scripts/upstream-snapshot.sh` built Mill
+`1.3.0-20-56dcdf` from source) and the unreleased mill-scalablytyped `0.4.1-14-c21896` (`main`, which has
+[#50](https://github.com/lolgab/mill-scalablytyped/pull/50) and [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
+merged, + [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), built by `scripts/upstream-snapshot.sh`. Facts:
+
+- **Using a locally built Mill** (history, how the script ran Mill before 1.3.1): `CI=true ./mill dist.installLocal --binFile <file>` publishes ~110 modules to
+  `~/.ivy2/local` and writes an assembly. `CI=true` drops the dirty hash, so the version (`<tag>-<n>-<sha6>`) is the
+  same on every machine with tags fetched. Copy the assembly to `~/.cache/mill/download/<version>` and write
+  `//| mill-version: <version>-jvm`: the launcher then uses it and never downloads.
+- **What retired**: `Scala3JsTests` (mill#7786); `build-tools/st-gen` + `npmInstall` (mill-scalablytyped
+  `scalablyTypedStdLibs`, `scalablyTypedNpmCi`, `scalablyTypedOutputPackage`; the facade jar entries are identical
+  to 3.0.0's, 3559 sources); `ScalaWasmModule`'s per-task overrides (now `scalaJSOrganization`); the component link
+  driver `WasmLink` (Mill's `fastLinkJS` with `ModuleKind.WasmComponent`).
+- **Gotcha**: a module that was a `TestScalaJSModule` only through a removed workaround trait silently becomes a
+  JVM test module: `testForked` then runs munit's JS runner on the JVM ("A method defined in a native JavaScript type
+  ... has been called"). Mix `TestScalaJSModule` in explicitly.
+- **Mill's Scala.js worker is Scala 3 and loads a `_2.13` linker**; sbt loads `_2.12`. The patched linker is now
+  published for both (`dapr4s-wasm-linker_2.12` / `_2.13`). The 2.13 build needs
+  `scala-parallel-collections` 1.2.0 (`ParCollOps`), as scala-wasm's own build adds it.
+- **dapr-wasm-components OCI rename (2026-10-15)**: the flat `ghcr.io/sideeffffect/dapr-wasm-components-<module>`
+  packages are deleted; modules live under `ghcr.io/sideeffffect/dapr-wasm-components/<module>`. Upstream
+  `compose.sh` up to v0.7.4 still pulled the flat names, so dapr4s pulled the providers itself and passed
+  `--outbound` / `--inbound`; v0.7.5's `compose.sh` uses the new names, so dapr4s calls it with `--tag 0.7.5` again.
 
 ## See also
 

@@ -2,6 +2,7 @@
 
 ## [2026-10-17] update | dapr-wasm-components 0.7.5
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
+- Updated: scala-js/dapr4s-mill-build.md — OCI rename note: v0.7.5's compose.sh follows it
 
 ## [2026-10-13] update | mill-dapr4s-wasm: the Mill plugin for Wasm components
 - Updated: scala-js/dapr4s-mill-build.md — Mill 1.x plugin shape (`_mill1_3`, header mvnDeps/repositories), mill-build/src as shared meta-build sources, defaultResolver forces scala-library (tool resolution via Lib.resolveDependencies), link driver shipped in dapr4s-wasm-linker, dynver timestamp race
@@ -191,5 +192,13 @@
 - Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped without the sbt plugin, scala-wasm in Mill
 - Note: the sbt-era notes in scalablytyped-with-scala-cli.md and scala-js-async-jspi-wasm.md are kept as history
 
+## [2026-10-16] update | dapr4s Mill build on unreleased upstream
+- Updated: scala-js/dapr4s-mill-build.md — locally built Mill (dist.installLocal + launcher cache), retired workarounds, TestScalaJSModule gotcha, 2.13 patched linker, dapr-wasm-components OCI rename
+
+## [2026-10-18] update | mill-scalablytyped #50 merged
+- Updated: scala-js/dapr4s-mill-build.md — the snapshot is now upstream main (with #50) + #51 + #52, version 0.4.1-9-393207
+- Updated: scala-js/dapr4s-mill-build.md — Mill is now main at the merge of mill#7783 (1.3.0-20-56dcdf), fetched from upstream (the fork branch is deleted)
+
 ## [2026-10-22] update | dapr4s on Mill 1.3.1
 - Updated: scala-js/dapr4s-mill-build.md — the build is on the released Mill 1.3.1 (still Scala 3.9.0 for 1.x plugins)
+- Updated: scala-js/dapr4s-mill-build.md — Mill 1.3.1 contains mill#7783 + mill#7786, so the snapshot script builds only mill-scalablytyped: main (with #50 + #51) + #52, version 0.4.1-14-c21896
