@@ -7,7 +7,7 @@ on:
   pull_request:
 
 # The build is Mill (build.mill, wasm/package.mill). `./mill` is the bootstrap script: it downloads Mill
-# 1.3.0, and Mill downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in
+# 1.3.1, and Mill downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in
 # build.mill) through coursier, so no setup-java is needed for the build itself.
 jobs:
   format:

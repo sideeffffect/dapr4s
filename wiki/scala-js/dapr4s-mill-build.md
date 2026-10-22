@@ -1,6 +1,6 @@
 # dapr4s on Mill: Scala 3 nightly + Scala.js + ScalablyTyped + scala-wasm
 
-dapr4s moved from sbt to Mill 1.3.0 on 2026-10-13 ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)).
+dapr4s moved from sbt to Mill 1.3.0 on 2026-10-13 ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)); it is on Mill 1.3.1 since 2026-10-22.
 History: scala-cli until 2026-10-12, then sbt for one day (see
 [ScalablyTyped Facades with Scala CLI](scalablytyped-with-scala-cli.md) and
 [js.async / JSPI](scala-js-async-jspi-wasm.md) for the sbt notes). This article records what was needed and why.
@@ -78,7 +78,7 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
   - A Mill 1.x plugin is a Scala 3 library against `com.lihaoyi::mill-libs:<mill version>` with
     `platformSuffix = "_mill" + mill.util.BuildInfo.millBinPlatform` → `<name>_mill1_3`; a consumer loads it with
     `//| mvnDeps: ["org::name::version"]` in the `build.mill` header. Compile it with `mill.util.BuildInfo.scalaVersion`
-    (Mill 1.3.0: Scala 3.9.0). 1.x plugins work on the same and newer 1.x Mill, not older.
+    (Mill 1.3.0 and 1.3.1: Scala 3.9.0). 1.x plugins work on the same and newer 1.x Mill, not older.
   - Plain `.scala` files in `mill-build/src/` are compiled into the meta-build with no `mill-build/build.mill`
     (and the root header keeps working), so the plugin's sources double as dapr4s's own build logic (like sbt's
     `project/plugin-sources.sbt` trick).

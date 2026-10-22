@@ -664,7 +664,7 @@ Sources are split into `src/{shared,jvm,js,wasm}` and `test/{shared,jvm,js,wasm}
 
 ```
 dapr4s/
-├── mill                              # Mill 1.3.0 bootstrap script (downloads Mill, Mill downloads Zulu 25)
+├── mill                              # Mill 1.3.1 bootstrap script (downloads Mill, Mill downloads Zulu 25)
 ├── build.mill                        # Mill build: core.jvm/core.js (published dapr4s_3/dapr4s_sjs1_3 + unit
 │                                     # tests), integration.jvm/.js (Docker suites; JS on Wasm+JSPI),
 │                                     # stFacades (ScalablyTyped facades, embedded into dapr4s_sjs1_3), k8s fat

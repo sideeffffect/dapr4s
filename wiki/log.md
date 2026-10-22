@@ -190,3 +190,6 @@
 ## [2026-10-13] ingest | dapr4s sbt -> Mill migration
 - Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped without the sbt plugin, scala-wasm in Mill
 - Note: the sbt-era notes in scalablytyped-with-scala-cli.md and scala-js-async-jspi-wasm.md are kept as history
+
+## [2026-10-22] update | dapr4s on Mill 1.3.1
+- Updated: scala-js/dapr4s-mill-build.md — the build is on the released Mill 1.3.1 (still Scala 3.9.0 for 1.x plugins)
