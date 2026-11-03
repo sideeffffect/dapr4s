@@ -120,10 +120,11 @@ existing JVM example (state + pub/sub + invoke + an actor) so the three platform
 - **Compiler/IR match**: dapr4s needs a Scala 3.9 nightly. The fork's linker must read that compiler's Scala.js
   IR. Phase 0 answers this.
 - **Shared-code deps without JS**: `scala-java-time` (tzdb) and the `JsonCodec` instances must link without
-  `@JSImport`. Phase 0 answered it (§6, item 2); java.time formatting/parsing works since 2026-10-17, and
-  `DateTimeFormatter.ofPattern` + tzdb region zones with an unreleased scala-java-time built from source (pending
-  a release > 2.8.0, which has the merged [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618);
-  region zones also need it built with Scala 3 >= 3.10.1). The wall-clock does not (scala-wasm's javalib).
+  `@JSImport`. Phase 0 answered it (§6, item 2); java.time formatting/parsing works since 2026-10-17,
+  `DateTimeFormatter.ofPattern` with the released scala-java-time 2.9.0 (has
+  [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618)), and tzdb region zones with a
+  tzdb module built from source with Scala 3.10.1-RC2 (pending a scala-java-time release whose tzdb is built with
+  Scala 3 >= 3.10.1). The wall-clock does not (scala-wasm's javalib).
 - **Hosts**: GC + EH components need Spin canary or recent wasmtime. The gRPC provider is Spin-only.
 - **Fork churn**: the scala-wasm API "is subject to change without notice". Pin versions.
 
@@ -158,13 +159,14 @@ Answers to the risk questions (section 5):
    1.6.0 ([cquiroz/scala-java-locales#640](https://github.com/cquiroz/scala-java-locales/pull/640)) reads `window`
    only with a JS host, scala-java-time 2.8.0 ([cquiroz/scala-java-time#616](https://github.com/cquiroz/scala-java-time/pull/616))
    defaults to UTC without one; `dapr4s-wasm` depends on both and counter's `java-time` route runs it under daprd.
-   `DateTimeFormatter.ofPattern` (any pattern reached `Instant.now` through zone-text printing → `TimeZone`) and region
-   zones from `scala-java-time-tzdb` ([cquiroz/scala-java-time#617](https://github.com/cquiroz/scala-java-time/pull/617)
-   ships portable data, but Scala 3 <= 3.10.0 emits the provider's `@EnableReflectiveInstantiation` registration with
-   `js.Array`s) **work since 2026-10-17 with an unreleased scala-java-time**: `scripts/wasm/build-scala-java-time.sh`
-   builds `main` with the merged [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618) (lazy
-   `TimeZone` raw offset), and the tzdb module with a Scala 3 nightly that has scala/scala3@3bb676972 (Scala-typed
-   `registerInstantiatableClassV2`, in 3.10.1). Counter's `java-time` route converts to `Europe/Prague` and formats
+   `DateTimeFormatter.ofPattern` (any pattern reached `Instant.now` through zone-text printing → `TimeZone`) **works
+   with the released scala-java-time 2.9.0** ([cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618):
+   lazy `TimeZone` raw offset; `dapr4s-wasm` depends on 2.9.0). Region zones from `scala-java-time-tzdb`
+   ([cquiroz/scala-java-time#617](https://github.com/cquiroz/scala-java-time/pull/617) ships portable data, but Scala 3
+   <= 3.10.0 emits the provider's `@EnableReflectiveInstantiation` registration with `js.Array`s, and the released
+   tzdb 2.9.0 is built with 3.9.0) **work with a source-built tzdb**: `scripts/wasm/build-scala-java-time.sh`
+   compiles only the tzdb module of v2.9.0 with Scala 3.10.1-RC2, which has scala/scala3@3bb676972 (Scala-typed
+   `registerInstantiatableClassV2`), against the released core 2.9.0. Counter's `java-time` route converts to `Europe/Prague` and formats
    and parses with `ofPattern` under daprd. Still excluded: the wall-clock (`Instant.now`/`Clock`/`currentTimeMillis`
    → scala-wasm javalib `js.Date.now`), `println` and `UUID.randomUUID` (no `SecureRandom`). `java.time.Duration`,
    `FiniteDuration`, `UUID.fromString` and `String.format` link. The published POM also brings mainline `scalajs-library`/`javalib` 1.22.0; the `wasm`
@@ -197,9 +199,9 @@ with wasmtime's cache. Warm round trip through the sidecar 2.4 ms median, incl. 
   in the component type; a Scala 3 WIT backend that tracks the library (or upstreaming to Scala.js). Until then:
   carry the linker patch and the re-embed step, and keep the stdlib overlay per nightly bump.
 - dapr4s shared code must avoid wall-clock/random APIs on the `wasm` path (or provide WASI-backed replacements), and
-  `DateTimeFormatter.ofPattern` and tzdb region zones until a scala-java-time release > 2.8.0 (has #618; region zones: built with
-  Scala 3 >= 3.10.1) exists (an app can use them now with the source build). java.time parsing, the predefined formatters,
-  localized text and fixed-offset zones work (scala-java-locales 1.6.0 + scala-java-time 2.8.0).
+  tzdb region zones until a scala-java-time release's tzdb is built with Scala 3 >= 3.10.1 (an app can use them now
+  with the source-built tzdb). java.time parsing, the predefined formatters, `ofPattern`, localized text and
+  fixed-offset zones work (scala-java-locales 1.6.0 + scala-java-time 2.9.0).
 - Also found: `compose.sh` exits 1 on success (`tmp` assigned in a `$(...)` subshell), and the wasi-http
   provider's `store-not-found` payload is daprd's raw body, not the store name.
   Both are fixed upstream (0.7.1: `compose.sh`; 0.7.2: setup-error payloads are daprd's message). 0.7.2 also

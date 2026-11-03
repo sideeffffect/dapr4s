@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-11-03] update | scala-java-time 2.9.0 released; only tzdb still source-built
+- Updated: scala-js/scala-wasm-component-spike.md — 2.9.0 (tag v2.9.0 = 3b4ecad, #618 + sbt-tzdb 5.5.0) makes `ofPattern` link on Wasm with the released artifact; its tzdb is still compiled with Scala 3.9.0 (V1 `Reflect.registerInstantiatableClass`), so `scripts/wasm/build-scala-java-time.sh` now compiles ONLY the tzdb module of v2.9.0 with Scala 3.10.1-RC2 (contains scala/scala3@3bb676972, no nightly) as `2.9.0-dapr4s-local` on the released core 2.9.0
+
 ## [2026-10-17] update | cquiroz/scala-java-time#618 merged
 - Updated: scala-js/scala-wasm-component-spike.md — #618 merged (48cf7a6); dapr4s builds that `main` commit (no merge step); waits for a release > 2.8.0, region zones also for one built with Scala 3 >= 3.10.1
 
