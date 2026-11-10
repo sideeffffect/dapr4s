@@ -21,30 +21,37 @@ All three must stay in sync with the code at all times.
 
 ## Scala stack
 
-- **Scala version**: latest nightly (`3.9.0-RC1-bin-*-NIGHTLY` or later), pinned as `scala3Nightly`
-  in `build.sbt`. Always use the newest available nightly to get the latest capture-checking and
+- **Scala version**: latest nightly (`3.9.0-RC1-bin-*-NIGHTLY` or later), pinned as `Versions.scala3Nightly`
+  in `buildsupport.mill` (`./mill show scala3Nightly` prints it; scripts read it from there). Always use the newest available nightly to get the latest capture-checking and
   safe-mode fixes. Nightlies resolve from the scala-lang nightly repository (a build-only resolver,
   never written into the POM).
-- **Build tool**: **sbt** (`build.sbt`, `project/build.properties`, `project/plugins.sbt`) with
-  sbt-scalajs (Scala.js **1.22**), sbt-scalajs-crossproject, the ScalablyTyped sbt converter,
-  sbt-ci-release, sbt-scalafmt and sbt-assembly. (dapr4s used scala-cli until 2026-10; the move is
-  Phase 1 of `docs/WASM-COMPONENTS-PROPOSAL.md` §2b.) Projects:
-  - `coreJVM` / `coreJS` — the published library (`dapr4s_3` / `dapr4s_sjs1_3`) and its **unit**
-    tests (every test source outside an `integration/` directory).
-  - `integrationJVM` / `integrationJS` — the Docker integration suites (`test/{shared,jvm,js}/integration`),
-    never published. `integrationJS` links with the Wasm + JSPI linker config.
+- **Build tool**: **Mill 1.3.1** (`build.mill`, `buildsupport.mill`; `./mill` is the bootstrap
+  script). Mill 1.3.1 contains [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)
+  (the Scala.js test-link fix). The meta-build loads the
+  released mill-scalablytyped `0.4.2` from Maven Central (it contains
+  [lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50),
+  [#51](https://github.com/lolgab/mill-scalablytyped/pull/51) and
+  [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)). Nothing is built from source.
+  Use released versions only. History: scala-cli until 2026-10-12, then sbt (the sbt build lived in
+  `build.sbt` and `project/`; `git log` has it). Modules:
+  - `core.jvm` / `core.js` — the published library (`dapr4s_3` / `dapr4s_sjs1_3`); `core.jvm.test` /
+    `core.js.test` are its **unit** tests (every test source outside an `integration/` directory).
+  - `integration.jvm` / `integration.js` — the Docker integration suites (`test/{shared,jvm,js}/integration`),
+    never published. `integration.js` links with the Wasm + JSPI linker config.
   - `stFacades` — the ScalablyTyped facades (see "Scala.js layer rules"), never published itself.
-  - `root` aggregates them all.
+  - `k8s.orderService` / `k8s.inventoryService` — runnable fat jars of the two example mains
+    (`test/jvm/apps`) for `scripts/k8s-test.sh`.
 - **Platforms**: JVM **and Scala.js**. Common commands:
-  - `sbt coreJVM/compile`, `sbt coreJS/compile`
-  - `sbt coreJVM/test`, `sbt coreJS/test` (unit tests; no Docker, no `--test-only` filter needed)
-  - `sbt integrationJVM/test`, `sbt integrationJS/test` (Docker; JS also needs Node >= 25)
-  - Prefer one long-lived sbt (`sbt --client ...` or the sbt shell): each cold sbt start costs ~20 s.
-- **Directory layout**: `src/{shared,jvm,js}` and `test/{shared,jvm,js}`. sbt does not own this
-  layout: `build.sbt` points each project's source directories into it (the sbt project
-  directories `.jvm/`, `.js/`, `.integration/`, `.st-facades/` only hold `target/`). Files under
-  `jvm/`/`js/` still carry a per-file `//> using target.platform "jvm"`/`"scala-js"` line from the
-  scala-cli days; under sbt it is only a comment (removal is a planned follow-up). Packages are
+  - `./mill core.jvm.compile`, `./mill core.js.compile`
+  - `./mill core.jvm.test`, `./mill core.js.test` (unit tests; no Docker)
+  - `./mill integration.jvm.testForked`, `./mill integration.js.testForked` (Docker; JS also needs
+    Node >= 25 first on the PATH)
+  - Several tasks in one call: `./mill a + b`, or brace expansion `./mill core.{jvm,js}.test`.
+  - Mill keeps a background daemon, so repeated calls are fast; all output goes to `out/`.
+- **Directory layout**: `src/{shared,jvm,js}` and `test/{shared,jvm,js}`. Mill does not own
+  this layout: each module points its `sources` into it (module directories such as `core/jvm/` do not
+  exist). Files under `jvm/`/`js/` still carry a per-file `//> using target.platform "jvm"`/`"scala-js"`
+  line from the scala-cli days; it is only a comment (removal is a planned follow-up). Packages are
   unchanged by the layout (`src/jvm/internal/` and `src/js/internal/` are both `dapr4s.internal`).
   Each capability family lives in its own package `dapr4s.<family>` under
   `src/<platform>/<family>/` (`state`, `publish`, `invoke`, `secrets`, `configuration`,
@@ -55,34 +62,42 @@ All three must stay in sync with the code at all times.
   annotations) stays in `dapr4s.derivation`; cross-cutting types (`DaprCapability`, `Dapr`,
   `DaprConfig`, `DaprApp`, `JsonCodec`, `HttpMethod`, exceptions, `src/shared/optypes/`) stay in
   `dapr4s`. There is no re-export facade — consumers import the families they use.
-  `coreJS` links with ES2017 (`withESVersion(ESVersion.ES2017)`), required by `js.async`/`js.await`.
+  `core.js` links with ES2017 (`esFeatures`), required by `js.async`/`js.await`.
   **JS build prerequisite**: npm (the build runs `npm ci` itself when `node_modules` is missing or
-  older than `package-lock.json`). Generating + compiling the facades takes ~3 min cold; later
-  builds reuse them. The published `dapr4s_sjs1_3` jar embeds the facade `.sjsir`, so consumers
-  resolve everything from Maven Central.
-- **JVM**: Zulu 25 (CI: `actions/setup-java` with `zulu` 25). JDK 25 is required for stable
-  virtual thread support (no carrier pinning on `synchronized`). sbt runs on whatever JDK starts
-  it, so `build.sbt` fails at load time on a JDK older than 25 — point `JAVA_HOME` (or
-  `sbt --java-home`) at a JDK 25. `.jvmopts` gives sbt 6 GB heap (the facade compile needs it).
-- **Compiler flags** (all active, `compilerFlags` in `build.sbt`; not applied to `stFacades`):
+  older than `package-lock.json`). Generating + compiling the facades takes ~10 min cold; later
+  builds reuse them (Mill caches `out/stFacades`, the converter `~/.cache/scalablytyped`). The
+  published `dapr4s_sjs1_3` jar embeds the facade `.sjsir`, so consumers resolve everything from Maven
+  Central.
+- **JVM**: Zulu 25. JDK 25 is required for stable virtual thread support (no carrier pinning on
+  `synchronized`). The `//| mill-jvm-version: zulu:25.0.3` header of `build.mill` makes Mill download
+  and run on Zulu 25 and fork every test JVM with it, whatever JDK is on the PATH;
+  `//| mill-jvm-opts` gives the Mill daemon 6 GB heap and 8 MB stacks (the facade compile needs them).
+- **Compiler flags** (all active, `Versions.compilerFlags` in `buildsupport.mill`, applied by the
+  `Dapr4sFlags` trait; not applied to `stFacades`):
   - `-language:experimental.captureChecking`
   - `-language:experimental.pureFunctions` — `A => B` is a pure function; context functions are
     pure by default; strengthens `Dapr.run`'s body type.
   - `-experimental` — enables clause interleaving (`def f[A](x: A)[B: TC]: B`).
   - `-Ycc-verbose`, `-Yexplicit-nulls`, `-Wconf:any:error` (fatal warnings).
-- **Dependencies** (versions in the `versions` object of `build.sbt`): upickle 3.3.1 (pinned —
+- **Dependencies** (versions in the `Versions` object of `buildsupport.mill`): upickle 3.3.1 (pinned —
   4.x crashes on CC-annotated types, test-only), munit 1.3.0, testcontainers-scala-munit 0.43.6,
   testcontainers-dapr 1.17.2 (all test-only — not part of the published library). Cross deps use
-  `%%%`; `scala-java-time` provides `java.time` on Scala.js. Platform scoping is plain sbt: the
-  Dapr Java SDK is a `coreJVM` dependency, testcontainers an `integrationJVM` test dependency,
-  scala-java-time / scalablytyped-runtime / scalajs-dom `coreJS` dependencies. The JS layer's npm
-  deps (`@dapr/dapr`, `@types/express`, `@types/node`, `testcontainers`,
+  `mvn"org::name::version"`; `scala-java-time` provides `java.time` on Scala.js. Platform scoping is
+  per module: the Dapr Java SDK is a `core.jvm` dependency, testcontainers an `integration.jvm`
+  dependency, scala-java-time / scalablytyped-runtime / scalajs-dom `core.js` dependencies. The JS
+  layer's npm deps (`@dapr/dapr`, `@types/express`, `@types/node`, `testcontainers`,
   `@dapr/testcontainer-node`, `typescript`) are declared in `package.json` (with
-  `package-lock.json` committed); `build.sbt` reads the `dependencies` of `package.json` as the
-  ScalablyTyped conversion roots, so `package.json` is the single source of truth.
-- **POM**: the POMs must stay identical to the scala-cli era ones (coordinates, license, developer,
-  scm, url; dependency lists). `build.sbt` strips test-scope dependencies from the POM and keeps
-  `stFacades` out of it (`projectDependencies` filter).
+  `package-lock.json` committed); `stFacades` (mill-scalablytyped) reads the `dependencies` of
+  `package.json` as the ScalablyTyped conversion roots, so `package.json` is the single source of truth.
+- **POM**: the POMs must stay identical to the scala-cli/sbt era ones (coordinates, license, developer,
+  scm, url, organization; dependency lists). `Dapr4sPom` (`buildsupport.mill`) renders them in exactly
+  sbt's layout (Mill's own renderer differs); `core.jvm` depends on `scala3-library_3` (as sbt did, not
+  Mill's default `scala-library` for Scala >= 3.8); test dependencies never reach a POM; `core.js`
+  keeps `stFacades` out of it. Check: `./mill core.{jvm,js}.pom` and diff against the published POMs
+  (only the version may differ).
+- **Versions**: `publishVersion` (the `Dynver` object in `buildsupport.mill`) keeps sbt-dynver +
+  sbt-ci-release's scheme: a clean checkout at a `vX.Y.Z` tag is `X.Y.Z`, anything else
+  `X.Y.Z+<distance>-<sha8>[+<yyyyMMdd-HHmm> if dirty]-SNAPSHOT`.
 
 ---
 
@@ -248,7 +263,7 @@ platform walls behind the same boundary:
   place `@dapr/dapr` (and express/Node) types may appear. Those types are the
   **ScalablyTyped-generated facades** (`dapr4styped.daprDapr`, `dapr4styped.expressServeStaticCore`,
   `dapr4styped.node`, ... — generated into the dapr4s-specific `dapr4styped.*` root package by the
-  `stFacades` project in build.sbt), plus the single surviving hand-written shim in
+  `stFacades` module of build.mill), plus the single surviving hand-written shim in
   `dapr4s.internal.facade` (`src/js/internal/facade/ExpressModule.scala`). No `js.Promise`,
   `dapr4styped.*` type, or other JS interop type may leak into the public API. Two deliberate
   carve-outs mirror the JVM side (where `src/jvm/Dapr.scala` constructs Java SDK clients): the
@@ -295,23 +310,23 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
 - **Every callback invoked from a JS frame re-enters `js.async`** before touching dapr4s code
   (express handlers, SDK activity executors, promise reactions). JSPI suspension cannot cross a
   JavaScript stack frame — skipping this throws `WebAssembly.SuspendError` at runtime.
-- **Facades are ScalablyTyped-generated**, not hand-written. The `stFacades` sbt project
-  (`ScalablyTypedConverterGenSourcePlugin`, converter `1.0.0-beta45`) converts the npm packages of
-  `package.json` `dependencies`, as installed in the repo's `node_modules` from
-  `package-lock.json`, into Scala sources under `.st-facades/target/.../src_managed` and compiles
-  them (~3 min cold; the converter's parse cache is `~/.cache/scalablytyped`). Converter settings:
-  `stOutputPackage := "dapr4styped"`, `stStdlib := List("es2022")`, Scala 3.3.6 (the converter
-  needs a released Scala to target; the nightly reads its TASTy). Facade imports use the
+- **Facades are ScalablyTyped-generated**, not hand-written. The `stFacades` module converts the npm
+  packages of `package.json` `dependencies`, as installed in the repo's `node_modules` from
+  `package-lock.json` (`scalablyTypedNpmCi` runs `npm ci` when needed), into Scala sources and
+  compiles them (~10 min cold; the converter's parse cache is `~/.cache/scalablytyped`). The module
+  extends mill-scalablytyped's `ScalablyTyped` (converter `1.0.0-beta45`) with the options the sbt
+  build used: `scalablyTypedOutputPackage = "dapr4styped"`, `scalablyTypedStdLibs = Seq("es2022")`
+  ([lolgab/mill-scalablytyped#51](https://github.com/lolgab/mill-scalablytyped/pull/51)),
+  `scalablyTypedNpmCi = true` ([#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), Scala
+  3.3.6 (the converter needs a released Scala to target; the nightly reads its TASTy). Facade imports use the
   **`dapr4styped.*` root package**, never ST's default `typings.*` — the facades ship inside the
-  published jar and must not collide with a consumer's own ST generation. scalajs-bundler is
-  enabled on `stFacades` only because the beta45 GenSource plugin requires it; `build.sbt`
-  overrides its `npmUpdate` so it never writes its own `package.json` or runs an unlocked install.
+  published jar and must not collide with a consumer's own ST generation.
   `stFacades` is compiled without our flags (no CC, no explicit nulls, no fatal warnings) — but
   OUR code must still compile with zero warnings, and explicit-nulls means ST results must NOT be
   `.nn`-ed (it is an error: unnecessary `.nn`).
-- **The published `dapr4s_sjs1_3` jar is self-contained**: `coreJS` depends on `stFacades`, but
-  `build.sbt` drops that project from `projectDependencies` (so it is not in the POM) and adds the
-  facade `.sjsir` to `coreJS / Compile / packageBin / mappings` (`embeddedFacades`). Only `.sjsir`
+- **The published `dapr4s_sjs1_3` jar is self-contained**: `core.js` depends on `stFacades` (a
+  `moduleDep`), but filters it out of `publishXmlDeps`/`publishMvnDeps` (so it is not in the POM) and
+  adds the facade `.sjsir` (`stFacades.embeddedFacades`) to its `jar`. Only `.sjsir`
   is embedded, not `.class`/`.tasty`: consumers only link against the facades, and embedded
   `.tasty` made scaladoc produce a 1.1 GB `-javadoc.jar` (0.20.0 publish failure). Only the
   packages of the MAIN roots' closure (`mainFacadePackages`) are embedded; the testcontainers
@@ -347,15 +362,16 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
 ## Formatting
 
 The project uses scalafmt. Config is in `.scalafmt.conf` (version 3.10.4, dialect `scala3`,
-`maxColumn = 120`, trailing commas everywhere).
+`maxColumn = 120`, trailing commas everywhere). It covers every git-tracked `*.scala`, `*.sbt` and
+`*.mill` file (`project.git = true`): the library, the tests and the Mill build files. Generated
+sources (the facades, under `out/`) are never formatted.
 
-The build uses sbt-scalafmt (it reads the same `.scalafmt.conf`).
+Run the formatter: `./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt`
+Check without writing: `./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt --check`
+(Mill runs the scalafmt CLI, which downloads the version `.scalafmt.conf` names.)
 
-Run the formatter: `sbt scalafmtAll scalafmtSbt`
-Check without writing: `sbt scalafmtCheckAll scalafmtSbtCheck`
-
-**Always format before committing.** The CI `format` job runs `sbt scalafmtCheckAll scalafmtSbtCheck`
-and blocks the build (and `publish`) on any unformatted file, so a missed format fails CI.
+**Always format before committing.** The CI `format` job runs the check and blocks the build (and
+`publish`) on any unformatted file, so a missed format fails CI.
 
 Some files are intentionally excluded from formatting via `project.excludeFilters` in
 `.scalafmt.conf`: they use experimental capture-checking `^{...}` return-type annotations in a
@@ -364,7 +380,7 @@ position scalafmt's parser does not yet support. Files that merely *use* `^{...}
 formatted normally.
 
 When you add a new file with CC syntax scalafmt can't parse, add it to `project.excludeFilters`.
-sbt-scalafmt respects the filters and FAILS the check on a parse error (unlike `scala-cli fmt
+The scalafmt CLI respects the filters and FAILS the check on a parse error (unlike `scala-cli fmt
 --check`, which exited 0 and silently hid the remaining files). The CI job also greps the output
 for parse errors and prints a pointer to `project.excludeFilters`.
 
@@ -376,15 +392,16 @@ Four legs, exactly as CI runs them (`.github/workflows/ci.yml`, one `test` matri
 `jvm` and a `js` include entry — a future Scala Native port is a new include entry, not a new
 job; each leg runs compile + unit tests + integration tests):
 
-- **JVM unit tests** (no Docker): `sbt coreJVM/test`. Shared
+- **JVM unit tests** (no Docker): `./mill core.jvm.test`. Shared
   suites live in `test/shared/unit/` (`JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`,
   `CCTest`, `CapabilityHandlerTest`, derivation tests, ...); JVM-only suites in `test/jvm/unit/`
   (`SubscriberTest`, `BindingDispatchTest`, `JobDispatchTest`, `DaprServerTestBase` — they drive
   the JVM `DaprAppServer` over real HTTP on `com.sun.net.httpserver` — plus the Jvm* derivation
   and models tests). `test/jvm/TestCodecs.scala` (Jackson) and `TestDaprExtensions.scala` are
   jvm-only helpers; `test/js/TestCodecsJs.scala` provides the same codec given names over ujson
-  so the shared suites run unchanged on JS. Tests run in a forked JVM (`Test / fork := true`).
-- **JVM integration tests** (Docker): `sbt integrationJVM/test`. Suites in `test/jvm/integration/`
+  so the shared suites run unchanged on JS. Tests run in one forked JVM, suites one after another
+  (`testParallelism = false`: the server suites wait for their port with a short timeout).
+- **JVM integration tests** (Docker): `./mill integration.jvm.testForked`. Suites in `test/jvm/integration/`
   and `test/shared/integration/` use `testcontainers-scala-munit` with the `TestContainersForAll`
   pattern against a real Dapr sidecar. `startContainers()` **must return an already-started
   container** — call `c.start()` before returning; the framework does NOT auto-start it. Tests use
@@ -392,19 +409,19 @@ job; each leg runs compile + unit tests + integration tests):
   `SingleContainer` type to the Dapr Java testcontainers type. The `DaprApp` fixtures in
   `test/shared/apps/` deliberately **cross-compile** (`CapabilityHandlerTest` exercises them on
   Scala.js — do not move them to a jvm directory); only the two `*Main.scala` entry points are
-  jvm-only (`test/jvm/apps/`; `sbt coreJVM/Test/assembly` builds their fat jars, see
-  `scripts/k8s-test.sh`). The integration projects depend on `core % "test->test"`, so they see
-  the apps and test helpers. All suites run sequentially in ONE forked JVM
-  (`Test / parallelExecution := false`): the server-delivery suites share one sidecar + server.
-- **Scala.js unit tests** (no Docker, no facade-touching code): `sbt coreJS/test`. Runs the shared
+  jvm-only (`test/jvm/apps/`; `./mill k8s.orderService.assembly` / `k8s.inventoryService.assembly`
+  build their runnable fat jars, see `scripts/k8s-test.sh`). The integration modules depend on
+  `core.<p>.test`, so they see the apps and test helpers. All suites run sequentially in ONE forked JVM
+  (`testParallelism = false`): the server-delivery suites share one sidecar + server.
+- **Scala.js unit tests** (no Docker, no facade-touching code): `./mill core.js.test`. Runs the shared
   unit suites on the **plain JS backend** under Node. The integration suites contain orphan
   `js.await`, and the plain-JS linker **wedges on orphan-await test sources** (hangs, no error), so
-  they must never be linked here — that is why they live in a separate project, not behind a
-  `--test-only` filter.
-- **Scala.js integration tests** (Docker + Node >= 25 first on PATH): `sbt integrationJS/test`.
-  `integrationJS` links with `ModuleKind.ESModule`, `ESVersion.ES2022`, `withUseWebAssembly(true)`
-  and `withWasmFeatures(_.withUseJSPI(true))` (the JSPI switch Scala.js 1.22 requires and
-  scala-cli never exposed). Node 25+ has Wasm 3.0 and JSPI on by default. The suites themselves
+  they must never be linked here — that is why they live in a separate module, not behind a
+  test filter. (The test bridge used to bring a 2.13 stdlib IR that shadowed the Scala 3.8+ one; Mill
+  1.3.1 contains the fix, [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786).)
+- **Scala.js integration tests** (Docker + Node >= 25 first on PATH): `./mill integration.js.testForked`.
+  `integration.js` links with `ModuleKind.ESModule`, `ESVersion.ES2022`, `scalaJSUseWebAssembly` and
+  `scalaJSUseWebAssemblyJSPI` (the JSPI switch Scala.js 1.22 requires; Mill >= 1.3.0 exposes it). Node 25+ has Wasm 3.0 and JSPI on by default. The suites themselves
   are cross-platform and live in `test/shared/integration`; `test/js/integration/` holds only the
   JS bring-up (the per-platform `SharedDaprItSuite` / `ServerDaprItSuite`, plus
   `JsItComponents`/`JsItFacades`/`JsItPolling`/`JsItEnv`). The Dapr sidecar (Redis-backed canonical
@@ -415,19 +432,21 @@ job; each leg runs compile + unit tests + integration tests):
   server-delivery suites (actor/pub-sub/invoke/workflow) share ONE sidecar + ONE in-process union
   server (`ServerDaprItSuite` + `itUnionApp`), reached via `host.testcontainers.internal` with
   daprd app health checks, because `serve` suspends forever with no clean stop on JS. Harness
-  facts: `Test / parallelExecution := false` is load-bearing — with it on, sbt's Scala.js test
-  adapter starts one Node worker per suite, and every worker binds the same fixed app ports
-  (`EADDRINUSE`, then 404s / actor-placement timeouts). The test `jsEnv` passes
+  facts: all suites must run in ONE Node runtime (with sbt, `Test / parallelExecution := false` was
+  load-bearing: one Node worker per suite binds the same fixed app ports — `EADDRINUSE`, then 404s /
+  actor-placement timeouts; Mill's Scala.js test runner uses one runtime). The `jsEnvConfig` passes
   `--import scripts/js-it/node-resolve-hook.mjs` (appends `.js` to the deep CommonJS submodule
   paths ScalablyTyped emits for testcontainers, which Node ESM rejects) and sets
   `DAPR4S_REPO_ROOT` (where the suites find `scripts/it/`). `java.util.UUID.randomUUID()` does
   **not link** on Scala.js (SecureRandom is absent from the javalib) — use `JsItEnv.uniqueId()`.
 - CI gates `publish` on the `format` job and **both** matrix legs passing. `publish` runs
-  `sbt ci-release` (sbt-ci-release: a release tag publishes the clean dynver version to Central,
-  a master push a dynver `-SNAPSHOT`) for `coreJVM` + `coreJS`; the scala-cli era secrets
-  (`PUBLISH_USER`, `PUBLISH_PASSWORD`, `PUBLISH_SECRET_KEY`, `PUBLISH_SECRET_KEY_PASSWORD`) are
-  mapped to sbt-ci-release's `SONATYPE_*` / `PGP_*` variables in the workflow. Check a publish
-  locally with `sbt coreJVM/publishLocal coreJS/publishLocal` and inspect the POMs in `~/.ivy2/local`.
+  `./mill mill.javalib.SonatypeCentralPublishModule/publishAll` (Mill's Central Portal publisher: a
+  release tag publishes the clean version, a master push a `-SNAPSHOT` to the Central snapshots
+  repository, the same scheme sbt-ci-release used) for `core.jvm` + `core.js`; the scala-cli era
+  secrets (`PUBLISH_USER`, `PUBLISH_PASSWORD`, `PUBLISH_SECRET_KEY`, `PUBLISH_SECRET_KEY_PASSWORD`)
+  are mapped to Mill's `MILL_SONATYPE_*` / `MILL_PGP_*` variables in the workflow. Check a publish
+  locally with `./mill core.{jvm,js}.publishLocal` (or `.pom`) and inspect the POMs;
+  `MILL_TESTS_PUBLISH_DRY_RUN=1` makes `publishAll` a dry run.
 - After every non-trivial change: compile first, then run unit tests, then integration tests if
   relevant. Do not batch large changes and test only at the end.
 
