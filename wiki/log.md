@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-11-10] update | PR #48 ported to the Mill Wasm build
+- Note: java.time on Wasm now lives in wasm/package.mill (`wall` mvnDeps scala-java-time + scala-java-locales 1.6.0, `counter` the source-built tzdb `ScalaJavaTimeTzdbWasm`); both consumer checks (Mill and sbt) add the tzdb; Mill resolves the publishLocal'ed tzdb from ~/.ivy2/local
+
 ## [2026-11-10] update | tzdb source build on Scala 3.10.1 final
 - Updated: scala-js/scala-wasm-component-spike.md — Scala 3.10.1 is final on Central (contains scala/scala3@3bb676972, `registerInstantiatableClassV2`); `scripts/wasm/build-scala-java-time.sh` compiles the tzdb module with 3.10.1 instead of 3.10.1-RC2
 
@@ -20,6 +23,10 @@
 
 ## [2026-10-17] update | dapr-wasm-components 0.7.5
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
+- Updated: scala-js/dapr4s-mill-build.md — OCI rename note: v0.7.5's compose.sh follows it
+
+## [2026-10-13] update | mill-dapr4s-wasm: the Mill plugin for Wasm components
+- Updated: scala-js/dapr4s-mill-build.md — Mill 1.x plugin shape (`_mill1_3`, header mvnDeps/repositories), mill-build/src as shared meta-build sources, defaultResolver forces scala-library (tool resolution via Lib.resolveDependencies), link driver shipped in dapr4s-wasm-linker, dynver timestamp race
 
 ## [2026-10-13] update | dapr-wasm-components 0.7.2: probe e2e asserts converse/schedule/timer results
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.2 fixed the three 0.7.1 provider gaps; echo conversation component; scheduler container next to a slim daprd; daprd 1.17.7 job GET encoding bug
@@ -201,3 +208,10 @@
 
 ## [2026-10-12] ingest | scala-wasm Component Spike (dapr4s Phase 0)
 - Updated: dapr/dapr-wasm-components-vs-dapr4s.md — toolchain status: wit-bindgen-scala replaces the archived `wit-bindgen scala` fork; Phase 0 verdict + link
+
+## [2026-11-10] ingest | dapr4s sbt -> Mill migration (non-Wasm part, onto master)
+- Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped via mill-scalablytyped 0.4.2 (Mill 1.3.1); ported from PR #45/#47 into PR #49 without the Wasm modules, which stay on PR #44
+- Note: the sbt-era notes in scalablytyped-with-scala-cli.md and scala-js-async-jspi-wasm.md are kept as history
+
+## [2026-11-10] update | Wasm on Mill folded into PR #44
+- Updated: scala-js/dapr4s-mill-build.md — re-added the Wasm-only Mill notes #49 dropped (scala-wasm org swap, patched linker from sources, sbt plugin built by Mill, mill-dapr4s-wasm plugin facts, `_2.13` linker for Mill's worker, dapr-wasm-components OCI rename); #44 now carries the Mill Wasm modules of #45/#47 on top of master

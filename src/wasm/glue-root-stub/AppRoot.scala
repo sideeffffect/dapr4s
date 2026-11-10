@@ -1,7 +1,7 @@
 // HAND-WRITTEN Scala 2.13 (why 2.13: see src/wasm/glue/WitGlue.scala).
 package dapr4s.internal.witglue
 
-/** LINK-TIME CONTRACT STUB, never linked: `witExports` depends on this project as `Provided`.
+/** LINK-TIME CONTRACT STUB, never linked: `wasm.glueExports` depends on this module compile-only.
   *
   * The 2.13 `@WitExport` trampolines (src/wasm/glue-exports) must call into Scala 3 code (the wall), but a 2.13 project
   * cannot depend on a Scala 3 project. So they reference this fixed FQN, and the Scala 3 side supplies the real

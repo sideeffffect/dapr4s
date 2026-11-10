@@ -9,7 +9,7 @@ import dapr4styped.expressServeStaticCore.mod.{Express, Handler}
 // The ONE hand-written facade that survives the ScalablyTyped migration.
 //
 // Everything else in the JS interop layer comes from the generated `dapr4styped.*`
-// packages (see stFacades in build.sbt). This file exists because ScalablyTyped cannot
+// packages (see stFacades in build.mill). This file exists because ScalablyTyped cannot
 // express two members of the express module object:
 //
 //   1. `dapr4styped.express.mod.apply()` calls through the module root captured as

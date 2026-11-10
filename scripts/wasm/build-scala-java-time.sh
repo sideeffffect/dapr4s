@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build ONLY the tzdb module of scala-java-time with Scala 3.10.1 and publishLocal it (to ~/.ivy2/local) as
 # scala-java-time-tzdb_sjs1_3 $TZDB_VERSION. Its POM depends on the RELEASED scala-java-time_sjs1_3 2.9.0 (from
-# Maven Central; this script does not publish core). The wasm/ build (build.sbt, `scalaJavaTimeTzdbWasm`) uses
+# Maven Central; this script does not publish core). The Mill build (wasm/package.mill, `ScalaJavaTimeTzdbWasm`) uses
 # exactly this version.
 #
 # WHAT: the head of https://github.com/cquiroz/scala-java-time/pull/623 (draft; $BASE = the v2.9.0 tag + two
@@ -16,7 +16,7 @@
 #   Core needs no rebuild: 2.9.0 has https://github.com/cquiroz/scala-java-time/pull/618 (`DateTimeFormatter.ofPattern`
 #   no longer links `Instant.now`) and nothing in it registers a reflective class.
 # RETIRES when a scala-java-time release's tzdb is built with Scala 3 >= 3.10.1 (#623 merged and released): pin that
-# release in wasm/build.sbt (`scalaJavaTimeTzdbWasm`), and delete this script and its CI steps.
+# release in wasm/package.mill (`ScalaJavaTimeTzdbWasm`), and delete this script and its CI steps.
 #
 # Idempotent: skips the build when the stamp (SHA + compiler + version) matches (FORCE=1 rebuilds).
 # The CI wasm leg caches ~/.ivy2/local/io.github.cquiroz keyed by this file's hash.
