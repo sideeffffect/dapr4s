@@ -6,7 +6,7 @@ on:
     types: [ published ]
   pull_request:
 
-# The build is Mill (build.mill, wasm/package.mill). `./mill` is the bootstrap script: it downloads Mill
+# The build is Mill (build.mill, buildsupport.mill, wasm/package.mill). `./mill` is the bootstrap script: it downloads Mill
 # 1.3.1, and Mill downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in
 # build.mill) through coursier, so no setup-java is needed for the build itself.
 jobs:
@@ -42,7 +42,7 @@ jobs:
   # fresh sbt consumer build with the published-to-a-local-repo artifacts (scripts/wasm/consumer-check-mill.sh,
   # scripts/wasm/consumer-check.sh).
   #
-  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the seven wasm
+  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the eight wasm
   # artifacts to Central (PUBLISH_WASM_TO_CENTRAL), so a broken wasm build must never reach a release.
   test:
     strategy:
@@ -217,7 +217,7 @@ jobs:
         chmod +x "$bin/wkg"
         cargo install wit-bindgen-scala --version 0.1.0 --locked
     # Publishes dapr4s_3 and dapr4s_sjs1_3 (a release tag publishes the clean version to Central, anything
-    # else a `-SNAPSHOT` to the Central snapshots repository) and, with PUBLISH_WASM_TO_CENTRAL, the seven
+    # else a `-SNAPSHOT` to the Central snapshots repository) and, with PUBLISH_WASM_TO_CENTRAL, the eight
     # wasm artifacts (incl. the two build plugins) at the SAME version: dapr4s-wasm's release mode depends on the dapr4s_sjs1_3 of THIS
     # version (DAPR4S_WASM_CORE_VERSION), published locally first so the build resolves it before Central
     # has it. The secrets keep their scala-cli era names; Mill wants the PGP key base64-encoded, so accept

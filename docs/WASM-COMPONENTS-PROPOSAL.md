@@ -60,8 +60,10 @@ dapr4s `wasm` wall must respect:
 
 ### 2b. Build: move scala-cli → sbt
 
-> **Superseded (2026-10-13):** dapr4s moved on from sbt to **Mill** ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)),
-> wasm platform included. The fork no longer needs a separate build: the `wasm.*` Mill modules swap the fork's artifacts
+> **Superseded:** dapr4s moved on from sbt to **Mill** (Mill 1.3.1): the Wasm prototype on 2026-10-13
+> ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)), `master` on 2026-11-10
+> ([PR #49](https://github.com/sideeffffect/dapr4s/pull/49)), and the Wasm modules then joined it in
+> [PR #44](https://github.com/sideeffffect/dapr4s/pull/44). The fork no longer needs a separate build: the `wasm.*` Mill modules swap the fork's artifacts
 > in and link components with a small driver. This section is kept as history.
 
 The `scala-wasm` fork ships only as an sbt plugin (`moduleKind = WasmComponent`, `scalaJSWitDirectory` →
@@ -238,7 +240,7 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   `prepare-patched-linker.sh` + `patches/` (Mill compiles the patched linker sources).
 - **CI**: a `wasm` entry in the `test` matrix (unit tests and e2e in both core modes, then the Mill and the sbt
   consumer checks). It gates `publish` like the jvm and js legs.
-- **Packaging (2026-10-13): seven artifacts, published to Central.** All `com.github.sideeffffect`, at core's
+- **Packaging (2026-10-13): eight artifacts, published to Central.** All `com.github.sideeffffect`, at core's
   version (same scheme as sbt-dynver): `dapr4s-wasm_sjs1_3` (the Scala 3 adapters + `DaprComponent` + inert callbacks; depends on dapr4s
   core `dapr4s_sjs1_3` and the glue), `dapr4s-wasm-glue_sjs1_2.13` (WIT bindings + hand-written glue),
   `dapr4s-wasm-glue-exports_sjs1_2.13` (the trampolines; components only), `dapr4s-wasm-scalalib-overlay` (the
@@ -252,7 +254,7 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   (`scripts/wasm/consumer-check-mill.sh` and `consumer-check.sh` prove it; the first external consumer is
   [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples), examples 18/19, with the Mill plugin). By default the wall depends on the
   PUBLISHED `dapr4s_sjs1_3` (its IR links into the component, as the spike did); `wasm.lib[source]` tests
-  dapr4s's own `src/shared` instead. The `publish` job publishes all seven with core (Mill's Central Portal publisher)
+  dapr4s's own `src/shared` instead. The `publish` job publishes all eight with core (Mill's Central Portal publisher)
   (`PUBLISH_WASM_TO_CENTRAL: 'true'`, approved 2026-10-13). The workarounds are also being
   fixed upstream (scala-wasm #268–#271, scala3 #27300; see AGENTS.md): the linker patch now covers BOTH sides of params-via-memory (the import side was
   silently missing in 1.22.1-wasm.6), proven by `test/wasm/imports-probe` against daprd.

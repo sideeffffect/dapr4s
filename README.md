@@ -43,8 +43,8 @@ WASI-component platform, see AGENTS.md).
 ./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt   # format (add --check to only check)
 ```
 
-The JS integration suites are a separate project because they use orphan `js.await`, which
-needs the WebAssembly backend with JSPI (and wedges the plain-JS linker); `integrationJS` links
+The JS integration suites are a separate module because they use orphan `js.await`, which
+needs the WebAssembly backend with JSPI (and wedges the plain-JS linker); `integration.js` links
 them for Wasm and runs them against a real `daprd` 1.17 + Redis environment.
 
 ## Usage

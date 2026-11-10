@@ -188,20 +188,9 @@
 ## [2026-10-12] ingest | scala-wasm Component Spike (dapr4s Phase 0)
 - Updated: dapr/dapr-wasm-components-vs-dapr4s.md — toolchain status: wit-bindgen-scala replaces the archived `wit-bindgen scala` fork; Phase 0 verdict + link
 
-## [2026-10-13] ingest | dapr4s sbt -> Mill migration
-- Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped without the sbt plugin, scala-wasm in Mill
+## [2026-11-10] ingest | dapr4s sbt -> Mill migration (non-Wasm part, onto master)
+- Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped via mill-scalablytyped 0.4.2 (Mill 1.3.1); ported from PR #45/#47 into PR #49 without the Wasm modules, which stay on PR #44
 - Note: the sbt-era notes in scalablytyped-with-scala-cli.md and scala-js-async-jspi-wasm.md are kept as history
 
-## [2026-10-16] update | dapr4s Mill build on unreleased upstream
-- Updated: scala-js/dapr4s-mill-build.md — locally built Mill (dist.installLocal + launcher cache), retired workarounds, TestScalaJSModule gotcha, 2.13 patched linker, dapr-wasm-components OCI rename
-
-## [2026-10-18] update | mill-scalablytyped #50 merged
-- Updated: scala-js/dapr4s-mill-build.md — the snapshot is now upstream main (with #50) + #51 + #52, version 0.4.1-9-393207
-- Updated: scala-js/dapr4s-mill-build.md — Mill is now main at the merge of mill#7783 (1.3.0-20-56dcdf), fetched from upstream (the fork branch is deleted)
-
-## [2026-10-22] update | dapr4s on Mill 1.3.1
-- Updated: scala-js/dapr4s-mill-build.md — the build is on the released Mill 1.3.1 (still Scala 3.9.0 for 1.x plugins)
-- Updated: scala-js/dapr4s-mill-build.md — Mill 1.3.1 contains mill#7783 + mill#7786, so the snapshot script builds only mill-scalablytyped: main (with #50 + #51) + #52, version 0.4.1-14-c21896
-
-## [2026-11-10] update | mill-scalablytyped 0.4.2 released
-- Updated: scala-js/dapr4s-mill-build.md — the build pins the released mill-scalablytyped 0.4.2 (has #50, #51, #52); scripts/upstream-snapshot.sh and its CI steps are deleted; #52 renamed scalablyTypedPackageLock to scalablyTypedPackageLockJson
+## [2026-11-10] update | Wasm on Mill folded into PR #44
+- Updated: scala-js/dapr4s-mill-build.md — re-added the Wasm-only Mill notes #49 dropped (scala-wasm org swap, patched linker from sources, sbt plugin built by Mill, mill-dapr4s-wasm plugin facts, `_2.13` linker for Mill's worker, dapr-wasm-components OCI rename); #44 now carries the Mill Wasm modules of #45/#47 on top of master

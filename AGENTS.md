@@ -28,15 +28,15 @@ All three must stay in sync with the code at all times.
   never written into the POM).
 - **Build tool**: **Mill 1.3.1** (`build.mill`, `buildsupport.mill`, `wasm/package.mill`, and the
   meta-build sources `mill-build/src/` = the `mill-dapr4s-wasm` plugin; `./mill` is the bootstrap
-  script). Mill 1.3.1 contains [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783)
-  (`scalaJSOrganization`, `ModuleKind.WasmComponent`) and
-  [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786). The meta-build loads the
+  script). Mill 1.3.1 contains [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)
+  (the Scala.js test-link fix) and [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783)
+  (`scalaJSOrganization`, `ModuleKind.WasmComponent`, used by the wasm modules). The meta-build loads the
   released mill-scalablytyped `0.4.2` from Maven Central (it contains
   [lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50),
   [#51](https://github.com/lolgab/mill-scalablytyped/pull/51) and
   [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)). Nothing is built from source.
-  History: scala-cli until 2026-10-12, sbt until 2026-10-13 (the sbt build lived in `build.sbt`,
-  `project/` and a nested `wasm/build.sbt`; `git log` has it). Modules:
+  Use released versions only. History: scala-cli until 2026-10-12, then sbt (the sbt build lived in
+  `build.sbt`, `project/` and, for the wasm platform, a nested `wasm/build.sbt`; `git log` has it). Modules:
   - `core.jvm` / `core.js` — the published library (`dapr4s_3` / `dapr4s_sjs1_3`); `core.jvm.test` /
     `core.js.test` are its **unit** tests (every test source outside an `integration/` directory).
   - `integration.jvm` / `integration.js` — the Docker integration suites (`test/{shared,jvm,js}/integration`),
@@ -91,7 +91,7 @@ All three must stay in sync with the code at all times.
   dependency, scala-java-time / scalablytyped-runtime / scalajs-dom `core.js` dependencies. The JS
   layer's npm deps (`@dapr/dapr`, `@types/express`, `@types/node`, `testcontainers`,
   `@dapr/testcontainer-node`, `typescript`) are declared in `package.json` (with
-  `package-lock.json` committed); `build.mill` (`npmRoots`) reads the `dependencies` of
+  `package-lock.json` committed); `stFacades` (mill-scalablytyped) reads the `dependencies` of
   `package.json` as the ScalablyTyped conversion roots, so `package.json` is the single source of truth.
 - **POM**: the POMs must stay identical to the scala-cli/sbt era ones (coordinates, license, developer,
   scm, url, organization; dependency lists). `Dapr4sPom` (`buildsupport.mill`) renders them in exactly
@@ -546,8 +546,8 @@ agents push branches / open drafts with an EMPTY description; the user writes th
 
 The project uses scalafmt. Config is in `.scalafmt.conf` (version 3.10.4, dialect `scala3`,
 `maxColumn = 120`, trailing commas everywhere). It covers every git-tracked `*.scala`, `*.sbt` and
-`*.mill` file (`project.git = true`): the library, the tests, the wasm sources, `build-tools/` and the Mill
-build files. Generated sources (facades, WIT bindings, under `out/`) are never formatted.
+`*.mill` file (`project.git = true`): the library, the tests, the wasm sources and the Mill build files
+(`mill-build/src` included). Generated sources (facades, WIT bindings, under `out/`) are never formatted.
 
 Run the formatter: `./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt`
 Check without writing: `./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt --check`
@@ -576,9 +576,8 @@ Four legs, exactly as CI runs them (`.github/workflows/ci.yml`, one `test` matri
 job; each leg runs compile + unit tests + integration tests). A third include entry, `wasm`, runs
 the `wasm.*` modules (the wall's unit tests in both core modes, `scripts/wasm/e2e.sh` in both core
 modes, `scripts/wasm/consumer-check-mill.sh`, `scripts/wasm/consumer-check.sh`; see "Wasm component layer
-rules"). It installs its pinned
-tools, caches the scala-wasm clone the patched linker is built from, and gates `publish` like the other
-legs (the wasm artifacts are published by the same job).
+rules"). It installs its pinned tools, caches the scala-wasm clone the patched linker is built from, and
+gates `publish` like the other legs (the wasm artifacts are published by the same job):
 
 - **JVM unit tests** (no Docker): `./mill core.jvm.test`. Shared
   suites live in `test/shared/unit/` (`JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`,
@@ -630,11 +629,11 @@ legs (the wasm artifacts are published by the same job).
 - CI gates `publish` on the `format` job and all three `test` matrix legs (`jvm`, `js`, `wasm`) passing. `publish` runs
   `./mill mill.javalib.SonatypeCentralPublishModule/publishAll` (Mill's Central Portal publisher: a
   release tag publishes the clean version, a master push a `-SNAPSHOT` to the Central snapshots
-  repository) for `core.jvm` + `core.js` (+ the eight wasm artifacts, see "Central publishing switch");
-  the scala-cli era secrets (`PUBLISH_USER`, `PUBLISH_PASSWORD`, `PUBLISH_SECRET_KEY`,
-  `PUBLISH_SECRET_KEY_PASSWORD`) are mapped to Mill's `MILL_SONATYPE_*` / `MILL_PGP_*` variables in the
-  workflow. Check a publish locally with `./mill core.{jvm,js}.publishLocal` (or `.pom`) and inspect
-  the POMs; `MILL_TESTS_PUBLISH_DRY_RUN=1` makes `publishAll` a dry run.
+  repository, the same scheme sbt-ci-release used) for `core.jvm` + `core.js` (+ the eight wasm artifacts, see "Central publishing switch"); the scala-cli era
+  secrets (`PUBLISH_USER`, `PUBLISH_PASSWORD`, `PUBLISH_SECRET_KEY`, `PUBLISH_SECRET_KEY_PASSWORD`)
+  are mapped to Mill's `MILL_SONATYPE_*` / `MILL_PGP_*` variables in the workflow. Check a publish
+  locally with `./mill core.{jvm,js}.publishLocal` (or `.pom`) and inspect the POMs;
+  `MILL_TESTS_PUBLISH_DRY_RUN=1` makes `publishAll` a dry run.
 - After every non-trivial change: compile first, then run unit tests, then integration tests if
   relevant. Do not batch large changes and test only at the end.
 
