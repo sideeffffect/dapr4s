@@ -42,7 +42,7 @@ jobs:
   # fresh sbt consumer build with the published-to-a-local-repo artifacts (scripts/wasm/consumer-check-mill.sh,
   # scripts/wasm/consumer-check.sh).
   #
-  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the eight wasm
+  # The wasm leg GATES `publish`, like jvm and js: the publish job also publishes the six wasm
   # artifacts to Central (PUBLISH_WASM_TO_CENTRAL), so a broken wasm build must never reach a release.
   test:
     strategy:
@@ -132,15 +132,27 @@ jobs:
         wget -q https://raw.githubusercontent.com/dapr/cli/v1.15.1/install/install.sh -O - | /bin/bash -s 1.15.1
         dapr init --slim --runtime-version 1.17.7
         echo "$HOME/.dapr/bin" >> "$GITHUB_PATH"
-    # The patched scala-wasm linker is compiled by the `wasm.linker` module from the release commit's
-    # sources + our patch (scripts/wasm/prepare-patched-linker.sh); cache the scala-wasm clone.
-    - name: Cache the scala-wasm clone
+    # sbt + a JDK: the scala-wasm snapshot build below and the sbt consumer check at the end.
+    - uses: actions/setup-java@v5
+      if: matrix.platform == 'wasm'
+      with:
+        distribution: zulu
+        java-version: 25
+    - uses: sbt/setup-sbt@v1
+      if: matrix.platform == 'wasm'
+    # The UNRELEASED scala-wasm the Mill build pins (1.22.1-wasm.7-dapr4s-local: scala-wasm's branch head
+    # with the merged #268/#269/#271, see scripts/wasm/build-scala-wasm.sh). Built from source and
+    # publishLocal'ed; cached by the script's hash (it pins the commit SHA and the version). Goes away
+    # with the next scala-wasm release on Central.
+    - name: Cache the scala-wasm snapshot build
       if: matrix.platform == 'wasm'
       uses: actions/cache@v4
       with:
-        path: ~/.cache/dapr4s/scala-wasm-src
-        key: scala-wasm-src-${{ hashFiles('scripts/wasm/prepare-patched-linker.sh') }}
-        restore-keys: scala-wasm-src-
+        path: ~/.ivy2/local/io.github.scala-wasm
+        key: scala-wasm-snapshot-${{ hashFiles('scripts/wasm/build-scala-wasm.sh') }}
+    - name: Build and publishLocal the scala-wasm snapshot
+      if: matrix.platform == 'wasm'
+      run: scripts/wasm/build-scala-wasm.sh
     # Source mode: the wall over dapr4s's own src/shared (covers shared-code changes), unit tests + e2e
     # (counter-raw, counter, imports-probe against daprd + Redis).
     - name: Wall unit tests (source + release mode)
@@ -161,14 +173,7 @@ jobs:
       timeout-minutes: 20
       run: scripts/wasm/consumer-check-mill.sh
     # sbt-dapr4s-wasm is a product for sbt consumers: check it the way they use it, with a fresh sbt build
-    # (the only sbt in CI; dapr4s's own build is Mill).
-    - uses: actions/setup-java@v5
-      if: matrix.platform == 'wasm'
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
-      if: matrix.platform == 'wasm'
+    # (dapr4s's own build is Mill).
     - name: Consumer check (sbt plugin + one dependency, e2e)
       if: matrix.platform == 'wasm'
       timeout-minutes: 20
@@ -191,7 +196,10 @@ jobs:
       # The switch for Central publishing of the wasm artifacts (ON since 2026-10-13, approved by the
       # user). Setting it to 'false' stops only the wasm artifacts; core (dapr4s_3, dapr4s_sjs1_3)
       # publishes regardless.
-      PUBLISH_WASM_TO_CENTRAL: 'true'
+      # OFF while the build pins the unreleased scala-wasm 1.22.1-wasm.7-dapr4s-local
+      # (scripts/wasm/build-scala-wasm.sh): the wasm artifacts' POMs would name scala-wasm artifacts that
+      # are not on Central, so no consumer could resolve them. Back to 'true' with a scala-wasm release.
+      PUBLISH_WASM_TO_CENTRAL: 'false'
     steps:
     - uses: actions/checkout@v5
       with:
@@ -217,7 +225,7 @@ jobs:
         chmod +x "$bin/wkg"
         cargo install wit-bindgen-scala --version 0.1.0 --locked
     # Publishes dapr4s_3 and dapr4s_sjs1_3 (a release tag publishes the clean version to Central, anything
-    # else a `-SNAPSHOT` to the Central snapshots repository) and, with PUBLISH_WASM_TO_CENTRAL, the eight
+    # else a `-SNAPSHOT` to the Central snapshots repository) and, with PUBLISH_WASM_TO_CENTRAL, the six
     # wasm artifacts (incl. the two build plugins) at the SAME version: dapr4s-wasm's release mode depends on the dapr4s_sjs1_3 of THIS
     # version (DAPR4S_WASM_CORE_VERSION), published locally first so the build resolves it before Central
     # has it. The secrets keep their scala-cli era names; Mill wants the PGP key base64-encoded, so accept
@@ -238,7 +246,7 @@ jobs:
         if [[ "$PUBLISH_WASM_TO_CENTRAL" == true ]]; then
           ./mill --ticker false core.js.publishLocal
           export DAPR4S_WASM_CORE_VERSION="$version"
-          artifacts='{core.jvm,core.js,wasm.lib[release].wall,wasm.glue,wasm.glueExports,wasm.scalalibOverlay,wasm.linker[_],wasm.millPlugin,wasm.sbtPlugin}.publishArtifacts'
+          artifacts='{core.jvm,core.js,wasm.lib[release].wall,wasm.glue,wasm.glueExports,wasm.scalalibOverlay,wasm.millPlugin,wasm.sbtPlugin}.publishArtifacts'
         fi
         ./mill --ticker false mill.javalib.SonatypeCentralPublishModule/publishAll --publishArtifacts "$artifacts"
       env:

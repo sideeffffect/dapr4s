@@ -8,8 +8,8 @@
 #   counter      (test/wasm/counter: dapr4s's API)                    counter -> 1, then 2; error mapping:
 #                missing-store -> ComponentNotFoundException(State, "no-such-store"); stale-etag ->
 #                ETagMismatchException and the stale write does not land (counter -> 3)
-#   importsProbe (test/wasm/imports-probe): the four imports with > 16 flat params, which only the
-#                patched linker (dapr4s-wasm-linker) lowers: it must import exactly them; `converse` to daprd's
+#   importsProbe (test/wasm/imports-probe): the four imports with > 16 flat params, which the linker
+#                lowers through linear memory (scala-wasm/scala-wasm#268): it must import exactly them; `converse` to daprd's
 #                echo component must answer the very text the probe sent (the params reached the host intact);
 #                `schedule` must succeed (a scheduler runs for it); register-timer / register-reminder on an
 #                actor type this app does not host must be daprd's typed refusal (PermissionDenied), the timer's

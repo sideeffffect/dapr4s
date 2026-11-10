@@ -207,7 +207,7 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
 - **Build**: the `wasm.*` modules of the Mill build ([`wasm/package.mill`](../wasm/package.mill)), built with the
   traits of the `mill-dapr4s-wasm` plugin ([`mill-build/src`](../mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala),
   compiled into the meta-build). They swap the `org.scala-js` artifacts for the fork's (Mill's `scalaJSOrganization`) and link components with
-  Mill's own `ModuleKind.WasmComponent` on the patched linker (`dapr4s-wasm-linker_2.13`), both from
+  Mill's own `ModuleKind.WasmComponent` (the patched linker `dapr4s-wasm-linker_2.13` until #46, see below), both from
   [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) in Mill 1.3.1, so `core.jvm`/`core.js` and
   their POMs are unchanged. (Until 2026-10-13 a nested sbt build
   in `wasm/`: the fork's `sbt-scalajs` could not share the root meta-build.) `wasm/` also
@@ -237,10 +237,11 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
 - **Scripts**: [`scripts/wasm/`](../scripts/wasm): `e2e.sh` (import checks, compose, daprd + Redis, counter 1 → 2,
   error mapping, the imports probe against daprd's echo conversation component and a scheduler container),
   `consumer-check-mill.sh`, `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`,
-  `prepare-patched-linker.sh` + `patches/` (Mill compiles the patched linker sources).
+  `build-scala-wasm.sh` (the pinned scala-wasm snapshot, see below; until then `prepare-patched-linker.sh` +
+  `patches/`, from which Mill compiled the patched linker).
 - **CI**: a `wasm` entry in the `test` matrix (unit tests and e2e in both core modes, then the Mill and the sbt
   consumer checks). It gates `publish` like the jvm and js legs.
-- **Packaging (2026-10-13): eight artifacts, published to Central.** All `com.github.sideeffffect`, at core's
+- **Packaging (2026-10-13): eight artifacts, published to Central** (six since #46, below). All `com.github.sideeffffect`, at core's
   version (same scheme as sbt-dynver): `dapr4s-wasm_sjs1_3` (the Scala 3 adapters + `DaprComponent` + inert callbacks; depends on dapr4s
   core `dapr4s_sjs1_3` and the glue), `dapr4s-wasm-glue_sjs1_2.13` (WIT bindings + hand-written glue),
   `dapr4s-wasm-glue-exports_sjs1_2.13` (the trampolines; components only), `dapr4s-wasm-scalalib-overlay` (the
@@ -258,6 +259,29 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   (`PUBLISH_WASM_TO_CENTRAL: 'true'`, approved 2026-10-13). The workarounds are also being
   fixed upstream (scala-wasm #268–#271, scala3 #27300; see AGENTS.md): the linker patch now covers BOTH sides of params-via-memory (the import side was
   silently missing in 1.22.1-wasm.6), proven by `test/wasm/imports-probe` against daprd.
+
+### Retiring workarounds on an unreleased scala-wasm (2026-10-16, on Mill since 2026-11-10)
+
+[PR #46](https://github.com/sideeffffect/dapr4s/pull/46) (draft, stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`:
+scala-wasm's `scala-wasm` branch head `d4e4feba` (2026-11-09, the merge of #271). It contains
+[scala-wasm#268](https://github.com/scala-wasm/scala-wasm/pull/268),
+[#269](https://github.com/scala-wasm/scala-wasm/pull/269) and [#271](https://github.com/scala-wasm/scala-wasm/pull/271),
+all merged, none released yet (newest on Central: 1.22.1-wasm.6). Until 2026-11-09 it was `32cda138` + a local merge
+of the then-open #269/#271; the upstream merges are the same commits. `scripts/wasm/build-scala-wasm.sh` builds the
+branch as is and `publishLocal`s it (CI: cached by the script hash); Mill and sbt both resolve it from
+`~/.ivy2/local`. Central publishing of the wasm artifacts is off meanwhile. Written for the sbt `wasm/` build
+(2026-10-16), ported to the Mill build after #49 (2026-11-10).
+
+| Workaround | Status | Why |
+|---|---|---|
+| Patched linker `dapr4s-wasm-linker` (`_2.12`, `_2.13`) | **removed** (artifacts, `wasm.linker`, script, patch) | #268: params through linear memory on both sides. The imports probe runs all four > 16-param imports against daprd. |
+| WIT re-embed (`component embed --encoding utf16` + `component new`) | **removed** (both plugins) | #269 keeps a `@WitAlias` reached through a plain type alias. The linker's component (UTF-16 already) composes with the providers as is. Apps need no WIT files and no wkg. |
+| — | **new, small**: `useWitAliases` in mill-dapr4s-wasm's `WitBindgenModule` | wit-bindgen-scala 0.1.0 renders a `use`d alias structurally (`type Metadata = Array[...]`), so #269 alone does not help. The rewrite makes it `type Metadata = types.Metadata`. Without it, compose fails ("missing expected list export `metadata`"), checked. |
+| `org.scala-js` library/javalib exclusions | **removed in sbt-dapr4s-wasm**, kept in mill-dapr4s-wasm | #271 excludes them in the fork's sbt plugin. Mill's `scalaJSOrganization` swaps only the artifacts Mill adds itself, so the Mill plugin keeps them. |
+| Fork's 2.13 scalalib exclusion | kept | #271 keeps the upstream scalalib on Scala 3.8+ and leaves the fork's 2.13 one next to it. |
+| — | sbt only: fork's `scalajs-junit-test-runtime` for munit tests | #271 also excludes the upstream JUnit runtime that munit needs, and adds no fork one. The Mill build keeps the upstream one (its exclusions do not touch it). |
+| Empty javadoc jar of `dapr4s-wasm` | kept | [scala/scala3#27300](https://github.com/scala/scala3/pull/27300) merged 2026-10-15. The newest nightly (`3.10.2-RC1-bin-20261109-9567d89`, checked 2026-11-10) has it, but dapr4s's code does not compile on it (65 capture-checking errors, E223, in the derivation macros and family companions), so the root nightly stays and so does this workaround. |
+| Stdlib overlay | kept | unrelated to these PRs. |
 
 This makes the "two-compiler build" of the revised Phase 4 concrete: the 2.13 part is the generated bindings plus a
 small hand-written glue that grows with the wall (a generator can come back once it covers ~100 WIT functions). What remains open for

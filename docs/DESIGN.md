@@ -673,8 +673,7 @@ dapr4s/
 │                                     # Dynver (the sbt-dynver version scheme), Dapr4sPom (sbt-layout POMs)
 ├── mill-build/src/                   # the mill-dapr4s-wasm plugin sources (also this build's meta-build)
 ├── wasm/                             # package.mill (the wasm platform modules), wit/, wkg files,
-│                                     # linker/ (NOTICE of the patched linker), sbt-plugin/ (sbt-dapr4s-wasm
-│                                     # sources), NOTICE files
+│                                     # sbt-plugin/ (sbt-dapr4s-wasm sources), scalalib-overlay/ NOTICE files
 ├── package.json                      # npm pins for the JS layer: @dapr/dapr (runtime + converter input),
 │                                     # @types/express + @types/node (converter inputs), testcontainers +
 │                                     # @dapr/testcontainer-node (TEST-scope: JS integration sidecar + converter
@@ -1125,7 +1124,7 @@ Harness specifics (`integration.js` settings in `build.mill`):
 ## Wasm component platform (prototype, opt-in; Central publishing wired but off)
 
 A third platform builds a dapr4s app as a WASI **component** for dapr-wasm-components 0.7.5. It uses the scala-wasm
-fork of Scala.js (`ModuleKind.WasmComponent`) in the `wasm.*` Mill modules (`wasm/package.mill`), which swap in the fork's artifacts and link components with a small driver on the patched linker; nothing else in the build sees the fork. The
+fork of Scala.js (`ModuleKind.WasmComponent`) in the `wasm.*` Mill modules (`wasm/package.mill`), which swap in the fork's artifacts and link components with Mill's own `ModuleKind.WasmComponent` (on a locally built scala-wasm snapshot, `scripts/wasm/build-scala-wasm.sh`); nothing else in the build sees the fork. The
 plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in AGENTS.md "Wasm component layer rules".
 
 - **Same public API.** The wall depends on dapr4s core: the published `dapr4s_sjs1_3` (its Scala.js IR links into the
@@ -1141,14 +1140,14 @@ plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in 
   the Scala 2.13 code is a small hand-written glue in `src/wasm/glue*` (only what the wall uses): plain import/export
   traits with live import objects, and the `@WitExport` trampolines. So the wall is plain Scala 3 against traits,
   and it is unit-tested with fakes.
-- **Eight artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`,
-  `dapr4s-wasm-linker` (`_2.12` for sbt, `_2.13` for Mill: scala-wasm's linker + our params-via-memory patch) and two build
-  plugins that carry every build-level workaround: `mill-dapr4s-wasm` for Mill consumers (its sources are also
+- **Six artifacts.** `dapr4s-wasm` (adapters), `dapr4s-wasm-glue` (+ `-exports`), `dapr4s-wasm-scalalib-overlay`
+  and two build plugins that carry every build-level workaround: `mill-dapr4s-wasm` for Mill consumers (its sources are also
   dapr4s's own meta-build, so dapr4s's test components build exactly like a consumer's) and `sbt-dapr4s-wasm` for sbt
   consumers (Mill builds it as a plain sbt-1 plugin jar). A consumer: a plugin + one dependency + the fixed-name
   `ComponentRoot`.
-  They are published to Central with core by Mill's Central Portal publisher (the `PUBLISH_WASM_TO_CENTRAL` switch is on);
-  `publishLocal` works too. The link-time stubs stay unpublished.
+  They are published to Central with core by Mill's Central Portal publisher (the `PUBLISH_WASM_TO_CENTRAL` switch is
+  OFF while the build pins an unreleased, locally built scala-wasm, `scripts/wasm/build-scala-wasm.sh`, which retired
+  the patched linker and the WIT re-embed); `publishLocal` works too. The link-time stubs stay unpublished.
 
 ```mermaid
 flowchart LR

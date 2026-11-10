@@ -8,15 +8,13 @@ import mill.scalajslib.api.{ESFeatures, ESVersion, ModuleKind, Report}
 /** The build logic a dapr4s `wasm` app needs, as a Mill plugin (`mill-dapr4s-wasm`), the twin of the sbt plugin
   * `sbt-dapr4s-wasm` (dapr4s's wasm/sbt-plugin). Keep the two in sync.
   *
-  * WHY a plugin and not a library: everything here is a workaround in the BUILD, not in code: which Scala.js
-  * organization compiles and links the app, which linker links it, which stdlib IR wins on the linker classpath, which
-  * transitive libraries must not reach the classpath, and how the linked module becomes a component typed by the real
-  * WIT world. A library cannot change any of that.
+  * WHY a plugin and not a library: everything here is BUILD configuration, not code: which Scala.js organization
+  * compiles and links the app, the WasmComponent link, which stdlib IR wins on the linker classpath, which transitive
+  * libraries must not reach the classpath. A library cannot change any of that.
   *
   * dapr4s's own build compiles these very sources into its meta-build (they live in `mill-build/src`) and points the
-  * artifact-backed tasks ([[Dapr4sWasmComponentModule.dapr4sWasmLinkerClasspath]],
-  * [[Dapr4sWasmComponentModule.dapr4sWasmScalalibOverlay]]) at its own modules, so dapr4s's test components and an
-  * external app (dapr4s-examples) build the same way.
+  * artifact-backed task ([[Dapr4sWasmComponentModule.dapr4sWasmScalalibOverlay]]) at its own module, so dapr4s's test
+  * components and an external app (dapr4s-examples) build the same way.
   *
   * The traits, from the most general:
   *
@@ -26,14 +24,15 @@ import mill.scalajslib.api.{ESFeatures, ESVersion, ModuleKind, Report}
   *     dependency exclusions;
   *   - [[Dapr4sWasmTests]]: its plain-JS unit tests (Node);
   *   - [[WitModule]] / [[WitBindgenModule]]: `wkg wit fetch` (WIT only through OCI) / + wit-bindgen-scala (a Scala 2.13
-  *     module of hand-written WIT code; an app built on dapr4s's API does not need one);
-  *   - [[Dapr4sWasmComponentModule]]: a dapr4s app linked as a WASI component (`dapr4sComponent`).
+  *     module of hand-written WIT code; an app built on dapr4s's API needs neither);
+  *   - [[Dapr4sWasmComponentModule]]: a dapr4s app linked as a WASI component (`dapr4sComponent`): the linker's
+  *     component as is, so an app needs no WIT files and no wkg.
   *
   * An app's whole setup:
   * {{{
   * //| mvnDeps: ["com.github.sideeffffect::mill-dapr4s-wasm::<version>"]
   * import dapr4s.millwasm.*
-  * object app extends Dapr4sWasmComponentModule {   // + app/wit/world.wit, app/wkg-config.toml, app/wkg.lock
+  * object app extends Dapr4sWasmComponentModule {
   *   def scalaVersion = "<the Scala 3 nightly dapr4s is built with>"
   *   def mvnDeps = Seq(mvn"com.github.sideeffffect::dapr4s-wasm::\$dapr4sWasmVersion")
   * }
@@ -45,9 +44,13 @@ import mill.scalajslib.api.{ESFeatures, ESVersion, ModuleKind, Report}
 object Dapr4sWasm {
   val Org = "com.github.sideeffffect"
 
-  // The scala-wasm release dapr4s's wasm artifacts are compiled and linked with (the newest on Central).
+  // The scala-wasm dapr4s's wasm artifacts are compiled and linked with. 1.22.1-wasm.7-dapr4s-local is NOT on Maven
+  // Central: dapr4s's scripts/wasm/build-scala-wasm.sh builds scala-wasm's `scala-wasm` branch head (it has the merged
+  // scala-wasm/scala-wasm#268, #269 and #271, not released yet) and publishLocal's it to ~/.ivy2/local, which Mill's
+  // default repositories include. RETIRES with a scala-wasm release that has all three: pin it here (the newest on
+  // Central is 1.22.1-wasm.6).
   val ScalaWasmOrg = "io.github.scala-wasm"
-  val ScalaWasmVersion = "1.22.1-wasm.6"
+  val ScalaWasmVersion = "1.22.1-wasm.7-dapr4s-local"
 
   /** The version of dapr4s's wasm artifacts this plugin was published with (they are published together, from the same
     * dapr4s commit, at the same version). Read from a resource of the plugin jar; dapr4s's own build compiles these
@@ -67,8 +70,11 @@ object Dapr4sWasm {
   // it. dapr4s core (dapr4s_sjs1_3) and other cross-built dependencies (scala-java-time, upickle, ...)
   // bring MAINLINE Scala.js (scalajs-library -> scalajs-javalib). Different organization than the fork's,
   // so no eviction either: both would be on the classpath and the first IR file per class would win.
-  // Keep only the fork's. RETIRES with scala-wasm/scala-wasm#271 (the fork's core libraries evict
-  // mainline's) or when mainline Scala.js gains the component target.
+  // Keep only the fork's. scala-wasm/scala-wasm#271 does this in the fork's SBT plugin only (sbt-dapr4s-wasm
+  // dropped the org.scala-js exclusions with it); Mill's `scalaJSOrganization` (mill#7783) swaps the
+  // organization of the artifacts Mill adds itself, not of transitive ones, so this plugin keeps all of
+  // them. RETIRES when Mill's Scala.js support excludes the other organization's core libraries, or when
+  // mainline Scala.js gains the component target.
   // -----------------------------------------------------------------------------------------------
   val Exclusions: Seq[(String, String)] = Seq(
     ScalaWasmOrg -> "scala-library",
@@ -92,68 +98,68 @@ object Dapr4sWasm {
     work / "wit"
   }
 
-  // -----------------------------------------------------------------------------------------------
-  // The linker synthesizes the core module's `component-type` section from IR signatures, where WIT
-  // type aliases are already dealiased (`use types.{metadata}` becomes an inline
-  // list<tuple<string,string>>). The EXPORTED instance types then lack the alias type exports (e.g.
-  // `metadata`) that the dapr-wasm-components inbound provider imports, and `wac compose` fails
-  // ("instance is missing expected list export `metadata`"). Rebuild the component from the linked core
-  // module with the REAL world: extract the core module, strip the synthesized section,
-  // `wasm-tools component embed --encoding utf16` (scala-wasm lowers strings as UTF-16; the default
-  // utf8 garbles every string) and `wasm-tools component new`. RETIRES with scala-wasm/scala-wasm#269
-  // (the linker keeps the WIT aliases): use the linker's component as is.
-  // -----------------------------------------------------------------------------------------------
-  def buildComponent(linked: os.Path, work: os.Path, witDir: os.Path, world: String): os.Path = {
-    os.makeDir.all(work)
-    val core = work / "core.wasm"
-    val stripped = work / "core-stripped.wasm"
-    val embedded = work / "core-embedded.wasm"
-    val out = work / "component.wasm"
-    os.write.over(core, extractMainCoreModule(linked))
-    wasmTools("strip", "--delete", "component-type.*", core, "-o", stripped)
-    wasmTools("component", "embed", "--encoding", "utf16", witDir, "--world", world, stripped, "-o", embedded)
-    wasmTools("component", "new", embedded, "-o", out)
-    wasmTools("validate", out)
-    out
-  }
-
-  private def wasmTools(args: os.Shellable*): Unit = {
-    val _ = os.proc(("wasm-tools": os.Shellable) +: args).call(stderr = os.Pipe)
-  }
-
-  /** The linker's core module: `wasm-tools component new` adds tiny `wit-component:shim` / `:fixups` modules for
-    * indirect lowering next to it; the linker's module is by far the largest.
+  /** Copy the linker's component to `out`. The linker's output IS the component: its component-type, synthesized from
+    * the IR signatures, keeps the WIT type aliases the dapr-wasm-components providers need (`metadata` in the exported
+    * `*-callback` instances) since scala-wasm/scala-wasm#269, given bindings that reference the defining interface
+    * ([[WitBindgenModule]] rewrites them so, see [[useWitAliases]]), and it lowers strings as UTF-16 itself. (Until
+    * 2026-10-16: extract the core module, strip `component-type.*`, `wasm-tools component embed --encoding utf16` the
+    * real WIT world, `component new`.)
     */
-  private def extractMainCoreModule(component: os.Path): Array[Byte] = {
-    val bytes = os.read.bytes(component)
-    require(
-      bytes.length > 8 && bytes(0) == 0 && bytes(1) == 'a' && bytes(2) == 's' && bytes(3) == 'm',
-      s"$component is not a wasm binary",
-    )
-    var pos = 8
-    def leb(): Int = {
-      var result = 0
-      var shift = 0
-      var b = 0
-      while {
-        b = bytes(pos) & 0xff
-        pos += 1
-        result |= (b & 0x7f) << shift
-        shift += 7
-        (b & 0x80) != 0
-      } do ()
-      result
+  // -----------------------------------------------------------------------------------------------
+  // WHAT: rewrites generated bindings in place so that every `use`d WIT type ALIAS points at its
+  // defining interface: in `invocation_callback`, `type Metadata = Array[wit.Tuple2[String, String]]`
+  // becomes `type Metadata = dapr4swit.dapr_wasm_components.interfaces.types.Metadata`.
+  // WHY: wit-bindgen-scala 0.1.0 renders a `use` of a type alias structurally (its `render_type` writes
+  // named list/option/result/tuple typedefs out), so the `@WitAlias` of `types.metadata` is lost and the
+  // linker's component-type has no `metadata` type export in the exported `*-callback` instances;
+  // `wac compose` with the dapr-wasm-components inbound provider then fails ("instance is missing
+  // expected list export `metadata`"). The scala-wasm compiler keeps an alias reached through a plain
+  // type alias since scala-wasm/scala-wasm#269, but only in this form.
+  // WHY SAFE: a rewrite replaces a type with an alias of the SAME structural type (both right-hand sides
+  // are checked equal before rewriting), so no Scala type changes; only the alias the compiler sees does.
+  // It applies only to an un-annotated `type X = R` whose name has exactly one `@WitAlias` definition
+  // `type X = R` (same R) elsewhere in the bindings, i.e. a `use`. Idempotent: a rewritten line no longer
+  // matches. Verified by dapr4s's scripts/wasm/e2e.sh, which composes the linker's component AS IS.
+  // RETIRES when wit-bindgen-scala renders `use`d aliases as references to the defining interface.
+  // -----------------------------------------------------------------------------------------------
+  def useWitAliases(dir: os.Path): Unit = {
+    val TypeLine = """^  type (\w+) = (.+)$""".r
+    val Annotation = "@scala.scalajs.wit.annotation.WitAlias("
+    val files = os.walk(dir).filter(f => os.isFile(f) && f.ext == "scala")
+    def objectOf(src: String): String = {
+      val pkg = """(?m)^package ([\w.]+)$""".r.findFirstMatchIn(src).map(_.group(1))
+      val obj = """(?m)^package object (\w+)""".r.findFirstMatchIn(src).map(_.group(1))
+      (pkg.toList ++ obj.toList).mkString(".")
     }
-    val modules = scala.collection.mutable.ListBuffer.empty[Array[Byte]]
-    while (pos < bytes.length) {
-      val id = bytes(pos) & 0xff
-      pos += 1
-      val size = leb()
-      if (id == 1) modules += java.util.Arrays.copyOfRange(bytes, pos, pos + size) // core module section
-      pos += size
+    // name -> (FQN of the defining package object, right-hand side), for every @WitAlias definition.
+    val defs = files.flatMap { f =>
+      val lines = os.read.lines(f)
+      lines.indices.flatMap { i =>
+        if (i > 0 && lines(i - 1).contains(Annotation)) lines(i) match {
+          case TypeLine(n, rhs) => Some((n, (objectOf(os.read(f)), rhs)))
+          case _                => None
+        }
+        else None
+      }
     }
-    require(modules.nonEmpty, s"no core module in $component")
-    modules.maxBy(_.length)
+    val unique = defs.groupBy(_._1).collect { case (n, Seq((_, d))) => n -> d }
+    files.foreach { f =>
+      val lines = os.read.lines(f)
+      val rewritten = lines.indices.map { i =>
+        val annotated = i > 0 && lines(i - 1).contains(Annotation)
+        lines(i) match {
+          case TypeLine(n, rhs) if !annotated && unique.get(n).exists(_._2 == rhs) => s"  type $n = ${unique(n)._1}.$n"
+          case l                                                                   => l
+        }
+      }
+      if (rewritten != lines) os.write.over(f, rewritten.mkString("", "\n", "\n"))
+    }
+  }
+
+  def copyComponent(component: os.Path, out: os.Path): os.Path = {
+    if (!os.isFile(component)) sys.error(s"the linker wrote no $component")
+    os.copy.over(component, out, createFolders = true)
+    out
   }
 }
 
@@ -226,41 +232,23 @@ trait WitBindgenModule extends ScalaWasmModule with WitModule {
       "--base-package",
       witBindgenBasePackage,
     ).call(stderr = os.Pipe, stdout = os.Pipe)
+    useWitAliases(out)
     PathRef(out)
   }
   override def generatedSources: T[Seq[PathRef]] = Task(super.generatedSources() :+ witBindings())
 }
 
 /** A dapr4s app linked as a WASI component for dapr-wasm-components: `dapr4sComponent` (`dapr4sComponentFull`: from the
-  * optimized link) is the component, typed by the real WIT world ([[WitModule.wit]]). Mill's own `fastLinkJS` /
-  * `fullLinkJS` link it, with `ModuleKind.WasmComponent` (com-lihaoyi/mill#7783; the fork's linker runs
-  * `wasm-tools component new` itself). Running and testing a component in Mill (wasmtime) is com-lihaoyi/mill#7785;
-  * until then the e2e scripts run it.
+  * optimized link) is the component. Mill's own `fastLinkJS` / `fullLinkJS` link it, with `ModuleKind.WasmComponent`
+  * (com-lihaoyi/mill#7783; the fork's linker runs `wasm-tools component new` itself), and the linker's component is
+  * used as is: an app needs no WIT files and no wkg. Running and testing a component in Mill (wasmtime) is
+  * com-lihaoyi/mill#7785; until then the e2e scripts run it.
   */
-trait Dapr4sWasmComponentModule extends Dapr4sWasmModule with WitModule {
+trait Dapr4sWasmComponentModule extends Dapr4sWasmModule {
 
   override def moduleKind: T[ModuleKind] = Task(ModuleKind.WasmComponent)
   override def scalaJSUseWebAssembly: T[Boolean] = Task(true)
   override def esFeatures: T[ESFeatures] = Task(super.esFeatures().withESVersion(ESVersion.ES2022))
-
-  // -----------------------------------------------------------------------------------------------
-  // The released scala-wasm linker leaves the EXPORT side of WIT params via linear memory (> 16 flat
-  // params) a `???` and silently emits nothing on the IMPORT side. Link with dapr4s-wasm-linker_2.13,
-  // the release rebuilt with dapr4s's patch, republished under dapr4s's coordinates with scala-wasm's
-  // LICENSE/NOTICE: it replaces the fork's scalajs-linker_2.13 in Mill's Scala.js worker (the
-  // test adapter and the JS environment stay the defaults). Only the LINKER is replaced; the library,
-  // javalib and compiler plugin stay the released ones. RETIRES with scala-wasm/scala-wasm#268 (params
-  // via memory on both sides): drop this override.
-  // -----------------------------------------------------------------------------------------------
-  /** The patched linker (default: `dapr4s-wasm-linker_2.13` and its dependencies). */
-  def dapr4sWasmLinker: T[Seq[PathRef]] = Task {
-    dapr4sWasmResolveTool(Seq(mvn"$Org:dapr4s-wasm-linker_2.13:$dapr4sWasmVersion"))()
-  }
-
-  override def scalaJSLinkerClasspath: T[Seq[PathRef]] = Task {
-    val released = (n: String) => n.startsWith("scalajs-linker_2.13-") && !n.startsWith("scalajs-linker-interface")
-    dapr4sWasmLinker() ++ super.scalaJSLinkerClasspath().filterNot(p => released(p.path.last))
-  }
 
   /** Resolve build TOOLING (not dependencies of the app) from this module's repositories. NOT with `defaultResolver()`:
     * a ScalaModule's resolver forces scala-library to the module's Scala version, which would put the Scala 3 library
@@ -307,13 +295,13 @@ trait Dapr4sWasmComponentModule extends Dapr4sWasmModule with WitModule {
 
   private def linkedComponent(report: Report): os.Path = report.dest.path / "main.wasm"
 
-  /** The app as a WASI component typed by the real WIT world (fast link). */
+  /** The app as a WASI component (fast link). */
   def dapr4sComponent: T[PathRef] = Task {
-    PathRef(buildComponent(linkedComponent(fastLinkJS()), Task.dest, wit().path, witWorld))
+    PathRef(copyComponent(linkedComponent(fastLinkJS()), Task.dest / "component.wasm"))
   }
 
   /** Like [[dapr4sComponent]], from the optimized link. */
   def dapr4sComponentFull: T[PathRef] = Task {
-    PathRef(buildComponent(linkedComponent(fullLinkJS()), Task.dest, wit().path, witWorld))
+    PathRef(copyComponent(linkedComponent(fullLinkJS()), Task.dest / "component.wasm"))
   }
 }

@@ -188,7 +188,6 @@ package build
 import mill.*, mill.scalalib.*
 import dapr4s.millwasm.*
 
-// + app/wit/world.wit (`include dapr-wasm-components:interfaces/app@0.7.5;`), app/wkg-config.toml, app/wkg.lock
 object app extends Dapr4sWasmComponentModule {
   def scalaVersion = "<the Scala 3 nightly dapr4s is built with>"
   def mvnDeps = Seq(mvn"com.github.sideeffffect::dapr4s-wasm::$dapr4sWasmVersion")
@@ -196,8 +195,9 @@ object app extends Dapr4sWasmComponentModule {
 // + in the app's sources: object dapr4s.wasm.ComponentRoot { def component: DaprComponent = MyComponent }
 ```
 
-`./mill show app.dapr4sComponent` builds the component and prints its path. The tools on the PATH: `wkg`,
-`wasm-tools` (and `wit-bindgen-scala` only for a `WitBindgenModule`). See AGENTS.md "Wasm component layer
+`./mill show app.dapr4sComponent` builds the component and prints its path. The tools on the PATH: `wasm-tools`
+(the scala-wasm linker runs it; `wkg` and `wit-bindgen-scala` only for a `WitBindgenModule`). While dapr4s pins an
+unreleased scala-wasm, run dapr4s's `scripts/wasm/build-scala-wasm.sh` first (it publishes it to `~/.ivy2/local`). See AGENTS.md "Wasm component layer
 rules" and [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples) (examples 18 and 19).
 
 See [`DESIGN.md`](docs/DESIGN.md) for the architecture, the two-layer

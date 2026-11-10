@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Builds the dapr4s test component test/wasm/counter exactly like an external sbt app does: a fresh sbt build
 # (wasm/target/consumer-check) with ONLY `addSbtPlugin(sbt-dapr4s-wasm)`, `enablePlugins(Dapr4sWasmComponentPlugin)`,
-# one libraryDependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the fixed-name ComponentRoot — no
-# in-build workaround. The six wasm artifacts come from this checkout (Mill publishes them, in release mode, into the
-# Maven repository wasm/target/consumer-check-repo), everything else from Maven Central. Then runs the counter part
+# one libraryDependency (`dapr4s-wasm`) and the fixed-name ComponentRoot — no WIT files, no wkg, no in-build
+# workaround. The five wasm artifacts it needs come from this checkout (Mill publishes them, in release mode, into the
+# Maven repository wasm/target/consumer-check-repo), everything else from Maven Central and, while dapr4s pins an
+# unreleased scala-wasm, that snapshot in ~/.ivy2/local (scripts/wasm/build-scala-wasm.sh). Then runs the counter part
 # of scripts/wasm/e2e.sh on the result.
 #
 # dapr4s's own build is Mill; sbt is needed here because sbt-dapr4s-wasm is a product for sbt consumers
@@ -15,7 +16,7 @@ mill() { "$repo/mill" --ticker false "$@"; }
 local_repo="$repo/wasm/target/consumer-check-repo"
 rm -rf "$local_repo"
 mkdir -p "$local_repo"
-modules=('wasm.lib[release].wall' wasm.glue wasm.glueExports wasm.scalalibOverlay 'wasm.linker[2.12.21]' wasm.sbtPlugin)
+modules=('wasm.lib[release].wall' wasm.glue wasm.glueExports wasm.scalalibOverlay wasm.sbtPlugin)
 args=()
 for m in "${modules[@]}"; do
   [[ ${#args[@]} -gt 0 ]] && args+=(+)
@@ -28,10 +29,8 @@ version="$(ls "$local_repo/com/github/sideeffffect/dapr4s-wasm_sjs1_3")"
 nightly="$(cd "$repo" && mill show scala3Nightly | tail -1 | tr -d '"')"
 dir="$repo/wasm/target/consumer-check"
 rm -rf "$dir"
-mkdir -p "$dir/project" "$dir/wit" "$dir/src"
+mkdir -p "$dir/project" "$dir/src"
 echo "sbt.version=1.13.0" >"$dir/project/build.properties"
-cp "$repo/wasm/wit/world.wit" "$dir/wit/"
-cp "$repo/wasm/wkg-config.toml" "$repo/wasm/wkg.lock" "$dir/"
 cp "$repo"/test/wasm/counter/*.scala "$dir/src/"
 cat >"$dir/project/plugins.sbt" <<SBT
 resolvers += "dapr4s-local" at "file://$local_repo"

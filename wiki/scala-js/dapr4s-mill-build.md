@@ -128,6 +128,26 @@ there: `enableScalaJsDefined = Selection.All` for Scala 3, `ignored = {typescrip
   `compose.sh` up to v0.7.4 still pulled the flat names, so dapr4s pulled the providers itself and passed
   `--outbound` / `--inbound`; v0.7.5's `compose.sh` uses the new names, so dapr4s calls it with `--tag 0.7.5` again.
 
+### Wasm on an unreleased scala-wasm (PR #46, Mill port 2026-11-10)
+
+- Mill resolves a `publishLocal`'ed scala-wasm (`1.22.1-wasm.7-dapr4s-local`, `scripts/wasm/build-scala-wasm.sh`) from
+  `~/.ivy2/local` with no extra repository: Mill's default repositories include ivy2Local. Setting
+  `Dapr4sWasm.ScalaWasmVersion` is the whole switch; `scalaJSOrganization` then takes the library, compiler plugin,
+  test bridge AND the 2.13 linker of Mill's worker from it.
+- With the fork's #268 the `wasm.linker[*]` cross module (patched linker compiled from sources) and the plugin's
+  `scalaJSLinkerClasspath` override go away; with #269 the re-embed goes away and `dapr4sComponent` is a copy of
+  `fastLinkJS`'s `main.wasm`, so `Dapr4sWasmComponentModule` is no longer a `WitModule`.
+- The `useWitAliases` rewrite lives in the Mill plugin's `WitBindgenModule` (it runs right after wit-bindgen-scala,
+  in the same task), so a consumer's own bindings get it too. The sbt side had it in dapr4s's own `wasm/build.sbt`,
+  because there the fork's sbt plugin runs the generator.
+- **A publishLocal'ed sbt plugin as a Mill dependency**: sbt writes it to `~/.ivy2/local` in the ivy layout only
+  (`sbt-scalajs/scala_2.12/sbt_1.0/<v>`), so `mvn"org:sbt-scalajs_2.12_1.0:v"` does not resolve. A `Dep` built from a
+  coursier `Module` with the attributes `scalaVersion=2.12`, `sbtVersion=1.0` does; its own attributed dependencies
+  (`sbt-platform-deps`) are then looked up on Central under the plain name and fail, so exclude them and add the
+  Maven-style artifact (`sbt-platform-deps_2.12_1.0`) as a compile dependency. The POM keeps the Maven-style name.
+- #271 is an sbt-plugin change: Mill keeps all its `Exclusions` (mainline `org.scala-js` library/javalib
+  included), and so needs none of the sbt side's JUnit-runtime workaround for munit.
+
 ## See also
 
 - [scala-wasm Component Spike](scala-wasm-component-spike.md)

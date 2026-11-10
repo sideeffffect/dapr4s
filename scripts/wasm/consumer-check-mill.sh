@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Builds the dapr4s test component test/wasm/counter exactly like an external Mill app does: a fresh Mill build
 # (out/consumer-check-mill) whose build.mill has ONLY the mill-dapr4s-wasm plugin in its header, one module
-# `extends Dapr4sWasmComponentModule` with one dependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the
-# fixed-name ComponentRoot: no in-build workaround. The seven wasm artifacts (incl. the plugin) come from this checkout
+# `extends Dapr4sWasmComponentModule` with one dependency (`dapr4s-wasm`) and the fixed-name ComponentRoot: no WIT
+# files, no wkg, no in-build workaround. The five wasm artifacts it needs (incl. the plugin) come from this checkout
 # (Mill publishes them, in release mode, into the Maven repository out/consumer-check-mill-repo), everything else from
-# Maven Central. Then runs the counter part of scripts/wasm/e2e.sh on the result.
+# Maven Central and, while dapr4s pins an unreleased scala-wasm, that snapshot in ~/.ivy2/local
+# (scripts/wasm/build-scala-wasm.sh). Then runs the counter part of scripts/wasm/e2e.sh on the result.
 #
 # The twin of scripts/wasm/consumer-check.sh (the sbt consumer). The fresh build sits under out/ because Mill never
 # looks for build files there.
@@ -15,7 +16,7 @@ mill() { "$repo/mill" --ticker false "$@"; }
 local_repo="$repo/out/consumer-check-mill-repo"
 rm -rf "$local_repo"
 mkdir -p "$local_repo"
-modules=('wasm.lib[release].wall' wasm.glue wasm.glueExports wasm.scalalibOverlay 'wasm.linker[2.13.18]' wasm.millPlugin)
+modules=('wasm.lib[release].wall' wasm.glue wasm.glueExports wasm.scalalibOverlay wasm.millPlugin)
 args=()
 for m in "${modules[@]}"; do
   [[ ${#args[@]} -gt 0 ]] && args+=(+)
@@ -28,10 +29,8 @@ version="$(ls "$local_repo/com/github/sideeffffect/mill-dapr4s-wasm_mill1_3")"
 nightly="$(cd "$repo" && mill show scala3Nightly | tail -1 | tr -d '"')"
 dir="$repo/out/consumer-check-mill"
 rm -rf "$dir"
-mkdir -p "$dir/counter/src" "$dir/counter/wit"
+mkdir -p "$dir/counter/src"
 cp "$repo/mill" "$dir/"
-cp "$repo/wasm/wit/world.wit" "$dir/counter/wit/"
-cp "$repo/wasm/wkg-config.toml" "$repo/wasm/wkg.lock" "$dir/counter/"
 cp "$repo"/test/wasm/counter/*.scala "$dir/counter/src/"
 # The same Mill (and JVM) as dapr4s's own build: the header lines of build.mill.
 grep -E '^//\| mill-(version|jvm-version):' "$repo/build.mill" >"$dir/build.mill"
