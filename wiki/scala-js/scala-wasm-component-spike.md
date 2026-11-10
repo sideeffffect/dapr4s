@@ -176,6 +176,8 @@ dapr4s pinned `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` branch at 
 [#268](https://github.com/scala-wasm/scala-wasm/pull/268), params via memory) + a local merge of the open
 [#269](https://github.com/scala-wasm/scala-wasm/pull/269) (aliases) and
 [#271](https://github.com/scala-wasm/scala-wasm/pull/271) (exclusions), built by `scripts/wasm/build-scala-wasm.sh`.
+Both merged on 2026-11-09 (same commits as the local merge, no release yet); since then the script builds the
+`scala-wasm` branch head `d4e4feba` as is, with no local merge.
 What was learned:
 
 - **Building it**: `version` comes from `ir/.../ScalaJSVersions.scala` (`current`); a pre-release like
@@ -201,6 +203,10 @@ What was learned:
   added by hand.
 - **scala/scala3#27300** (the unpickler crash that forces an empty javadoc jar) merged 2026-10-15 07:43; the newest
   nightly then was `3.10.2-RC1-bin-20261015-88be2f5` (built 04:20, 11 commits behind the fix), so the workaround stays.
+  On 2026-11-10 the newest nightly `3.10.2-RC1-bin-20261109-9567d89` has the fix, but dapr4s (pinned at
+  `3.10.0-RC1-bin-20260607`) fails 65 capture-checking errors on it (E223 "Reference `<any created in value ...>` is
+  not included in the allowed capture set {} of the type parameter bound AnyKind", e.g. at `TypeRepr.of[JobsCapability]`
+  in the derivation macros), so the workaround waits for the root nightly bump.
 - **dapr-wasm-components v0.7.4** moved every OCI module to `ghcr.io/sideeffffect/dapr-wasm-components/<module>` and
   removed the flat `dapr-wasm-components-<module>` packages; upstream `compose.sh` up to v0.7.4 still pulled the flat
   names, so dapr4s pulled the providers itself. v0.7.5's `compose.sh` uses the new names: dapr4s calls it with

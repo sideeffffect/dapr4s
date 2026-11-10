@@ -335,7 +335,8 @@ lazy val wallWasm = withCore(
       // (@WitImport/@WitExport/@WitScope). Plain compilation never forces those annotations; scaladoc does.
       // WHY SAFE: Central only requires a -javadoc.jar to exist; the -sources.jar still ships every source
       // with its doc comments, and the API a user touches (dapr4s.wasm.DaprComponent) is documented there.
-      // RETIRES: when a Scala 3 nightly fixes the unpickler crash, or when the 2.13 glue goes away.
+      // RETIRES: when dapr4s moves to a nightly with the fix (scala/scala3#27300; 3.10.2-RC1-bin-20261109 has
+      // it, but dapr4s does not compile on it yet: capture-checking errors), or when the 2.13 glue goes away.
       Compile / doc / sources := Nil,
       projectDependencies := projectDependencies.value.filterNot(m => embeddedInWall(m.name)),
       Compile / packageBin / mappings ++=

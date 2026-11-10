@@ -147,9 +147,9 @@ jobs:
         wget -q https://raw.githubusercontent.com/dapr/cli/v1.15.1/install/install.sh -O - | /bin/bash -s 1.15.1
         dapr init --slim --runtime-version 1.17.7
         echo "$HOME/.dapr/bin" >> "$GITHUB_PATH"
-    # The UNRELEASED scala-wasm the wasm/ build pins (1.22.1-wasm.7-dapr4s-local: scala-wasm's branch +
-    # the open upstream PRs dapr4s needs, see scripts/wasm/build-scala-wasm.sh). Built from source and
-    # publishLocal'ed; cached by the script's hash (it pins the commit SHAs and the version). Goes away
+    # The UNRELEASED scala-wasm the wasm/ build pins (1.22.1-wasm.7-dapr4s-local: scala-wasm's branch head
+    # with the merged #268/#269/#271, see scripts/wasm/build-scala-wasm.sh). Built from source and
+    # publishLocal'ed; cached by the script's hash (it pins the commit SHA and the version). Goes away
     # with the next scala-wasm release on Central.
     - name: Cache the scala-wasm snapshot build
       if: matrix.platform == 'wasm'

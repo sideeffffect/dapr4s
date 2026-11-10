@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-11-10] update | scala-wasm #269/#271 merged; newest nightly vs scala3#27300
+- Updated: scala-js/scala-wasm-component-spike.md — #269 and #271 merged 2026-11-09 (no release); the local build is now the `scala-wasm` branch head d4e4feba as is; nightly 3.10.2-RC1-bin-20261109 has scala3#27300 but dapr4s fails 65 CC errors (E223) on it, so the empty javadoc jar stays
+
 ## [2026-10-17] update | dapr-wasm-components 0.7.5
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
 

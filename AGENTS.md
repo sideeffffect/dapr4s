@@ -355,11 +355,11 @@ Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
 by the same `publish` job as core (snapshots on master pushes, releases on tags) — but that switch is
 OFF while `wasm/` pins an unreleased scala-wasm (below); `publishLocal` works.
 Upstream gaps are worked around here AND fixed upstream (the earlier "no upstream PRs" rule was lifted on
-2026-10-13). Open upstream PRs, each retiring one workaround: scala-wasm/scala-wasm
+2026-10-13). Upstream PRs, each retiring one workaround: scala-wasm/scala-wasm
 [#268](https://github.com/scala-wasm/scala-wasm/pull/268) (params via memory → patched linker; merged, RETIRED here),
-[#269](https://github.com/scala-wasm/scala-wasm/pull/269) (WIT aliases → re-embed; RETIRED here),
+[#269](https://github.com/scala-wasm/scala-wasm/pull/269) (WIT aliases → re-embed; merged, RETIRED here),
 [#270](https://github.com/scala-wasm/scala-wasm/pull/270) (pluggable System → println/clock rules),
-[#271](https://github.com/scala-wasm/scala-wasm/pull/271) (core-lib exclusions; the org.scala-js ones RETIRED here),
+[#271](https://github.com/scala-wasm/scala-wasm/pull/271) (core-lib exclusions; merged, the org.scala-js ones RETIRED here),
 scala/scala3 [#27300](https://github.com/scala/scala3/pull/27300) (unpickler crash → empty javadoc),
 cquiroz/scala-java-locales [#640](https://github.com/cquiroz/scala-java-locales/pull/640) (java.time formatting).
 **scala/scala3 and VirtusLab/scala-cli forbid LLM-written PR/issue text** (their `LLM_POLICY.md`): there,
@@ -367,10 +367,10 @@ agents push branches / open drafts with an EMPTY description; the user writes th
 
 - **The pinned scala-wasm is an unreleased local build**: `1.22.1-wasm.7-dapr4s-local`
   (`wasm/project/plugins.sbt`), built by `scripts/wasm/build-scala-wasm.sh` from scala-wasm's
-  `scala-wasm` branch (with #268) + a merge of the heads of #269 and #271, all pinned by SHA, and
-  `publishLocal`'ed to `~/.ivy2/local` (idempotent, stamp = the SHAs; ~10 min cold). Run it once
-  before the first `cd wasm && sbt ...`. The CI wasm leg runs it, cached by the script's hash. Bump the
-  SHAs (and the version, if the artifacts change) when the upstream PRs move. **RETIRES** with a
+  `scala-wasm` branch head as is, pinned by SHA (`d4e4feba`, the merge of #271; it contains the merged
+  #268, #269 and #271, no local merge or patch), and `publishLocal`'ed to `~/.ivy2/local` (idempotent,
+  stamp = the SHA; ~10 min cold). Run it once before the first `cd wasm && sbt ...`. The CI wasm leg runs
+  it, cached by the script's hash. Bump the SHA when the branch gets a fix dapr4s needs. **RETIRES** with a
   scala-wasm release that has all three: pin it, delete the script and its CI steps, and turn
   `PUBLISH_WASM_TO_CENTRAL` back on (OFF meanwhile: `sbt-dapr4s-wasm`'s POM would name an
   `sbt-scalajs` that is not on Central).
@@ -425,8 +425,9 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   `type Metadata` points at `types.Metadata`, the only form #269 keeps) → when wit-bindgen-scala renders
   `use`d aliases so; the fork's `scalajs-junit-test-runtime` on `wallWasm/Test` (#271 excludes the
   upstream one munit needs, adds no replacement) → when the plugin swaps it; the scaladoc-less
-  `dapr4s-wasm` javadoc jar → a nightly with scala/scala3#27300 (none yet: the newest, 2026-10-15,
-  predates the merge); the 2.13 glue → when Scala 3 gets WIT codegen.
+  `dapr4s-wasm` javadoc jar → dapr4s on a nightly with scala/scala3#27300 (the newest,
+  `3.10.2-RC1-bin-20261109-9567d89`, has it, but dapr4s's code fails 65 capture-checking errors on it, so
+  the root nightly bump is its own task); the 2.13 glue → when Scala 3 gets WIT codegen.
 - **Retired** (2026-10-16, verified by `scripts/wasm/e2e.sh` + `consumer-check.sh`): the patched linker
   `dapr4s-wasm-linker` (#268 lowers > 16 flat params through linear memory on both sides; the
   `test/wasm/imports-probe` e2e runs `jobs.schedule`, `conversation.converse`,

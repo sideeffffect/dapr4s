@@ -249,11 +249,13 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
 ### Retiring workarounds on an unreleased scala-wasm (2026-10-16)
 
 [PR #46](https://github.com/sideeffffect/dapr4s/pull/46) (draft,
-stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` branch at `32cda138` (with
-[scala-wasm#268](https://github.com/scala-wasm/scala-wasm/pull/268), merged) + a local merge of the open
-[#269](https://github.com/scala-wasm/scala-wasm/pull/269) (`be1184cd`) and
-[#271](https://github.com/scala-wasm/scala-wasm/pull/271) (`e23da14d`). `scripts/wasm/build-scala-wasm.sh` builds and
-`publishLocal`s it (CI: cached by the script hash). Central publishing of the wasm artifacts is off meanwhile.
+stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` branch head `d4e4feba` (2026-11-09,
+the merge of #271). It contains [scala-wasm#268](https://github.com/scala-wasm/scala-wasm/pull/268),
+[#269](https://github.com/scala-wasm/scala-wasm/pull/269) and [#271](https://github.com/scala-wasm/scala-wasm/pull/271),
+all merged, none released yet (newest on Central: 1.22.1-wasm.6). Until 2026-11-09 it was `32cda138` + a local merge
+of the then-open #269/#271; the upstream merges are the same commits. `scripts/wasm/build-scala-wasm.sh` builds the
+branch as is and `publishLocal`s it (CI: cached by the script hash). Central publishing of the wasm artifacts is off
+meanwhile.
 
 | Workaround | Status | Why |
 |---|---|---|
@@ -263,7 +265,7 @@ stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` bra
 | `org.scala-js` library/javalib exclusions | **removed** | #271 excludes them in the scala-wasm plugin. Checked on the classpaths. |
 | Fork's 2.13 scalalib exclusion | kept | #271 keeps the upstream scalalib on Scala 3.8+ and leaves the fork's 2.13 one next to it. |
 | — | **new, small**: fork's `scalajs-junit-test-runtime` on `wallWasm/Test` | #271 also excludes the upstream JUnit runtime that munit needs, and adds no fork one. |
-| Empty javadoc jar of `dapr4s-wasm` | kept | [scala/scala3#27300](https://github.com/scala/scala3/pull/27300) merged 2026-10-15 07:43; the newest nightly (`3.10.2-RC1-bin-20261015-88be2f5`) is from before it. |
+| Empty javadoc jar of `dapr4s-wasm` | kept | [scala/scala3#27300](https://github.com/scala/scala3/pull/27300) merged 2026-10-15. The newest nightly (`3.10.2-RC1-bin-20261109-9567d89`, checked 2026-11-10) has it, but dapr4s's code does not compile on it (65 capture-checking errors, E223, in the derivation macros and family companions), so the root nightly stays and so does this workaround. |
 | Stdlib overlay | kept | unrelated to these PRs. |
 
 This makes the "two-compiler build" of the revised Phase 4 concrete: the 2.13 part is the generated bindings plus a
