@@ -202,3 +202,6 @@
 ## [2026-10-22] update | dapr4s on Mill 1.3.1
 - Updated: scala-js/dapr4s-mill-build.md — the build is on the released Mill 1.3.1 (still Scala 3.9.0 for 1.x plugins)
 - Updated: scala-js/dapr4s-mill-build.md — Mill 1.3.1 contains mill#7783 + mill#7786, so the snapshot script builds only mill-scalablytyped: main (with #50 + #51) + #52, version 0.4.1-14-c21896
+
+## [2026-11-10] update | mill-scalablytyped 0.4.2 released
+- Updated: scala-js/dapr4s-mill-build.md — the build pins the released mill-scalablytyped 0.4.2 (has #50, #51, #52); scripts/upstream-snapshot.sh and its CI steps are deleted; #52 renamed scalablyTypedPackageLock to scalablyTypedPackageLockJson

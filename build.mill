@@ -1,12 +1,8 @@
 //| mill-version: 1.3.1
 //| mill-jvm-version: zulu:25.0.3
 //| mill-jvm-opts: ["-Xss8m", "-Xmx6g"]
-//| mvnDeps: ["com.github.lolgab::mill-scalablytyped::0.4.1-14-c21896"]
+//| mvnDeps: ["com.github.lolgab::mill-scalablytyped::0.4.2"]
 package build
-
-// THE MILL-SCALABLYTYPED ABOVE IS UNRELEASED: its main + https://github.com/lolgab/mill-scalablytyped/pull/52, built from
-// a pinned commit and installed locally (~/.ivy2/local) by scripts/upstream-snapshot.sh. Run that script once before
-// the first `./mill`; CI runs it in every job. RETIRES with the mill-scalablytyped release that contains these PRs.
 
 // =================================================================================================
 // dapr4s build (Mill)

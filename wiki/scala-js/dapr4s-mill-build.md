@@ -96,13 +96,15 @@ Options to reproduce sbt: `enableScalaJsDefined = Selection.All` for Scala 3, `i
   [#7785](https://github.com/com-lihaoyi/mill/pull/7785) (Wasmtime JS env).
   In the plugin: #7783 → `ScalaWasmModule` + the link driver, #7784 → `WitBindgenModule`.
 
-## On unreleased upstream (2026-10-16, branch build/mill-upstream-snapshot)
+## On upstream releases (2026-10-16 .. 2026-11-10, branch build/mill-upstream-snapshot)
 
 The build runs on the released Mill 1.3.1 (it contains [mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) and
-[mill#7786](https://github.com/com-lihaoyi/mill/pull/7786); until 2026-10-22 `scripts/upstream-snapshot.sh` built Mill
-`1.3.0-20-56dcdf` from source) and the unreleased mill-scalablytyped `0.4.1-14-c21896` (`main`, which has
-[#50](https://github.com/lolgab/mill-scalablytyped/pull/50) and [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
-merged, + [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), built by `scripts/upstream-snapshot.sh`. Facts:
+[mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)) and the released mill-scalablytyped `0.4.2` (2026-11-06; it
+contains [#50](https://github.com/lolgab/mill-scalablytyped/pull/50), [#51](https://github.com/lolgab/mill-scalablytyped/pull/51)
+and [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)), both from Maven Central. Until 2026-11-10
+`scripts/upstream-snapshot.sh` built the unreleased ones from pinned commits into `~/.ivy2/local` (Mill
+`1.3.0-20-56dcdf` until 2026-10-22, mill-scalablytyped `0.4.1-14-c21896` until 0.4.2); it is deleted. Note: #52
+renamed the task `scalablyTypedPackageLock` to `scalablyTypedPackageLockJson` (dapr4s does not override it). Facts:
 
 - **Using a locally built Mill** (history, how the script ran Mill before 1.3.1): `CI=true ./mill dist.installLocal --binFile <file>` publishes ~110 modules to
   `~/.ivy2/local` and writes an assembly. `CI=true` drops the dirty hash, so the version (`<tag>-<n>-<sha6>`) is the

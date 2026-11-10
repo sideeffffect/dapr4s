@@ -30,14 +30,11 @@ All three must stay in sync with the code at all times.
   meta-build sources `mill-build/src/` = the `mill-dapr4s-wasm` plugin; `./mill` is the bootstrap
   script). Mill 1.3.1 contains [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783)
   (`scalaJSOrganization`, `ModuleKind.WasmComponent`) and
-  [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786). The meta-build loads an
-  unreleased mill-scalablytyped `0.4.1-14-c21896`
-  (`main`, which has [lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50) and
-  [#51](https://github.com/lolgab/mill-scalablytyped/pull/51) merged, +
-  [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)). **Run `scripts/upstream-snapshot.sh`
-  once before the first `./mill`**: it builds it from a pinned commit and installs it locally
-  (`~/.ivy2/local`). CI runs it in every job, cached by the script's hash. Bump the pin = edit the
-  script. RETIRES with the mill-scalablytyped release: pin it and delete the script.
+  [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786). The meta-build loads the
+  released mill-scalablytyped `0.4.2` from Maven Central (it contains
+  [lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50),
+  [#51](https://github.com/lolgab/mill-scalablytyped/pull/51) and
+  [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)). Nothing is built from source.
   History: scala-cli until 2026-10-12, sbt until 2026-10-13 (the sbt build lived in `build.sbt`,
   `project/` and a nested `wasm/build.sbt`; `git log` has it). Modules:
   - `core.jvm` / `core.js` — the published library (`dapr4s_3` / `dapr4s_sjs1_3`); `core.jvm.test` /
