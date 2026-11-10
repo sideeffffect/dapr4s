@@ -162,7 +162,7 @@ jobs:
           ~/.cache/dapr4s/scala-wasm-src
         key: scala-wasm-linker-${{ hashFiles('scripts/wasm/build-patched-linker.sh', 'scripts/wasm/patches/**') }}
     # The source-built scala-java-time-tzdb the wasm/ build pins (2.9.0-dapr4s-local: the tzdb module of the
-    # v2.9.0 tag compiled with Scala 3.10.1-RC2, depends on the released scala-java-time 2.9.0; see
+    # v2.9.0 tag compiled with Scala 3.10.1, depends on the released scala-java-time 2.9.0; see
     # scripts/wasm/build-scala-java-time.sh). Built with a JDK 17 and publishLocal'ed; cached by the script's
     # hash (it pins the SHA, the compiler and the version). Goes away with a scala-java-time release whose
     # tzdb is built with Scala 3 >= 3.10.1.

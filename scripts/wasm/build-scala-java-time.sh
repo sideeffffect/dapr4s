@@ -10,8 +10,8 @@
 #   initializer, which the linker always keeps. Scala 3 <= 3.10.0 emits it with the JS-backed
 #   `Reflect.registerInstantiatableClass(..., js.Array(...))`, which does not link without a JS host, so the
 #   released tzdb 2.9.0 (built with 3.9.0) does not link into a Wasm component. Scala 3 emits the Scala-typed
-#   `registerInstantiatableClassV2` since https://github.com/scala/scala3/commit/3bb676972 (release-3.10.1 branch;
-#   3.10.1-RC1 and -RC2 contain it). Core needs no rebuild: 2.9.0 has
+#   `registerInstantiatableClassV2` since https://github.com/scala/scala3/commit/3bb676972 (in the
+#   3.10.1 release). Core needs no rebuild: 2.9.0 has
 #   https://github.com/cquiroz/scala-java-time/pull/618 (`DateTimeFormatter.ofPattern` no longer links `Instant.now`)
 #   and nothing in it registers a reflective class.
 # WHY the POM rewrite: the newer compiler would become the tzdb POM's scala3-library version, and that would evict
@@ -29,7 +29,7 @@ CORE_VERSION=2.9.0
 TZDB_VERSION="${TZDB_VERSION:-2.9.0-dapr4s-local}"
 BASE=3b4ecad690912d1c4b914a08b9c19d1a67a77cf5 # tag v2.9.0
 CORE_SCALA=3.9.0
-TZDB_SCALA=3.10.1-RC2
+TZDB_SCALA=3.10.1
 ivy="${IVY_LOCAL:-$HOME/.ivy2/local}"
 org="$ivy/io.github.cquiroz"
 stampFile="$org/dapr4s-build-stamp-tzdb-$TZDB_VERSION"

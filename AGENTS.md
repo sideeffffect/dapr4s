@@ -468,14 +468,14 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   https://github.com/cquiroz/scala-java-time/pull/618 (in 2.9.0) computed the raw offset lazily.
 - **Region zones** (`ZoneId.of("Europe/Prague")`, from `scala-java-time-tzdb`) link AND run too, but only with a
   source-built tzdb: `scripts/wasm/build-scala-java-time.sh` compiles ONLY the tzdb module of the v2.9.0 tag with
-  Scala 3.10.1-RC2 and publishLocal's it as `2.9.0-dapr4s-local` (`scalaJavaTimeTzdbWasm` in `wasm/build.sbt`; its
+  Scala 3.10.1 and publishLocal's it as `2.9.0-dapr4s-local` (`scalaJavaTimeTzdbWasm` in `wasm/build.sbt`; its
   POM depends on the released scala-java-time 2.9.0; CI runs the script with a JDK 17 and caches
   `~/.ivy2/local/io.github.cquiroz` by its hash). Only the test components (`counter`, the consumer check) depend
   on it, because Central must have every version `dapr4s-wasm`'s POM names. An app gets region zones by depending
   on that tzdb. WHY: tzdb's provider has `@EnableReflectiveInstantiation`. Its registration is a static
   initializer (always linked), and Scala 3 <= 3.10.0 emits it with the JS-backed
   `Reflect.registerInstantiatableClass(js.Array)`. Scala 3 emits the Scala-typed `registerInstantiatableClassV2`
-  since scala/scala3@3bb676972 (in 3.10.1-RC1/-RC2, no final 3.10.1 yet); the released tzdb 2.9.0 is built with
+  since scala/scala3@3bb676972 (in 3.10.1, final on Central since 2026-11); the released tzdb 2.9.0 is built with
   3.9.0. Retires when a scala-java-time release's tzdb is built with Scala 3 >= 3.10.1: pin it in the test
   components, drop `scalaJavaTimeTzdbWasm`, the script and its CI steps.
 - **Shared code on the `wasm` path** must still avoid, because they fail to link:

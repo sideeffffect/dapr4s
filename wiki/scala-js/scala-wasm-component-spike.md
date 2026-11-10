@@ -59,7 +59,7 @@ fixes (a local patch was used for one of them).
   `ZoneId.of("UTC")`, `ZoneOffset`s, `Duration.parse`.
 - `DateTimeFormatter.ofPattern` links and runs with the released scala-java-time 2.9.0 (2026-10-27; `dapr4s-wasm`
   depends on it). Region zones link and run with a source-built tzdb: `scripts/wasm/build-scala-java-time.sh` compiles
-  only the tzdb module of the v2.9.0 tag (3b4ecad) with Scala 3.10.1-RC2 as `2.9.0-dapr4s-local` (POM: the released
+  only the tzdb module of the v2.9.0 tag (3b4ecad) with Scala 3.10.1 as `2.9.0-dapr4s-local` (POM: the released
   core 2.9.0), used by counter + the consumer check only (Central must have every version `dapr4s-wasm`'s POM names).
   From 2026-10-17 to 2026-11-03 the script built all of scala-java-time `main` (`2.8.1-dapr4s-local`) with the tzdb
   module on a Scala nightly. Counter's answer under wasmtime + daprd adds
@@ -83,8 +83,8 @@ fixes (a local patch was used for one of them).
     a forward port of scala-js/scala-js@e754a55; on `release-3.10.1`, NOT in 3.10.0). Nothing in scala-java-time
     can work around it (no source-level way to write a static initializer), so the fix is the compiler. scala-java-time
     2.9.0 is still built with 3.9.0, so its tzdb still emits V1 (region zones need a release whose tzdb is built with
-    Scala 3 >= 3.10.1). 3.10.1-RC1 and -RC2 contain 3bb676972 (GitHub compare: both "ahead"). The script compiles only
-    the tzdb module with 3.10.1-RC2 (its `.sjsir` names `registerInstantiatableClassV2`) and rewrites the
+    Scala 3 >= 3.10.1). 3.10.1 (final; -RC1 and -RC2 too) contains 3bb676972. The script compiles only
+    the tzdb module with 3.10.1 (its `.sjsir` names `registerInstantiatableClassV2`) and rewrites the
     scala3-library version in the published POM/ivy.xml back to 3.9.0 (else it evicts every app's scala3-library). `Reflect.lookupInstantiatableClass` (the core side of discovery) is a Scala `HashMap`
     lookup and links fine.
 - Still does not link (scala-wasm 1.22.1-wasm.6; its `scala-wasm` branch is the same on 2026-10-17):

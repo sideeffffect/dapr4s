@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-11-10] update | tzdb source build on Scala 3.10.1 final
+- Updated: scala-js/scala-wasm-component-spike.md — Scala 3.10.1 is final on Central (contains scala/scala3@3bb676972, `registerInstantiatableClassV2`); `scripts/wasm/build-scala-java-time.sh` compiles the tzdb module with 3.10.1 instead of 3.10.1-RC2
+
 ## [2026-11-03] update | scala-java-time 2.9.0 released; only tzdb still source-built
 - Updated: scala-js/scala-wasm-component-spike.md — 2.9.0 (tag v2.9.0 = 3b4ecad, #618 + sbt-tzdb 5.5.0) makes `ofPattern` link on Wasm with the released artifact; its tzdb is still compiled with Scala 3.9.0 (V1 `Reflect.registerInstantiatableClass`), so `scripts/wasm/build-scala-java-time.sh` now compiles ONLY the tzdb module of v2.9.0 with Scala 3.10.1-RC2 (contains scala/scala3@3bb676972, no nightly) as `2.9.0-dapr4s-local` on the released core 2.9.0
 
