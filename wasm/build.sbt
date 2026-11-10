@@ -61,8 +61,9 @@ val scala3Nightly = rootBuildVal("scala3Nightly")
 val scalaJavaTime = rootBuildVal("scalaJavaTime")
 // The tz database (`scala-java-time-tzdb`, region zones) of https://github.com/cquiroz/scala-java-time/pull/623
 // (v2.9.0 with the tzdb module compiled by Scala 3.10.1), publishLocal'ed by scripts/wasm/build-scala-java-time.sh
-// (run it first; CI does). Its POM depends on the RELEASED scala-java-time `scalaJavaTime` (2.9.0). WHAT it adds over the released tzdb 2.9.0: it
-// links without a JS host, because Scala 3 >= 3.10.1 emits the provider's reflective registration Scala-typed.
+// (run it first; CI does). Its POM depends on the RELEASED scala-java-time `scalaJavaTime` (2.9.0). WHAT it adds
+// over the released tzdb 2.9.0: it links without a JS host, because Scala 3 >= 3.10.1 emits the provider's
+// reflective registration Scala-typed.
 // WHY only the test components use it (an app opts in by depending on it), not dapr4s-wasm: dapr4s-wasm is
 // published to Central, and its POM must name a version that Central has.
 // RETIRES when a scala-java-time release's tzdb is built with Scala 3 >= 3.10.1: then the test components pin that
