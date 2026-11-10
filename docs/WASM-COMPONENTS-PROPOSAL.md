@@ -123,7 +123,7 @@ existing JVM example (state + pub/sub + invoke + an actor) so the three platform
   `@JSImport`. Phase 0 answered it (§6, item 2); java.time formatting/parsing works since 2026-10-17,
   `DateTimeFormatter.ofPattern` with the released scala-java-time 2.9.0 (has
   [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618)), and tzdb region zones with a
-  tzdb module built from source with Scala 3.10.1 (pending a scala-java-time release whose tzdb is built with
+  tzdb module built from source with Scala 3.10.1 ([cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623), draft; pending a scala-java-time release whose tzdb is built with
   Scala 3 >= 3.10.1). The wall-clock does not (scala-wasm's javalib).
 - **Hosts**: GC + EH components need Spin canary or recent wasmtime. The gRPC provider is Spin-only.
 - **Fork churn**: the scala-wasm API "is subject to change without notice". Pin versions.
@@ -165,7 +165,7 @@ Answers to the risk questions (section 5):
    ([cquiroz/scala-java-time#617](https://github.com/cquiroz/scala-java-time/pull/617) ships portable data, but Scala 3
    <= 3.10.0 emits the provider's `@EnableReflectiveInstantiation` registration with `js.Array`s, and the released
    tzdb 2.9.0 is built with 3.9.0) **work with a source-built tzdb**: `scripts/wasm/build-scala-java-time.sh`
-   compiles only the tzdb module of v2.9.0 with Scala 3.10.1, which has scala/scala3@3bb676972 (Scala-typed
+   builds only the tzdb module of [cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623) (v2.9.0 + tzdb on Scala 3.10.1), which has scala/scala3@3bb676972 (Scala-typed
    `registerInstantiatableClassV2`), against the released core 2.9.0. Counter's `java-time` route converts to `Europe/Prague` and formats
    and parses with `ofPattern` under daprd. Still excluded: the wall-clock (`Instant.now`/`Clock`/`currentTimeMillis`
    → scala-wasm javalib `js.Date.now`), `println` and `UUID.randomUUID` (no `SecureRandom`). `java.time.Duration`,
