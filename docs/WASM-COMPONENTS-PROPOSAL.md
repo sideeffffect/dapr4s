@@ -60,6 +60,10 @@ dapr4s `wasm` wall must respect:
 
 ### 2b. Build: move scala-cli → sbt
 
+> **Superseded (2026-11-10):** dapr4s's own build moved on from sbt to **Mill** (Mill 1.3.1). The Wasm prototype
+> ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44)) moves to Mill too: there the fork needs no separate
+> build, the Wasm Mill modules swap the fork's artifacts in. This section is kept as history.
+
 The `scala-wasm` fork ships only as an sbt plugin (`moduleKind = WasmComponent`, `scalaJSWitDirectory` →
 `wit-bindgen scala` into `src_managed`). Moving dapr4s to sbt also removes most current build hacks:
 

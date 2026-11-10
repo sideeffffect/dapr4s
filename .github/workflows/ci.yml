@@ -6,6 +6,9 @@ on:
     types: [ published ]
   pull_request:
 
+# The build is Mill (build.mill, buildsupport.mill). `./mill` is the bootstrap script: it downloads Mill
+# 1.3.1, and Mill downloads the JDK it runs on and forks tests with (Zulu 25, `mill-jvm-version` in
+# build.mill) through coursier, so no setup-java is needed for the build itself.
 jobs:
   format:
     runs-on: ubuntu-latest
@@ -13,21 +16,14 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: actions/setup-java@v5
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
     - uses: coursier/cache-action@v8
     - name: Check formatting (scalafmt)
       run: |
         # Files using experimental capture-checking `^{...}` syntax that scalafmt can't parse are
         # listed in .scalafmt.conf project.excludeFilters. If a new such file is added without
-        # excluding it, fail loudly here with a pointer to the fix. (Unlike `scala-cli fmt --check`,
-        # which exited 0 on a parse error, sbt-scalafmt fails the task; the grep turns that into an
-        # actionable message and still guards against a tool version that only logs it.)
+        # excluding it, fail loudly here with a pointer to the fix.
         set +e -o pipefail
-        sbt -Dsbt.color=false scalafmtCheckAll scalafmtSbtCheck 2>&1 | tee fmt.log
+        ./mill --ticker false mill.scalalib.scalafmt.ScalafmtModule/scalafmt --check 2>&1 | tee fmt.log
         status=$?
         if grep -qiE 'ParseError|illegal start of|error: \[dialect' fmt.log; then
           echo "::error::scalafmt hit a parse error — add the offending file to .scalafmt.conf project.excludeFilters"
@@ -38,28 +34,22 @@ jobs:
   # One matrix leg per platform. Adding Scala Native one day should be a new include entry
   # (platform: native, ...), not a new job. Each leg: compile, unit tests, integration tests.
   #
-  #   core<P>         the library + its unit tests (test/{shared,<p>} minus integration/)
-  #   integration<P>  the Docker-based integration suites (test/{shared,<p>}/integration)
+  #   core.<p>         the library + its unit tests (core.<p>.test: test/{shared,<p>} minus integration/)
+  #   integration.<p>  the Docker-based integration suites (test/{shared,<p>}/integration)
+  #
   test:
     strategy:
       fail-fast: false
       matrix:
         include:
           - platform: jvm
-            project: JVM
           - platform: js
-            project: JS
     name: test (${{ matrix.platform }})
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: actions/setup-java@v5
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
     - uses: coursier/cache-action@v8
     # Wasm 3.0 + JSPI are on by default from Node 25; the runner's default Node has neither.
     - name: Set up Node 25
@@ -67,45 +57,39 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: 25
-    - name: Install npm dependencies (@dapr/dapr, testcontainers)
-      if: matrix.platform == 'js'
-      run: npm ci
-    # The ScalablyTyped facades are generated from node_modules and compiled by the build
-    # (stFacades, ~3 min cold). Cache the converter's parse cache and the compiled facades;
-    # zinc recompiles anything the restored state does not cover, so a stale hit is only slower.
+    # The ScalablyTyped facades are generated from node_modules (`npm ci`, run by the build) and
+    # compiled by the build (stFacades, several minutes cold). Cache the converter's parse cache and
+    # the facade module's Mill output; Mill recomputes anything the restored state does not cover.
     - name: Cache ScalablyTyped facades
       if: matrix.platform == 'js'
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/scalablytyped
-          .st-facades/target
-        key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
+          out/stFacades
+        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill') }}
+        restore-keys: st-facades-mill-
     - name: Compile
-      run: sbt core${{ matrix.project }}/compile integration${{ matrix.project }}/Test/compile
+      run: ./mill --ticker false core.${{ matrix.platform }}.compile + integration.${{ matrix.platform }}.compile
     - name: Unit tests
-      run: sbt core${{ matrix.project }}/test
+      run: ./mill --ticker false core.${{ matrix.platform }}.test
     - name: Integration tests
       # A real daprd sidecar (+ Redis, placement, scheduler) via testcontainers; Docker is
       # preinstalled on ubuntu-latest. JVM: testcontainers-dapr. JS: @dapr/testcontainer-node,
       # started from inside the Wasm+JSPI test runtime.
       # Both legs normally finish in a few minutes; the timeout turns a hang into a failure instead of a 6h wait.
       timeout-minutes: 20
-      run: sbt integration${{ matrix.project }}/test
+      run: ./mill --ticker false integration.${{ matrix.platform }}.testForked
 
   publish:
     needs: [format, test]
     if: github.event_name != 'pull_request'
-    # Serialize publishes that would target the same artifact version. The version
-    # is dynver-derived from git state at the commit, so every publish-triggering
-    # event on one commit (master push, tag push, release:published) resolves to the
-    # SAME version — and two such runs racing on Sonatype's bulk/promote is what made
-    # the v1.0.0 tag-push run 400 ("Publish request failed") while the master-push run
-    # for the same commit won. We can't key on the resolved version string itself:
-    # concurrency.group is evaluated at queue time and can only see github/inputs/vars,
-    # not runtime step outputs — and github.sha maps 1:1 to the dynver version anyway.
-    # cancel-in-progress: false so an in-flight publish is never interrupted mid-promote
-    # (which could leave a half-promoted staging repo); the duplicate simply waits.
+    # Serialize publishes that would target the same artifact version. The version is derived from git
+    # state at the commit (Dynver in buildsupport.mill), so every publish-triggering event on one commit
+    # (master push, tag push, release:published) resolves to the SAME version — and two such runs racing
+    # on the Central Portal is what made the v1.0.0 tag-push run 400 ("Publish request failed") while the
+    # master-push run for the same commit won. github.sha maps 1:1 to the version.
+    # cancel-in-progress: false so an in-flight publish is never interrupted mid-upload; the duplicate waits.
     concurrency:
       group: publish-${{ github.sha }}
       cancel-in-progress: false
@@ -114,39 +98,35 @@ jobs:
     - uses: actions/checkout@v5
       with:
         fetch-depth: 0
-    - uses: actions/setup-java@v5
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
     - uses: coursier/cache-action@v8
-    # The Scala.js artifact embeds the ScalablyTyped facade .sjsir (see build.sbt), which the
-    # build generates from node_modules.
-    - name: Install npm dependencies
-      run: npm ci
     - name: Cache ScalablyTyped facades
       uses: actions/cache@v4
       with:
         path: |
           ~/.cache/scalablytyped
-          .st-facades/target
-        key: st-facades-${{ hashFiles('package-lock.json', 'build.sbt', 'project/plugins.sbt', 'project/build.properties') }}
-    # Publishes dapr4s_3 and dapr4s_sjs1_3 (sbt-ci-release: a release tag publishes the clean
-    # version, anything else a dynver -SNAPSHOT). The secrets keep their scala-cli era names;
-    # sbt-ci-release wants PGP_SECRET as a base64-encoded ASCII-armored key, so accept either an
-    # armored key or an already base64-encoded one.
+          out/stFacades
+        key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill') }}
+        restore-keys: st-facades-mill-
+    # Publishes dapr4s_3 and dapr4s_sjs1_3 (a release tag publishes the clean version to Central, anything
+    # else a `-SNAPSHOT` to the Central snapshots repository, as sbt-ci-release did). The secrets keep their
+    # scala-cli era names; Mill wants the PGP key base64-encoded, so accept either an ASCII-armored key or
+    # an already base64-encoded one.
     - name: Publish (JVM + Scala.js)
       run: |
+        set -euo pipefail
         key="${PUBLISH_SECRET_KEY#base64:}"
         if printf '%s' "$key" | grep -q -- '-----BEGIN PGP'; then
-          PGP_SECRET="$(printf '%s\n' "$key" | base64 -w0)"
+          MILL_PGP_SECRET_BASE64="$(printf '%s\n' "$key" | base64 -w0)"
         else
-          PGP_SECRET="$key"
+          MILL_PGP_SECRET_BASE64="$key"
         fi
-        export PGP_SECRET
-        sbt ci-release
+        export MILL_PGP_SECRET_BASE64
+        version="$(./mill --ticker false show publishVersion | tail -1 | tr -d '"')"
+        echo "Publishing version $version"
+        ./mill --ticker false mill.javalib.SonatypeCentralPublishModule/publishAll \
+          --publishArtifacts '{core.jvm,core.js}.publishArtifacts'
       env:
-        SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
-        SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
+        MILL_SONATYPE_USERNAME: ${{ secrets.PUBLISH_USER }}
+        MILL_SONATYPE_PASSWORD: ${{ secrets.PUBLISH_PASSWORD }}
         PUBLISH_SECRET_KEY: ${{ secrets.PUBLISH_SECRET_KEY }}
-        PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
+        MILL_PGP_PASSPHRASE: ${{ secrets.PUBLISH_SECRET_KEY_PASSWORD }}
