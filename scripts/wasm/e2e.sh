@@ -17,9 +17,10 @@
 #
 # Needs: Docker (Redis on localhost:26480; for importsProbe also the daprio/dapr scheduler of the installed
 # daprd's version on localhost:50006), the dapr CLI + daprd (`dapr init --slim`, which has no placement or
-# scheduler), wasmtime, wasm-tools, wkg, wac, wit-bindgen-scala, sbt.
-# SKIP_BUILD=1 reuses wasm/target/components/*.wasm; E2E_ONLY="counter ..." runs only those components. SBT_ARGS is passed to sbt, e.g.
-# SBT_ARGS=-Ddapr4s.wasm.core=source links against dapr4s's own src/shared (see wasm/build.sbt).
+# scheduler), wasmtime, wasm-tools, wkg, wac, wit-bindgen-scala (the Mill build runs the last three).
+# SKIP_BUILD=1 reuses wasm/target/components/*.wasm; E2E_ONLY="counter ..." runs only those components.
+# WASM_CORE=source links `counter` against dapr4s's own src/shared (`wasm.lib[source]`, see wasm/package.mill);
+# the default `release` links it against the published dapr4s_sjs1_3 (`wasm.lib[release]`).
 set -euo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$here/../.." && pwd)"
@@ -70,8 +71,13 @@ if [[ " ${E2E_ONLY:-importsProbe} " == *" importsProbe "* ]] &&
   [[ "$ready" == 1 ]] || fail "the scheduler did not come up"
 fi
 
+# `./mill show <module>.dapr4sComponent` builds the component and prints `"ref:v0:<hash>:<path>"`.
+component_path() { "$repo/mill" --ticker false show "$1.dapr4sComponent" | tail -1 | sed -E 's/^"([^:]*:){3}(.*)"$/\2/'; }
 if [[ "${SKIP_BUILD:-0}" != 1 ]]; then
-  (cd "$repo/wasm" && sbt -batch ${SBT_ARGS:-} counterRaw/dapr4sComponent counter/dapr4sComponent importsProbe/dapr4sComponent)
+  mkdir -p "$components"
+  cp "$(component_path wasm.counterRaw)" "$components/counterRaw.wasm"
+  cp "$(component_path "wasm.lib[${WASM_CORE:-release}].counter")" "$components/counter.wasm"
+  cp "$(component_path wasm.importsProbe)" "$components/importsProbe.wasm"
 fi
 
 expected_imports=$'configuration-read: \ninvocation: \nstate: save\nstate-read: get\ntypes: '

@@ -1,6 +1,6 @@
 package dapr4s.wasm
 
-/** LINK-TIME CONTRACT STUB, never linked (`wallWasm` depends on it as `Provided`).
+/** LINK-TIME CONTRACT STUB, never linked (`wasm.lib[*].wall` depends on it compile-only).
   *
   * WHY: a WASI reactor component has no `main`. scala-wasm runs module initializers only behind a configured component
   * export (Emitter: "Wasm Component module initializers require a configured Wasm Component module initializer

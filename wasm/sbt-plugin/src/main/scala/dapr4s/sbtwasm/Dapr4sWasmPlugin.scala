@@ -11,9 +11,9 @@ import org.scalajs.sbtplugin.ScalaJSPlugin.autoImport._
   *
   * WHY a plugin and not a library: everything here is BUILD configuration, not code — the WasmComponent link, which
   * stdlib IR wins on the linker classpath, which transitive libraries must not reach the classpath. A library cannot
-  * change any of that. dapr4s's own `wasm/` build compiles this very file into its meta-build
-  * (`wasm/project/plugin-sources.sbt`) and points the artifact-backed key (`dapr4sWasmScalalibOverlay`) at its own
-  * project, so the test components in dapr4s and an external app (dapr4s-examples) build the same way.
+  * change any of that. dapr4s's own build is Mill and uses the twin of this plugin, `mill-dapr4s-wasm`
+  * (mill-build/src/dapr4s/millwasm); keep the two in sync. dapr4s's scripts/wasm/consumer-check.sh builds a fresh sbt
+  * app with this plugin.
   *
   * Two plugins, both opt-in (`enablePlugins`), on top of the scala-wasm FORK of sbt-scalajs
   * (`io.github.scala-wasm:sbt-scalajs`), which this plugin depends on:
@@ -135,7 +135,7 @@ object Dapr4sWasmComponentPlugin extends AutoPlugin {
     // keeps the WIT type aliases the dapr-wasm-components providers need (`metadata` in the exported
     // `*-callback` instances) since https://github.com/scala-wasm/scala-wasm/pull/269, given bindings
     // that reference the defining interface (dapr4s-wasm-glue's are rewritten so, see `useWitAliases`
-    // in dapr4s's wasm/build.sbt). It lowers strings as UTF-16 itself. Nothing to re-embed: an app
+    // in mill-dapr4s-wasm's WitBindgenModule). It lowers strings as UTF-16 itself. Nothing to re-embed: an app
     // needs no WIT files and no wkg (wasm-tools: only the one the scala-wasm linker runs itself).
     dapr4sComponent := {
       (Compile / fastLinkJS).value
@@ -173,16 +173,6 @@ object Dapr4sWasm {
       )
     require(files.nonEmpty, s"sbt-dapr4s-wasm: nothing resolved for $module")
     files
-  }
-
-  // `wkg wit fetch` for dapr4s's own build (the WIT world its dapr4s-wasm-glue bindings are generated
-  // from). Apps need no WIT any more (see dapr4sComponent).
-  def witFetch(witDir: File, log: Logger): Unit = {
-    val base = witDir.getParentFile
-    val cmd = Seq("wkg", "wit", "fetch", "--config", (base / "wkg-config.toml").getPath)
-    log.info(s"Running: ${cmd.mkString(" ")}")
-    val exit = scala.sys.process.Process(cmd, base).!(scala.sys.process.ProcessLogger(log.info(_), log.info(_)))
-    if (exit != 0) sys.error(s"wkg wit fetch failed ($exit)")
   }
 
   def copyComponent(component: File, out: File): File = {

@@ -14,13 +14,12 @@ import dapr4s.given
   * Run locally (requires Dapr sidecar on localhost:3500/50001):
   * {{{
   *   dapr run --app-id order-service --app-port 8080 -- \
-  *     sbt "coreJVM/Test/runMain dapr4s.test.integration.apps.orderServiceMain"
+  *     ./mill k8s.orderService.run
   * }}}
   *
   * Build a fat jar for Docker:
   * {{{
-  *   sbt 'set coreJVM / Test / assembly / mainClass := Some("dapr4s.test.integration.apps.orderServiceMain")' \
-  *     coreJVM/Test/assembly          # full recipe: scripts/k8s-test.sh
+  *   ./mill show k8s.orderService.assembly   # full recipe: scripts/k8s-test.sh
   * }}}
   */
 @main def orderServiceMain(): Unit =

@@ -9,3 +9,5 @@ target/
 .bloop/
 project/metals.sbt
 project/project/
+# Mill: all build output
+out/

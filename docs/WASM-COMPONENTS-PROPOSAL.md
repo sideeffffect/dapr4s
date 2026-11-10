@@ -60,6 +60,12 @@ dapr4s `wasm` wall must respect:
 
 ### 2b. Build: move scala-cli → sbt
 
+> **Superseded:** dapr4s moved on from sbt to **Mill** (Mill 1.3.1): the Wasm prototype on 2026-10-13
+> ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45)), `master` on 2026-11-10
+> ([PR #49](https://github.com/sideeffffect/dapr4s/pull/49)), and the Wasm modules then joined it in
+> [PR #44](https://github.com/sideeffffect/dapr4s/pull/44). The fork no longer needs a separate build: the `wasm.*` Mill modules swap the fork's artifacts
+> in and link components with a small driver. This section is kept as history.
+
 The `scala-wasm` fork ships only as an sbt plugin (`moduleKind = WasmComponent`, `scalaJSWitDirectory` →
 `wit-bindgen scala` into `src_managed`). Moving dapr4s to sbt also removes most current build hacks:
 
@@ -198,10 +204,15 @@ with wasmtime's cache. Warm round trip through the sidecar 2.4 ms median, incl. 
 The spike was ported into this repository ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44)) as an
 **opt-in, unpublished** prototype. AGENTS.md "Wasm component layer rules" has the rules and commands.
 
-- **Build**: a nested sbt build in [`wasm/`](../wasm/build.sbt). The scala-wasm plugin is a fork of `sbt-scalajs` and
-  cannot share the root meta-build, so the root build, `coreJVM`/`coreJS` and their POMs are unchanged. `wasm/` also
+- **Build**: the `wasm.*` modules of the Mill build ([`wasm/package.mill`](../wasm/package.mill)), built with the
+  traits of the `mill-dapr4s-wasm` plugin ([`mill-build/src`](../mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala),
+  compiled into the meta-build). They swap the `org.scala-js` artifacts for the fork's (Mill's `scalaJSOrganization`) and link components with
+  Mill's own `ModuleKind.WasmComponent` (the patched linker `dapr4s-wasm-linker_2.13` until #46, see below), both from
+  [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) in Mill 1.3.1, so `core.jvm`/`core.js` and
+  their POMs are unchanged. (Until 2026-10-13 a nested sbt build
+  in `wasm/`: the fork's `sbt-scalajs` could not share the root meta-build.) `wasm/` also
   holds `wit/world.wit`, `wkg-config.toml` and `wkg.lock`. WIT comes only through `wkg wit fetch` (OCI).
-- **dapr4s's own `src/shared`** is compiled for the third platform (`coreWasm`), together with
+- **dapr4s's own `src/shared`** is compiled for the third platform (`wasm.coreSource`), together with
   [`src/wasm/core`](../src/wasm/core) (empty platform traits + the `dapr4s.wasm.DaprComponent` entry API). The
   spike used the published `dapr4s_sjs1_3` 3.0.0 instead.
 - **The wall**: [`src/wasm/internal`](../src/wasm/internal) (`WasmStateCapability`, `InvokeDispatcher`,
@@ -215,7 +226,7 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
      their types directly (`case state_read.GetError.KeyNotFound`, exhaustivity works). No facade.
   2. The trampolines delegate to the Scala 3 implementations through the fixed-name `AppRoot`.
   3. The wall depends on the import traits, so its error mapping has **unit tests with fakes**
-     ([`test/wasm/unit`](../test/wasm/unit), `cd wasm && sbt wallWasm/test`). They run as plain Scala.js on Node,
+     ([`test/wasm/unit`](../test/wasm/unit), `./mill 'wasm.lib[source].wall.test'`). They run as plain Scala.js on Node,
      with no wasmtime and no sidecar.
   Each new building block on the wall adds its import trait by hand. (An earlier iteration generated all of this
   with scalameta; it was dropped as more machinery than the prototype needs.) WIT resources (`crypto`
@@ -225,46 +236,50 @@ The spike was ported into this repository ([PR #44](https://github.com/sideeffff
   [`test/wasm/imports-probe`](../test/wasm/imports-probe) (the four imports with > 16 flat params).
 - **Scripts**: [`scripts/wasm/`](../scripts/wasm): `e2e.sh` (import checks, compose, daprd + Redis, counter 1 → 2,
   error mapping, the imports probe against daprd's echo conversation component and a scheduler container),
-  `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`, `build-scala-wasm.sh` (the pinned scala-wasm
-  snapshot, see below).
-- **CI**: a `wasm` entry in the `test` matrix (source-mode unit tests + e2e, release-mode publishLocal + consumer
-  check). It gates `publish` like the jvm and js legs.
-- **Packaging (2026-10-13): six artifacts, published to Central.** All `com.github.sideeffffect`, at core's
-  sbt-dynver version: `dapr4s-wasm_sjs1_3` (the Scala 3 adapters + `DaprComponent` + inert callbacks; depends on dapr4s
+  `consumer-check-mill.sh`, `consumer-check.sh`, `compose.sh`, `run.sh`, `measure.py`,
+  `build-scala-wasm.sh` (the pinned scala-wasm snapshot, see below; until then `prepare-patched-linker.sh` +
+  `patches/`, from which Mill compiled the patched linker).
+- **CI**: a `wasm` entry in the `test` matrix (unit tests and e2e in both core modes, then the Mill and the sbt
+  consumer checks). It gates `publish` like the jvm and js legs.
+- **Packaging (2026-10-13): eight artifacts, published to Central** (six since #46, below). All `com.github.sideeffffect`, at core's
+  version (same scheme as sbt-dynver): `dapr4s-wasm_sjs1_3` (the Scala 3 adapters + `DaprComponent` + inert callbacks; depends on dapr4s
   core `dapr4s_sjs1_3` and the glue), `dapr4s-wasm-glue_sjs1_2.13` (WIT bindings + hand-written glue),
   `dapr4s-wasm-glue-exports_sjs1_2.13` (the trampolines; components only), `dapr4s-wasm-scalalib-overlay` (the
-  fork-patched stdlib `.sjsir`, with attribution), `dapr4s-wasm-linker_2.12` (scala-wasm's linker + our
-  params-via-memory patch, republished under our coordinates with LICENSE/NOTICE) and the sbt plugin `sbt-dapr4s-wasm`
-  ([`wasm/sbt-plugin`](../wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala): exclusions, linker,
-  overlay, glue-exports, `wkg wit fetch`, `dapr4sComponent`). A consumer needs only the plugin, one
-  `libraryDependency` (`dapr4s-wasm`), its WIT files and the fixed-name `ComponentRoot`
-  (`scripts/wasm/consumer-check.sh` proves it; the first external consumer is
-  [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples)' `wasm/` build). By default the wall depends on the
-  PUBLISHED `dapr4s_sjs1_3` (its IR links into the component, as the spike did); `-Ddapr4s.wasm.core=source` tests
-  dapr4s's own `src/shared` instead. sbt-ci-release in the `publish` job publishes all six with core
+  fork-patched stdlib `.sjsir`, with attribution), `dapr4s-wasm-linker_2.12` / `_2.13` (scala-wasm's linker + our
+  params-via-memory patch; 2.12 for sbt, 2.13 for Mill, republished under our coordinates with LICENSE/NOTICE) and two
+  build plugins with the same feature set: `mill-dapr4s-wasm_mill1_3`
+  ([`mill-build/src`](../mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala): fork swap, exclusions, linker,
+  overlay, glue-exports, `wkg wit fetch`, wit-bindgen-scala, `dapr4sComponent`) and `sbt-dapr4s-wasm`
+  ([`wasm/sbt-plugin`](../wasm/sbt-plugin/src/main/scala/dapr4s/sbtwasm/Dapr4sWasmPlugin.scala)). A consumer needs
+  only a plugin, one dependency (`dapr4s-wasm`), its WIT files and the fixed-name `ComponentRoot`
+  (`scripts/wasm/consumer-check-mill.sh` and `consumer-check.sh` prove it; the first external consumer is
+  [dapr4s-examples](https://github.com/sideeffffect/dapr4s-examples), examples 18/19, with the Mill plugin). By default the wall depends on the
+  PUBLISHED `dapr4s_sjs1_3` (its IR links into the component, as the spike did); `wasm.lib[source]` tests
+  dapr4s's own `src/shared` instead. The `publish` job publishes all eight with core (Mill's Central Portal publisher)
   (`PUBLISH_WASM_TO_CENTRAL: 'true'`, approved 2026-10-13). The workarounds are also being
   fixed upstream (scala-wasm #268–#271, scala3 #27300; see AGENTS.md): the linker patch now covers BOTH sides of params-via-memory (the import side was
   silently missing in 1.22.1-wasm.6), proven by `test/wasm/imports-probe` against daprd.
 
-### Retiring workarounds on an unreleased scala-wasm (2026-10-16)
+### Retiring workarounds on an unreleased scala-wasm (2026-10-16, on Mill since 2026-11-10)
 
-[PR #46](https://github.com/sideeffffect/dapr4s/pull/46) (draft,
-stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`: scala-wasm's `scala-wasm` branch head `d4e4feba` (2026-11-09,
-the merge of #271). It contains [scala-wasm#268](https://github.com/scala-wasm/scala-wasm/pull/268),
+[PR #46](https://github.com/sideeffffect/dapr4s/pull/46) (draft, stacked on #44) pins `1.22.1-wasm.7-dapr4s-local`:
+scala-wasm's `scala-wasm` branch head `d4e4feba` (2026-11-09, the merge of #271). It contains
+[scala-wasm#268](https://github.com/scala-wasm/scala-wasm/pull/268),
 [#269](https://github.com/scala-wasm/scala-wasm/pull/269) and [#271](https://github.com/scala-wasm/scala-wasm/pull/271),
 all merged, none released yet (newest on Central: 1.22.1-wasm.6). Until 2026-11-09 it was `32cda138` + a local merge
 of the then-open #269/#271; the upstream merges are the same commits. `scripts/wasm/build-scala-wasm.sh` builds the
-branch as is and `publishLocal`s it (CI: cached by the script hash). Central publishing of the wasm artifacts is off
-meanwhile.
+branch as is and `publishLocal`s it (CI: cached by the script hash); Mill and sbt both resolve it from
+`~/.ivy2/local`. Central publishing of the wasm artifacts is off meanwhile. Written for the sbt `wasm/` build
+(2026-10-16), ported to the Mill build after #49 (2026-11-10).
 
 | Workaround | Status | Why |
 |---|---|---|
-| Patched linker `dapr4s-wasm-linker` | **removed** (artifact, script, patch) | #268: params through linear memory on both sides. The imports probe runs all four > 16-param imports against daprd. |
-| WIT re-embed (`component embed --encoding utf16` + `component new`) | **removed** | #269 keeps a `@WitAlias` reached through a plain type alias. The linker's component (UTF-16 already) composes with the providers as is. Apps need no WIT files and no wkg. |
-| — | **new, small**: `useWitAliases` in `wasm/build.sbt` | wit-bindgen-scala 0.1.0 renders a `use`d alias structurally (`type Metadata = Array[...]`), so #269 alone does not help. The rewrite makes it `type Metadata = types.Metadata`. Without it, compose fails ("missing expected list export `metadata`"), checked. |
-| `org.scala-js` library/javalib exclusions | **removed** | #271 excludes them in the scala-wasm plugin. Checked on the classpaths. |
+| Patched linker `dapr4s-wasm-linker` (`_2.12`, `_2.13`) | **removed** (artifacts, `wasm.linker`, script, patch) | #268: params through linear memory on both sides. The imports probe runs all four > 16-param imports against daprd. |
+| WIT re-embed (`component embed --encoding utf16` + `component new`) | **removed** (both plugins) | #269 keeps a `@WitAlias` reached through a plain type alias. The linker's component (UTF-16 already) composes with the providers as is. Apps need no WIT files and no wkg. |
+| — | **new, small**: `useWitAliases` in mill-dapr4s-wasm's `WitBindgenModule` | wit-bindgen-scala 0.1.0 renders a `use`d alias structurally (`type Metadata = Array[...]`), so #269 alone does not help. The rewrite makes it `type Metadata = types.Metadata`. Without it, compose fails ("missing expected list export `metadata`"), checked. |
+| `org.scala-js` library/javalib exclusions | **removed in sbt-dapr4s-wasm**, kept in mill-dapr4s-wasm | #271 excludes them in the fork's sbt plugin. Mill's `scalaJSOrganization` swaps only the artifacts Mill adds itself, so the Mill plugin keeps them. |
 | Fork's 2.13 scalalib exclusion | kept | #271 keeps the upstream scalalib on Scala 3.8+ and leaves the fork's 2.13 one next to it. |
-| — | **new, small**: fork's `scalajs-junit-test-runtime` on `wallWasm/Test` | #271 also excludes the upstream JUnit runtime that munit needs, and adds no fork one. |
+| — | sbt only: fork's `scalajs-junit-test-runtime` for munit tests | #271 also excludes the upstream JUnit runtime that munit needs, and adds no fork one. The Mill build keeps the upstream one (its exclusions do not touch it). |
 | Empty javadoc jar of `dapr4s-wasm` | kept | [scala/scala3#27300](https://github.com/scala/scala3/pull/27300) merged 2026-10-15. The newest nightly (`3.10.2-RC1-bin-20261109-9567d89`, checked 2026-11-10) has it, but dapr4s's code does not compile on it (65 capture-checking errors, E223, in the derivation macros and family companions), so the root nightly stays and so does this workaround. |
 | Stdlib overlay | kept | unrelated to these PRs. |
 

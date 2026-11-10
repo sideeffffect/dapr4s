@@ -36,7 +36,7 @@ private[dapr4s] final class LazyClientRef[A]:
   * of the JVM `DaprCapabilityImpl`.
   *
   * All interaction with the JS SDK is confined to this file and the individual `*CapabilityImpl` classes, through the
-  * ScalablyTyped-generated `dapr4styped.daprDapr` facades (see stFacades in build.sbt). No JS types are visible in the public API.
+  * ScalablyTyped-generated `dapr4styped.daprDapr` facades (see stFacades in build.mill). No JS types are visible in the public API.
   *
   * Lifecycle: [[dapr4s.Dapr.run]] owns all three clients; it creates the HTTP-protocol [[DaprClient]] and the two
   * lazy refs, passes them here, and stops them in its `finally` block. The gRPC client (configuration and crypto are
