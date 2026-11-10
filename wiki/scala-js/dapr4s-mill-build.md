@@ -140,6 +140,11 @@ there: `enableScalaJsDefined = Selection.All` for Scala 3, `ignored = {typescrip
 - The `useWitAliases` rewrite lives in the Mill plugin's `WitBindgenModule` (it runs right after wit-bindgen-scala,
   in the same task), so a consumer's own bindings get it too. The sbt side had it in dapr4s's own `wasm/build.sbt`,
   because there the fork's sbt plugin runs the generator.
+- **A publishLocal'ed sbt plugin as a Mill dependency**: sbt writes it to `~/.ivy2/local` in the ivy layout only
+  (`sbt-scalajs/scala_2.12/sbt_1.0/<v>`), so `mvn"org:sbt-scalajs_2.12_1.0:v"` does not resolve. A `Dep` built from a
+  coursier `Module` with the attributes `scalaVersion=2.12`, `sbtVersion=1.0` does; its own attributed dependencies
+  (`sbt-platform-deps`) are then looked up on Central under the plain name and fail, so exclude them and add the
+  Maven-style artifact (`sbt-platform-deps_2.12_1.0`) as a compile dependency. The POM keeps the Maven-style name.
 - #271 is an sbt-plugin change: Mill keeps all its `Exclusions` (mainline `org.scala-js` library/javalib
   included), and so needs none of the sbt side's JUnit-runtime workaround for munit.
 

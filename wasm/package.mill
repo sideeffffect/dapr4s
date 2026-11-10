@@ -351,8 +351,34 @@ object `package` extends Module with WitModule {
     def scalaVersion = Scala212
     override def artifactSuffix = "_2.12_1.0"
     override def sources = Task.Sources(wasmDir / "sbt-plugin" / "src" / "main" / "scala")
-    override def compileMvnDeps = Seq(mvn"org.scala-sbt:sbt:$SbtVersion")
-    override def mvnDeps = Seq(mvn"$ScalaWasmOrg:sbt-scalajs_2.12_1.0:$ScalaWasmVersion")
+    // WHAT: the fork's sbt plugin as an sbt-ATTRIBUTED module (`sbt-scalajs` + scalaVersion=2.12, sbtVersion=1.0)
+    // instead of the Maven-style name `sbt-scalajs_2.12_1.0`; the POM still names `sbt-scalajs_2.12_1.0` (see
+    // publishXmlDeps). WHY: the pinned scala-wasm is a local `publishLocal` (scripts/wasm/build-scala-wasm.sh),
+    // and sbt's publishLocal writes an sbt plugin to ~/.ivy2/local in the ivy layout only
+    // (`sbt-scalajs/scala_2.12/sbt_1.0/<v>`), where the Maven-style name does not exist. Coursier resolves the
+    // attributed module from both ivy and Maven repositories. WHY SAFE: the same artifact, only addressed the
+    // way both layouts know. RETIRES: can stay; with a Central release the plain Maven name works too.
+    override def mvnDeps = Seq(
+      Dep(
+        coursier.core.Dependency(
+          coursier.core.Module(
+            coursier.core.Organization(ScalaWasmOrg),
+            coursier.core.ModuleName("sbt-scalajs"),
+            Map("scalaVersion" -> "2.12", "sbtVersion" -> "1.0"),
+          ),
+          coursier.version.VersionConstraint(ScalaWasmVersion),
+        ),
+        mill.api.CrossVersion.empty(false),
+        force = false,
+      )
+        // Its own sbt-plugin dependency, attributed in the ivy file, which coursier then looks up on Central under
+        // the plain name: take the Maven-style artifact instead (compile only; consumers' sbt resolves it).
+        .exclude("org.portable-scala" -> "sbt-platform-deps"),
+    )
+    override def compileMvnDeps = super.compileMvnDeps() ++ Seq(
+      mvn"org.scala-sbt:sbt:$SbtVersion",
+      mvn"org.portable-scala:sbt-platform-deps_2.12_1.0:1.0.2",
+    )
     // sbt discovers the plugins of a jar through this descriptor (sbt itself generates it at compile time).
     def autopluginsDescriptor: T[PathRef] = Task {
       os.write(
@@ -382,8 +408,13 @@ object `package` extends Module with WitModule {
       super
         .publishXmlDeps()
         .map { d =>
-          if (d.artifact.id == "scala-library") d.copy(scope = Scope.Provided) else d
+          if (d.artifact.id == "scala-library") d.copy(scope = Scope.Provided)
+          // The POM names the fork's plugin Maven-style and with its own dependencies (see mvnDeps).
+          else if (d.artifact.id == "sbt-scalajs")
+            d.copy(artifact = d.artifact.copy(id = "sbt-scalajs_2.12_1.0"), exclusions = Nil)
+          else d
         }
+        .filterNot(_.artifact.id == "sbt-platform-deps_2.12_1.0")
         .sortBy(d => if (d.scope == Scope.Provided) 0 else 1)
     }
     override def pomProperties = Task {
