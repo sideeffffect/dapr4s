@@ -166,5 +166,5 @@
 - Updated: dapr/dapr-wasm-components-vs-dapr4s.md — toolchain status: wit-bindgen-scala replaces the archived `wit-bindgen scala` fork; Phase 0 verdict + link
 
 ## [2026-11-10] ingest | dapr4s sbt -> Mill migration (non-Wasm part, onto master)
-- Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped via mill-scalablytyped 0.4.2 (Mill 1.3.1); ported from PR #45/#47 without the Wasm modules, which stay on PR #44
+- Created: scala-js/dapr4s-mill-build.md — parity results, Mill facts, ScalablyTyped via mill-scalablytyped 0.4.2 (Mill 1.3.1); ported from PR #45/#47 into PR #49 without the Wasm modules, which stay on PR #44
 - Note: the sbt-era notes in scalablytyped-with-scala-cli.md and scala-js-async-jspi-wasm.md are kept as history

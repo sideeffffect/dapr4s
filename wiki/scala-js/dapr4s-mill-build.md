@@ -3,7 +3,7 @@
 dapr4s moved from sbt to Mill. The migration was first written on top of the Wasm prototype
 ([PR #45](https://github.com/sideeffffect/dapr4s/pull/45), 2026-10-13, then
 [PR #47](https://github.com/sideeffffect/dapr4s/pull/47) for the released upstream versions). Its non-Wasm part was
-then ported onto `master` on its own (2026-11-10), so it can merge before the Wasm prototype
+then ported onto `master` on its own (2026-11-10, [PR #49](https://github.com/sideeffffect/dapr4s/pull/49)), so it can merge before the Wasm prototype
 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44)); the Wasm modules move to Mill in #44 after that.
 History: scala-cli until 2026-10-12, then sbt (see
 [ScalablyTyped Facades with Scala CLI](scalablytyped-with-scala-cli.md) and
