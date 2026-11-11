@@ -2,7 +2,7 @@
 # Builds the dapr4s test component test/wasm/counter exactly like an external Mill app does: a fresh Mill build
 # (out/consumer-check-mill) whose build.mill has ONLY the mill-dapr4s-wasm plugin in its header, one module
 # `extends Dapr4sWasmComponentModule` with one dependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the
-# fixed-name ComponentRoot: no in-build workaround. Plus the app's own scala-java-time-tzdb (region zones; dapr4s-wasm
+# fixed-name ComponentRoot: no in-build workaround. Plus the app's own scala-java-time-tzdb-scala3-next (region zones; dapr4s-wasm
 # brings scala-java-time), from scripts/wasm/build-scala-java-time.sh (run it first). The seven wasm artifacts (incl. the plugin) come from this checkout
 # (Mill publishes them, in release mode, into the Maven repository out/consumer-check-mill-repo), everything else from
 # Maven Central. Then runs the counter part of scripts/wasm/e2e.sh on the result.
@@ -62,7 +62,7 @@ object counter extends Dapr4sWasmComponentModule {
     "-Yexplicit-nulls", "-experimental", "-Wconf:any:error")
   // The app's own choice: the tz database (as on JS), built with a Scala 3 whose output links on Wasm.
   override def mvnDeps = Seq(mvn"com.github.sideeffffect::dapr4s-wasm::\$dapr4sWasmVersion",
-    mvn"io.github.cquiroz::scala-java-time-tzdb::$tzdb")
+    mvn"io.github.cquiroz::scala-java-time-tzdb-scala3-next::$tzdb")
 }
 MILL
 # The fresh build's Mill daemon is not needed after the check.

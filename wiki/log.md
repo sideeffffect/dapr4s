@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-11-11] update | tzdb from the new scala-java-time-tzdb-scala3-next artifact
+- Updated: scala-js/scala-wasm-component-spike.md — cquiroz/scala-java-time#623 (head e9c7320) now keeps `scala-java-time-tzdb` on 3.9.0 and adds the Scala.js-only `tzdbScala3Next` project (`scala-java-time-tzdb-scala3-next`, Scala 3.10.1, POM declares scala3-library 3.10.1); `build-scala-java-time.sh` builds that project; counter and both consumer checks depend on it; its declared scala3-library 3.10.1 is newer than the dapr4s nightly (3.10.0-RC1), so the sbt consumer check pins scala3-library_sjs1_3 (stable TASTy 28.10 is unreadable by the nightly); Mill needs no pin
+
 ## [2026-11-10] update | PR #48 ported to the Mill Wasm build
 - Note: java.time on Wasm now lives in wasm/package.mill (`wall` mvnDeps scala-java-time + scala-java-locales 1.6.0, `counter` the source-built tzdb `ScalaJavaTimeTzdbWasm`); both consumer checks (Mill and sbt) add the tzdb; Mill resolves the publishLocal'ed tzdb from ~/.ivy2/local
 

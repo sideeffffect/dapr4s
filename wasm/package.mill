@@ -69,15 +69,19 @@ object `package` extends Module with WitModule {
   val Scala2Linker = "2.12.21"
   // The latest core release the wall builds against in release mode. Bump after each core release.
   val CoreRelease = "3.0.0"
-  // The tz database (`scala-java-time-tzdb`, region zones) of https://github.com/cquiroz/scala-java-time/pull/623
-  // (v2.9.0 with the tzdb module compiled by Scala 3.10.1), publishLocal'ed by scripts/wasm/build-scala-java-time.sh
-  // (run it first; CI does). Its POM depends on the RELEASED scala-java-time `Versions.scalaJavaTime` (2.9.0). WHAT
-  // it adds over the released tzdb 2.9.0: it links without a JS host, because Scala 3 >= 3.10.1 emits the provider's
-  // reflective registration Scala-typed.
+  // The tz database for Wasm (`scala-java-time-tzdb-scala3-next`, region zones): the tzdb of scala-java-time,
+  // compiled by Scala 3.10.1, a new artifact of https://github.com/cquiroz/scala-java-time/pull/623 (not released yet),
+  // publishLocal'ed by scripts/wasm/build-scala-java-time.sh (run it first; CI does). Its POM depends on the RELEASED
+  // scala-java-time `Versions.scalaJavaTime` (2.9.0) and declares scala3-library 3.10.1. That is newer than our
+  // 3.10.0-RC1 nightly, so a component that adds it links the 3.10.1 library (dapr4s-wasm itself keeps the
+  // nightly). Mill compiles against the compiler's own library, so no pin here; an sbt app needs one (see
+  // scripts/wasm/consumer-check.sh). WHAT it adds over the released
+  // `scala-java-time-tzdb` 2.9.0 (Scala 3.9.0): it links without a JS host, because Scala 3 >= 3.10.1 emits the
+  // provider's reflective registration Scala-typed. Never add it next to `scala-java-time-tzdb` (same classes).
   // WHY only the test components use it (an app opts in by depending on it), not dapr4s-wasm: dapr4s-wasm is
   // published to Central, and its POM must name a version that Central has.
-  // RETIRES when a scala-java-time release's tzdb is built with Scala 3 >= 3.10.1: then the test components pin that
-  // release, and this val, the script and its CI steps go (see the script's header).
+  // RETIRES when a scala-java-time release contains `scala-java-time-tzdb-scala3-next`: then the test components pin
+  // that release, and this val, the script and its CI steps go (see the script's header).
   val ScalaJavaTimeTzdbWasm = "2.9.0-dapr4s-local"
   // Only the wasm path needs it explicitly (see `wall`); on JS, scala-java-time's own dependency suffices.
   val ScalaJavaLocales = "1.6.0"
@@ -225,8 +229,8 @@ object `package` extends Module with WitModule {
       // versions a Wasm component needs, in both core modes and for every app (they are in dapr4s-wasm's POM):
       // scala-java-time >= 2.9.0 (the default zone is UTC without a JS host; `DateTimeFormatter.ofPattern` does
       // not link `Instant.now`) and scala-java-locales >= 1.6.0 (`Locale.getDefault`, reached by every
-      // formatter/parser, no longer reads `window` without a JS host). Region zones need a tzdb built with a newer
-      // Scala 3, not released yet: see `ScalaJavaTimeTzdbWasm`.
+      // formatter/parser, no longer reads `window` without a JS host). Region zones need a tzdb built with Scala
+      // 3.10.1, not released yet: see `ScalaJavaTimeTzdbWasm`.
       override def mvnDeps = Task {
         super.mvnDeps() ++ Seq(
           mvn"io.github.cquiroz::scala-java-time::${Versions.scalaJavaTime}",
@@ -276,8 +280,9 @@ object `package` extends Module with WitModule {
       override def sources = Task.Sources(Dapr4sPaths.test / "wasm" / "counter")
       override def moduleDeps = Seq(wall, glueExports)
       // Region zones (`ZoneId.of("Europe/Prague")`, the tz database is the app's choice, as on JS): the source-built
-      // tzdb (see `ScalaJavaTimeTzdbWasm`). Its core is the released scala-java-time that dapr4s-wasm already pins.
-      override def mvnDeps = Seq(mvn"io.github.cquiroz::scala-java-time-tzdb::$ScalaJavaTimeTzdbWasm")
+      // tzdb-scala3-next (see `ScalaJavaTimeTzdbWasm`). Its core is the released scala-java-time that dapr4s-wasm
+      // already pins.
+      override def mvnDeps = Seq(mvn"io.github.cquiroz::scala-java-time-tzdb-scala3-next::$ScalaJavaTimeTzdbWasm")
     }
   }
 

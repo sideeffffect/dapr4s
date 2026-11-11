@@ -58,9 +58,10 @@ fixes (a local patch was used for one of them).
   `RFC_1123_DATE_TIME`, `DayOfWeek.getDisplayName(FULL, ENGLISH)` = `Saturday`, `ZoneId.systemDefault()` = `UTC`,
   `ZoneId.of("UTC")`, `ZoneOffset`s, `Duration.parse`.
 - `DateTimeFormatter.ofPattern` links and runs with the released scala-java-time 2.9.0 (2026-10-27; `dapr4s-wasm`
-  depends on it). Region zones link and run with a source-built tzdb: `scripts/wasm/build-scala-java-time.sh` builds
-  only the tzdb module of [cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623) (draft, head 32a3b26: v2.9.0 + tzdb on Scala 3.10.1) as `2.9.0-dapr4s-local` (POM: the released
-  core 2.9.0), used by counter + the consumer check only (Central must have every version `dapr4s-wasm`'s POM names).
+  depends on it). Region zones link and run with `scala-java-time-tzdb-scala3-next`, a new Scala.js-only artifact of
+  [cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623) (draft, head e9c7320, project `tzdbScala3Next`: the same tzdb compiled by Scala 3.10.1).
+  `scripts/wasm/build-scala-java-time.sh` publishLocal's it as `2.9.0-dapr4s-local` (POM: the released core 2.9.0,
+  scala3-library 3.10.1), used by counter + the consumer checks only (Central must have every version `dapr4s-wasm`'s POM names).
   From 2026-10-17 to 2026-11-03 the script built all of scala-java-time `main` (`2.8.1-dapr4s-local`) with the tzdb
   module on a Scala nightly. Counter's answer under wasmtime + daprd adds
   `prague=2026-10-17T12:15:30+02:00[Europe/Prague];winter=2026-12-24T18:30+01:00[Europe/Prague];newyork=-04:00;`
@@ -83,12 +84,20 @@ fixes (a local patch was used for one of them).
     a forward port of scala-js/scala-js@e754a55; on `release-3.10.1`, NOT in 3.10.0). Nothing in scala-java-time
     can work around it (no source-level way to write a static initializer), so the fix is the compiler. scala-java-time
     2.9.0 is still built with 3.9.0, so its tzdb still emits V1 (region zones need a release whose tzdb is built with
-    Scala 3 >= 3.10.1). 3.10.1 (final; -RC1 and -RC2 too) contains 3bb676972. #623 compiles only
-    `tzdbJS` with 3.10.1 (its `.sjsir` names `registerInstantiatableClassV2`; `crossScalaVersions` maps 3.9.0 to
-    3.10.1 for that project, so `++ 3` picks it). The module still DECLARES scala3-library 3.9.0 (a declared 3.10.1
-    would evict every 3.9 app's library, whose compiler then cannot read 3.10 TASTy; scala-java-time's own `tests`
-    fail exactly so); the 3.10.1 library is resolved in a hidden ivy configuration and put first on the compile
-    classpath only. Dead ends: `-scala-output-version 3.9` is ignored by 3.10.1 ("bad option"), and 3.10.1 with only
+    Scala 3 >= 3.10.1). 3.10.1 (final; -RC1 and -RC2 too) contains 3bb676972. #623 (since
+    e9c7320) leaves `scala-java-time-tzdb` and core on 3.9.0 and adds a separate Scala.js-only project
+    `tzdbScala3Next` (dir `tzdb-scala3-next/`, artifact `scala-java-time-tzdb-scala3-next`): the same tzdb compiled
+    by 3.10.1 (its `.sjsir` names `registerInstantiatableClassV2`). Its POM honestly declares scala3-library 3.10.1, so
+    it is only for apps on Scala >= 3.10.1 (a declared 3.10.1 would evict a 3.9 app's library, whose compiler then
+    cannot read 3.10 TASTy). dapr4s's nightly (3.10.0-RC1-bin-20260607) is OLDER, so 3.10.1
+    evicts it in an app that adds the tzdb (the published dapr4s-wasm keeps the nightly). Mill compiles against the
+    compiler's own library and passes. sbt compiles against the evicted 3.10.1 library and fails: "Forward
+    incompatible TASTy file has version 28.10 ... expected stable TASTy from 28.0 to 28.9, or exactly
+    28.10-experimental-1". The sbt consumer check pins `scala3-library_sjs1_3` to the app's Scala with
+    `dependencyOverrides`; then it links (tzdb IR on the nightly library) and the e2e passes (2026-11-11). It needs `++ 3` (next to a
+    Scala 2 core the project skips itself). Never put it next to `scala-java-time-tzdb` (same classes). The first
+    #623 design (head 32a3b26, 2026-11-10) compiled `tzdbJS` itself with 3.10.1 and kept the POM's 3.9.0 by resolving
+    the 3.10.1 library in a hidden ivy configuration; it was reverted. Dead ends: `-scala-output-version 3.9` is ignored by 3.10.1 ("bad option"), and 3.10.1 with only
     the 3.9.0 library crashes ("missing: method apply", `scala.specialize`). v2.9.0's `tlBaseVersion` 2.8 makes
     sbt-typelevel refuse to load any later commit, so #623 also bumps it to 2.9. Before #623 (2026-11-03..10) the
     script compiled tzdb of v2.9.0 with `set tzdb.js / scalaVersion` and rewrote the POM/ivy.xml. `Reflect.lookupInstantiatableClass` (the core side of discovery) is a Scala `HashMap`
