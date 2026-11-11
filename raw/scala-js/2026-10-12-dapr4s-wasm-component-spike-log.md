@@ -1,6 +1,6 @@
 # dapr4s Phase-0 Wasm component spike: build log and evidence
 
-> Source: local spike repo `/home/ondra/Projects/dapr4s-wasm-spike` (not published), commits 618849d..26ccc06; scala-wasm sources at `e24a46b6f` (1.22.1-wasm.6) and `1609fb71a` (default branch `scala-wasm`, 1.22.1-wasm.7-SNAPSHOT); scala-wasm/scala3 branch `wasm` (17a0deeb, 987adced); dapr-wasm-components v0.7.0 and main@17b2710
+> Source: the local Phase-0 spike repo (not published; its code was ported into dapr4s on 2026-10-13: `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`), commits 618849d..26ccc06; scala-wasm sources at `e24a46b6f` (1.22.1-wasm.6) and `1609fb71a` (default branch `scala-wasm`, 1.22.1-wasm.7-SNAPSHOT); scala-wasm/scala3 branch `wasm` (17a0deeb, 987adced); dapr-wasm-components v0.7.0 and main@17b2710
 > Collected: 2026-10-12
 > Published: 2026-10-12
 

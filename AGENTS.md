@@ -22,18 +22,21 @@ All three must stay in sync with the code at all times.
 ## Scala stack
 
 - **Scala version**: latest nightly (`3.9.0-RC1-bin-*-NIGHTLY` or later), pinned as `Versions.scala3Nightly`
-  in `buildsupport.mill` (`./mill show scala3Nightly` prints it; scripts read it from there). Always use the newest available nightly to get the latest capture-checking and
+  in `buildsupport.mill` (`./mill show scala3Nightly` prints it; the wasm modules and the scripts read it
+  from there). Always use the newest available nightly to get the latest capture-checking and
   safe-mode fixes. Nightlies resolve from the scala-lang nightly repository (a build-only resolver,
   never written into the POM).
-- **Build tool**: **Mill 1.3.1** (`build.mill`, `buildsupport.mill`; `./mill` is the bootstrap
+- **Build tool**: **Mill 1.3.1** (`build.mill`, `buildsupport.mill`, `wasm/package.mill`, and the
+  meta-build sources `mill-build/src/` = the `mill-dapr4s-wasm` plugin; `./mill` is the bootstrap
   script). Mill 1.3.1 contains [com-lihaoyi/mill#7786](https://github.com/com-lihaoyi/mill/pull/7786)
-  (the Scala.js test-link fix). The meta-build loads the
+  (the Scala.js test-link fix) and [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783)
+  (`scalaJSOrganization`, `ModuleKind.WasmComponent`, used by the wasm modules). The meta-build loads the
   released mill-scalablytyped `0.4.2` from Maven Central (it contains
   [lolgab/mill-scalablytyped#50](https://github.com/lolgab/mill-scalablytyped/pull/50),
   [#51](https://github.com/lolgab/mill-scalablytyped/pull/51) and
   [#52](https://github.com/lolgab/mill-scalablytyped/pull/52)). Nothing is built from source.
   Use released versions only. History: scala-cli until 2026-10-12, then sbt (the sbt build lived in
-  `build.sbt` and `project/`; `git log` has it). Modules:
+  `build.sbt`, `project/` and, for the wasm platform, a nested `wasm/build.sbt`; `git log` has it). Modules:
   - `core.jvm` / `core.js` — the published library (`dapr4s_3` / `dapr4s_sjs1_3`); `core.jvm.test` /
     `core.js.test` are its **unit** tests (every test source outside an `integration/` directory).
   - `integration.jvm` / `integration.js` — the Docker integration suites (`test/{shared,jvm,js}/integration`),
@@ -41,14 +44,15 @@ All three must stay in sync with the code at all times.
   - `stFacades` — the ScalablyTyped facades (see "Scala.js layer rules"), never published itself.
   - `k8s.orderService` / `k8s.inventoryService` — runnable fat jars of the two example mains
     (`test/jvm/apps`) for `scripts/k8s-test.sh`.
-- **Platforms**: JVM **and Scala.js**. Common commands:
+  - `wasm.*` — the `wasm` platform (WASI components), see "Wasm component layer rules" below.
+- **Platforms**: JVM **and Scala.js** (plus the `wasm` platform). Common commands:
   - `./mill core.jvm.compile`, `./mill core.js.compile`
   - `./mill core.jvm.test`, `./mill core.js.test` (unit tests; no Docker)
   - `./mill integration.jvm.testForked`, `./mill integration.js.testForked` (Docker; JS also needs
     Node >= 25 first on the PATH)
   - Several tasks in one call: `./mill a + b`, or brace expansion `./mill core.{jvm,js}.test`.
   - Mill keeps a background daemon, so repeated calls are fast; all output goes to `out/`.
-- **Directory layout**: `src/{shared,jvm,js}` and `test/{shared,jvm,js}`. Mill does not own
+- **Directory layout**: `src/{shared,jvm,js,wasm}` and `test/{shared,jvm,js,wasm}`. Mill does not own
   this layout: each module points its `sources` into it (module directories such as `core/jvm/` do not
   exist). Files under `jvm/`/`js/` still carry a per-file `//> using target.platform "jvm"`/`"scala-js"`
   line from the scala-cli days; it is only a comment (removal is a planned follow-up). Packages are
@@ -357,14 +361,193 @@ the `_sjs1_3` artifact carries no jobs/conversation API at all.
   silently picks gRPC. `HttpMethod` values are lowercase strings. Options objects are
   `Partial<...>` — ST renders them as builder-style traits (`PartialDaprClientOptions().setX(...)`).
 
+### Wasm component layer rules
+
+The `wasm` platform builds a dapr4s app as a WASI **component** for
+[dapr-wasm-components](https://github.com/sideeffffect/dapr-wasm-components) 0.7.5, with the
+scala-wasm fork of Scala.js (`io.github.scala-wasm`, `ModuleKind.WasmComponent`).
+Status, blockers and numbers: `docs/WASM-COMPONENTS-PROPOSAL.md` §6 and
+`wiki/scala-js/scala-wasm-component-spike.md`. The eight artifacts are **published to Maven Central**
+by the same `publish` job as core (snapshots on master pushes, releases on tags); `publishLocal` works.
+Upstream gaps are worked around here AND fixed upstream (the earlier "no upstream PRs" rule was lifted on
+2026-10-13). Open upstream PRs, each retiring one workaround: scala-wasm/scala-wasm
+[#268](https://github.com/scala-wasm/scala-wasm/pull/268) (params via memory → patched linker),
+[#269](https://github.com/scala-wasm/scala-wasm/pull/269) (WIT aliases → re-embed),
+[#270](https://github.com/scala-wasm/scala-wasm/pull/270) (pluggable System → println/clock rules),
+[#271](https://github.com/scala-wasm/scala-wasm/pull/271) (core-lib exclusions),
+scala/scala3 [#27300](https://github.com/scala/scala3/pull/27300) (unpickler crash → empty javadoc),
+cquiroz/scala-java-locales [#640](https://github.com/cquiroz/scala-java-locales/pull/640) (java.time formatting).
+**scala/scala3 and VirtusLab/scala-cli forbid LLM-written PR/issue text** (their `LLM_POLICY.md`): there,
+agents push branches / open drafts with an EMPTY description; the user writes the text.
+
+- **In the main build, isolated by the fork swap** (`wasm/package.mill`). With sbt, the fork's
+  `sbt-scalajs` could not share a meta-build with mainline's, hence a nested `wasm/build.sbt` until
+  2026-10-13. Mill has no such clash. **The build logic is the Mill plugin `mill-dapr4s-wasm`**, whose
+  sources (`mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala`) are compiled into dapr4s's own
+  meta-build, so the `wasm.*` modules use the very traits a Mill consumer gets:
+  `ScalaWasmModule` sets Mill's `scalaJSOrganization` to `io.github.scala-wasm` (mill#7783: library,
+  compiler plugin, test bridge and linker come from the fork); `Dapr4sWasmModule` adds the
+  exclusions; `Dapr4sWasmTests` its tests; `WitModule` / `WitBindgenModule` run `wkg wit fetch`
+  / wit-bindgen-scala; `Dapr4sWasmComponentModule` links a component. Only `wasm.*` modules see the fork,
+  so `core.js` is untouched. Mill's Scala.js worker links the plain-JS wall unit tests with the fork's
+  released 2.13 linker, and COMPONENTS with `ModuleKind.WasmComponent` (mill#7783) on the patched
+  `dapr4s-wasm-linker_2.13` (`fastLinkJS` / `fullLinkJS`, no separate link driver). dapr4s's components
+  (`WasmComponent` in `wasm/package.mill`) only point the artifact-backed tasks at in-build modules:
+  `dapr4sWasmLinker` → `wasm.linker[2.13.18]`,
+  `dapr4sWasmScalalibOverlay` → `wasm.scalalibOverlay`, `dapr4sWasmAddGlueExports = false` (a module
+  dependency on `wasm.glueExports` instead); every module shares `wasm.wit` (the `wasm` object is itself a
+  `WitModule`). Nothing in `wasm/` runs unless a `wasm.*` task is asked for: `./mill core.jvm.test` needs
+  no wasm tool. The nightly, `scalaJavaTime` and `munit` come from `Versions`; `NightlyWasm` uses the same
+  compiler flags. **Upstream (retire the plugin's Mill workarounds)**:
+  [com-lihaoyi/mill#7783](https://github.com/com-lihaoyi/mill/pull/7783) (Scala.js organization +
+  `ModuleKind.WasmComponent`) is already USED here, released in Mill 1.3.1 (it retired
+  `ScalaWasmModule`'s per-task overrides and the link driver);
+  [#7784](https://github.com/com-lihaoyi/mill/pull/7784) (wit-bindgen-scala task → `WitBindgenModule`),
+  [#7785](https://github.com/com-lihaoyi/mill/pull/7785) (run/test components with wasmtime → the shell
+  e2e's `wasmtime serve` wiring could become Mill tasks).
+- **The eight artifacts** (all `com.github.sideeffffect`, at core's `publishVersion`, POM metadata as core's,
+  normal suffixes):
+  | artifact | module | contains |
+  |---|---|---|
+  | `dapr4s-wasm_sjs1_3` | `wasm.lib[release].wall` | the Scala 3 adapters (`src/wasm/internal`: `WasmStateCapability`, `InvokeDispatcher`, `WasmRuntime`, the real `AppRoot`) + `dapr4s.wasm.DaprComponent` (`src/wasm/api`, module `api`) + the inert callbacks (`src/wasm/inert`, module `wasm.inert`), the last two merged into its jar. Depends on dapr4s core (`dapr4s_sjs1_3`) + `dapr4s-wasm-glue`; every POM dependency carries the exclusions below |
+  | `dapr4s-wasm-glue_sjs1_2.13` | `wasm.glue` | the wit-bindgen-scala bindings of world `app` + the hand-written 2.13 glue |
+  | `dapr4s-wasm-glue-exports_sjs1_2.13` | `wasm.glueExports` | the hand-written `@WitExport` trampolines (a COMPONENT's dependency only; the plugin adds it) |
+  | `dapr4s-wasm-scalalib-overlay` | `wasm.scalalibOverlay` | the fork-patched stdlib `.sjsir` (unmodified, from `io.github.scala-wasm:scalajs-scalalib_2.13:3.8.3-RC1-wasm.4`) + LICENSE/NOTICE attribution |
+  | `dapr4s-wasm-linker_2.12`, `dapr4s-wasm-linker_2.13` | `wasm.linker[2.12.21]`, `wasm.linker[2.13.18]` | scala-wasm's 1.22.1-wasm.6 linker with our patch (`scripts/wasm/patches/scala-wasm-params-via-memory.patch`): the patched sources compiled by Mill, the released jar's resources, LICENSE/NOTICE, patched sources in the sources jar; depends on the released ir/linker-interface. 2.12 for sbt-dapr4s-wasm (sbt loads a 2.12 linker), 2.13 for Mill's Scala.js worker (mill-dapr4s-wasm) |
+  | `mill-dapr4s-wasm` (`_mill1_3`) | `wasm.millPlugin` | the build logic for Mill consumers (below): the sources of `mill-build/src`, compiled with the Scala and against the `mill-libs` of the Mill running the build (1.3.1), + a `dapr4s/millwasm/version` resource (the version of the wasm artifacts it resolves) |
+  | `sbt-dapr4s-wasm` (`_2.12_1.0`) | `wasm.sbtPlugin` | the build logic for sbt consumers (below), the twin of `mill-dapr4s-wasm`. Mill builds it as a plain sbt-1 plugin jar: sbt `provided`, a generated `sbt/sbt.autoplugins`, `Implementation-Version` in the manifest, sbt's POM properties |
+- **Core: published or source** (`wasm.lib` is a cross module). `wasm.lib[release]` (the default for
+  publishing and `scripts/wasm/e2e.sh`): the wall depends on the PUBLISHED `dapr4s_sjs1_3`
+  (`CoreRelease` in `wasm/package.mill`, or `DAPR4S_WASM_CORE_VERSION`), whose Scala.js IR the scala-wasm
+  linker links into the component (the JS wall is unreachable and dropped; mainline org.scala-js
+  library/javalib are excluded). Valid because the wasm platform traits (`src/wasm/core`) equal the JS
+  ones (all empty). `wasm.lib[source]` compiles `src/shared` + `src/wasm/core` as `wasm.coreSource`
+  instead, so shared-code changes are tested (nothing publishes from it). A release publishes the wasm
+  artifacts against the core of the SAME version (the publish job sets `DAPR4S_WASM_CORE_VERSION` and
+  `publishLocal`s `core.js` first). Bump `CoreRelease` after each core release.
+- **Exclusions** (`Exclusions` in `wasm/package.mill`, applied by `NightlyWasm` to every dependency):
+  a nightly-compiled module must not see the 2.13 stdlib the fork adds to the 2.13 glue, nor mainline
+  `org.scala-js` library/javalib (different organization from the fork's: no eviction, first IR file per
+  class wins). They are written into the `dapr4s-wasm` POM, so consumers inherit them.
+- **The Mill consumer** needs only:
+  `//| mvnDeps: ["com.github.sideeffffect::mill-dapr4s-wasm::<v>"]` in the `build.mill` header,
+  `import dapr4s.millwasm.*`, a module `extends Dapr4sWasmComponentModule` with
+  `def mvnDeps = Seq(mvn"com.github.sideeffffect::dapr4s-wasm::$dapr4sWasmVersion")` (+ its Scala 3
+  nightly `scalaVersion` and a JVM worker that resolves the nightly), its own `wit/world.wit`
+  (`include dapr-wasm-components:interfaces/app@0.7.5;`) + `wkg-config.toml` + `wkg.lock` in the module
+  directory (`witFiles` overrides the location), and the fixed-name
+  `object dapr4s.wasm.ComponentRoot { def component: DaprComponent = ... }`. `./mill show app.dapr4sComponent`
+  (`dapr4sComponentFull`: optimized) prints the component's path. `scripts/wasm/consumer-check-mill.sh`
+  publishes the artifacts into a local Maven repo (`publishM2Local`), builds `test/wasm/counter`
+  exactly so (a fresh Mill build under `out/consumer-check-mill`, header `//| repositories:` pointing at the
+  local repo) and runs its e2e; dapr4s-examples (examples 18/19) is the worked example.
+- **The sbt consumer** needs only:
+  `addSbtPlugin("com.github.sideeffffect" % "sbt-dapr4s-wasm" % v)`,
+  `.enablePlugins(Dapr4sWasmComponentPlugin)`,
+  `libraryDependencies += "com.github.sideeffffect" %%% "dapr4s-wasm" % dapr4sWasmVersion`, its own
+  `wit/world.wit` + `wkg-config.toml` + `wkg.lock`, and the fixed-name `ComponentRoot`.
+  `scripts/wasm/consumer-check.sh` does the same for sbt (a fresh sbt build). It is the only sbt left in
+  the repo's checks: the sbt plugin is a product for sbt users.
+- **The two plugins** (each workaround documented at its definition with the upstream PR that RETIRES it;
+  keep them in sync):
+  - `mill-dapr4s-wasm` (`mill-build/src/dapr4s/millwasm/Dapr4sWasmModules.scala`): `ScalaWasmModule` (fork
+    swap), `Dapr4sWasmModule` (+ exclusions; `dapr4sWasmVersion` = the plugin's own version, from the jar's
+    resource), `Dapr4sWasmTests`, `WitModule` (`witFiles` → `wit`, `wkg wit fetch`), `WitBindgenModule`
+    (`witBindgenBasePackage`, `witBindings`; `wasm.glue` uses it), `Dapr4sWasmComponentModule`
+    (`ModuleKind.WasmComponent` + Wasm + ES2022; `dapr4sWasmLinker` replaces the fork's linker in
+    `scalaJSLinkerClasspath`; `dapr4sWasmScalalibOverlay` goes first on `runClasspath` — both resolved as
+    TOOLS from the module's repositories, not with `defaultResolver()`, which would force the app's Scala 3
+    `scala-library` onto the linker — `dapr4sWasmAddGlueExports`, `dapr4sComponent` / `dapr4sComponentFull`:
+    `fastLinkJS` / `fullLinkJS`, then the utf16 re-embed of the real WIT world + `component new`).
+  - `sbt-dapr4s-wasm` (`wasm/sbt-plugin/.../Dapr4sWasmPlugin.scala`): `Dapr4sWasmPlugin` (every
+    nightly-compiled project) excludes the 2.13 stdlib and mainline `org.scala-js` library/javalib and sets
+    the linker to `dapr4s-wasm-linker` (`dapr4sWasmLinkerClasspath`); `Dapr4sWasmComponentPlugin` (every
+    component) sets `ModuleKind.WasmComponent`, prepends `dapr4s-wasm-scalalib-overlay` to the linker
+    classpath (`dapr4sWasmScalalibOverlay`, resolved through the linker's GLOBAL `dependencyResolution`
+    because coursier's per-project one applies `excludeDependencies`), adds `dapr4s-wasm-glue-exports`
+    (`dapr4sWasmAddGlueExports`), runs `wkg wit fetch` and provides `dapr4sComponent` /
+    `dapr4sComponentFull` (re-embed the real WIT world with `--encoding utf16` + `component new`).
+- **How each workaround retires** (both plugins): patched linker → scala-wasm#268 (WIT params through
+  linear memory on both sides): drop `dapr4s-wasm-linker` and the plugins' linker override; WIT re-embed →
+  scala-wasm#269 (the linker keeps WIT aliases): use its component as is; exclusions → scala-wasm#271 (the
+  fork's core libraries evict mainline's); overlay → when the nightly's library-js is Wasm-clean, drop
+  `dapr4s-wasm-scalalib-overlay`; the 2.13 glue → when Scala 3 gets WIT codegen; Mill only:
+  `WitBindgenModule` → mill#7784, running/testing components → mill#7785 (mill#7783 is released in Mill 1.3.1
+  and used).
+- **The patched linker** (`scripts/wasm/prepare-patched-linker.sh`, run by `wasm.linker[*].patchedSources`:
+  `git archive` of the release commit's linker sources from a cached clone in
+  `~/.cache/dapr4s/scala-wasm-src` + the patch; Mill compiles them, no scala-wasm sbt build): the
+  released linker leaves the EXPORT side of
+  params-via-memory (> 16 flat params) a `???` (`on-topic-event`, `on-timer` of the mandatory callbacks)
+  and silently emits NOTHING on the IMPORT side (`jobs.schedule`, `conversation.converse`,
+  `actors.register-reminder`/`-timer`; `component new` then fails "expected i32 but nothing on stack").
+  The patch implements both (canonical ABI `lift_flat_values` / `lower_flat_values`).
+  `test/wasm/imports-probe` calls the four imports; the e2e checks it imports exactly them and runs
+  them against daprd (daprd's answers name the component/actor the probe sent).
+- **WIT only through OCI**: `world app { include dapr-wasm-components:interfaces/app@0.7.5; }`
+  + the upstream `wkg-config.toml`; `wasm.wit` runs `wkg wit fetch --config wkg-config.toml` on a copy in
+  `out/` before wit-bindgen-scala. `wkg.lock` is committed; `wit/deps/` never lands in the source tree.
+  Never copy WIT from git.
+- **Newest everything**: the glue tracks the WIT version (`wasm/wit/world.wit`, the `WitScope`
+  versions in the trampolines). Always the newest dapr-wasm-components WIT release (now 0.7.5), the
+  newest scala-wasm release on Central (now 1.22.1-wasm.6, `ScalaWasmVersion`) and the newest
+  wit-bindgen-scala (0.1.0).
+- **The two-compiler constraint**: mainline Scala 3 has no WIT codegen (imports are lowered at
+  the call site by the compiler backend, `@WitExport` is compiler-emitted). Every import call and
+  every export must be compiled by Scala 2.13 + scala-wasm's compiler plugin. The 2.13 code is
+  kept **small and hand-written** (no generator), covering only what is used:
+  1. `wasm.glue` holds the wit-bindgen-scala BINDINGS (generated by `wit-bindgen-scala` with the
+     arguments the fork's sbt plugin used) under `dapr4swit`. Scala 3 uses their record/variant/enum types
+     directly (`state_read.GetError.KeyNotFound`, exhaustivity checking works), but cannot call
+     their `@WitImport` defs. There is no facade.
+  2. `wasm.glue` also compiles `src/wasm/glue/WitGlue.scala` (package `dapr4s.internal.witglue`): one
+     plain trait per imported interface used (`StateReadImports`, `StateImports`; `JobsImports`,
+     `ConversationImports`, `ActorsImports` for the probe) whose companion object is the live
+     implementation (the only import call sites), and the 7 `*CallbackExports` traits.
+  3. `wasm.glueRootStub` (`src/wasm/glue-root-stub`): the `AppRoot` link-time stub; `wasm.glueExports`
+     (`src/wasm/glue-exports`): the 15 `@WitExport` trampolines of the 7 callback interfaces.
+  A new building block on the wall = a new import trait + live object in `WitGlue.scala` (copy the
+  signatures from the generated bindings under `out/wasm/glue/witBindings.dest`). WIT resources
+  (`crypto`, configuration `subscription`) are not wired yet.
+- **The wall depends on the import TRAITS, never on the import functions**, and receives their
+  live objects only in `WasmRuntime`. That is what keeps it unit-testable with fakes.
+- **Only components depend on the trampolines**: their `@WitExport`s are linker entry points, and a
+  plain-JS test link would reject them ("Invalid top level export").
+- **No `main` in a reactor**: the app supplies `object dapr4s.wasm.ComponentRoot { def component
+  = MyComponent }` (fixed FQN, resolved at link time against a compile-only stub; a missing one is
+  a link error). The 2.13 trampolines reach the Scala 3 wall the same way, via
+  `dapr4s.internal.witglue.AppRoot`. The stubs are never published and are filtered out of the POMs
+  (`compileModuleDeps` + `embeddedModules`; on a linker classpath they would shadow the real objects:
+  first IR file per class wins).
+- **Central publishing switch**: the `publish` job of `.github/workflows/ci.yml` sets
+  `PUBLISH_WASM_TO_CENTRAL: 'true'` (ON since 2026-10-13, approved by the user); with it the job adds
+  the eight wasm artifacts to the same `SonatypeCentralPublishModule/publishAll` call as core. Nothing local
+  reaches Central: publishing happens only through that command with the Central credentials.
+- **Shared code on the `wasm` path** must avoid `java.time` formatting/parsing, wall-clock
+  (`Instant.now`), `println` and `UUID.randomUUID`: they reach JS and fail to link.
+- Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr
+  CLI + daprd from `dapr init --slim`, `wasmtime` and `wac` for the e2e):
+  - `./mill 'wasm.lib[source].wall.test'` / `'wasm.lib[release].wall.test'` (wall unit tests, plain
+    Scala.js on Node)
+  - `./mill show 'wasm.lib[release].counter.dapr4sComponent'` (prints the component's path; also
+    `wasm.counterRaw`, `wasm.importsProbe`; `dapr4sComponentFull` for the optimized link)
+  - `./mill 'wasm.lib[release].wall.publishLocal' + wasm.glue.publishLocal + ... + wasm.millPlugin.publishLocal`
+    (the eight artifacts, for dapr4s-examples; `publishM2Local` for a Maven layout)
+  - `scripts/wasm/e2e.sh` (counter-raw, counter, imports-probe: imports check, compose, daprd + Redis, for the
+    probe also a `daprio/dapr` scheduler container and daprd's echo conversation component; the probe asserts
+    `converse` → `ok: <echo>`, `schedule` → `ok: scheduled …`, register-reminder/-timer on an unhosted actor type →
+    `PermissionDenied`; `WASM_CORE=source` links `counter` from `wasm.lib[source]`)
+  - `scripts/wasm/consumer-check-mill.sh` (a plugin-only Mill consumer build of counter + e2e)
+  - `scripts/wasm/consumer-check.sh` (a plugin-only sbt consumer build of counter + e2e; needs sbt)
+
 ---
 
 ## Formatting
 
 The project uses scalafmt. Config is in `.scalafmt.conf` (version 3.10.4, dialect `scala3`,
 `maxColumn = 120`, trailing commas everywhere). It covers every git-tracked `*.scala`, `*.sbt` and
-`*.mill` file (`project.git = true`): the library, the tests and the Mill build files. Generated
-sources (the facades, under `out/`) are never formatted.
+`*.mill` file (`project.git = true`): the library, the tests, the wasm sources and the Mill build files
+(`mill-build/src` included). Generated sources (facades, WIT bindings, under `out/`) are never formatted.
 
 Run the formatter: `./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt`
 Check without writing: `./mill mill.scalalib.scalafmt.ScalafmtModule/scalafmt --check`
@@ -390,7 +573,11 @@ for parse errors and prints a pointer to `project.excludeFilters`.
 
 Four legs, exactly as CI runs them (`.github/workflows/ci.yml`, one `test` matrix job with a
 `jvm` and a `js` include entry — a future Scala Native port is a new include entry, not a new
-job; each leg runs compile + unit tests + integration tests):
+job; each leg runs compile + unit tests + integration tests). A third include entry, `wasm`, runs
+the `wasm.*` modules (the wall's unit tests in both core modes, `scripts/wasm/e2e.sh` in both core
+modes, `scripts/wasm/consumer-check-mill.sh`, `scripts/wasm/consumer-check.sh`; see "Wasm component layer
+rules"). It installs its pinned tools, caches the scala-wasm clone the patched linker is built from, and
+gates `publish` like the other legs (the wasm artifacts are published by the same job):
 
 - **JVM unit tests** (no Docker): `./mill core.jvm.test`. Shared
   suites live in `test/shared/unit/` (`JsonCodecTest`, `ModelsTest`, `StateCapabilityTest`,
@@ -439,10 +626,10 @@ job; each leg runs compile + unit tests + integration tests):
   paths ScalablyTyped emits for testcontainers, which Node ESM rejects) and sets
   `DAPR4S_REPO_ROOT` (where the suites find `scripts/it/`). `java.util.UUID.randomUUID()` does
   **not link** on Scala.js (SecureRandom is absent from the javalib) — use `JsItEnv.uniqueId()`.
-- CI gates `publish` on the `format` job and **both** matrix legs passing. `publish` runs
+- CI gates `publish` on the `format` job and all three `test` matrix legs (`jvm`, `js`, `wasm`) passing. `publish` runs
   `./mill mill.javalib.SonatypeCentralPublishModule/publishAll` (Mill's Central Portal publisher: a
   release tag publishes the clean version, a master push a `-SNAPSHOT` to the Central snapshots
-  repository, the same scheme sbt-ci-release used) for `core.jvm` + `core.js`; the scala-cli era
+  repository, the same scheme sbt-ci-release used) for `core.jvm` + `core.js` (+ the eight wasm artifacts, see "Central publishing switch"); the scala-cli era
   secrets (`PUBLISH_USER`, `PUBLISH_PASSWORD`, `PUBLISH_SECRET_KEY`, `PUBLISH_SECRET_KEY_PASSWORD`)
   are mapped to Mill's `MILL_SONATYPE_*` / `MILL_PGP_*` variables in the workflow. Check a publish
   locally with `./mill core.{jvm,js}.publishLocal` (or `.pom`) and inspect the POMs;

@@ -13,8 +13,9 @@ package build
 //   integration.jvm / .js     the Docker-based integration suites (never published)
 //   stFacades                 the ScalablyTyped-generated Scala.js facades (never published on its own;
 //                             its .sjsir are embedded into dapr4s_sjs1_3, see core.js)
+//   wasm.*                    the `wasm` platform (WASI components), see wasm/package.mill
 //
-// Source layout: src/{shared,jvm,js} and test/{shared,jvm,js}. The modules point INTO it
+// Source layout: src/{shared,jvm,js,wasm} and test/{shared,jvm,js,wasm}. The modules point INTO it
 // rather than owning it; all build output goes to out/.
 //
 // JDK 25 is required for stable virtual-thread support (no carrier pinning on `synchronized`), see
@@ -30,11 +31,11 @@ import mill.scalajslib.api.*
 import mill.javalib.publish.*
 import com.github.lolgab.mill.scalablytyped.ScalablyTyped
 
-// Single source of truth for the nightly (scripts read it with `./mill show scala3Nightly`).
+// Single source of truth for the nightly, wasm included (scripts read it with `./mill show scala3Nightly`).
 def scala3Nightly: T[String] = Task(Versions.scala3Nightly)
 
-/** The version of every published artifact, computed from git like sbt-dynver + sbt-ci-release did (see Dynver in
-  * buildsupport.mill).
+/** The version of every published artifact (core and wasm alike), computed from git like sbt-dynver + sbt-ci-release
+  * did (see Dynver in buildsupport.mill).
   */
 def publishVersion: T[String] = Task.Input(Dynver.version(BuildCtx.workspaceRoot))
 

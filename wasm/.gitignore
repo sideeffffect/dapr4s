@@ -1,0 +1,3 @@
+# Written by `wkg wit fetch` (sbt witFetch) from OCI and pinned by wkg.lock. Never commit it:
+# WIT reaches this build only through OCI packaging.
+wit/deps/

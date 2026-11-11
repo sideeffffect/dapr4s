@@ -1,0 +1,8 @@
+package dapr4s:component;
+
+// The dapr4s `wasm` platform targets the dapr-wasm-components `app` world unchanged. The interfaces
+// package is resolved by `wkg wit fetch --config wkg-config.toml` from OCI (ghcr.io/sideeffffect/...),
+// pinned by wkg.lock, and never copied from git: wit/deps/ is git-ignored.
+world app {
+  include dapr-wasm-components:interfaces/app@0.7.5;
+}
