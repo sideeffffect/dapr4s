@@ -69,6 +69,12 @@ jobs:
           out/stFacades
         key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill') }}
         restore-keys: st-facades-mill-
+    # node_modules is not cached, but the build's own `npm ci` is a cached Mill task keyed by package-lock.json.
+    # On an exact cache hit (same lock file and build files) Mill reuses that task's result and skips `npm ci`,
+    # and the JS integration tests then fail with "Cannot find package '@dapr/dapr'". Install it here always.
+    - name: Install npm packages
+      if: matrix.platform == 'js'
+      run: npm ci --no-audit --no-fund
     - name: Compile
       run: ./mill --ticker false core.${{ matrix.platform }}.compile + integration.${{ matrix.platform }}.compile
     - name: Unit tests
