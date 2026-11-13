@@ -1,6 +1,6 @@
 # scala-wasm Component Spike (dapr4s Phase 0)
 
-> Sources: dapr4s Phase-0 spike, 2026-10-12, ported into dapr4s 2026-10-13 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44): `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`); scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24; java.time link/run probe (counter `java-time` route) with scala-java-locales 1.6.0 + scala-java-time 2.8.0, 2026-10-17
+> Sources: dapr4s Phase-0 spike, 2026-10-12, ported into dapr4s 2026-10-13 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44): `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`); scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24; java.time link/run probe (counter `java-time` route) with scala-java-locales 1.6.0 + scala-java-time 2.8.0, 2026-10-17; scala-java-time 2.10.0 POMs on Maven Central, 2026-11-13
 > Raw: [spike build log and evidence](../../raw/scala-js/2026-10-12-dapr4s-wasm-component-spike-log.md); [scala-wasm Limitations](../../raw/scala-js/2026-10-03-scala-wasm-limitations.md); [Scala and Wasm Component Model](../../raw/scala-js/2026-08-24-virtuslab-scala-wasm-component-model.md)
 > Updated: 2026-11-03
 
@@ -58,12 +58,15 @@ fixes (a local patch was used for one of them).
   `RFC_1123_DATE_TIME`, `DayOfWeek.getDisplayName(FULL, ENGLISH)` = `Saturday`, `ZoneId.systemDefault()` = `UTC`,
   `ZoneId.of("UTC")`, `ZoneOffset`s, `Duration.parse`.
 - `DateTimeFormatter.ofPattern` links and runs with the released scala-java-time 2.9.0 (2026-10-27; `dapr4s-wasm`
-  depends on it). Region zones link and run with `scala-java-time-tzdb-scala3-next`, a new Scala.js-only artifact of
-  [cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623) (draft, head e9c7320, project `tzdbScala3Next`: the same tzdb compiled by Scala 3.10.1).
-  `scripts/wasm/build-scala-java-time.sh` publishLocal's it as `2.9.0-dapr4s-local` (POM: the released core 2.9.0,
-  scala3-library 3.10.1), used by counter + the consumer checks only (Central must have every version `dapr4s-wasm`'s POM names).
-  From 2026-10-17 to 2026-11-03 the script built all of scala-java-time `main` (`2.8.1-dapr4s-local`) with the tzdb
-  module on a Scala nightly. Counter's answer under wasmtime + daprd adds
+  depends on it; now 2.10.0). Region zones link and run with the released `scala-java-time-tzdb-scala3-next` 2.10.0
+  (Maven Central, 2026-11), a Scala.js-only artifact from
+  [cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623) (merged; project `tzdbScala3Next`:
+  the same tzdb compiled by Scala 3.10.1). Its POM: scala-java-time_sjs1_3 2.10.0, scala3-library_sjs1_3 3.10.1.
+  Counter and the two consumer checks depend on it (an app opts in to the tz database, as on JS); its version is
+  `Versions.scalaJavaTime`. History: from 2026-10-17 to 2026-11-03 dapr4s source-built all of scala-java-time `main`
+  (`2.8.1-dapr4s-local`) with the tzdb module on a Scala nightly; from 2026-11-03 to 2026-11-13
+  `scripts/wasm/build-scala-java-time.sh` (now deleted) built only the tzdb from the #623 head and publishLocal'ed it
+  as `2.9.0-dapr4s-local`. Counter's answer under wasmtime + daprd adds
   `prague=2026-10-17T12:15:30+02:00[Europe/Prague];winter=2026-12-24T18:30+01:00[Europe/Prague];newyork=-04:00;`
   `pattern=17.10.2026 12:15 Europe/Prague;parsed=2026-12-24T18:30+01:00[Europe/Prague];text=Saturday 17 October 2026`
   (same as the JVM). The two root causes, each proven by a failing link with the released 2.8.0:
@@ -82,10 +85,9 @@ fixes (a local patch was used for one of them).
     (Scala arrays, `Array[Any] => Any`); the Scala 2 plugin emits it, which is why the 2.13 probe of #617 linked.
     Scala 3 emits V2 since [scala/scala3@3bb676972](https://github.com/scala/scala3/commit/3bb676972) (2026-09-07,
     a forward port of scala-js/scala-js@e754a55; on `release-3.10.1`, NOT in 3.10.0). Nothing in scala-java-time
-    can work around it (no source-level way to write a static initializer), so the fix is the compiler. scala-java-time
-    2.9.0 is still built with 3.9.0, so its tzdb still emits V1 (region zones need a release whose tzdb is built with
-    Scala 3 >= 3.10.1). 3.10.1 (final; -RC1 and -RC2 too) contains 3bb676972. #623 (since
-    e9c7320) leaves `scala-java-time-tzdb` and core on 3.9.0 and adds a separate Scala.js-only project
+    can work around it (no source-level way to write a static initializer), so the fix is the compiler. The plain
+    `scala-java-time-tzdb` (2.9.0 and 2.10.0) is still built with 3.9.0, so it still emits V1. 3.10.1 (final; -RC1
+    and -RC2 too) contains 3bb676972. #623 (released in 2.10.0) leaves `scala-java-time-tzdb` and core on 3.9.0 and adds a separate Scala.js-only project
     `tzdbScala3Next` (dir `tzdb-scala3-next/`, artifact `scala-java-time-tzdb-scala3-next`): the same tzdb compiled
     by 3.10.1 (its `.sjsir` names `registerInstantiatableClassV2`). Its POM honestly declares scala3-library 3.10.1, so
     it is only for apps on Scala >= 3.10.1 (a declared 3.10.1 would evict a 3.9 app's library, whose compiler then

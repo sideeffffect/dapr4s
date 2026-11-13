@@ -2,8 +2,8 @@
 # Builds the dapr4s test component test/wasm/counter exactly like an external Mill app does: a fresh Mill build
 # (out/consumer-check-mill) whose build.mill has ONLY the mill-dapr4s-wasm plugin in its header, one module
 # `extends Dapr4sWasmComponentModule` with one dependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the
-# fixed-name ComponentRoot: no in-build workaround. Plus the app's own scala-java-time-tzdb-scala3-next (region zones; dapr4s-wasm
-# brings scala-java-time), from scripts/wasm/build-scala-java-time.sh (run it first). The seven wasm artifacts (incl. the plugin) come from this checkout
+# fixed-name ComponentRoot: no in-build workaround. Plus the app's own scala-java-time-tzdb-scala3-next (region zones,
+# released on Maven Central; dapr4s-wasm brings scala-java-time). The seven wasm artifacts (incl. the plugin) come from this checkout
 # (Mill publishes them, in release mode, into the Maven repository out/consumer-check-mill-repo), everything else from
 # Maven Central. Then runs the counter part of scripts/wasm/e2e.sh on the result.
 #
@@ -27,7 +27,8 @@ done
 # second Mill run may already compute differently).
 version="$(ls "$local_repo/com/github/sideeffffect/mill-dapr4s-wasm_mill1_3")"
 nightly="$(cd "$repo" && mill show scala3Nightly | tail -1 | tr -d '"')"
-tzdb="$(sed -n 's/^ *val ScalaJavaTimeTzdbWasm = "\(.*\)"$/\1/p' "$repo/wasm/package.mill")"
+# scala-java-time-tzdb-scala3-next has the version of scala-java-time (`Versions.scalaJavaTime`).
+tzdb="$(sed -n 's/^ *val scalaJavaTime = "\(.*\)"$/\1/p' "$repo/buildsupport.mill")"
 dir="$repo/out/consumer-check-mill"
 rm -rf "$dir"
 mkdir -p "$dir/counter/src" "$dir/counter/wit"

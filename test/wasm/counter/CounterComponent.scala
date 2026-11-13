@@ -55,8 +55,8 @@ object CounterComponent extends DaprComponent:
 
   /** java.time on a Wasm component (scripts/wasm/e2e.sh checks the answer): ISO and pattern formatting with localized
     * text, parsing, the default zone (UTC without a JS host), fixed-offset zones and region zones (with their summer
-    * and winter time) from scala-java-time-tzdb-scala3-next. Not here because it does not link yet (AGENTS.md "Wasm
-    * component layer rules"): the wall-clock (`Instant.now`, `Clock`).
+    * and winter time) from the released scala-java-time-tzdb-scala3-next. Not here because it does not link yet
+    * (AGENTS.md "Wasm component layer rules"): the wall-clock (`Instant.now`, `Clock`).
     */
   def javaTime(ignored: Unit): String =
     val instant = Instant.parse("2026-10-17T10:15:30Z")

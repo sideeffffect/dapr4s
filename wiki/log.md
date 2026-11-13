@@ -1,5 +1,8 @@
 # Wiki Log
 
+## [2026-11-13] update | scala-java-time 2.10.0 released with scala-java-time-tzdb-scala3-next
+- Updated: scala-js/scala-wasm-component-spike.md — cquiroz/scala-java-time#623 merged and released as 2.10.0; Maven Central has `scala-java-time-tzdb-scala3-next_sjs1_3` 2.10.0 (POM: scala-java-time_sjs1_3 2.10.0, scala3-library_sjs1_3 3.10.1). dapr4s pins scala-java-time 2.10.0 (`Versions.scalaJavaTime`); counter and both consumer checks use the released tzdb-scala3-next; `scripts/wasm/build-scala-java-time.sh`, its CI steps and `ScalaJavaTimeTzdbWasm` are gone. The sbt consumer check keeps the scala3-library pin while the dapr4s nightly (3.10.0-RC1) is older than 3.10.1.
+
 ## [2026-11-11] update | tzdb from the new scala-java-time-tzdb-scala3-next artifact
 - Updated: scala-js/scala-wasm-component-spike.md — cquiroz/scala-java-time#623 (head e9c7320) now keeps `scala-java-time-tzdb` on 3.9.0 and adds the Scala.js-only `tzdbScala3Next` project (`scala-java-time-tzdb-scala3-next`, Scala 3.10.1, POM declares scala3-library 3.10.1); `build-scala-java-time.sh` builds that project; counter and both consumer checks depend on it; its declared scala3-library 3.10.1 is newer than the dapr4s nightly (3.10.0-RC1), so the sbt consumer check pins scala3-library_sjs1_3 (stable TASTy 28.10 is unreadable by the nightly); Mill needs no pin
 

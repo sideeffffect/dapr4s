@@ -2,8 +2,8 @@
 # Builds the dapr4s test component test/wasm/counter exactly like an external sbt app does: a fresh sbt build
 # (wasm/target/consumer-check) with ONLY `addSbtPlugin(sbt-dapr4s-wasm)`, `enablePlugins(Dapr4sWasmComponentPlugin)`,
 # one dapr4s libraryDependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the fixed-name ComponentRoot
-# — no in-build workaround. Plus the app's own scala-java-time-tzdb-scala3-next (region zones; dapr4s-wasm brings
-# scala-java-time, and a scala3-library pin, see below), from scripts/wasm/build-scala-java-time.sh (run it first).
+# — no in-build workaround. Plus the app's own scala-java-time-tzdb-scala3-next (region zones, released on Maven
+# Central; dapr4s-wasm brings scala-java-time) and a scala3-library pin (see below).
 # The six wasm artifacts come from this checkout (Mill publishes them, in release mode, into the
 # Maven repository wasm/target/consumer-check-repo), everything else from Maven Central. Then runs the counter part
 # of scripts/wasm/e2e.sh on the result.
@@ -28,7 +28,8 @@ done
 # second Mill run may already compute differently).
 version="$(ls "$local_repo/com/github/sideeffffect/dapr4s-wasm_sjs1_3")"
 nightly="$(cd "$repo" && mill show scala3Nightly | tail -1 | tr -d '"')"
-tzdb="$(sed -n 's/^ *val ScalaJavaTimeTzdbWasm = "\(.*\)"$/\1/p' "$repo/wasm/package.mill")"
+# scala-java-time-tzdb-scala3-next has the version of scala-java-time (`Versions.scalaJavaTime`).
+tzdb="$(sed -n 's/^ *val scalaJavaTime = "\(.*\)"$/\1/p' "$repo/buildsupport.mill")"
 dir="$repo/wasm/target/consumer-check"
 rm -rf "$dir"
 mkdir -p "$dir/project" "$dir/wit" "$dir/src"
@@ -58,7 +59,7 @@ lazy val counter = project
     // That tzdb's POM declares scala3-library 3.10.1, newer than the dapr4s nightly (3.10.0-RC1-...), so it evicts
     // the app's library, and the nightly compiler cannot read 3.10.1's stable TASTy 28.10 ("Forward incompatible
     // TASTy"). Pin the library to the app's Scala. Mill needs no pin: it compiles against the compiler's own library.
-    // Goes away when the dapr4s nightly is >= 3.10.1.
+    // Goes away when the dapr4s nightly is >= 3.10.1 (nightlies 3.10.2-RC1-bin-* exist, but dapr4s is not on one yet).
     dependencyOverrides += "org.scala-lang" % "scala3-library_sjs1_3" % scalaVersion.value,
   )
 SBT
