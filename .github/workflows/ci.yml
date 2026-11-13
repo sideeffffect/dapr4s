@@ -77,6 +77,12 @@ jobs:
           out/stFacades
         key: st-facades-mill-${{ hashFiles('package-lock.json', 'build.mill', 'buildsupport.mill') }}
         restore-keys: st-facades-mill-
+    # node_modules is not cached, but the build's own `npm ci` is a cached Mill task keyed by package-lock.json.
+    # On an exact cache hit (same lock file and build files) Mill reuses that task's result and skips `npm ci`,
+    # and the JS integration tests then fail with "Cannot find package '@dapr/dapr'". Install it here always.
+    - name: Install npm packages
+      if: matrix.platform == 'js'
+      run: npm ci --no-audit --no-fund
     - name: Compile
       if: matrix.platform != 'wasm'
       run: ./mill --ticker false core.${{ matrix.platform }}.compile + integration.${{ matrix.platform }}.compile
@@ -141,6 +147,15 @@ jobs:
         path: ~/.cache/dapr4s/scala-wasm-src
         key: scala-wasm-src-${{ hashFiles('scripts/wasm/prepare-patched-linker.sh') }}
         restore-keys: scala-wasm-src-
+    # The sbt consumer check below runs sbt, which needs a JDK on the PATH (Mill brings its own).
+    - name: Install JDK 25 (the sbt consumer check)
+      if: matrix.platform == 'wasm'
+      uses: actions/setup-java@v5
+      with:
+        distribution: zulu
+        java-version: 25
+    - uses: sbt/setup-sbt@v1
+      if: matrix.platform == 'wasm'
     # Source mode: the wall over dapr4s's own src/shared (covers shared-code changes), unit tests + e2e
     # (counter-raw, counter, imports-probe against daprd + Redis).
     - name: Wall unit tests (source + release mode)
@@ -161,14 +176,7 @@ jobs:
       timeout-minutes: 20
       run: scripts/wasm/consumer-check-mill.sh
     # sbt-dapr4s-wasm is a product for sbt consumers: check it the way they use it, with a fresh sbt build
-    # (the only sbt in CI; dapr4s's own build is Mill).
-    - uses: actions/setup-java@v5
-      if: matrix.platform == 'wasm'
-      with:
-        distribution: zulu
-        java-version: 25
-    - uses: sbt/setup-sbt@v1
-      if: matrix.platform == 'wasm'
+    # (dapr4s's own build is Mill; the JDK and sbt are set up above).
     - name: Consumer check (sbt plugin + one dependency, e2e)
       if: matrix.platform == 'wasm'
       timeout-minutes: 20

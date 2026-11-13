@@ -523,8 +523,32 @@ agents push branches / open drafts with an EMPTY description; the user writes th
   `PUBLISH_WASM_TO_CENTRAL: 'true'` (ON since 2026-10-13, approved by the user); with it the job adds
   the eight wasm artifacts to the same `SonatypeCentralPublishModule/publishAll` call as core. Nothing local
   reaches Central: publishing happens only through that command with the Central credentials.
-- **Shared code on the `wasm` path** must avoid `java.time` formatting/parsing, wall-clock
-  (`Instant.now`), `println` and `UUID.randomUUID`: they reach JS and fail to link.
+- **java.time on the `wasm` path**: `dapr4s-wasm` depends on scala-java-time >= 2.9.0 (the default zone is
+  UTC without a JS host; `DateTimeFormatter.ofPattern` no longer links `Instant.now`) and scala-java-locales >= 1.6.0
+  (`Locale.getDefault` no longer reads `window`). So these link AND run (counter's `java-time` route, checked by
+  `scripts/wasm/e2e.sh` and the consumer check): `toString`/`parse` of the java.time types, the predefined
+  `DateTimeFormatter`s (`ISO_*`, `RFC_1123_DATE_TIME`), `DateTimeFormatter.ofPattern` (any pattern), localized text
+  (`getDisplayName(TextStyle, Locale)`), `ZoneOffset`s, `ZoneId.of("UTC")`, `ZoneId.systemDefault()` (= UTC),
+  `Duration`. `ofPattern` kept zone-text printing reachable → `TimeZone.getTimeZone` → `Instant.now` until
+  https://github.com/cquiroz/scala-java-time/pull/618 (in 2.9.0) computed the raw offset lazily.
+- **Region zones** (`ZoneId.of("Europe/Prague")`) link AND run too, but only with the tzdb compiled by Scala
+  3.10.1: the released `scala-java-time-tzdb-scala3-next` 2.10.0, a Scala.js-only artifact from
+  [cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623) (`scala-java-time-tzdb` and core
+  stay on Scala 3.9.0). Never use it next to `scala-java-time-tzdb` (same classes). Its version is
+  `Versions.scalaJavaTime`. Its POM depends on scala-java-time 2.10.0 and declares scala3-library 3.10.1, newer than
+  our 3.10.0-RC1 nightly. It evicts the nightly library: Mill still compiles against the compiler's own library
+  (`counter` passes the e2e), but an sbt app must pin `scala3-library_sjs1_3` to its Scala, or the nightly compiler
+  fails on 3.10.1's stable TASTy 28.10 (`scripts/wasm/consumer-check.sh` does; the pin goes when the nightly is
+  >= 3.10.1). Only the test components (`counter`, the two consumer checks) depend on it: an app gets region zones by
+  depending on it, as on JS. WHY: tzdb's provider has `@EnableReflectiveInstantiation`. Its registration is a static
+  initializer (always linked), and Scala 3 <= 3.10.0 emits it with the JS-backed
+  `Reflect.registerInstantiatableClass(js.Array)`. Scala 3 emits the Scala-typed `registerInstantiatableClassV2`
+  since scala/scala3@3bb676972 (in 3.10.1); the plain `scala-java-time-tzdb` is built with 3.9.0.
+- **Shared code on the `wasm` path** must still avoid, because they fail to link:
+  - the wall-clock: `Instant.now`, `Clock.system*`, `System.currentTimeMillis` (scala-wasm's javalib calls
+    `js.Date.now`), and `TimeZone.getRawOffset` (it reads it). With `scala-java-time-tzdb` (not `-scala3-next`) also region zones (see
+    above). Retires when scala-wasm's javalib reads the clock through WASI (`wasi:clocks`).
+  - `println` (`console`) and `UUID.randomUUID` (no `SecureRandom`): they reach JS.
 - Commands (tools: `wkg`, `wasm-tools`, `wit-bindgen-scala` for the build; plus Docker, the dapr
   CLI + daprd from `dapr init --slim`, `wasmtime` and `wac` for the e2e):
   - `./mill 'wasm.lib[source].wall.test'` / `'wasm.lib[release].wall.test'` (wall unit tests, plain

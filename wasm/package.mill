@@ -69,6 +69,8 @@ object `package` extends Module with WitModule {
   val Scala2Linker = "2.12.21"
   // The latest core release the wall builds against in release mode. Bump after each core release.
   val CoreRelease = "3.0.0"
+  // Only the wasm path needs it explicitly (see `wall`); on JS, scala-java-time's own dependency suffices.
+  val ScalaJavaLocales = "1.6.0"
 
   def wasmDir: os.Path = Dapr4sPaths.root / "wasm"
 
@@ -159,8 +161,8 @@ object `package` extends Module with WitModule {
   object coreSource extends NightlyWasm with WasmPublish {
     def artifactName = "dapr4s-wasm-core"
     override def sources = Task.Sources(Dapr4sPaths.src / "shared", Dapr4sPaths.src / "wasm" / "core")
-    // java.time on the Scala.js-family platforms (part of the shared public API). Only Duration-style
-    // arithmetic links without JS; formatting/parsing reaches scala-java-locales' `window` (wiki: "What
+    // java.time on the Scala.js-family platforms (part of the shared public API). `wall` adds
+    // scala-java-locales, whose >= 1.6.0 lets formatting/parsing link without a JS host (wiki: "What
     // dapr4s's shared code needs on a no-JS target").
     override def mvnDeps = Seq(mvn"io.github.cquiroz::scala-java-time::${Versions.scalaJavaTime}")
   }
@@ -209,6 +211,18 @@ object `package` extends Module with WitModule {
       override def pomExclusions = Exclusions
       override def sources = Task.Sources(Dapr4sPaths.src / "wasm" / "internal")
       override def moduleDeps = super.moduleDeps ++ Seq(api, inert, glue)
+      // java.time on the wasm path. dapr4s core brings scala-java-time (part of the shared API); this pins the
+      // versions a Wasm component needs, in both core modes and for every app (they are in dapr4s-wasm's POM):
+      // scala-java-time >= 2.9.0 (the default zone is UTC without a JS host; `DateTimeFormatter.ofPattern` does
+      // not link `Instant.now`) and scala-java-locales >= 1.6.0 (`Locale.getDefault`, reached by every
+      // formatter/parser, no longer reads `window` without a JS host). Region zones need the tzdb built with Scala
+      // 3.10.1: see `counter`.
+      override def mvnDeps = Task {
+        super.mvnDeps() ++ Seq(
+          mvn"io.github.cquiroz::scala-java-time::${Versions.scalaJavaTime}",
+          mvn"io.github.cquiroz::scala-java-locales::$ScalaJavaLocales",
+        )
+      }
       override def compileModuleDeps = Seq(componentRootStub)
       override def embeddedModules = Seq(api, inert, componentRootStub)
       override def jar: T[PathRef] = Task {
@@ -251,6 +265,16 @@ object `package` extends Module with WitModule {
     object counter extends WasmComponent {
       override def sources = Task.Sources(Dapr4sPaths.test / "wasm" / "counter")
       override def moduleDeps = Seq(wall, glueExports)
+      // Region zones (`ZoneId.of("Europe/Prague")`, the tz database is the app's choice, as on JS): the released
+      // `scala-java-time-tzdb-scala3-next` (from https://github.com/cquiroz/scala-java-time/pull/623, since 2.10.0), the
+      // tzdb of scala-java-time compiled by Scala 3.10.1. WHAT it adds over `scala-java-time-tzdb` (Scala 3.9.0): it
+      // links without a JS host, because Scala 3 >= 3.10.1 emits the provider's reflective registration Scala-typed.
+      // Never add it next to `scala-java-time-tzdb` (same classes). Its POM depends on scala-java-time (the same
+      // version dapr4s-wasm pins) and declares scala3-library 3.10.1, newer than our 3.10.0-RC1 nightly, so the
+      // component links the 3.10.1 library (dapr4s-wasm itself keeps the nightly). Mill compiles against the
+      // compiler's own library, so no pin here; an sbt app needs one (see scripts/wasm/consumer-check.sh).
+      // WHY only here, not in dapr4s-wasm: an app opts in to the tz database by depending on it, as on JS.
+      override def mvnDeps = Seq(mvn"io.github.cquiroz::scala-java-time-tzdb-scala3-next::${Versions.scalaJavaTime}")
     }
   }
 

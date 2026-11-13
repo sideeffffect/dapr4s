@@ -1133,6 +1133,10 @@ plan and status are in `docs/WASM-COMPONENTS-PROPOSAL.md` §6. The rules are in 
   (`wasm.coreSource`, via `wasm.lib[source]`) to test shared-code changes. The app
   implements `dapr4s.wasm.DaprComponent` (`def app(using StateCapability): DaprApp`) and names it in the fixed-FQN
   object `dapr4s.wasm.ComponentRoot`. A reactor component has no `main`, so the object is resolved at link time.
+- **java.time.** `dapr4s-wasm` depends on scala-java-time 2.10.0 and scala-java-locales 1.6.0, whose formatting/parsing
+  path (`DateTimeFormatter.ofPattern` included) links without a JS host (default zone UTC, default locale `en`).
+  tzdb region zones need the tzdb compiled with Scala 3 >= 3.10.1: the released `scala-java-time-tzdb-scala3-next` 2.10.0 (the test components depend on it). The wall-clock (`Instant.now`, scala-wasm's javalib uses `js.Date.now`) does not link yet;
+  AGENTS.md lists the exact rule.
 - **No connection config and no blocking bridge.** WIT imports are synchronous calls into the composed outbound
   provider, which reads `DAPR_HTTP_PORT` itself.
 - **The third wall** (`src/wasm/internal`) is the only place that sees WIT types. It maps WIT `result` variants into

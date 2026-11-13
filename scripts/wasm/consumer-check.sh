@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Builds the dapr4s test component test/wasm/counter exactly like an external sbt app does: a fresh sbt build
 # (wasm/target/consumer-check) with ONLY `addSbtPlugin(sbt-dapr4s-wasm)`, `enablePlugins(Dapr4sWasmComponentPlugin)`,
-# one libraryDependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the fixed-name ComponentRoot — no
-# in-build workaround. The six wasm artifacts come from this checkout (Mill publishes them, in release mode, into the
+# one dapr4s libraryDependency (`dapr4s-wasm`), the app's own WIT world + wkg files, and the fixed-name ComponentRoot
+# — no in-build workaround. Plus the app's own scala-java-time-tzdb-scala3-next (region zones, released on Maven
+# Central; dapr4s-wasm brings scala-java-time) and a scala3-library pin (see below).
+# The six wasm artifacts come from this checkout (Mill publishes them, in release mode, into the
 # Maven repository wasm/target/consumer-check-repo), everything else from Maven Central. Then runs the counter part
 # of scripts/wasm/e2e.sh on the result.
 #
@@ -26,6 +28,8 @@ done
 # second Mill run may already compute differently).
 version="$(ls "$local_repo/com/github/sideeffffect/dapr4s-wasm_sjs1_3")"
 nightly="$(cd "$repo" && mill show scala3Nightly | tail -1 | tr -d '"')"
+# scala-java-time-tzdb-scala3-next has the version of scala-java-time (`Versions.scalaJavaTime`).
+tzdb="$(sed -n 's/^ *val scalaJavaTime = "\(.*\)"$/\1/p' "$repo/buildsupport.mill")"
 dir="$repo/wasm/target/consumer-check"
 rm -rf "$dir"
 mkdir -p "$dir/project" "$dir/wit" "$dir/src"
@@ -50,6 +54,13 @@ lazy val counter = project
       "-Yexplicit-nulls", "-experimental", "-Wconf:any:error"),
     dapr4sWasmComponentsDirectory := file("$repo/wasm/target/components"),
     libraryDependencies += "com.github.sideeffffect" %%% "dapr4s-wasm" % dapr4sWasmVersion,
+    // The app's own choice: the tz database (as on JS), built with a Scala 3 whose output links on Wasm.
+    libraryDependencies += "io.github.cquiroz" %%% "scala-java-time-tzdb-scala3-next" % "$tzdb",
+    // That tzdb's POM declares scala3-library 3.10.1, newer than the dapr4s nightly (3.10.0-RC1-...), so it evicts
+    // the app's library, and the nightly compiler cannot read 3.10.1's stable TASTy 28.10 ("Forward incompatible
+    // TASTy"). Pin the library to the app's Scala. Mill needs no pin: it compiles against the compiler's own library.
+    // Goes away when the dapr4s nightly is >= 3.10.1 (nightlies 3.10.2-RC1-bin-* exist, but dapr4s is not on one yet).
+    dependencyOverrides += "org.scala-lang" % "scala3-library_sjs1_3" % scalaVersion.value,
   )
 SBT
 echo "consumer-check: building test/wasm/counter against the dapr4s wasm artifacts $version"

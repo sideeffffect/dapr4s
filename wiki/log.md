@@ -1,5 +1,32 @@
 # Wiki Log
 
+## [2026-11-13] update | scala-java-time 2.10.0 released with scala-java-time-tzdb-scala3-next
+- Updated: scala-js/scala-wasm-component-spike.md — cquiroz/scala-java-time#623 merged and released as 2.10.0; Maven Central has `scala-java-time-tzdb-scala3-next_sjs1_3` 2.10.0 (POM: scala-java-time_sjs1_3 2.10.0, scala3-library_sjs1_3 3.10.1). dapr4s pins scala-java-time 2.10.0 (`Versions.scalaJavaTime`); counter and both consumer checks use the released tzdb-scala3-next; `scripts/wasm/build-scala-java-time.sh`, its CI steps and `ScalaJavaTimeTzdbWasm` are gone. The sbt consumer check keeps the scala3-library pin while the dapr4s nightly (3.10.0-RC1) is older than 3.10.1.
+
+## [2026-11-11] update | tzdb from the new scala-java-time-tzdb-scala3-next artifact
+- Updated: scala-js/scala-wasm-component-spike.md — cquiroz/scala-java-time#623 (head e9c7320) now keeps `scala-java-time-tzdb` on 3.9.0 and adds the Scala.js-only `tzdbScala3Next` project (`scala-java-time-tzdb-scala3-next`, Scala 3.10.1, POM declares scala3-library 3.10.1); `build-scala-java-time.sh` builds that project; counter and both consumer checks depend on it; its declared scala3-library 3.10.1 is newer than the dapr4s nightly (3.10.0-RC1), so the sbt consumer check pins scala3-library_sjs1_3 (stable TASTy 28.10 is unreadable by the nightly); Mill needs no pin
+
+## [2026-11-10] update | PR #48 ported to the Mill Wasm build
+- Note: java.time on Wasm now lives in wasm/package.mill (`wall` mvnDeps scala-java-time + scala-java-locales 1.6.0, `counter` the source-built tzdb `ScalaJavaTimeTzdbWasm`); both consumer checks (Mill and sbt) add the tzdb; Mill resolves the publishLocal'ed tzdb from ~/.ivy2/local
+
+## [2026-11-10] update | tzdb source build on Scala 3.10.1 final
+- Updated: scala-js/scala-wasm-component-spike.md — Scala 3.10.1 is final on Central (contains scala/scala3@3bb676972, `registerInstantiatableClassV2`); `scripts/wasm/build-scala-java-time.sh` compiles the tzdb module with 3.10.1 instead of 3.10.1-RC2
+
+## [2026-11-10] update | tzdb built from cquiroz/scala-java-time#623
+- Updated: scala-js/scala-wasm-component-spike.md — opened draft cquiroz/scala-java-time#623 (tzdbJS on Scala 3.10.1, still declares scala3-library 3.9.0 via a hidden-config compile classpath; tlBaseVersion 2.9); `build-scala-java-time.sh` builds its head 32a3b26 without POM rewriting; dead ends: `-scala-output-version` ignored, 3.10.1 compiler on the 3.9.0 library crashes
+
+## [2026-11-03] update | scala-java-time 2.9.0 released; only tzdb still source-built
+- Updated: scala-js/scala-wasm-component-spike.md — 2.9.0 (tag v2.9.0 = 3b4ecad, #618 + sbt-tzdb 5.5.0) makes `ofPattern` link on Wasm with the released artifact; its tzdb is still compiled with Scala 3.9.0 (V1 `Reflect.registerInstantiatableClass`), so `scripts/wasm/build-scala-java-time.sh` now compiles ONLY the tzdb module of v2.9.0 with Scala 3.10.1-RC2 (contains scala/scala3@3bb676972, no nightly) as `2.9.0-dapr4s-local` on the released core 2.9.0
+
+## [2026-10-17] update | cquiroz/scala-java-time#618 merged
+- Updated: scala-js/scala-wasm-component-spike.md — #618 merged (48cf7a6); dapr4s builds that `main` commit (no merge step); waits for a release > 2.8.0, region zones also for one built with Scala 3 >= 3.10.1
+
+## [2026-10-17] update | ofPattern + region zones on Wasm components (source-built scala-java-time)
+- Updated: scala-js/scala-wasm-component-spike.md — `ofPattern` root cause (`TimeZone.getTimeZone` → `Instant.now`; fixed by cquiroz/scala-java-time#618, lazy raw offset) and tzdb root cause (static initializer = linker entry point; Scala 3 <= 3.10.0 emits the JS-backed `Reflect.registerInstantiatableClass`, V2 since scala/scala3@3bb676972, in 3.10.1); dapr4s builds scala-java-time from source; wall-clock still blocked by scala-wasm's javalib
+
+## [2026-10-17] update | java.time on Wasm components
+- Updated: scala-js/scala-wasm-component-spike.md — java.time formatting/parsing links and runs with scala-java-locales 1.6.0 + scala-java-time 2.8.0 (evidence: counter `java-time` route under daprd); still blocked: wall-clock (`js.Date.now`; also reached by every `DateTimeFormatter.ofPattern` via `TimeZone`), tzdb region zones (`@EnableReflectiveInstantiation` → `Reflect` `js.Array`)
+
 ## [2026-10-17] update | dapr-wasm-components 0.7.5
 - Updated: scala-js/scala-wasm-component-spike.md — 0.7.3–0.7.5 leave the WIT and `wkg-config.toml` unchanged; 0.7.4 moves the OCI names, 0.7.5's compose.sh follows them (own provider pull dropped); dapr4s targets 0.7.5
 - Updated: scala-js/dapr4s-mill-build.md — OCI rename note: v0.7.5's compose.sh follows it

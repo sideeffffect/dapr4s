@@ -177,6 +177,28 @@ trait Dapr4sWasmModule extends ScalaWasmModule {
   def dapr4sWasmVersion: String = Dapr4sWasm.version
 
   override def allMvnDeps: T[Seq[Dep]] = Task(super.allMvnDeps().map(_.exclude(Exclusions*)))
+
+  // -----------------------------------------------------------------------------------------------
+  // WHAT: drops the fork's Scala 2.13 stdlib IR (io.github.scala-wasm:scalajs-scalalib_2.13:2.13.x+<v>)
+  // from the run (= linker) classpath, whatever brought it.
+  // WHY: the exclusions above act on this module's own dependencies only. The fork's 2.13 stdlib still
+  // arrives through a dependency on a Scala 2.13 MODULE (dapr4s's own `wasm.glue`, whose mandatory
+  // dependencies Mill resolves unexcluded) or through Mill's own Scala.js dependencies, and the linker
+  // keeps the first IR file per class. When it comes before the nightly's stdlib, code compiled by Scala
+  // 3 >= 3.8 (stdlib compiled by Scala 3) fails to link, e.g. scala-java-locales 1.6.0's
+  // `java.util.Locale.getExtension`: "Referring to non-existent method scala.Option.orNull()".
+  // WHY SAFE: a Scala 3 module links against the nightly's stdlib IR (org.scala-js:scalajs-scalalib_2.13:
+  // <nightly>), which stays; the fork's 2.13 one only duplicates (older) classes of it, which is exactly
+  // why `Exclusions` lists it. The fork's own Wasm patches of the stdlib come from the overlay
+  // (`dapr4s-wasm-scalalib-overlay`), not from this jar.
+  // RETIRES with the fork-scalalib exclusion (see `Exclusions`).
+  // -----------------------------------------------------------------------------------------------
+  override def runClasspath: T[Seq[PathRef]] = Task {
+    super.runClasspath().filterNot { p =>
+      val s = p.path.toString
+      s.contains("scala-wasm") && p.path.last.startsWith("scalajs-scalalib_2.13-2.13.")
+    }
+  }
 }
 
 /** Plain-JS unit tests (Node) of a [[Dapr4sWasmModule]]: the fork's test bridge (`scalaJSOrganization`), with the

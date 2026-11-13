@@ -1,8 +1,8 @@
 # scala-wasm Component Spike (dapr4s Phase 0)
 
-> Sources: dapr4s Phase-0 spike, 2026-10-12, ported into dapr4s 2026-10-13 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44): `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`); scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24
+> Sources: dapr4s Phase-0 spike, 2026-10-12, ported into dapr4s 2026-10-13 ([PR #44](https://github.com/sideeffffect/dapr4s/pull/44): `wasm/`, `src/wasm/`, `test/wasm/`, `scripts/wasm/`); scala-wasm project docs "Limitations", 2026-10-03; Rikito Taniguchi (VirtusLab), 2026-08-24; java.time link/run probe (counter `java-time` route) with scala-java-locales 1.6.0 + scala-java-time 2.8.0, 2026-10-17; scala-java-time 2.10.0 POMs on Maven Central, 2026-11-13
 > Raw: [spike build log and evidence](../../raw/scala-js/2026-10-12-dapr4s-wasm-component-spike-log.md); [scala-wasm Limitations](../../raw/scala-js/2026-10-03-scala-wasm-limitations.md); [Scala and Wasm Component Model](../../raw/scala-js/2026-08-24-virtuslab-scala-wasm-component-model.md)
-> Updated: 2026-10-13
+> Updated: 2026-11-03
 
 ## Overview
 
@@ -49,10 +49,65 @@ fixes (a local patch was used for one of them).
 - Links: dapr4s opaque types, `JsonCodec`, `StateCapability` tiers, `DaprApp`/`InvokeRoute`/validation,
   exceptions, `Charsets`, `java.time.Duration`, `FiniteDuration`, `UUID.fromString`, `String.format`.
   dapr4s's JS wall is never reachable unless something calls `Dapr(...)`.
-- Does not link: any `java.time` **formatting/parsing** (`Instant.parse`/`toString`, `ZonedDateTime`, so also
-  `WorkflowSnapshot.toString`). The chain is scala-java-time → `Locale.getDefault` → scala-java-locales
-  `DefaultLocale` → `global:window`. Also `Instant.now`/`currentTimeMillis` (`Date.now`), `println` (`console`),
-  `UUID.randomUUID` (no `SecureRandom`).
+- java.time **formatting/parsing** links and runs since 2026-10-17 (it did not in Phase 0: scala-java-time →
+  `Locale.getDefault` → scala-java-locales `DefaultLocale` → `global:window`). Fixed by scala-java-locales 1.6.0
+  ([#640](https://github.com/cquiroz/scala-java-locales/pull/640): `JSHostLanguage` behind `LinkingInfo.linkTimeIf`,
+  language `en` without a JS host) + scala-java-time 2.8.0 ([#616](https://github.com/cquiroz/scala-java-time/pull/616):
+  default `TimeZone` UTC without a JS host). `dapr4s-wasm` depends on both. Verified in a component under daprd
+  (counter's `java-time` route): `Instant`/`LocalDate`/`ZonedDateTime` `parse`/`toString`, `ISO_OFFSET_DATE_TIME`,
+  `RFC_1123_DATE_TIME`, `DayOfWeek.getDisplayName(FULL, ENGLISH)` = `Saturday`, `ZoneId.systemDefault()` = `UTC`,
+  `ZoneId.of("UTC")`, `ZoneOffset`s, `Duration.parse`.
+- `DateTimeFormatter.ofPattern` links and runs with the released scala-java-time 2.9.0 (2026-10-27; `dapr4s-wasm`
+  depends on it; now 2.10.0). Region zones link and run with the released `scala-java-time-tzdb-scala3-next` 2.10.0
+  (Maven Central, 2026-11), a Scala.js-only artifact from
+  [cquiroz/scala-java-time#623](https://github.com/cquiroz/scala-java-time/pull/623) (merged; project `tzdbScala3Next`:
+  the same tzdb compiled by Scala 3.10.1). Its POM: scala-java-time_sjs1_3 2.10.0, scala3-library_sjs1_3 3.10.1.
+  Counter and the two consumer checks depend on it (an app opts in to the tz database, as on JS); its version is
+  `Versions.scalaJavaTime`. History: from 2026-10-17 to 2026-11-03 dapr4s source-built all of scala-java-time `main`
+  (`2.8.1-dapr4s-local`) with the tzdb module on a Scala nightly; from 2026-11-03 to 2026-11-13
+  `scripts/wasm/build-scala-java-time.sh` (now deleted) built only the tzdb from the #623 head and publishLocal'ed it
+  as `2.9.0-dapr4s-local`. Counter's answer under wasmtime + daprd adds
+  `prague=2026-10-17T12:15:30+02:00[Europe/Prague];winter=2026-12-24T18:30+01:00[Europe/Prague];newyork=-04:00;`
+  `pattern=17.10.2026 12:15 Europe/Prague;parsed=2026-12-24T18:30+01:00[Europe/Prague];text=Saturday 17 October 2026`
+  (same as the JVM). The two root causes, each proven by a failing link with the released 2.8.0:
+  - `ofPattern`: any pattern can contain `z`, so the linker keeps `ZoneTextPrinterParser`. Its print/parse call
+    `TimeZone.getTimeZone`, and the JS `TimeZone.getTimeZone(zoneId)` computed the raw offset as
+    `rules.getStandardOffset(Instant.now)` → `Clock$SystemClock` → `System.currentTimeMillis` → `global:Date["now"]`.
+    Once `ofPattern` instantiated the parser, even `Instant.parse` dispatches into it. Fix:
+    [cquiroz/scala-java-time#618](https://github.com/cquiroz/scala-java-time/pull/618) (merged 2026-10-17, released in 2.9.0 on 2026-10-27), a private `SimpleTimeZone`
+    subclass with a `lazy val` raw offset (rules still looked up eagerly). Nothing calls `getRawOffset` on the
+    formatter path, so `Instant.now` is dropped.
+  - Region zones: `TzdbZoneRulesProvider` has `@EnableReflectiveInstantiation`, and its registration lives in the
+    class's static initializer. The linker treats every static initializer as an entry point
+    (`Analyzer.reachEntryPoints`, "called from core module analyzer"), so merely having the tzdb jar on the classpath
+    links it. Scala 3 <= 3.10.0 emits the deprecated `Reflect.registerInstantiatableClass(fqcn, cls, js.Array[js.Tuple2[js.Array[Class[_]], js.Function]])`
+    (JS arrays, JS closures, `toJSVarArgs`). Scala.js 1.20 added the Scala-typed `registerInstantiatableClassV2`
+    (Scala arrays, `Array[Any] => Any`); the Scala 2 plugin emits it, which is why the 2.13 probe of #617 linked.
+    Scala 3 emits V2 since [scala/scala3@3bb676972](https://github.com/scala/scala3/commit/3bb676972) (2026-09-07,
+    a forward port of scala-js/scala-js@e754a55; on `release-3.10.1`, NOT in 3.10.0). Nothing in scala-java-time
+    can work around it (no source-level way to write a static initializer), so the fix is the compiler. The plain
+    `scala-java-time-tzdb` (2.9.0 and 2.10.0) is still built with 3.9.0, so it still emits V1. 3.10.1 (final; -RC1
+    and -RC2 too) contains 3bb676972. #623 (released in 2.10.0) leaves `scala-java-time-tzdb` and core on 3.9.0 and adds a separate Scala.js-only project
+    `tzdbScala3Next` (dir `tzdb-scala3-next/`, artifact `scala-java-time-tzdb-scala3-next`): the same tzdb compiled
+    by 3.10.1 (its `.sjsir` names `registerInstantiatableClassV2`). Its POM honestly declares scala3-library 3.10.1, so
+    it is only for apps on Scala >= 3.10.1 (a declared 3.10.1 would evict a 3.9 app's library, whose compiler then
+    cannot read 3.10 TASTy). dapr4s's nightly (3.10.0-RC1-bin-20260607) is OLDER, so 3.10.1
+    evicts it in an app that adds the tzdb (the published dapr4s-wasm keeps the nightly). Mill compiles against the
+    compiler's own library and passes. sbt compiles against the evicted 3.10.1 library and fails: "Forward
+    incompatible TASTy file has version 28.10 ... expected stable TASTy from 28.0 to 28.9, or exactly
+    28.10-experimental-1". The sbt consumer check pins `scala3-library_sjs1_3` to the app's Scala with
+    `dependencyOverrides`; then it links (tzdb IR on the nightly library) and the e2e passes (2026-11-11). It needs `++ 3` (next to a
+    Scala 2 core the project skips itself). Never put it next to `scala-java-time-tzdb` (same classes). The first
+    #623 design (head 32a3b26, 2026-11-10) compiled `tzdbJS` itself with 3.10.1 and kept the POM's 3.9.0 by resolving
+    the 3.10.1 library in a hidden ivy configuration; it was reverted. Dead ends: `-scala-output-version 3.9` is ignored by 3.10.1 ("bad option"), and 3.10.1 with only
+    the 3.9.0 library crashes ("missing: method apply", `scala.specialize`). v2.9.0's `tlBaseVersion` 2.8 makes
+    sbt-typelevel refuse to load any later commit, so #623 also bumps it to 2.9. Before #623 (2026-11-03..10) the
+    script compiled tzdb of v2.9.0 with `set tzdb.js / scalaVersion` and rewrote the POM/ivy.xml. `Reflect.lookupInstantiatableClass` (the core side of discovery) is a Scala `HashMap`
+    lookup and links fine.
+- Still does not link (scala-wasm 1.22.1-wasm.6; its `scala-wasm` branch is the same on 2026-10-17):
+  - The wall-clock: `Instant.now`/`Clock.systemUTC`/`currentTimeMillis` → javalib `System.currentTimeMillis` =
+    `js.Date.now()`, and `TimeZone.getRawOffset` (reads it). Out of reach for dapr4s (scala-wasm javalib).
+  - `println` (`console`), `UUID.randomUUID` (no `SecureRandom`).
 - Whole-program trap: once anything instantiates `js.WrappedDictionary`, virtual stdlib calls such as
   `List.groupBy` → `newSpecificBuilder` become JS-tainted everywhere (hit in `DaprAppValidation`).
 - POM hygiene: `dapr4s_sjs1_3` brings mainline `org.scala-js:scalajs-library_2.13:1.22.0` + javalib next to the
